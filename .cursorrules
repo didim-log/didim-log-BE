@@ -1,0 +1,42 @@
+# Project Context
+- **Name:** DidimLog (디딤로그)
+- **Goal:** Algorithm learning platform for systematic growth and logging.
+- **Tech Stack:**
+  - Backend: Kotlin (JVM 17), Spring Boot 3.x
+  - Database: MongoDB (Main), Redis (Cache)
+  - Frontend: React, Firebase Hosting
+  - Infra: Docker, AWS EC2
+  - Testing: JUnit5, AssertJ, Mockk
+
+# Coding Conventions (Strict Adherence Required)
+
+## 1. Woowahan Tech Course Clean Code Rules
+- **Wrap Primitives:** NEVER use raw `String`, `Int`, `Long` for domain fields. ALWAYS use `JvmInline value class` or distinct objects (e.g., `Nickname`, `Tier`).
+- **First Class Collections:** ALWAYS wrap `List`, `Set`, `Map` in a separate class.
+- **No Getters/Setters:**
+  - ABSOLUTELY NO setters.
+  - Minimize getters. Tell, Don't Ask.
+  - Exception: DTOs can have getters.
+- **Indentation:** Maximum 1 level of indentation per method.
+- **No `else` keyword:** Use early return pattern.
+- **Method Parameters:** Maximum 3 parameters.
+- **One Dot per Line:** Adhere to the Law of Demeter.
+
+## 2. Kotlin & Spring Style
+- Use `val` instead of `var` whenever possible.
+- Use `data class` for DTOs and immutable domain objects.
+- Architecture: Controller -> Service -> Repository.
+- Use Constructor Injection.
+
+## 3. Documentation
+- All classes and public methods must have concise comments in **Korean**.
+- Focus on "Why", not "What".
+
+# Testing Guidelines (TDD)
+- **Framework:** JUnit5 + AssertJ + Mockk.
+- **Process:** Write Test -> Fail -> Implement -> Pass -> Refactor.
+- **Scope:** Unit tests for Domain logic are MANDATORY.
+
+# Git Commit Convention (AngularJS Style)
+- Format: `<type>(<scope>): <subject>`
+- Example: `feat(student): implement tier promotion logic`
