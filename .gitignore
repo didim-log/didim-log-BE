@@ -45,3 +45,4 @@ out/
 
 # Mac cache
 .DS_Store
+.aider*
