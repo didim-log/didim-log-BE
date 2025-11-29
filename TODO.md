@@ -9,10 +9,10 @@
 > **Goal:** Spring Boot, MongoDB, Redis 환경 구축 및 기본 프로젝트 세팅
 
 - [x] **[Setup]** Spring Boot 3.x (Kotlin) 프로젝트 초기화 (Dependencies: Web, MongoDB, Redis, Validation, Actuator, Test)
-- [ ] **[Config]** `docker-compose.yml` 작성 (MongoDB, Redis 컨테이너 구성, 데이터 영속성 설정)
-- [ ] **[Config]** MongoDB 연결 설정 (`application.yml`) 및 JpaAuditing(`@EnableMongoAuditing`) 설정
+- [x] **[Config]** `docker-compose.yml` 작성 (MongoDB, Redis 컨테이너 구성, 데이터 영속성 설정)
+- [x] **[Config]** MongoDB 연결 설정 (`application.yml`) 및 JpaAuditing(`@EnableMongoAuditing`) 설정
 - [ ] **[Config]** 코드 품질 도구 설정 (Ktlint 또는 Checkstyle - 우아한 테크코스 컨벤션 적용)
-- [ ] **[Docs]** Swagger (OpenAPI 3.0) 설정
+- [x] **[Docs]** Swagger (OpenAPI 3.0) 설정
 
 ## Phase 1: Core Domain Implementation (Week 1-2)
 > **Goal:** `SECRET_DOCS/DOMAIN.md`의 설계를 100% 코드로 구현 (클린 코드 원칙 준수)
