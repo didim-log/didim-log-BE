@@ -8,7 +8,7 @@
 ## Phase 0: Environment & Infrastructure (Week 1)
 > **Goal:** Spring Boot, MongoDB, Redis 환경 구축 및 기본 프로젝트 세팅
 
-- [ ] **[Setup]** Spring Boot 3.x (Kotlin) 프로젝트 초기화 (Dependencies: Web, MongoDB, Redis, Validation, Actuator, Test)
+- [x] **[Setup]** Spring Boot 3.x (Kotlin) 프로젝트 초기화 (Dependencies: Web, MongoDB, Redis, Validation, Actuator, Test)
 - [ ] **[Config]** `docker-compose.yml` 작성 (MongoDB, Redis 컨테이너 구성, 데이터 영속성 설정)
 - [ ] **[Config]** MongoDB 연결 설정 (`application.yml`) 및 JpaAuditing(`@EnableMongoAuditing`) 설정
 - [ ] **[Config]** 코드 품질 도구 설정 (Ktlint 또는 Checkstyle - 우아한 테크코스 컨벤션 적용)
@@ -19,10 +19,10 @@
 > **Ref:** 모든 원시값 포장, 일급 컬렉션 사용, Setter 금지, 생성자 유효성 검사
 
 ### 1-1. Value Objects & Enums
-- [ ] **[Domain]** `Nickname` VO 구현 (유효성 검사: NotBlank, 길이 2~20)
-- [ ] **[Domain]** `BojId` VO 구현 (유효성 검사: Regex)
-- [ ] **[Domain]** `Tier` Enum 구현 (로직: `next()`, `isNotMax()`)
-- [ ] **[Domain]** `ProblemResult` Enum 구현 (SUCCESS, FAIL, TIME_OVER)
+- [x] **[Domain]** `Nickname` VO 구현 (유효성 검사: NotBlank, 길이 2~20)
+- [x] **[Domain]** `BojId` VO 구현 (유효성 검사: Regex)
+- [x] **[Domain]** `Tier` Enum 구현 (로직: `next()`, `isNotMax()`)
+- [x] **[Domain]** `ProblemResult` Enum 구현 (SUCCESS, FAIL, TIME_OVER)
 
 ### 1-2. Solution & First-Class Collection
 // 원시값 포장을 적용한 Solution & Solutions 구현 완료
