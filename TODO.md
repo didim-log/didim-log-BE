@@ -30,14 +30,14 @@
 - [x] **[Domain]** `Solutions` 일급 컬렉션 구현 (MutableList 캡슐화, `calculateRecentSuccessRate` 로직)
 
 ### 1-3. Aggregate Roots
-- [ ] **[Domain]** `Problem` Document 구현 (난이도 비교 로직 `isHarderThan` 포함)
-- [ ] **[Domain]** `Student` Document 구현 (핵심 로직: `solveProblem`, `canLevelUp`, `levelUp`)
-- [ ] **[Domain]** `Retrospective` Document 구현 (회고 작성 및 내용 수정 로직)
+- [x] **[Domain]** `Problem` Document 구현 (난이도 비교 로직 `isHarderThan` 포함)
+- [x] **[Domain]** `Student` Document 구현 (핵심 로직: `solveProblem`, `canLevelUp`, `levelUp`)
+- [x] **[Domain]** `Retrospective` Document 구현 (회고 작성 및 내용 수정 로직)
 
 ### 1-4. Repository Layer
-- [ ] **[Infra]** `StudentRepository` (MongoRepository) 인터페이스 정의
-- [ ] **[Infra]** `ProblemRepository` (MongoRepository) 인터페이스 정의
-- [ ] **[Infra]** `RetrospectiveRepository` (MongoRepository) 인터페이스 정의
+- [x] **[Infra]** `StudentRepository` (MongoRepository) 인터페이스 정의
+- [x] **[Infra]** `ProblemRepository` (MongoRepository) 인터페이스 정의
+- [x] **[Infra]** `RetrospectiveRepository` (MongoRepository) 인터페이스 정의
 
 ## Phase 2: Core Feature - Problem Solving (Week 3-4)
 > **Goal:** 문제 데이터 수집, 문제 풀이 로직, 추천 시스템 구현
