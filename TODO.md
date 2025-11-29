@@ -43,8 +43,8 @@
 > **Goal:** 문제 데이터 수집, 문제 풀이 로직, 추천 시스템 구현
 
 ### 2-1. Problem & Data Sync
-- [ ] **[Infra]** Solved.ac 비공식 API 연동 클라이언트 (`WebClient` 활용) 구현
-- [ ] **[Service]** `ProblemService`: Solved.ac에서 문제 데이터 수집 및 DB 저장 (`upsert` 로직)
+- [x] **[Infra]** Solved.ac 비공식 API 연동 클라이언트 (`WebClient` 활용) 구현
+- [x] **[Service]** `ProblemService`: Solved.ac에서 문제 데이터 수집 및 DB 저장 (`upsert` 로직)
 - [ ] **[Service]** 사용자 초기 가입 시 Solved.ac 정보로 Tier 및 초기 데이터 동기화
 
 ### 2-2. Study Logic (Core)

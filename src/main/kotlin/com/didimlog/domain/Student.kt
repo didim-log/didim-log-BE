@@ -45,6 +45,10 @@ class Student(
 
     fun tier(): Tier = currentTier
 
+    fun syncTier(targetTier: Tier) {
+        currentTier = targetTier
+    }
+
     private fun toProblemResult(isSuccess: Boolean): ProblemResult {
         if (isSuccess) {
             return ProblemResult.SUCCESS
