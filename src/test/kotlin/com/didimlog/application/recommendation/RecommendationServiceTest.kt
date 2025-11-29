@@ -39,13 +39,13 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
         val silverProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER),
-            createProblem(id = "p2", tier = Tier.SILVER),
-            createProblem(id = "p3", tier = Tier.SILVER)
+            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
+            createProblem(id = "p2", tier = Tier.SILVER, level = 7),
+            createProblem(id = "p3", tier = Tier.SILVER, level = 8)
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findByDifficultyLevelBetween(2, 2) } returns silverProblems
+        every { problemRepository.findByDifficultyLevelBetween(6, 6) } returns silverProblems
 
         // when
         val recommended = recommendationService.recommendProblems(studentId, count = 2)
@@ -53,7 +53,7 @@ class RecommendationServiceTest {
         // then
         assertThat(recommended).hasSize(2)
         assertThat(recommended).allMatch { it.difficulty == Tier.SILVER }
-        verify { problemRepository.findByDifficultyLevelBetween(2, 2) }
+        verify { problemRepository.findByDifficultyLevelBetween(6, 6) }
     }
 
     @Test
@@ -68,13 +68,13 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf(solvedProblemId)
         )
         val silverProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER),
-            createProblem(id = "p2", tier = Tier.SILVER),
-            createProblem(id = "p3", tier = Tier.SILVER)
+            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
+            createProblem(id = "p2", tier = Tier.SILVER, level = 7),
+            createProblem(id = "p3", tier = Tier.SILVER, level = 8)
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findByDifficultyLevelBetween(2, 2) } returns silverProblems
+        every { problemRepository.findByDifficultyLevelBetween(6, 6) } returns silverProblems
 
         // when
         val recommended = recommendationService.recommendProblems(studentId, count = 10)
@@ -97,7 +97,7 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findByDifficultyLevelBetween(2, 2) } returns emptyList()
+        every { problemRepository.findByDifficultyLevelBetween(6, 6) } returns emptyList()
 
         // when
         val recommended = recommendationService.recommendProblems(studentId, count = 5)
@@ -118,13 +118,13 @@ class RecommendationServiceTest {
             solvedProblemIds = solvedProblemIds
         )
         val silverProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER),
-            createProblem(id = "p2", tier = Tier.SILVER),
-            createProblem(id = "p3", tier = Tier.SILVER)
+            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
+            createProblem(id = "p2", tier = Tier.SILVER, level = 7),
+            createProblem(id = "p3", tier = Tier.SILVER, level = 8)
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findByDifficultyLevelBetween(2, 2) } returns silverProblems
+        every { problemRepository.findByDifficultyLevelBetween(6, 6) } returns silverProblems
 
         // when
         val recommended = recommendationService.recommendProblems(studentId, count = 5)
@@ -134,7 +134,7 @@ class RecommendationServiceTest {
     }
 
     @Test
-    @DisplayName("PLATINUM 티어 학생에게는 DIAMOND 난이도(level 5) 문제를 추천한다")
+    @DisplayName("PLATINUM 티어 학생에게는 DIAMOND 난이도(level 21) 문제를 추천한다")
     fun `PLATINUM 티어 학생에게 DIAMOND 난이도 문제 추천`() {
         // given
         val studentId = "student-1"
@@ -143,29 +143,24 @@ class RecommendationServiceTest {
             tier = Tier.PLATINUM,
             solvedProblemIds = setOf()
         )
-        // DIAMOND 난이도는 Tier Enum에 없지만, 난이도 레벨 5로 표현
-        // 실제 구현에서는 Tier Enum 확장 또는 difficulty를 Int로 변경이 필요하지만,
-        // 현재는 무한 성장 로직이 난이도 레벨 5를 조회하는지 검증하는 것이 목적
-        // 주의: 현재 Problem 도메인은 difficulty가 Tier Enum이므로, 
-        // difficultyLevel이 5인 문제를 직접 만들 수 없어 PLATINUM(level 4) 문제를 사용
-        // 하지만 실제 DB에는 difficultyLevel이 5인 문제가 저장될 수 있으며,
-        // 이 테스트는 무한 성장 로직이 올바른 난이도 레벨(5)을 조회하는지 검증한다
+        // PLATINUM 다음 티어인 DIAMOND의 minLevel(21) 문제를 추천
         val diamondProblems = listOf(
-            createProblem(id = "p1", tier = Tier.PLATINUM),
-            createProblem(id = "p2", tier = Tier.PLATINUM),
-            createProblem(id = "p3", tier = Tier.PLATINUM)
+            createProblem(id = "p1", tier = Tier.DIAMOND, level = 21),
+            createProblem(id = "p2", tier = Tier.DIAMOND, level = 22),
+            createProblem(id = "p3", tier = Tier.DIAMOND, level = 23)
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findByDifficultyLevelBetween(5, 5) } returns diamondProblems
+        every { problemRepository.findByDifficultyLevelBetween(21, 21) } returns diamondProblems
 
         // when
         val recommended = recommendationService.recommendProblems(studentId, count = 2)
 
         // then
-        // 무한 성장 로직이 난이도 레벨 5를 조회하는지 검증
-        verify { problemRepository.findByDifficultyLevelBetween(5, 5) }
+        // 무한 성장 로직이 난이도 레벨 21(DIAMOND.minLevel)을 조회하는지 검증
+        verify { problemRepository.findByDifficultyLevelBetween(21, 21) }
         assertThat(recommended).hasSize(2)
+        assertThat(recommended).allMatch { it.difficulty == Tier.DIAMOND }
     }
 
     @Test
@@ -194,12 +189,12 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
         val silverProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER),
-            createProblem(id = "p2", tier = Tier.SILVER)
+            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
+            createProblem(id = "p2", tier = Tier.SILVER, level = 7)
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findByDifficultyLevelBetween(2, 2) } returns silverProblems
+        every { problemRepository.findByDifficultyLevelBetween(6, 6) } returns silverProblems
 
         // when
         val recommended = recommendationService.recommendProblems(studentId, count = 10)
@@ -219,12 +214,12 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
         val goldProblems = listOf(
-            createProblem(id = "p1", tier = Tier.GOLD),
-            createProblem(id = "p2", tier = Tier.GOLD)
+            createProblem(id = "p1", tier = Tier.GOLD, level = 11),
+            createProblem(id = "p2", tier = Tier.GOLD, level = 12)
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findByDifficultyLevelBetween(3, 3) } returns goldProblems
+        every { problemRepository.findByDifficultyLevelBetween(11, 11) } returns goldProblems
 
         // when
         val recommended = recommendationService.recommendProblems(studentId, count = 2)
@@ -232,7 +227,7 @@ class RecommendationServiceTest {
         // then
         assertThat(recommended).hasSize(2)
         assertThat(recommended).allMatch { it.difficulty == Tier.GOLD }
-        verify { problemRepository.findByDifficultyLevelBetween(3, 3) }
+        verify { problemRepository.findByDifficultyLevelBetween(11, 11) }
     }
 
     private fun createStudent(
@@ -259,12 +254,13 @@ class RecommendationServiceTest {
         )
     }
 
-    private fun createProblem(id: String, tier: Tier): Problem {
+    private fun createProblem(id: String, tier: Tier, level: Int = tier.minLevel): Problem {
         return Problem(
             id = ProblemId(id),
             title = "Test Problem $id",
             category = "TEST",
             difficulty = tier,
+            level = level,
             url = "https://www.acmicpc.net/problem/$id"
         )
     }

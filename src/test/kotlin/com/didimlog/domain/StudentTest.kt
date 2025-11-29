@@ -14,138 +14,86 @@ import org.junit.jupiter.api.Test
 class StudentTest {
 
     @Test
-    @DisplayName("최근 10문제 중 8문제가 성공이면 문제를 성공했을 때 티어가 1단계 상승한다")
-    fun `최근 10문제 성공률이 80 퍼센트 이상이면 티어 승급`() {
+    @DisplayName("solveProblem은 문제 풀이 결과를 Solutions에 추가한다")
+    fun `solveProblem으로 풀이 기록 추가`() {
         // given
-        val solutions = Solutions()
-        repeat(7) { index ->
-            solutions.add(
-                Solution(
-                    problemId = ProblemId("success-$index"),
-                    timeTaken = TimeTakenSeconds(100L),
-                    result = ProblemResult.SUCCESS
-                )
-            )
-        }
-        repeat(2) { index ->
-            solutions.add(
-                Solution(
-                    problemId = ProblemId("fail-$index"),
-                    timeTaken = TimeTakenSeconds(100L),
-                    result = ProblemResult.FAIL
-                )
-            )
-        }
         val student = Student(
             nickname = Nickname("tester"),
             bojId = BojId("tester123"),
-            currentTier = Tier.BRONZE,
-            solutions = solutions
+            currentTier = Tier.BRONZE
         )
         val problem = Problem(
             id = ProblemId("p-1"),
             title = "A+B",
             category = "IMPLEMENTATION",
             difficulty = Tier.BRONZE,
-            url = "https://www.acmicpc.net/problem/1000"
-        )
-
-        // when: 10번째 문제를 성공적으로 풀면 8/10 성공이 된다.
-        student.solveProblem(
-            problem = problem,
-            timeTakenSeconds = TimeTakenSeconds(120L),
-            isSuccess = true
-        )
-
-        // then
-        assertThat(student.tier()).isEqualTo(Tier.SILVER)
-    }
-
-    @Test
-    @DisplayName("최근 10문제 성공률이 80퍼센트 미만이면 티어가 상승하지 않는다")
-    fun `성공률이 부족하면 티어 유지`() {
-        // given
-        val solutions = Solutions()
-        repeat(6) { index ->
-            solutions.add(
-                Solution(
-                    problemId = ProblemId("success-$index"),
-                    timeTaken = TimeTakenSeconds(100L),
-                    result = ProblemResult.SUCCESS
-                )
-            )
-        }
-        repeat(3) { index ->
-            solutions.add(
-                Solution(
-                    problemId = ProblemId("fail-$index"),
-                    timeTaken = TimeTakenSeconds(100L),
-                    result = ProblemResult.FAIL
-                )
-            )
-        }
-        val student = Student(
-            nickname = Nickname("tester"),
-            bojId = BojId("tester123"),
-            currentTier = Tier.BRONZE,
-            solutions = solutions
-        )
-        val problem = Problem(
-            id = ProblemId("p-1"),
-            title = "A+B",
-            category = "IMPLEMENTATION",
-            difficulty = Tier.BRONZE,
-            url = "https://www.acmicpc.net/problem/1000"
-        )
-
-        // when: 10번째 문제를 성공해도 7/10 성공률이므로 승급 조건 미달
-        student.solveProblem(
-            problem = problem,
-            timeTakenSeconds = TimeTakenSeconds(120L),
-            isSuccess = true
-        )
-
-        // then
-        assertThat(student.tier()).isEqualTo(Tier.BRONZE)
-    }
-
-    @Test
-    @DisplayName("PLATINUM 티어인 경우 성공률이 높아도 더 이상 티어가 오르지 않는다")
-    fun `최대 티어에서는 승급하지 않는다`() {
-        // given
-        val solutions = Solutions()
-        repeat(9) { index ->
-            solutions.add(
-                Solution(
-                    problemId = ProblemId("success-$index"),
-                    timeTaken = TimeTakenSeconds(100L),
-                    result = ProblemResult.SUCCESS
-                )
-            )
-        }
-        val student = Student(
-            nickname = Nickname("tester"),
-            bojId = BojId("tester123"),
-            currentTier = Tier.PLATINUM,
-            solutions = solutions
-        )
-        val problem = Problem(
-            id = ProblemId("p-1"),
-            title = "A+B",
-            category = "IMPLEMENTATION",
-            difficulty = Tier.PLATINUM,
+            level = 3,
             url = "https://www.acmicpc.net/problem/1000"
         )
 
         // when
-        student.solveProblem(
+        val updatedStudent = student.solveProblem(
             problem = problem,
             timeTakenSeconds = TimeTakenSeconds(120L),
             isSuccess = true
         )
 
         // then
-        assertThat(student.tier()).isEqualTo(Tier.PLATINUM)
+        val solvedProblemIds = updatedStudent.getSolvedProblemIds()
+        assertThat(solvedProblemIds).contains(ProblemId("p-1"))
+        assertThat(updatedStudent.tier()).isEqualTo(Tier.BRONZE) // 티어는 변경되지 않음 (외부 동기화 방식)
+    }
+
+    @Test
+    @DisplayName("updateTier는 외부에서 가져온 티어 정보로 티어를 업데이트한다")
+    fun `updateTier로 티어 업데이트`() {
+        // given
+        val student = Student(
+            nickname = Nickname("tester"),
+            bojId = BojId("tester123"),
+            currentTier = Tier.BRONZE
+        )
+
+        // when
+        val updatedStudent = student.updateTier(Tier.GOLD)
+
+        // then
+        assertThat(updatedStudent.tier()).isEqualTo(Tier.GOLD)
+    }
+
+    @Test
+    @DisplayName("getSolvedProblemIds는 풀이한 문제 ID 목록을 반환한다")
+    fun `getSolvedProblemIds로 풀이한 문제 ID 조회`() {
+        // given
+        val student = Student(
+            nickname = Nickname("tester"),
+            bojId = BojId("tester123"),
+            currentTier = Tier.BRONZE
+        )
+        val problem1 = Problem(
+            id = ProblemId("p-1"),
+            title = "Problem 1",
+            category = "TEST",
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1"
+        )
+        val problem2 = Problem(
+            id = ProblemId("p-2"),
+            title = "Problem 2",
+            category = "TEST",
+            difficulty = Tier.BRONZE,
+            level = 4,
+            url = "https://www.acmicpc.net/problem/2"
+        )
+
+        // when
+        val studentAfterFirst = student.solveProblem(problem1, TimeTakenSeconds(100L), isSuccess = true)
+        val studentAfterSecond = studentAfterFirst.solveProblem(problem2, TimeTakenSeconds(120L), isSuccess = false)
+
+        // then
+        val solvedProblemIds = studentAfterSecond.getSolvedProblemIds()
+        assertThat(solvedProblemIds).containsExactlyInAnyOrder(ProblemId("p-1"), ProblemId("p-2"))
     }
 }
 

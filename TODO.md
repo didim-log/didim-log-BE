@@ -49,12 +49,12 @@
 
 ### 2-2. Study Logic (Core)
 - [x] **[Service]** `StudyService`: `solveProblem()` 트랜잭션 구현 (Student 상태 변경 및 저장)
-- [ ] **[Test]** `Student`가 문제를 풀고 조건 충족 시 티어가 승급되는지 검증하는 통합 테스트
+- [x] **[Test]** `Student`가 문제를 풀고 조건 충족 시 티어가 승급되는지 검증하는 통합 테스트
 
 ### 2-3. Recommendation System
 - [x] **[Service]** 문제 추천 알고리즘 구현 (Rule: User Tier + 1단계 난이도 중 안 푼 문제 랜덤 추천, 무한 성장 로직)
-- [ ] **[API]** 문제 추천 API (`GET /api/v1/problems/recommend`)
-- [ ] **[API]** 문제 풀이 결과 제출 API (`POST /api/v1/study/submit`)
+- [x] **[API]** 문제 추천 API (`GET /api/v1/problems/recommend`)
+- [x] **[API]** 문제 풀이 결과 제출 API (`POST /api/v1/study/submit`)
 
 ## Phase 3: Retrospective & Dashboard (Week 5-6)
 > **Goal:** 회고 작성 기능 및 메인 대시보드 API

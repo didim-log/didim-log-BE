@@ -47,14 +47,19 @@ class RecommendationService(
 
     /**
      * 현재 티어보다 한 단계 높은 난이도 레벨을 계산한다.
-     * 무한 성장 로직: Tier Enum에 정의되지 않은 상위 난이도도 계산 가능하다.
-     * 예: PLATINUM(4) -> 5 (DIAMOND 급), DIAMOND(5) -> 6 (RUBY 급) 등
+     * 무한 성장 로직: 다음 티어의 최소 레벨을 타겟으로 설정한다.
+     * 예: BRONZE(1~5) -> SILVER의 minLevel(6), RUBY(26~30) -> 31 (상위 난이도)
      *
      * @param currentTier 현재 티어
-     * @return 타겟 난이도 레벨 (현재 티어 레벨 + 1)
+     * @return 타겟 난이도 레벨 (다음 티어의 최소 레벨 또는 현재 티어의 최대 레벨 + 1)
      */
     private fun calculateTargetDifficultyLevel(currentTier: Tier): Int {
-        return currentTier.level + 1
+        val nextTier = currentTier.next()
+        if (nextTier == currentTier) {
+            // 최대 티어인 경우, 현재 티어의 최대 레벨 + 1을 반환 (무한 성장)
+            return currentTier.maxLevel + 1
+        }
+        return nextTier.minLevel
     }
 
     private fun findCandidateProblems(targetDifficultyLevel: Int): List<Problem> {

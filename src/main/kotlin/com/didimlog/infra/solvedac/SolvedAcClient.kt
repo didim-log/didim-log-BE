@@ -23,36 +23,26 @@ data class SolvedAcUserResponse(
 
 object SolvedAcTierMapper {
 
+    /**
+     * Solved.ac 문제 레벨을 Tier로 변환한다.
+     * 레벨이 0 이하이거나 30 초과인 경우 예외를 발생시킨다.
+     *
+     * @param level Solved.ac 문제 레벨 (1~30)
+     * @return 해당 레벨에 맞는 Tier
+     */
     fun fromProblemLevel(level: Int): Tier {
-        if (level <= 0) {
-            return Tier.BRONZE
-        }
-        if (level <= 5) {
-            return Tier.BRONZE
-        }
-        if (level <= 10) {
-            return Tier.SILVER
-        }
-        if (level <= 20) {
-            return Tier.GOLD
-        }
-        return Tier.PLATINUM
+        return Tier.from(level)
     }
 
+    /**
+     * Solved.ac 사용자 티어 레벨을 Tier로 변환한다.
+     * 레벨이 0 이하이거나 30 초과인 경우 예외를 발생시킨다.
+     *
+     * @param tier Solved.ac 사용자 티어 레벨 (1~30)
+     * @return 해당 레벨에 맞는 Tier
+     */
     fun fromUserTier(tier: Int): Tier {
-        if (tier <= 0) {
-            return Tier.BRONZE
-        }
-        if (tier <= 5) {
-            return Tier.BRONZE
-        }
-        if (tier <= 10) {
-            return Tier.SILVER
-        }
-        if (tier <= 20) {
-            return Tier.GOLD
-        }
-        return Tier.PLATINUM
+        return Tier.from(tier)
     }
 }
 

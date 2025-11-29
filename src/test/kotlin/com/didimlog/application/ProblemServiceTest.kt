@@ -16,6 +16,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
+import io.mockk.clearAllMocks
 import java.util.Optional
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
@@ -53,7 +55,8 @@ class ProblemServiceTest {
         assertThat(savedProblem.id.value).isEqualTo(problemId.toString())
         assertThat(savedProblem.title).isEqualTo("A+B")
         assertThat(savedProblem.url).isEqualTo("https://www.acmicpc.net/problem/$problemId")
-        assertThat(savedProblem.difficulty).isIn(Tier.BRONZE, Tier.SILVER, Tier.GOLD, Tier.PLATINUM)
+        assertThat(savedProblem.level).isEqualTo(3)
+        assertThat(savedProblem.difficulty).isEqualTo(Tier.BRONZE)
 
         verify(exactly = 1) { problemRepository.save(any<Problem>()) }
     }
@@ -75,35 +78,41 @@ class ProblemServiceTest {
             tier = 15
         )
         every { solvedAcClient.fetchUser(bojId) } returns userResponse
+        
+        val savedStudentSlot: CapturingSlot<Student> = slot()
+        every { studentRepository.save(capture(savedStudentSlot)) } answers { savedStudentSlot.captured }
 
         // when
         problemService.syncUserTier(bojId.value)
 
         // then
-        assertThat(student.tier()).isIn(Tier.GOLD, Tier.PLATINUM)
-        verify(exactly = 1) { studentRepository.save(student) }
+        val savedStudent = savedStudentSlot.captured
+        assertThat(savedStudent.tier()).isEqualTo(Tier.GOLD) // 레벨 15는 GOLD
+        verify(exactly = 1) { studentRepository.save(any<Student>()) }
     }
 
     @Test
     @DisplayName("syncUserTier는 Student가 없으면 아무 일도 하지 않는다")
     fun `syncUserTier는 학생이 없으면 조용히 종료`() {
         // given
-        val bojId = BojId("unknown")
+        val bojIdString = "unknown123" // 유효한 BOJ ID 형식
+        val bojId = BojId(bojIdString)
         every { studentRepository.findByBojId(bojId) } returns Optional.empty()
 
         // when
-        problemService.syncUserTier(bojId.value)
+        problemService.syncUserTier(bojIdString)
 
-        // then
-        verify(exactly = 0) { solvedAcClient.fetchUser(any()) }
-        verify(exactly = 0) { studentRepository.save(any()) }
+        // then: Student가 없으면 fetchUser와 save가 호출되지 않아야 함
+        verify(exactly = 0) { solvedAcClient.fetchUser(bojId) }
+        verify(exactly = 0) { studentRepository.save(any<Student>()) }
     }
 
     @Test
     @DisplayName("syncUserTier는 Solved_ac 티어가 현재 티어와 같으면 저장하지 않는다")
     fun `동일 티어면 save 호출 생략`() {
         // given
-        val bojId = BojId("same-tier")
+        val bojIdString = "sametier123" // 유효한 BOJ ID 형식
+        val bojId = BojId(bojIdString)
         val student = Student(
             nickname = Nickname("tester"),
             bojId = bojId,
@@ -113,12 +122,12 @@ class ProblemServiceTest {
 
         val userResponse = SolvedAcUserResponse(
             handle = bojId.value,
-            tier = 7
+            tier = 7 // 레벨 7은 SILVER (6~10 범위)
         )
         every { solvedAcClient.fetchUser(bojId) } returns userResponse
 
         // when
-        problemService.syncUserTier(bojId.value)
+        problemService.syncUserTier(bojIdString)
 
         // then
         verify(exactly = 0) { studentRepository.save(any<Student>()) }

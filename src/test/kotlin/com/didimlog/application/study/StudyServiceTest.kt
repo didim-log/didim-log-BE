@@ -8,10 +8,13 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.domain.valueobject.TimeTakenSeconds
+import io.mockk.CapturingSlot
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import io.mockk.slot
 import io.mockk.verify
 import java.util.Optional
 import org.junit.jupiter.api.DisplayName
@@ -39,12 +42,15 @@ class StudyServiceTest {
             title = "A+B",
             category = "IMPLEMENTATION",
             difficulty = Tier.BRONZE,
+            level = 3,
             url = "https://www.acmicpc.net/problem/$problemId"
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { problemRepository.findById(ProblemId(problemId)) } returns Optional.of(problem)
-        every { studentRepository.save(student) } returns student
+        every { problemRepository.findById(problemId) } returns Optional.of(problem)
+        
+        val savedStudentSlot: CapturingSlot<Student> = slot()
+        every { studentRepository.save(capture(savedStudentSlot)) } answers { savedStudentSlot.captured }
 
         // when
         studyService.submitSolution(
@@ -58,11 +64,11 @@ class StudyServiceTest {
         verify(exactly = 1) {
             student.solveProblem(
                 problem = problem,
-                timeTakenSeconds = any(),
+                timeTakenSeconds = TimeTakenSeconds(120L),
                 isSuccess = true
             )
         }
-        verify(exactly = 1) { studentRepository.save(student) }
+        verify(exactly = 1) { studentRepository.save(any<Student>()) }
     }
 
     @Test
@@ -92,7 +98,7 @@ class StudyServiceTest {
             currentTier = Tier.BRONZE
         )
         every { studentRepository.findById("student-id") } returns Optional.of(student)
-        every { problemRepository.findById(ProblemId("missing-problem")) } returns Optional.empty()
+        every { problemRepository.findById("missing-problem") } returns Optional.empty()
 
         // expect
         assertThrows<IllegalArgumentException> {

@@ -26,6 +26,7 @@ class ProblemService(
             title = response.titleKo,
             category = "UNKNOWN",
             difficulty = difficultyTier,
+            level = response.level,
             url = solvedAcProblemUrl(response.problemId)
         )
 
@@ -47,8 +48,8 @@ class ProblemService(
             return
         }
 
-        student.syncTier(targetTier)
-        studentRepository.save(student)
+        val updatedStudent = student.updateTier(targetTier)
+        studentRepository.save(updatedStudent)
     }
 
     private fun solvedAcProblemUrl(problemId: Int): String {

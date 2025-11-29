@@ -19,13 +19,13 @@ class StudyService(
             .orElseThrow { IllegalArgumentException("학생을 찾을 수 없습니다. id=$studentId") }
 
         val problemIdVo = ProblemId(problemId)
-        val problem = problemRepository.findById(problemIdVo)
+        val problem = problemRepository.findById(problemId)
             .orElseThrow { IllegalArgumentException("문제를 찾을 수 없습니다. id=$problemId") }
 
         val timeTakenSeconds = TimeTakenSeconds(timeTaken)
 
-        student.solveProblem(problem, timeTakenSeconds, isSuccess)
-        studentRepository.save(student)
+        val updatedStudent = student.solveProblem(problem, timeTakenSeconds, isSuccess)
+        studentRepository.save(updatedStudent)
     }
 }
 
