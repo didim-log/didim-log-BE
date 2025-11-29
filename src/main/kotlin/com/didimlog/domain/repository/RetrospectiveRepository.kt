@@ -6,6 +6,8 @@ import org.springframework.data.mongodb.repository.MongoRepository
 interface RetrospectiveRepository : MongoRepository<Retrospective, String> {
 
     fun findAllByStudentId(studentId: String): List<Retrospective>
+
+    fun findByStudentIdAndProblemId(studentId: String, problemId: String): Retrospective?
 }
 
 

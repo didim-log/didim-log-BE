@@ -59,10 +59,10 @@
 ## Phase 3: Retrospective & Dashboard (Week 5-6)
 > **Goal:** 회고 작성 기능 및 메인 대시보드 API
 
-- [ ] **[Service]** `RetrospectiveService`: 회고 생성 및 수정 (Student ID 검증 포함)
-- [ ] **[API]** 회고 CRUD API 구현
-- [ ] **[Feature]** 회고 템플릿 생성기 (문제 정보 + 코드 블록 기본 마크다운 생성)
-- [ ] **[API]** 메인 대시보드 API (현재 티어, 최근 풀이 그래프, 추천 문제 요약)
+- [x] **[Service]** `RetrospectiveService`: 회고 생성 및 수정 (Student ID 검증 포함)
+- [x] **[API]** 회고 CRUD API 구현
+- [x] **[Feature]** 회고 템플릿 생성기 (문제 정보 + 코드 블록 기본 마크다운 생성)
+- [x] **[API]** 메인 대시보드 API (현재 티어, 최근 풀이 그래프, 추천 문제 요약)
 
 ## Phase 4: Frontend & Interaction (Week 7-8)
 > **Goal:** React 기반 UI 및 인터랙션 구현
