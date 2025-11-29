@@ -25,8 +25,9 @@
 - [ ] **[Domain]** `ProblemResult` Enum 구현 (SUCCESS, FAIL, TIME_OVER)
 
 ### 1-2. Solution & First-Class Collection
-- [ ] **[Domain]** `Solution` 객체 구현 (불변 데이터, `isSuccess()` 메서드)
-- [ ] **[Domain]** `Solutions` 일급 컬렉션 구현 (MutableList 캡슐화, `calculateRecentSuccessRate` 로직)
+// 원시값 포장을 적용한 Solution & Solutions 구현 완료
+- [x] **[Domain]** `Solution` 객체 구현 (불변 데이터, `isSuccess()` 메서드)
+- [x] **[Domain]** `Solutions` 일급 컬렉션 구현 (MutableList 캡슐화, `calculateRecentSuccessRate` 로직)
 
 ### 1-3. Aggregate Roots
 - [ ] **[Domain]** `Problem` Document 구현 (난이도 비교 로직 `isHarderThan` 포함)
