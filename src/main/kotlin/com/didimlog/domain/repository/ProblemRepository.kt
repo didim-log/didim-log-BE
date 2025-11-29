@@ -4,7 +4,7 @@ import com.didimlog.domain.Problem
 import com.didimlog.domain.valueobject.ProblemId
 import org.springframework.data.mongodb.repository.MongoRepository
 
-interface ProblemRepository : MongoRepository<Problem, ProblemId> {
+interface ProblemRepository : MongoRepository<Problem, String> {
 
     fun findByDifficultyLevelBetween(min: Int, max: Int): List<Problem>
 }

@@ -43,18 +43,18 @@
 > **Goal:** 문제 데이터 수집, 문제 풀이 로직, 추천 시스템 구현
 
 ### 2-1. Problem & Data Sync
-- [ ] **[Infra]** Solved.ac 비공식 API 연동 클라이언트 (`WebClient` 활용) 구현
-- [ ] **[Service]** `ProblemService`: Solved.ac에서 문제 데이터 수집 및 DB 저장 (`upsert` 로직)
-- [ ] **[Service]** 사용자 초기 가입 시 Solved.ac 정보로 Tier 및 초기 데이터 동기화
+- [x] **[Infra]** Solved.ac 비공식 API 연동 클라이언트 (`WebClient` 활용) 구현
+- [x] **[Service]** `ProblemService`: Solved.ac에서 문제 데이터 수집 및 DB 저장 (`upsert` 로직)
+- [x] **[Service]** 사용자 초기 가입 시 Solved.ac 정보로 Tier 및 초기 데이터 동기화
 
 ### 2-2. Study Logic (Core)
-- [ ] **[Service]** `StudyService`: `solveProblem()` 트랜잭션 구현 (Student 상태 변경 및 저장)
-- [ ] **[Test]** `Student`가 문제를 풀고 조건 충족 시 티어가 승급되는지 검증하는 통합 테스트
+- [x] **[Service]** `StudyService`: `solveProblem()` 트랜잭션 구현 (Student 상태 변경 및 저장)
+- [x] **[Test]** `Student`가 문제를 풀고 조건 충족 시 티어가 승급되는지 검증하는 통합 테스트
 
 ### 2-3. Recommendation System
-- [ ] **[Service]** 문제 추천 알고리즘 구현 (Rule: User Tier + 1단계 난이도 중 안 푼 문제 랜덤 추천)
-- [ ] **[API]** 문제 추천 API (`GET /api/v1/problems/recommend`)
-- [ ] **[API]** 문제 풀이 결과 제출 API (`POST /api/v1/study/submit`)
+- [x] **[Service]** 문제 추천 알고리즘 구현 (Rule: User Tier + 1단계 난이도 중 안 푼 문제 랜덤 추천, 무한 성장 로직)
+- [x] **[API]** 문제 추천 API (`GET /api/v1/problems/recommend`)
+- [x] **[API]** 문제 풀이 결과 제출 API (`POST /api/v1/study/submit`)
 
 ## Phase 3: Retrospective & Dashboard (Week 5-6)
 > **Goal:** 회고 작성 기능 및 메인 대시보드 API
