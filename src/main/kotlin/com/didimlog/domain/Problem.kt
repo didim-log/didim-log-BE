@@ -15,6 +15,9 @@ data class Problem(
     val url: String
 ) {
 
+    val difficultyLevel: Int
+        get() = difficulty.level
+
     /**
      * 주어진 티어보다 이 문제가 더 어려운지 여부를 판단한다.
      *
