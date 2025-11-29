@@ -4,6 +4,7 @@ import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
@@ -47,6 +48,10 @@ class Student(
 
     fun syncTier(targetTier: Tier) {
         currentTier = targetTier
+    }
+
+    fun getSolvedProblemIds(): Set<ProblemId> {
+        return solutions.getAll().map { it.problemId }.toSet()
     }
 
     private fun toProblemResult(isSuccess: Boolean): ProblemResult {
