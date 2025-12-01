@@ -1,13 +1,11 @@
-name: Test CICD
+name: PR Check
 
 on:
-  push:
-    branches: [ "develop" ]
   pull_request:
-    branches: [ "develop" ]
+    branches: [ "main", "develop" ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,3 +38,4 @@ jobs:
           SERVER_URL: https://dummy-server.com
           MONGO_URI: mongodb://localhost:27017/test-db
         run: ./gradlew test
+
