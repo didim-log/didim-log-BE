@@ -38,3 +38,11 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+# Secret Documentation
+/SECRET_DOCS/
+.env
+
+# Mac cache
+.DS_Store
+.aider*
