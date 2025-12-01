@@ -1,0 +1,31 @@
+name: Test CICD
+
+on:
+  push:
+    branches: [ "develop" ]
+  pull_request:
+    branches: [ "develop" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Run test
+        env:
+          SERVER_URL: https://dummy-server.com
+          MONGO_URI: mongodb://dummy:dummy@localhost:27017/dummy-db
+        run: ./gradlew test
