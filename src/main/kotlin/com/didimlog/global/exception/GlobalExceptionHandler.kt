@@ -1,0 +1,64 @@
+package com.didimlog.global.exception
+
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.MethodArgumentNotValidException
+import org.springframework.web.bind.annotation.ExceptionHandler
+import org.springframework.web.bind.annotation.RestControllerAdvice
+
+/**
+ * 전역 예외 처리 핸들러
+ * 모든 컨트롤러에서 발생하는 예외를 일관된 형식으로 처리한다.
+ */
+@RestControllerAdvice
+class GlobalExceptionHandler {
+
+    /**
+     * 비즈니스 로직 예외 처리
+     */
+    @ExceptionHandler(BusinessException::class)
+    fun handleBusinessException(e: BusinessException): ResponseEntity<ErrorResponse> {
+        val errorResponse = ErrorResponse.of(e.errorCode, e.message ?: e.errorCode.message)
+        return ResponseEntity.status(e.errorCode.status).body(errorResponse)
+    }
+
+    /**
+     * 유효성 검사 실패 예외 처리
+     */
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleValidationException(e: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
+        val errorMessage = e.bindingResult.fieldErrors
+            .joinToString(", ") { "${it.field}: ${it.defaultMessage}" }
+        val errorResponse = ErrorResponse.of(
+            ErrorCode.COMMON_VALIDATION_FAILED,
+            errorMessage
+        )
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse)
+    }
+
+    /**
+     * IllegalArgumentException 처리
+     * 도메인에서 발생하는 일반적인 예외를 처리한다.
+     */
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgumentException(e: IllegalArgumentException): ResponseEntity<ErrorResponse> {
+        val errorCode = when {
+            e.message?.contains("학생") == true -> ErrorCode.STUDENT_NOT_FOUND
+            e.message?.contains("문제") == true -> ErrorCode.PROBLEM_NOT_FOUND
+            e.message?.contains("회고") == true -> ErrorCode.RETROSPECTIVE_NOT_FOUND
+            else -> ErrorCode.COMMON_RESOURCE_NOT_FOUND
+        }
+        val errorResponse = ErrorResponse.of(errorCode, e.message ?: errorCode.message)
+        return ResponseEntity.status(errorCode.status).body(errorResponse)
+    }
+
+    /**
+     * 기타 예외 처리
+     */
+    @ExceptionHandler(Exception::class)
+    fun handleException(e: Exception): ResponseEntity<ErrorResponse> {
+        val errorResponse = ErrorResponse.of(ErrorCode.COMMON_INTERNAL_ERROR)
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse)
+    }
+}
+

@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
+import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -66,6 +68,19 @@ class RetrospectiveController(
     }
 
     @Operation(
+        summary = "회고 삭제",
+        description = "회고 ID로 회고를 삭제합니다."
+    )
+    @DeleteMapping("/{retrospectiveId}")
+    fun deleteRetrospective(
+        @Parameter(description = "회고 ID", required = true)
+        @PathVariable retrospectiveId: String
+    ): ResponseEntity<Void> {
+        retrospectiveService.deleteRetrospective(retrospectiveId)
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
+    }
+
+    @Operation(
         summary = "회고 템플릿 생성",
         description = "문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다."
     )
@@ -79,4 +94,5 @@ class RetrospectiveController(
         return ResponseEntity.ok(response)
     }
 }
+
 
