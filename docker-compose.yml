@@ -1,22 +1,42 @@
-version: '3.8'
-
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: didimlog-mongo
-    restart: always
+  didim-log-be:
+    image: stdiodh/didim-log-be:latest
+    container_name: didim-log-be-container
     ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: didimlog
-    volumes:
-      - ./data/mongo:/data/db
+      - "8083:8080"
+    env_file:
+      - /home/ec2-user/app/didim-log-be/.env
+    networks:
+      - didim-log-network
+    restart: always
+    depends_on:
+      - mongo
+      - redis
 
+  # 2. MongoDB
+  mongo:
+    image: mongo:latest
+    container_name: didim-log-be-mongodb-container
+    restart: always
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - didim-log-network
+
+  # 3. Redis
   redis:
     image: redis:alpine
-    container_name: didimlog-redis
+    container_name: didim-log-be-redis-container
     restart: always
-    ports:
-      - "6379:6379"
     volumes:
-      - ./data/redis:/data
+      - redis-data:/data
+    networks:
+      - didim-log-network
+
+networks:
+  didim-log-network:
+    driver: bridge
+
+volumes:
+  mongodb-data:
+  redis-data:
