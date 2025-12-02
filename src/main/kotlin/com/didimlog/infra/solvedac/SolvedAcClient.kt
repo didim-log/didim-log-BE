@@ -2,6 +2,8 @@ package com.didimlog.infra.solvedac
 
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
 
 interface SolvedAcClient {
 
@@ -10,16 +12,41 @@ interface SolvedAcClient {
     fun fetchUser(bojId: BojId): SolvedAcUserResponse
 }
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class SolvedAcProblemResponse(
     val problemId: Int,
     val titleKo: String,
-    val level: Int
+    val level: Int,
+    val tags: List<SolvedAcTag> = emptyList()
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class SolvedAcTag(
+    val key: String,
+    @JsonProperty("isMeta")
+    val isMeta: Boolean = false,
+    val displayNames: List<SolvedAcTagDisplayName> = emptyList()
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class SolvedAcTagDisplayName(
+    val language: String,
+    val name: String,
+    val short: String? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class SolvedAcUserResponse(
     val handle: String,
+    @JsonProperty("rating")
+    val rating: Int  // Solved.ac API의 rating 필드 (0이면 Unrated)
+) {
+    /**
+     * rating 값을 tier로 변환 (0이면 1로 처리하여 BRONZE로 매핑)
+     */
     val tier: Int
-)
+        get() = if (rating <= 0) 1 else rating
+}
 
 object SolvedAcTierMapper {
 

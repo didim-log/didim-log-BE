@@ -1,5 +1,6 @@
 package com.didimlog.domain
 
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.ProblemId
 import org.assertj.core.api.Assertions.assertThat
@@ -16,7 +17,7 @@ class ProblemTest {
         val problem = Problem(
             id = ProblemId("1000"),
             title = "A+B",
-            category = "IMPLEMENTATION",
+            category = ProblemCategory.IMPLEMENTATION,
             difficulty = Tier.GOLD,
             level = 11,
             url = "https://www.acmicpc.net/problem/1000"
@@ -36,7 +37,7 @@ class ProblemTest {
         val problem = Problem(
             id = ProblemId("1000"),
             title = "A+B",
-            category = "IMPLEMENTATION",
+            category = ProblemCategory.IMPLEMENTATION,
             difficulty = Tier.SILVER,
             level = 8,
             url = "https://www.acmicpc.net/problem/1000"

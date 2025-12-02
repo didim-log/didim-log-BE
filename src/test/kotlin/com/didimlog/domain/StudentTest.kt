@@ -1,5 +1,6 @@
 package com.didimlog.domain
 
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
@@ -20,12 +21,13 @@ class StudentTest {
         val student = Student(
             nickname = Nickname("tester"),
             bojId = BojId("tester123"),
+            password = "test-password",
             currentTier = Tier.BRONZE
         )
         val problem = Problem(
             id = ProblemId("p-1"),
             title = "A+B",
-            category = "IMPLEMENTATION",
+            category = ProblemCategory.IMPLEMENTATION,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/1000"
@@ -51,6 +53,7 @@ class StudentTest {
         val student = Student(
             nickname = Nickname("tester"),
             bojId = BojId("tester123"),
+            password = "test-password",
             currentTier = Tier.BRONZE
         )
 
@@ -68,12 +71,13 @@ class StudentTest {
         val student = Student(
             nickname = Nickname("tester"),
             bojId = BojId("tester123"),
+            password = "test-password",
             currentTier = Tier.BRONZE
         )
         val problem1 = Problem(
             id = ProblemId("p-1"),
             title = "Problem 1",
-            category = "TEST",
+            category = ProblemCategory.UNKNOWN,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/1"
@@ -81,7 +85,7 @@ class StudentTest {
         val problem2 = Problem(
             id = ProblemId("p-2"),
             title = "Problem 2",
-            category = "TEST",
+            category = ProblemCategory.UNKNOWN,
             difficulty = Tier.BRONZE,
             level = 4,
             url = "https://www.acmicpc.net/problem/2"

@@ -114,7 +114,7 @@ class RetrospectiveService(
         template.appendLine()
         template.appendLine("- **문제 번호:** ${problem.id.value}")
         template.appendLine("- **난이도:** ${problem.difficulty.name} (Level ${problem.level})")
-        template.appendLine("- **카테고리:** ${problem.category}")
+        template.appendLine("- **카테고리:** ${problem.category.englishName}")
         template.appendLine("- **문제 링크:** [${problem.title}](${problem.url})")
         template.appendLine()
         template.appendLine("---")

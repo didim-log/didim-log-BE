@@ -1,5 +1,6 @@
 package com.didimlog.domain
 
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.ProblemId
 import org.springframework.data.annotation.Id
@@ -10,16 +11,27 @@ import org.springframework.data.mongodb.core.mapping.Document
  * 불변 객체로 설계하여 생성 시점 이후 상태가 변경되지 않는다.
  *
  * @property level Solved.ac 기준 난이도 레벨 (1~30)
+ * @property category 문제 카테고리 (영문 표준명으로 저장)
+ * @property description 문제 본문 HTML (크롤링으로 수집, nullable)
+ * @property inputDescription 입력 설명 HTML (크롤링으로 수집, nullable)
+ * @property outputDescription 출력 설명 HTML (크롤링으로 수집, nullable)
+ * @property examples 입출력 예시 리스트 (크롤링으로 수집, nullable)
+ * @property tags 알고리즘 분류 태그 리스트 (영문 표준명으로 저장)
  */
 @Document(collection = "problems")
 data class Problem(
     @Id
     val id: ProblemId,
     val title: String,
-    val category: String,
+    val category: ProblemCategory,
     val difficulty: Tier,
     val level: Int,
-    val url: String
+    val url: String,
+    val description: String? = null,
+    val inputDescription: String? = null,
+    val outputDescription: String? = null,
+    val examples: List<Example>? = null,
+    val tags: List<String> = emptyList()
 ) {
     init {
         require(level in 1..30) { "난이도 레벨은 1~30 사이여야 합니다. level=$level" }

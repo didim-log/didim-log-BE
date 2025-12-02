@@ -2,6 +2,7 @@ package com.didimlog.application.study
 
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
@@ -33,20 +34,20 @@ class StudyServiceTest {
     @DisplayName("submitSolution은 Student와 Problem을 조회하고 solveProblem과 save를 호출한다")
     fun `submitSolution 정상 흐름`() {
         // given
-        val studentId = "student-id"
+        val bojId = "test123"
         val problemId = "1000"
 
         val student = mockk<Student>(relaxed = true)
         val problem = Problem(
             id = ProblemId(problemId),
             title = "A+B",
-            category = "IMPLEMENTATION",
+            category = ProblemCategory.IMPLEMENTATION,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/$problemId"
         )
 
-        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         
         val savedStudentSlot: CapturingSlot<Student> = slot()
@@ -54,7 +55,7 @@ class StudyServiceTest {
 
         // when
         studyService.submitSolution(
-            studentId = studentId,
+            bojId = bojId,
             problemId = problemId,
             timeTaken = 120L,
             isSuccess = true
@@ -75,12 +76,13 @@ class StudyServiceTest {
     @DisplayName("학생이 존재하지 않으면 submitSolution은 예외를 발생시킨다")
     fun `학생이 없으면 예외`() {
         // given
-        every { studentRepository.findById("missing") } returns Optional.empty()
+        val bojId = "missing"
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.empty()
 
         // expect
-        assertThrows<IllegalArgumentException> {
+        assertThrows<com.didimlog.global.exception.BusinessException> {
             studyService.submitSolution(
-                studentId = "missing",
+                bojId = bojId,
                 problemId = "1000",
                 timeTaken = 100L,
                 isSuccess = true
@@ -92,18 +94,20 @@ class StudyServiceTest {
     @DisplayName("문제가 존재하지 않으면 submitSolution은 예외를 발생시킨다")
     fun `문제가 없으면 예외`() {
         // given
+        val bojId = "tester123"
         val student = Student(
             nickname = Nickname("tester"),
-            bojId = BojId("tester123"),
+            bojId = BojId(bojId),
+            password = "test-password",
             currentTier = Tier.BRONZE
         )
-        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
         every { problemRepository.findById("missing-problem") } returns Optional.empty()
 
         // expect
-        assertThrows<IllegalArgumentException> {
+        assertThrows<com.didimlog.global.exception.BusinessException> {
             studyService.submitSolution(
-                studentId = "student-id",
+                bojId = bojId,
                 problemId = "missing-problem",
                 timeTaken = 100L,
                 isSuccess = true
