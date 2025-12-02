@@ -32,8 +32,11 @@ class SwaggerConfig(
             .description("DidimLog 학습 관리 서비스 API 명세서")
             .version("v1.0.0")
 
-        // 운영 환경(HTTPS) URL을 명시적으로 추가하여 Swagger UI에서 호출 시 오류 방지
-        val server = Server().url(serverUrl).description("DidimLog Server")
+        // 운영 환경 및 로컬 환경 서버 URL을 등록하여 Swagger UI에서 선택 가능하도록 설정
+        val servers = listOf(
+            Server().url(serverUrl).description("Production Server"),
+            Server().url("http://localhost:8080").description("Local Server")
+        )
 
         // JWT Bearer 토큰 인증을 위한 SecurityScheme 정의
         val securityScheme = SecurityScheme()
@@ -48,7 +51,7 @@ class SwaggerConfig(
 
         return OpenAPI()
             .info(info)
-            .addServersItem(server)
+            .servers(servers)
             .components(
                 io.swagger.v3.oas.models.Components()
                     .addSecuritySchemes("Authorization", securityScheme)

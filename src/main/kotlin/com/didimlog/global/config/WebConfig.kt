@@ -18,6 +18,7 @@ class WebConfig : WebMvcConfigurer {
         registry.addMapping("/api/**")
             .allowedOriginPatterns(
                 "http://localhost:3000",
+                "http://localhost:5173",
                 "https://*.web.app",
                 "https://didim-log-fe.web.app",
                 serverUrl
