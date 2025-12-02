@@ -80,6 +80,7 @@ jobs:
             echo "SPRING_DATA_MONGODB_URI=${{ secrets.SPRING_DATA_MONGODB_URI }}" > .env
             echo "SPRING_DATA_REDIS_HOST=${{ secrets.SPRING_DATA_REDIS_HOST }}" >> .env
             echo "SPRING_DATA_REDIS_PORT=${{ secrets.SPRING_DATA_REDIS_PORT }}" >> .env
+            echo "SERVER_URL=${{ secrets.SERVER_URL }}" >> .env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
 
       - name: Deploy to AWS EC2
