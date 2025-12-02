@@ -3,15 +3,13 @@ name: PR Check
 on:
   pull_request:
     branches: [ "main", "develop" ]
-  push:
-    branches: [ "develop" ]
-  paths-ignore:
-    - 'README.md'
-    - 'DOCS/**'
-    - 'SECRET_DOCS/**'
-    - '.gitignore'
-    - '.cursorrules'
-    - '*.md'
+    paths-ignore:
+      - 'README.md'
+      - 'DOCS/**'
+      - 'SECRET_DOCS/**'
+      - '.gitignore'
+      - '.cursorrules'
+      - '*.md'
 
 jobs:
   test:
@@ -37,7 +35,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
+          distribution: 'corretto'
           cache: 'gradle'
 
       - name: Setup Gradle
@@ -47,6 +45,6 @@ jobs:
         env:
           SERVER_URL: https://dummy-server.com
           MONGO_URI: mongodb://localhost:27017/test-db
-        run: ./gradlew test
+        run: ./gradlew clean test
 
 
