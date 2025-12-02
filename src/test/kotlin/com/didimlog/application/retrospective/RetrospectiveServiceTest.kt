@@ -3,6 +3,7 @@ package com.didimlog.application.retrospective
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
@@ -43,12 +44,13 @@ class RetrospectiveServiceTest {
         val student = Student(
             nickname = Nickname("tester"),
             bojId = BojId("tester123"),
+            password = "test-password",
             currentTier = Tier.BRONZE
         )
         val problem = Problem(
             id = ProblemId(problemId),
             title = "A+B",
-            category = "IMPLEMENTATION",
+            category = ProblemCategory.IMPLEMENTATION,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/$problemId"
@@ -89,7 +91,7 @@ class RetrospectiveServiceTest {
         val problem = Problem(
             id = ProblemId(problemId),
             title = "A+B",
-            category = "IMPLEMENTATION",
+            category = ProblemCategory.IMPLEMENTATION,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/$problemId"
@@ -184,7 +186,7 @@ class RetrospectiveServiceTest {
         val problem = Problem(
             id = ProblemId(problemId),
             title = "A+B",
-            category = "IMPLEMENTATION",
+            category = ProblemCategory.IMPLEMENTATION,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/$problemId"
@@ -199,7 +201,7 @@ class RetrospectiveServiceTest {
         assertThat(template).contains("# A+B")
         assertThat(template).contains("**문제 번호:** $problemId")
         assertThat(template).contains("**난이도:** BRONZE (Level 3)")
-        assertThat(template).contains("**카테고리:** IMPLEMENTATION")
+        assertThat(template).contains("**카테고리:** Implementation")
         assertThat(template).contains("**문제 링크:** [A+B](https://www.acmicpc.net/problem/$problemId)")
         assertThat(template).contains("## 접근 방법")
         assertThat(template).contains("## 코드")
