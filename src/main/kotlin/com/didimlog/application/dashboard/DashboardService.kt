@@ -6,6 +6,9 @@ import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -23,15 +26,15 @@ class DashboardService(
      * 학생의 대시보드 정보를 조회한다.
      * 현재 티어, 최근 풀이 기록, 추천 문제를 포함한다.
      *
-     * @param studentId 학생 ID
+     * @param bojId BOJ ID (JWT 토큰에서 추출)
      * @return 대시보드 정보
-     * @throws IllegalArgumentException 학생을 찾을 수 없는 경우
+     * @throws BusinessException 학생을 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun getDashboard(studentId: String): DashboardInfo {
-        val student = findStudentOrThrow(studentId)
+    fun getDashboard(bojId: String): DashboardInfo {
+        val student = findStudentByBojIdOrThrow(bojId)
         val recentSolutions = getRecentSolutions(student)
-        val recommendedProblems = recommendationService.recommendProblems(studentId, count = 3)
+        val recommendedProblems = recommendationService.recommendProblems(bojId, count = 3)
 
         return DashboardInfo(
             currentTier = student.tier(),
@@ -40,9 +43,12 @@ class DashboardService(
         )
     }
 
-    private fun findStudentOrThrow(studentId: String): Student {
-        return studentRepository.findById(studentId)
-            .orElseThrow { IllegalArgumentException("학생을 찾을 수 없습니다. id=$studentId") }
+    private fun findStudentByBojIdOrThrow(bojId: String): Student {
+        val bojIdVo = BojId(bojId)
+        return studentRepository.findByBojId(bojIdVo)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+            }
     }
 
     private fun getRecentSolutions(student: Student): List<Solution> {

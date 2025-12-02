@@ -2,6 +2,7 @@ package com.didimlog.application
 
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
@@ -10,6 +11,8 @@ import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
+import com.didimlog.infra.solvedac.SolvedAcTag
+import com.didimlog.infra.solvedac.SolvedAcTagDisplayName
 import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.CapturingSlot
 import io.mockk.every
@@ -40,7 +43,8 @@ class ProblemServiceTest {
         val response = SolvedAcProblemResponse(
             problemId = problemId,
             titleKo = "A+B",
-            level = 3
+            level = 3,
+            tags = emptyList()
         )
         every { solvedAcClient.fetchProblem(problemId) } returns response
 
@@ -57,6 +61,50 @@ class ProblemServiceTest {
         assertThat(savedProblem.url).isEqualTo("https://www.acmicpc.net/problem/$problemId")
         assertThat(savedProblem.level).isEqualTo(3)
         assertThat(savedProblem.difficulty).isEqualTo(Tier.BRONZE)
+        assertThat(savedProblem.category).isEqualTo(ProblemCategory.IMPLEMENTATION) // 태그가 없으면 기본값
+        assertThat(savedProblem.tags).isEmpty()
+
+        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("syncProblem은 한글 태그를 영문 표준명으로 변환하여 저장한다")
+    fun `syncProblem으로 태그 변환 및 저장`() {
+        // given
+        val problemId = 1000
+        val tags = listOf(
+            SolvedAcTag(
+                key = "math",
+                displayNames = listOf(
+                    SolvedAcTagDisplayName(language = "ko", name = "수학")
+                )
+            ),
+            SolvedAcTag(
+                key = "implementation",
+                displayNames = listOf(
+                    SolvedAcTagDisplayName(language = "ko", name = "구현")
+                )
+            )
+        )
+        val response = SolvedAcProblemResponse(
+            problemId = problemId,
+            titleKo = "수학 문제",
+            level = 5,
+            tags = tags
+        )
+        every { solvedAcClient.fetchProblem(problemId) } returns response
+
+        val savedProblemSlot: CapturingSlot<Problem> = slot()
+        every { problemRepository.save(capture(savedProblemSlot)) } answers { savedProblemSlot.captured }
+
+        // when
+        problemService.syncProblem(problemId)
+
+        // then
+        val savedProblem = savedProblemSlot.captured
+        assertThat(savedProblem.category).isEqualTo(ProblemCategory.MATHEMATICS) // 첫 번째 태그가 카테고리
+        assertThat(savedProblem.tags).containsExactly("Mathematics", "Implementation")
+        assertThat(savedProblem.tags).doesNotContain("수학", "구현") // 한글이 아닌 영문으로 저장됨
 
         verify(exactly = 1) { problemRepository.save(any<Problem>()) }
     }
@@ -69,13 +117,15 @@ class ProblemServiceTest {
         val student = Student(
             nickname = Nickname("tester"),
             bojId = bojId,
+            password = "test-password",
+            rating = 100,
             currentTier = Tier.BRONZE
         )
         every { studentRepository.findByBojId(bojId) } returns Optional.of(student)
 
         val userResponse = SolvedAcUserResponse(
             handle = bojId.value,
-            tier = 15
+            rating = 1200  // Rating 1200점은 GOLD 티어 (800점 이상)
         )
         every { solvedAcClient.fetchUser(bojId) } returns userResponse
         
@@ -87,7 +137,8 @@ class ProblemServiceTest {
 
         // then
         val savedStudent = savedStudentSlot.captured
-        assertThat(savedStudent.tier()).isEqualTo(Tier.GOLD) // 레벨 15는 GOLD
+        assertThat(savedStudent.tier()).isEqualTo(Tier.GOLD) // Rating 1200점은 GOLD
+        assertThat(savedStudent.rating).isEqualTo(1200)
         verify(exactly = 1) { studentRepository.save(any<Student>()) }
     }
 
@@ -116,13 +167,15 @@ class ProblemServiceTest {
         val student = Student(
             nickname = Nickname("tester"),
             bojId = bojId,
+            password = "test-password",
+            rating = 500,
             currentTier = Tier.SILVER
         )
         every { studentRepository.findByBojId(bojId) } returns Optional.of(student)
 
         val userResponse = SolvedAcUserResponse(
             handle = bojId.value,
-            tier = 7 // 레벨 7은 SILVER (6~10 범위)
+            rating = 500  // Rating 500점은 SILVER (200점 이상이지만 800점 미만)
         )
         every { solvedAcClient.fetchUser(bojId) } returns userResponse
 

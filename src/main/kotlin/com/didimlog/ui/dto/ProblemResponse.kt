@@ -19,7 +19,7 @@ data class ProblemResponse(
             return ProblemResponse(
                 id = problem.id.value,
                 title = problem.title,
-                category = problem.category,
+                category = problem.category.englishName,
                 difficulty = problem.difficulty.name,
                 difficultyLevel = problem.difficultyLevel,
                 url = problem.url

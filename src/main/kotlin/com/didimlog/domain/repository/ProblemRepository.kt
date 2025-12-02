@@ -6,7 +6,11 @@ import org.springframework.data.mongodb.repository.MongoRepository
 
 interface ProblemRepository : MongoRepository<Problem, String> {
 
-    fun findByDifficultyLevelBetween(min: Int, max: Int): List<Problem>
+    fun findByLevelBetween(min: Int, max: Int): List<Problem>
+
+    fun findByLevelBetweenAndCategory(min: Int, max: Int, category: String): List<Problem>
+
+    fun findByDescriptionIsNull(): List<Problem>
 }
 
 

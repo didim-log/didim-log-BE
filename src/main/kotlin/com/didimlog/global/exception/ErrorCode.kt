@@ -12,6 +12,7 @@ enum class ErrorCode(
     // 400 Bad Request
     COMMON_INVALID_INPUT(400, "COMMON_INVALID_INPUT", "입력값이 올바르지 않습니다."),
     COMMON_VALIDATION_FAILED(400, "COMMON_VALIDATION_FAILED", "유효성 검사에 실패했습니다."),
+    INVALID_PASSWORD(400, "INVALID_PASSWORD", "비밀번호 정책에 위배됩니다."),
 
     // 404 Not Found
     COMMON_RESOURCE_NOT_FOUND(404, "COMMON_RESOURCE_NOT_FOUND", "요청한 자원을 찾을 수 없습니다."),

@@ -1,0 +1,17 @@
+package com.didimlog.ui.dto
+
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
+
+/**
+ * 인증 요청 DTO
+ */
+data class AuthRequest(
+    @field:NotBlank(message = "BOJ ID는 필수입니다.")
+    val bojId: String,
+
+    @field:NotBlank(message = "비밀번호는 필수입니다.")
+    @field:Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다.")
+    val password: String
+)
+

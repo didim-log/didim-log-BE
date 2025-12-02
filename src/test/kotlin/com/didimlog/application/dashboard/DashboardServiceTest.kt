@@ -4,6 +4,7 @@ import com.didimlog.application.recommendation.RecommendationService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
@@ -11,6 +12,7 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
+import com.didimlog.global.exception.BusinessException
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -36,17 +38,18 @@ class DashboardServiceTest {
     @DisplayName("getDashboard는 학생의 대시보드 정보를 조회한다")
     fun `대시보드 정보 조회`() {
         // given
-        val studentId = "student-id"
+        val bojId = "tester123"
         val student = Student(
             nickname = Nickname("tester"),
-            bojId = BojId("tester123"),
+            bojId = BojId(bojId),
+            password = "test-password",
             currentTier = Tier.GOLD
         )
 
         val problem1 = Problem(
             id = ProblemId("1000"),
             title = "Problem 1",
-            category = "TEST",
+            category = ProblemCategory.UNKNOWN,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/1000"
@@ -54,40 +57,41 @@ class DashboardServiceTest {
         val problem2 = Problem(
             id = ProblemId("1001"),
             title = "Problem 2",
-            category = "TEST",
+            category = ProblemCategory.UNKNOWN,
             difficulty = Tier.SILVER,
             level = 7,
             url = "https://www.acmicpc.net/problem/1001"
         )
 
-        every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { recommendationService.recommendProblems(studentId, count = 3) } returns listOf(problem1, problem2)
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { recommendationService.recommendProblems(bojId, count = 3) } returns listOf(problem1, problem2)
 
         // when
-        val result = dashboardService.getDashboard(studentId)
+        val result = dashboardService.getDashboard(bojId)
 
         // then
         assertThat(result.currentTier).isEqualTo(Tier.GOLD)
         assertThat(result.recommendedProblems).hasSize(2)
         assertThat(result.recommendedProblems).containsExactlyInAnyOrder(problem1, problem2)
-        verify(exactly = 1) { recommendationService.recommendProblems(studentId, count = 3) }
+        verify(exactly = 1) { recommendationService.recommendProblems(bojId, count = 3) }
     }
 
     @Test
     @DisplayName("getDashboard는 최근 풀이 기록을 최신순으로 반환한다")
     fun `최근 풀이 기록 최신순 정렬`() {
         // given
-        val studentId = "student-id"
+        val bojId = "tester123"
         val student = Student(
             nickname = Nickname("tester"),
-            bojId = BojId("tester123"),
+            bojId = BojId(bojId),
+            password = "test-password",
             currentTier = Tier.BRONZE
         )
 
         val problem1 = Problem(
             id = ProblemId("p1"),
             title = "Problem 1",
-            category = "TEST",
+            category = ProblemCategory.UNKNOWN,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/p1"
@@ -116,11 +120,11 @@ class DashboardServiceTest {
         val studentAfterSecond = studentAfterFirst.solveProblem(problem1, TimeTakenSeconds(120L), isSuccess = true)
         val studentWithSolutions = studentAfterSecond.solveProblem(problem1, TimeTakenSeconds(150L), isSuccess = false)
 
-        every { studentRepository.findById(studentId) } returns Optional.of(studentWithSolutions)
-        every { recommendationService.recommendProblems(studentId, count = 3) } returns emptyList()
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(studentWithSolutions)
+        every { recommendationService.recommendProblems(bojId, count = 3) } returns emptyList()
 
         // when
-        val result = dashboardService.getDashboard(studentId)
+        val result = dashboardService.getDashboard(bojId)
 
         // then
         assertThat(result.recentSolutions).hasSize(3)
@@ -132,17 +136,18 @@ class DashboardServiceTest {
     @DisplayName("getDashboard는 최근 풀이 기록을 최대 10개까지만 반환한다")
     fun `최근 풀이 기록 최대 10개 제한`() {
         // given
-        val studentId = "student-id"
+        val bojId = "tester123"
         val student = Student(
             nickname = Nickname("tester"),
-            bojId = BojId("tester123"),
+            bojId = BojId(bojId),
+            password = "test-password",
             currentTier = Tier.BRONZE
         )
 
         val problem = Problem(
             id = ProblemId("p1"),
             title = "Problem 1",
-            category = "TEST",
+            category = ProblemCategory.UNKNOWN,
             difficulty = Tier.BRONZE,
             level = 3,
             url = "https://www.acmicpc.net/problem/p1"
@@ -158,11 +163,11 @@ class DashboardServiceTest {
         }
         val studentWithManySolutions = currentStudent
 
-        every { studentRepository.findById(studentId) } returns Optional.of(studentWithManySolutions)
-        every { recommendationService.recommendProblems(studentId, count = 3) } returns emptyList()
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(studentWithManySolutions)
+        every { recommendationService.recommendProblems(bojId, count = 3) } returns emptyList()
 
         // when
-        val result = dashboardService.getDashboard(studentId)
+        val result = dashboardService.getDashboard(bojId)
 
         // then
         assertThat(result.recentSolutions).hasSize(10)
@@ -172,10 +177,10 @@ class DashboardServiceTest {
     @DisplayName("getDashboard는 학생이 없으면 예외를 발생시킨다")
     fun `학생이 없으면 예외`() {
         // given
-        every { studentRepository.findById("missing") } returns Optional.empty()
+        every { studentRepository.findByBojId(BojId("missing")) } returns Optional.empty()
 
         // expect
-        assertThrows<IllegalArgumentException> {
+        assertThrows<com.didimlog.global.exception.BusinessException> {
             dashboardService.getDashboard("missing")
         }
     }

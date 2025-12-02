@@ -1,5 +1,6 @@
 package com.didimlog.global.exception
 
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -12,6 +13,17 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  */
 @RestControllerAdvice
 class GlobalExceptionHandler {
+
+    private val log = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
+
+    /**
+     * 비밀번호 정책 위반 예외 처리
+     */
+    @ExceptionHandler(InvalidPasswordException::class)
+    fun handleInvalidPasswordException(e: InvalidPasswordException): ResponseEntity<ErrorResponse> {
+        val errorResponse = ErrorResponse.of(ErrorCode.INVALID_PASSWORD, e.message ?: ErrorCode.INVALID_PASSWORD.message)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse)
+    }
 
     /**
      * 비즈니스 로직 예외 처리
@@ -57,6 +69,12 @@ class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception::class)
     fun handleException(e: Exception): ResponseEntity<ErrorResponse> {
+        log.error(
+            "Unexpected exception occurred: exceptionType=${e.javaClass.simpleName}, message=${e.message}",
+            e
+        )
+        log.error("Stack trace:", e)
+        e.printStackTrace()
         val errorResponse = ErrorResponse.of(ErrorCode.COMMON_INTERNAL_ERROR)
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse)
     }
