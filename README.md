@@ -24,10 +24,10 @@
 
 ## 📚 API Documentation (API 명세서)
 
-프론트엔드와의 협업 및 API 스펙 관리를 위해 Google Sheets를 사용하고 있습니다.<br>
-아래 버튼을 클릭하여 최신 API 명세를 확인하실 수 있습니다.
+프론트엔드와의 협업 및 API 스펙 관리를 위해 마크다운 기반의 API 명세서를 제공합니다.<br>
+프로젝트 내 `DOCS/API_SPECIFICATION.md` 파일에서 최신 API 명세를 확인하실 수 있습니다.
 
-[![API 명세서 보러가기](https://img.shields.io/badge/Google%20Sheets-DidimLog%20API%20Spec-0F9D58?style=for-the-badge&logo=googlesheets&logoColor=white)](https://docs.google.com/spreadsheets/d/1m0F3P8M4nyjJO_AQvCL1qfOp5GTmqXAsa4hfdGuVGV0/edit?usp=sharing)
+[![API 명세서 보러가기](https://img.shields.io/badge/Markdown-DidimLog%20API%20Spec-000000?style=for-the-badge&logo=markdown&logoColor=white)](./DOCS/API_SPECIFICATION.md)
 
 <br>
 

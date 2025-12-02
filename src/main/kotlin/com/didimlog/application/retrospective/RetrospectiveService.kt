@@ -65,6 +65,19 @@ class RetrospectiveService(
     }
 
     /**
+     * 회고를 삭제한다.
+     *
+     * @param retrospectiveId 회고 ID
+     * @throws IllegalArgumentException 회고를 찾을 수 없는 경우
+     */
+    @Transactional
+    fun deleteRetrospective(retrospectiveId: String) {
+        val retrospective = retrospectiveRepository.findById(retrospectiveId)
+            .orElseThrow { IllegalArgumentException("회고를 찾을 수 없습니다. id=$retrospectiveId") }
+        retrospectiveRepository.delete(retrospective)
+    }
+
+    /**
      * 문제 정보를 바탕으로 회고 템플릿을 생성한다.
      * 마크다운 형식으로 제목, 문제 링크, 접근 방법, 코드 블록 등의 기본 구조를 제공한다.
      *
@@ -128,4 +141,5 @@ class RetrospectiveService(
         return template.toString()
     }
 }
+
 

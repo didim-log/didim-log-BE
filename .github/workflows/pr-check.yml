@@ -39,3 +39,4 @@ jobs:
           MONGO_URI: mongodb://localhost:27017/test-db
         run: ./gradlew test
 
+
