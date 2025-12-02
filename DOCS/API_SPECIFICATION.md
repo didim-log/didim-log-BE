@@ -87,7 +87,6 @@ Content-Type: application/json
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. | **Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식) | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
-| DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | **204 No Content**<br><br>성공 시 응답 본문 없음 | None |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
 
 **예시 요청 (회고 작성):**
@@ -109,17 +108,6 @@ Content-Type: application/json
   "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
   "createdAt": "2024-01-15T10:30:00"
 }
-```
-
-**예시 요청 (회고 삭제):**
-```http
-DELETE /api/v1/retrospectives/retrospective-123
-```
-
-**예시 응답 (회고 삭제):**
-```
-204 No Content
-(응답 본문 없음)
 ```
 
 **예시 요청 (템플릿 생성):**
@@ -198,57 +186,21 @@ http://localhost:8080
 현재 모든 API는 인증이 필요하지 않습니다. (향후 JWT 토큰 기반 인증이 추가될 예정)
 
 ### 에러 응답 형식
-모든 예외 발생 시 아래의 통일된 JSON 포맷으로 응답합니다:
+에러 발생 시 Spring Boot 기본 에러 응답 형식을 따릅니다:
 ```json
 {
+  "timestamp": "2024-01-15T10:30:00",
   "status": 400,
   "error": "Bad Request",
-  "code": "COMMON_VALIDATION_FAILED",
-  "message": "content: 회고 내용은 10자 이상이어야 합니다."
-}
-```
-
-**ErrorResponse 필드 설명:**
-- `status` (Int): HTTP 상태 코드 (400, 404, 500 등)
-- `error` (String): HTTP 상태 코드에 해당하는 에러 이름 (예: "Bad Request", "Not Found", "Internal Server Error")
-- `code` (String): 애플리케이션 내부 에러 코드 (프론트엔드에서 구체적인 예외 처리를 위해 사용)
-- `message` (String): 사용자에게 표시할 에러 메시지
-
-**주요 에러 코드:**
-- `COMMON_INVALID_INPUT` (400): 입력값이 올바르지 않음
-- `COMMON_VALIDATION_FAILED` (400): 유효성 검사 실패
-- `COMMON_RESOURCE_NOT_FOUND` (404): 요청한 자원을 찾을 수 없음
-- `STUDENT_NOT_FOUND` (404): 학생을 찾을 수 없음
-- `PROBLEM_NOT_FOUND` (404): 문제를 찾을 수 없음
-- `RETROSPECTIVE_NOT_FOUND` (404): 회고를 찾을 수 없음
-- `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
-
-**예시 에러 응답:**
-
-유효성 검사 실패 (400):
-```json
-{
-  "status": 400,
-  "error": "Bad Request",
-  "code": "COMMON_VALIDATION_FAILED",
-  "message": "content: 회고 내용은 10자 이상이어야 합니다."
-}
-```
-
-리소스 없음 (404):
-```json
-{
-  "status": 404,
-  "error": "Not Found",
-  "code": "RETROSPECTIVE_NOT_FOUND",
-  "message": "회고를 찾을 수 없습니다."
+  "message": "회고 내용은 10자 이상이어야 합니다.",
+  "path": "/api/v1/retrospectives"
 }
 ```
 
 ### 유효성 검사 실패 시
-- `@NotBlank`, `@NotNull` 위반: 400 Bad Request (`COMMON_VALIDATION_FAILED`)
-- `@Size`, `@Positive` 위반: 400 Bad Request (`COMMON_VALIDATION_FAILED`)
-- 존재하지 않는 리소스 조회: 404 Not Found (해당 리소스에 맞는 에러 코드, 예: `STUDENT_NOT_FOUND`, `PROBLEM_NOT_FOUND`, `RETROSPECTIVE_NOT_FOUND`)
+- `@NotBlank`, `@NotNull` 위반: 400 Bad Request
+- `@Size`, `@Positive` 위반: 400 Bad Request
+- 존재하지 않는 리소스 조회: 400 Bad Request (IllegalArgumentException)
 
 ### 날짜/시간 형식
 모든 날짜/시간 필드는 ISO 8601 형식을 따릅니다:
