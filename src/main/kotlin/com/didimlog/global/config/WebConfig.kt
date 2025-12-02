@@ -1,5 +1,6 @@
 package com.didimlog.global.config
 
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.servlet.config.annotation.CorsRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
@@ -10,13 +11,16 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
  */
 @Configuration
 class WebConfig : WebMvcConfigurer {
+    @Value("\${app.server.url}")
+    private val serverUrl: String? = null
 
     override fun addCorsMappings(registry: CorsRegistry) {
         registry.addMapping("/api/**")
             .allowedOriginPatterns(
                 "http://localhost:3000",
                 "https://*.web.app",
-                "https://didim-log-fe.web.app"
+                "https://didim-log-fe.web.app",
+                serverUrl
             )
             .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
             .allowedHeaders("*")
