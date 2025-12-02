@@ -1,6 +1,7 @@
 package com.didimlog.global.config
 
 import com.didimlog.global.auth.JwtAuthenticationFilter
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
@@ -22,7 +23,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @Configuration
 @EnableWebSecurity
 class SecurityConfig(
-    private val jwtAuthenticationFilter: JwtAuthenticationFilter
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    @Value("\${app.server.url}")
+    private val serverUrl: String
 ) {
 
     @Bean
@@ -65,8 +68,11 @@ class SecurityConfig(
         val configuration = CorsConfiguration()
         configuration.allowedOriginPatterns = listOf(
             "http://localhost:3000",
+            "http://localhost:5173",
             "https://*.firebaseapp.com",
-            "https://*.web.app"
+            "https://*.web.app",
+            "https://didim-log-fe.web.app",
+            serverUrl
         )
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
         configuration.allowedHeaders = listOf("*")
