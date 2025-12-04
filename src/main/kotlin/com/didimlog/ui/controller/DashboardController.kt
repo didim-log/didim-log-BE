@@ -20,7 +20,7 @@ class DashboardController(
 
     @Operation(
         summary = "대시보드 조회",
-        description = "학생의 현재 티어, 최근 풀이 기록, 추천 문제를 포함한 대시보드 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
+        description = "학생의 오늘의 활동(오늘 푼 문제), 기본 프로필 정보, 랜덤 명언을 포함한 대시보드 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @GetMapping
