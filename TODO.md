@@ -71,5 +71,5 @@
 - [x] **[API]** 회고 즐겨찾기 토글 API (`POST /.../bookmark`)
 
 ### 5-5. Leaderboard (Ranking)
-- [ ] **[Service]** 랭킹 집계 로직 (일간/주간/누적 회고 작성 수 기준)
-- [ ] **[API]** 랭킹 조회 API (`GET /api/v1/ranks`)
+- [x] **[Service]** 랭킹 집계 로직 (Rating 기준 상위 100명 조회)
+- [x] **[API]** 랭킹 조회 API (`GET /api/v1/ranks`)

@@ -76,14 +76,7 @@ class RetrospectiveRepositoryImpl(
 
     private fun applySort(query: Query, sort: Sort) {
         if (sort.isSorted) {
-            val sortList = sort.map { order ->
-                org.springframework.data.domain.Sort.Order(
-                    if (order.isAscending) org.springframework.data.domain.Sort.Direction.ASC
-                    else org.springframework.data.domain.Sort.Direction.DESC,
-                    order.property
-                )
-            }
-            query.with(org.springframework.data.domain.Sort.by(sortList))
+            query.with(sort)
         } else {
             // 기본 정렬: createdAt DESC
             query.with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))

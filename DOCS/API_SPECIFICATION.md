@@ -12,6 +12,7 @@
 - [StudentController](#studentcontroller)
 - [QuoteController](#quotecontroller)
 - [StatisticsController](#statisticscontroller)
+- [LeaderboardController](#leaderboardcontroller)
 
 ---
 
@@ -534,6 +535,59 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "categoryDistribution": {},
   "totalSolvedCount": 150
 }
+```
+
+---
+
+## LeaderboardController
+
+랭킹 조회 관련 API를 제공합니다. Rating(점수) 기준 상위 사용자들의 랭킹을 조회할 수 있습니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/ranks` | Rating(점수) 기준 상위 100명의 랭킹을 조회합니다. 동점자 처리: 점수가 같을 경우 먼저 가입한 순서로 정렬합니다. | 없음 | `List<LeaderboardResponse>`<br><br>**LeaderboardResponse 구조:**<br>- `rank` (Int): 순위 (1부터 시작)<br>- `nickname` (String): 닉네임<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br>- `profileImageUrl` (String, nullable): 프로필 이미지 URL (향후 확장용, 현재는 null) | None |
+
+**예시 요청:**
+```http
+GET /api/v1/ranks
+```
+
+**예시 응답:**
+```json
+[
+  {
+    "rank": 1,
+    "nickname": "topuser",
+    "tier": "DIAMOND",
+    "tierLevel": 23,
+    "rating": 3500,
+    "consecutiveSolveDays": 30,
+    "profileImageUrl": null
+  },
+  {
+    "rank": 2,
+    "nickname": "seconduser",
+    "tier": "PLATINUM",
+    "tierLevel": 18,
+    "rating": 2000,
+    "consecutiveSolveDays": 15,
+    "profileImageUrl": null
+  },
+  {
+    "rank": 3,
+    "nickname": "thirduser",
+    "tier": "GOLD",
+    "tierLevel": 13,
+    "rating": 1200,
+    "consecutiveSolveDays": 7,
+    "profileImageUrl": null
+  }
+]
+```
+
+**예시 응답 (랭킹이 비어있는 경우):**
+```json
+[]
 ```
 
 ---

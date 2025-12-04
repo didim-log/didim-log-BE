@@ -1,5 +1,6 @@
 package com.didimlog.ui.dto
 
+import com.didimlog.application.dashboard.QuoteInfo
 import com.didimlog.domain.Quote
 
 /**
@@ -16,6 +17,14 @@ data class QuoteResponse(
                 id = quote.id ?: "",
                 content = quote.content,
                 author = quote.author
+            )
+        }
+
+        fun from(quoteInfo: QuoteInfo): QuoteResponse {
+            return QuoteResponse(
+                id = quoteInfo.id,
+                content = quoteInfo.content,
+                author = quoteInfo.author
             )
         }
     }
