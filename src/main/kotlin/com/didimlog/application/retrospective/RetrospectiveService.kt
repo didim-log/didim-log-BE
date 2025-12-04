@@ -30,25 +30,27 @@ class RetrospectiveService(
      * @param studentId Student 엔티티의 DB ID (@Id 필드)
      * @param problemId 문제 ID
      * @param content 회고 내용
+     * @param summary 한 줄 요약 (선택사항)
      * @return 저장된 회고
      * @throws IllegalArgumentException 학생이나 문제를 찾을 수 없는 경우
      */
     @Transactional
-    fun writeRetrospective(studentId: String, problemId: String, content: String): Retrospective {
+    fun writeRetrospective(studentId: String, problemId: String, content: String, summary: String? = null): Retrospective {
         validateStudentExists(studentId)
         validateProblemExists(problemId)
 
         val existingRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
 
         if (existingRetrospective != null) {
-            val updatedRetrospective = existingRetrospective.updateContent(content)
+            val updatedRetrospective = existingRetrospective.updateContent(content, summary)
             return retrospectiveRepository.save(updatedRetrospective)
         }
 
         val newRetrospective = Retrospective(
             studentId = studentId,
             problemId = problemId,
-            content = content
+            content = content,
+            summary = summary
         )
         return retrospectiveRepository.save(newRetrospective)
     }

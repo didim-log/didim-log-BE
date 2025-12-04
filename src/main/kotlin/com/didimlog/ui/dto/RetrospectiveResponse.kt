@@ -11,6 +11,7 @@ data class RetrospectiveResponse(
     val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
     val problemId: String,
     val content: String,
+    val summary: String?, // 한 줄 요약
     val createdAt: LocalDateTime,
     val isBookmarked: Boolean,
     val mainCategory: String?
@@ -22,6 +23,7 @@ data class RetrospectiveResponse(
                 studentId = retrospective.studentId,
                 problemId = retrospective.problemId,
                 content = retrospective.content,
+                summary = retrospective.summary,
                 createdAt = retrospective.createdAt,
                 isBookmarked = retrospective.isBookmarked,
                 mainCategory = retrospective.mainCategory?.name

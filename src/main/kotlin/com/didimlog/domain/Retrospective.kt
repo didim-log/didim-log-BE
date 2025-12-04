@@ -16,6 +16,7 @@ data class Retrospective(
     val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
     val problemId: String,
     val content: String,
+    val summary: String? = null, // 한 줄 요약
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val isBookmarked: Boolean = false,
     val mainCategory: ProblemCategory? = null
@@ -25,9 +26,9 @@ data class Retrospective(
         validateContent(content)
     }
 
-    fun updateContent(newContent: String): Retrospective {
+    fun updateContent(newContent: String, newSummary: String? = null): Retrospective {
         validateContent(newContent)
-        return copy(content = newContent)
+        return copy(content = newContent, summary = newSummary)
     }
 
     /**

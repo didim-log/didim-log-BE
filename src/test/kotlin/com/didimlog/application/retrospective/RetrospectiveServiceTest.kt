@@ -58,18 +58,20 @@ class RetrospectiveServiceTest {
             id = "retrospective-id",
             studentId = studentId,
             problemId = problemId,
-            content = content
+            content = content,
+            summary = "한 줄 요약 테스트"
         )
         every { retrospectiveRepository.save(any<Retrospective>()) } returns savedRetrospective
 
         // when
-        val result = retrospectiveService.writeRetrospective(studentId, problemId, content)
+        val result = retrospectiveService.writeRetrospective(studentId, problemId, content, "한 줄 요약 테스트")
 
         // then
         assertThat(result.id).isEqualTo("retrospective-id")
         assertThat(result.studentId).isEqualTo(studentId)
         assertThat(result.problemId).isEqualTo(problemId)
         assertThat(result.content).isEqualTo(content)
+        assertThat(result.summary).isEqualTo("한 줄 요약 테스트")
         verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
     }
 
@@ -95,21 +97,23 @@ class RetrospectiveServiceTest {
             id = "retrospective-id",
             studentId = studentId,
             problemId = problemId,
-            content = existingContent
+            content = existingContent,
+            summary = "기존 한 줄 요약"
         )
 
         every { studentRepository.existsById(studentId) } returns true
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) } returns existingRetrospective
 
-        val updatedRetrospective = existingRetrospective.updateContent(newContent)
+        val updatedRetrospective = existingRetrospective.updateContent(newContent, "수정된 한 줄 요약")
         every { retrospectiveRepository.save(updatedRetrospective) } returns updatedRetrospective
 
         // when
-        val result = retrospectiveService.writeRetrospective(studentId, problemId, newContent)
+        val result = retrospectiveService.writeRetrospective(studentId, problemId, newContent, "수정된 한 줄 요약")
 
         // then
         assertThat(result.content).isEqualTo(newContent)
+        assertThat(result.summary).isEqualTo("수정된 한 줄 요약")
         verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
     }
 
@@ -121,7 +125,7 @@ class RetrospectiveServiceTest {
 
         // expect
         assertThrows<IllegalArgumentException> {
-            retrospectiveService.writeRetrospective("missing", "1000", "content")
+            retrospectiveService.writeRetrospective("missing", "1000", "content", null)
         }
     }
 
@@ -134,7 +138,7 @@ class RetrospectiveServiceTest {
 
         // expect
         assertThrows<IllegalArgumentException> {
-            retrospectiveService.writeRetrospective("student-id", "missing", "content")
+            retrospectiveService.writeRetrospective("student-id", "missing", "content", null)
         }
     }
 
@@ -147,7 +151,8 @@ class RetrospectiveServiceTest {
             id = retrospectiveId,
             studentId = "student-id",
             problemId = "1000",
-            content = "이 문제는 DFS를 사용해서 풀었습니다. 재귀 호출 시 방문 체크를 빼먹어서 시간이 오래 걸렸네요."
+            content = "이 문제는 DFS를 사용해서 풀었습니다. 재귀 호출 시 방문 체크를 빼먹어서 시간이 오래 걸렸네요.",
+            summary = "한 줄 요약 테스트"
         )
 
         every { retrospectiveRepository.findById(retrospectiveId) } returns Optional.of(retrospective)

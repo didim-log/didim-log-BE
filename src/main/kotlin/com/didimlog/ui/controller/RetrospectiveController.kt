@@ -35,7 +35,8 @@ class RetrospectiveController(
 
     @Operation(
         summary = "회고 작성",
-        description = "학생이 문제 풀이 후 회고를 작성합니다. 이미 작성한 회고가 있으면 수정됩니다."
+        description = "학생이 문제 풀이 후 회고를 작성합니다. 이미 작성한 회고가 있으면 수정됩니다. " +
+                "요청 본문에 content(필수, 10자 이상)와 summary(선택, 200자 이하)를 포함할 수 있습니다."
     )
     @PostMapping
     fun writeRetrospective(
@@ -53,7 +54,8 @@ class RetrospectiveController(
         val retrospective = retrospectiveService.writeRetrospective(
             studentId = studentId,
             problemId = problemId,
-            content = request.content
+            content = request.content,
+            summary = request.summary
         )
         val response = RetrospectiveResponse.from(retrospective)
         return ResponseEntity.ok(response)

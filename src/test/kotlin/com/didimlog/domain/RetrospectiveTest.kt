@@ -47,10 +47,11 @@ class RetrospectiveTest {
         )
 
         // when
-        val updated = retrospective.updateContent("새로운 회고 내용도 충분히 깁니다.")
+        val updated = retrospective.updateContent("새로운 회고 내용도 충분히 깁니다.", "한 줄 요약 테스트")
 
         // then
         assertThat(updated.content).isEqualTo("새로운 회고 내용도 충분히 깁니다.")
+        assertThat(updated.summary).isEqualTo("한 줄 요약 테스트")
     }
 
     @Test
