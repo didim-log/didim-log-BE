@@ -61,9 +61,9 @@
 - [x] **[API]** 회원 정보 수정 API (`PATCH /api/v1/students/me`)
 
 ### 5-3. Dashboard & Quote Feature
-- [ ] **[Service]** 명언(Quote) 랜덤 조회 서비스 및 초기 데이터 시딩(Data Seeding)
-- [ ] **[Service]** 대시보드 로직 변경: '오늘 푼 문제' 목록 반환 추가
-- [ ] **[Service]** 통계 API 분리: 잔디(Heatmap) 및 카테고리별 통계 전용 API 구현
+- [x] **[Service]** 명언(Quote) 랜덤 조회 서비스 및 초기 데이터 시딩(Data Seeding)
+- [x] **[Service]** 대시보드 로직 변경: '오늘 푼 문제' 목록 반환 추가
+- [x] **[Service]** 통계 API 분리: 잔디(Heatmap) 및 카테고리별 통계 전용 API 구현
 
 ### 5-4. Retrospective Enhancement
 - [ ] **[Infra]** QueryDSL 설정 (동적 쿼리 및 정렬 기능 구현용)

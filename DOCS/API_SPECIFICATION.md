@@ -10,6 +10,8 @@
 - [RetrospectiveController](#retrospectivecontroller)
 - [DashboardController](#dashboardcontroller)
 - [StudentController](#studentcontroller)
+- [QuoteController](#quotecontroller)
+- [StatisticsController](#statisticscontroller)
 
 ---
 
@@ -271,11 +273,11 @@ GET /api/v1/retrospectives/template?problemId=1000
 
 ## DashboardController
 
-대시보드 정보 조회 API를 제공합니다.
+대시보드 정보 조회 API를 제공합니다. 오늘의 활동 중심으로 경량화된 정보를 제공합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/dashboard` | 학생의 현재 티어, 최근 풀이 기록, 추천 문제를 포함한 대시보드 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `DashboardResponse`<br><br>**DashboardResponse 구조:**<br>- `currentTier` (String): 현재 티어명 (예: "BRONZE")<br>- `currentTierLevel` (Int): 현재 티어의 Solved.ac 레벨 값<br>- `recentSolutions` (List<SolutionResponse>): 최근 풀이 기록 (최대 10개, 최신순)<br>- `recommendedProblems` (List<ProblemResponse>): 추천 문제 목록 (기본 3개)<br><br>**SolutionResponse 구조:**<br>- `problemId` (String): 문제 ID<br>- `timeTaken` (Long): 풀이 소요 시간 (초)<br>- `result` (String): 풀이 결과 ("SUCCESS", "FAIL", "TIME_OVER")<br>- `solvedAt` (LocalDateTime): 풀이 일시 (ISO 8601 형식)<br><br>**ProblemResponse 구조:**<br>(ProblemController 섹션 참고) | JWT Token |
+| GET | `/api/v1/dashboard` | 학생의 오늘의 활동(오늘 푼 문제), 기본 프로필 정보, 랜덤 명언을 포함한 대시보드 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `DashboardResponse`<br><br>**DashboardResponse 구조:**<br>- `studentProfile` (StudentProfileResponse): 학생 기본 정보<br>- `todaySolvedCount` (Int): 오늘 푼 문제 수<br>- `todaySolvedProblems` (List<TodaySolvedProblemResponse>): 오늘 푼 문제 목록<br>- `quote` (QuoteResponse, nullable): 랜덤 명언 (없으면 null)<br><br>**StudentProfileResponse 구조:**<br>- `nickname` (String): 닉네임<br>- `bojId` (String): BOJ ID<br>- `currentTier` (String): 현재 티어명 (예: "BRONZE")<br>- `currentTierLevel` (Int): 현재 티어의 Solved.ac 레벨 값<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br><br>**TodaySolvedProblemResponse 구조:**<br>- `problemId` (String): 문제 ID<br>- `result` (String): 풀이 결과 ("SUCCESS", "FAIL", "TIME_OVER")<br>- `solvedAt` (LocalDateTime): 풀이 일시 (ISO 8601 형식)<br><br>**QuoteResponse 구조:**<br>- `id` (String): 명언 ID<br>- `content` (String): 명언 내용<br>- `author` (String): 저자명 | JWT Token |
 
 **예시 요청:**
 ```http
@@ -286,32 +288,31 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **예시 응답:**
 ```json
 {
-  "currentTier": "BRONZE",
-  "currentTierLevel": 3,
-  "recentSolutions": [
+  "studentProfile": {
+    "nickname": "testuser",
+    "bojId": "testuser123",
+    "currentTier": "BRONZE",
+    "currentTierLevel": 3,
+    "consecutiveSolveDays": 5
+  },
+  "todaySolvedCount": 2,
+  "todaySolvedProblems": [
     {
       "problemId": "1000",
-      "timeTaken": 120,
       "result": "SUCCESS",
       "solvedAt": "2024-01-15T10:30:00"
     },
     {
       "problemId": "1001",
-      "timeTaken": 90,
       "result": "SUCCESS",
       "solvedAt": "2024-01-15T09:15:00"
     }
   ],
-  "recommendedProblems": [
-    {
-      "id": "2000",
-      "title": "두 수의 합",
-      "category": "MATH",
-      "difficulty": "SILVER",
-      "difficultyLevel": 6,
-      "url": "https://www.acmicpc.net/problem/2000"
-    }
-  ]
+  "quote": {
+    "id": "quote-id-1",
+    "content": "코딩은 90%의 디버깅과 10%의 버그 생성으로 이루어진다.",
+    "author": "Unknown"
+  }
 }
 ```
 
@@ -403,6 +404,73 @@ Content-Type: application/json
   "error": "Bad Request",
   "code": "INVALID_PASSWORD",
   "message": "영문, 숫자, 특수문자 3종류 이상 조합 시 최소 8자리 이상이어야 합니다."
+}
+```
+
+---
+
+## QuoteController
+
+명언 관련 API를 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/quotes/random` | DB에 저장된 명언 중 하나를 무작위로 반환합니다. | 없음 | `QuoteResponse`<br><br>**QuoteResponse 구조:**<br>- `id` (String): 명언 ID<br>- `content` (String): 명언 내용<br>- `author` (String): 저자명<br><br>DB에 명언이 없으면 `204 No Content` 응답 | None |
+
+**예시 요청:**
+```http
+GET /api/v1/quotes/random
+```
+
+**예시 응답:**
+```json
+{
+  "id": "quote-id-1",
+  "content": "코딩은 90%의 디버깅과 10%의 버그 생성으로 이루어진다.",
+  "author": "Unknown"
+}
+```
+
+**예시 응답 (명언 없음):**
+```
+204 No Content
+```
+
+---
+
+## StatisticsController
+
+통계 관련 API를 제공합니다. 무거운 통계 데이터를 별도로 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/statistics` | 학생의 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 12개월간의 월별 잔디 데이터<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `totalSolvedCount` (Int): 누적 풀이 수<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수 | JWT Token |
+
+**예시 요청:**
+```http
+GET /api/v1/statistics
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답:**
+```json
+{
+  "monthlyHeatmap": [
+    {
+      "date": "2024-01-15",
+      "count": 3
+    },
+    {
+      "date": "2024-01-16",
+      "count": 2
+    },
+    {
+      "date": "2024-01-17",
+      "count": 1
+    }
+  ],
+  "categoryDistribution": {},
+  "totalSolvedCount": 150
 }
 ```
 
