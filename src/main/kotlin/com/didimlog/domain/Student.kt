@@ -8,6 +8,7 @@ import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.PersistenceCreator
+import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.time.LocalDate
@@ -28,7 +29,8 @@ data class Student(
     val nickname: Nickname,
     val bojId: BojId,
     val password: String?, // BCrypt로 암호화된 비밀번호 (레거시 데이터 대비 nullable)
-    val rating: Int = 0, // Solved.ac Rating (점수)
+    @Indexed
+    val rating: Int = 0, // Solved.ac Rating (점수) - 랭킹 조회 성능 최적화를 위한 인덱스
     val currentTier: Tier,
     val solutions: Solutions = Solutions(),
     val consecutiveSolveDays: Int = 0, // 연속 풀이 일수
@@ -82,21 +84,18 @@ data class Student(
      * @param problem 풀이한 문제
      * @param timeTakenSeconds 풀이에 소요된 시간 (초)
      * @param isSuccess 풀이 성공 여부
-     * @param codeContent 제출한 소스 코드 (선택사항)
      * @return 풀이 기록이 업데이트된 새로운 Student 인스턴스
      */
     fun solveProblem(
         problem: Problem,
         timeTakenSeconds: TimeTakenSeconds,
-        isSuccess: Boolean,
-        codeContent: String? = null
+        isSuccess: Boolean
     ): Student {
         val result = toProblemResult(isSuccess)
         val newSolution = Solution(
             problemId = problem.id,
             timeTaken = timeTakenSeconds,
-            result = result,
-            codeContent = codeContent
+            result = result
         )
         val updatedSolutions = Solutions().apply {
             solutions.getAll().forEach { add(it) }

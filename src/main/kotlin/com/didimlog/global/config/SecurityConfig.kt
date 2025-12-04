@@ -40,6 +40,7 @@ class SecurityConfig(
                 requests
                     .requestMatchers(
                         "/api/v1/auth/**",
+                        "/api/v1/ranks",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
                         "/v3/api-docs/**",
