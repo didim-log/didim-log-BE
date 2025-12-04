@@ -24,8 +24,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    @Value("\${app.server.url}")
-    private val serverUrl: String
+    @Value("\${app.cors.allowed-origins}")
+    private val allowedOriginsString: String
 ) {
 
     @Bean
@@ -63,18 +63,13 @@ class SecurityConfig(
     /**
      * CORS 설정
      * 프론트엔드에서의 접근을 허용한다.
+     * 허용 Origin은 application.yaml의 app.cors.allowed-origins 프로퍼티로 관리된다.
      */
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        configuration.allowedOriginPatterns = listOf(
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "https://*.firebaseapp.com",
-            "https://*.web.app",
-            "https://didim-log-fe.web.app",
-            serverUrl
-        )
+        val allowedOrigins = allowedOriginsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        configuration.allowedOriginPatterns = allowedOrigins
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
         configuration.allowedHeaders = listOf("*")
         configuration.allowCredentials = true
