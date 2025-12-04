@@ -62,14 +62,14 @@ class RetrospectiveSearchTest {
         val retrospective1 = Retrospective(
             studentId = "student-1",
             problemId = "1000",
-            content = "DFS 문제입니다.",
+            content = "DFS 문제입니다. 깊이 우선 탐색을 사용했습니다.",
             mainCategory = ProblemCategory.DFS,
             createdAt = LocalDateTime.now()
         )
         val retrospective2 = Retrospective(
             studentId = "student-1",
             problemId = "1001",
-            content = "DP 문제입니다.",
+            content = "DP 문제입니다. 동적 계획법을 사용했습니다.",
             mainCategory = ProblemCategory.DP,
             createdAt = LocalDateTime.now()
         )
@@ -154,7 +154,7 @@ class RetrospectiveSearchTest {
             Retrospective(
                 studentId = "student-1",
                 problemId = "100$index",
-                content = "회고 내용 $index",
+                content = "회고 내용 $index 입니다. 이 문제를 풀면서 배운 점이 많았습니다.",
                 createdAt = LocalDateTime.now().minusDays(index.toLong())
             )
         }
@@ -181,13 +181,13 @@ class RetrospectiveSearchTest {
         val retrospective1 = Retrospective(
             studentId = "student-1",
             problemId = "1000",
-            content = "오래된 회고",
+            content = "오래된 회고입니다. 이전에 작성한 내용입니다.",
             createdAt = now.minusDays(2)
         )
         val retrospective2 = Retrospective(
             studentId = "student-1",
             problemId = "1001",
-            content = "최신 회고",
+            content = "최신 회고입니다. 방금 작성한 내용입니다.",
             createdAt = now
         )
         retrospectiveRepository.saveAll(listOf(retrospective1, retrospective2))
@@ -200,8 +200,8 @@ class RetrospectiveSearchTest {
 
         // then
         assertThat(result.content).hasSize(2)
-        assertThat(result.content[0].content).isEqualTo("최신 회고")
-        assertThat(result.content[1].content).isEqualTo("오래된 회고")
+        assertThat(result.content[0].content).isEqualTo("최신 회고입니다. 방금 작성한 내용입니다.")
+        assertThat(result.content[1].content).isEqualTo("오래된 회고입니다. 이전에 작성한 내용입니다.")
     }
 }
 

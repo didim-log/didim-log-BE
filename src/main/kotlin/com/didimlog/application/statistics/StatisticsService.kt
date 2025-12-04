@@ -33,7 +33,7 @@ class StatisticsService(
     fun getStatistics(bojId: String): StatisticsInfo {
         val student = findStudentByBojIdOrThrow(bojId)
         val monthlyHeatmap = getMonthlyHeatmap(student)
-        val categoryDistribution = getCategoryDistribution(student)
+        val categoryDistribution = getCategoryDistribution()
         val totalSolvedCount = student.solutions.getAll().size
 
         return StatisticsInfo(
@@ -84,7 +84,7 @@ class StatisticsService(
      * 향후 Solution에 카테고리 정보를 추가하거나, 
      * ProblemRepository를 주입받아 조회하도록 개선할 수 있다.
      */
-    private fun getCategoryDistribution(student: Student): Map<String, Int> {
+    private fun getCategoryDistribution(): Map<String, Int> {
         // TODO: 향후 Solution에 카테고리 정보 추가 또는 Problem 조회 로직 구현
         return emptyMap()
     }

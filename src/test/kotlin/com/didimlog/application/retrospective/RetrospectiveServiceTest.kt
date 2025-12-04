@@ -41,12 +41,6 @@ class RetrospectiveServiceTest {
         val problemId = "1000"
         val content = "이 문제는 DFS를 사용해서 풀었습니다. 재귀 호출 시 방문 체크를 빼먹어서 시간이 오래 걸렸네요."
 
-        val student = Student(
-            nickname = Nickname("tester"),
-            bojId = BojId("tester123"),
-            password = "test-password",
-            currentTier = Tier.BRONZE
-        )
         val problem = Problem(
             id = ProblemId(problemId),
             title = "A+B",

@@ -85,7 +85,7 @@ class SecurityConfig(
      */
     @Bean
     fun authenticationEntryPoint(): AuthenticationEntryPoint {
-        return AuthenticationEntryPoint { request, response, authException ->
+        return AuthenticationEntryPoint { _, response, _ ->
             response.status = HttpStatus.UNAUTHORIZED.value()
             response.contentType = "application/json;charset=UTF-8"
             response.writer.write(
@@ -106,7 +106,7 @@ class SecurityConfig(
      */
     @Bean
     fun accessDeniedHandler(): AccessDeniedHandler {
-        return AccessDeniedHandler { request, response, accessDeniedException ->
+        return AccessDeniedHandler { _, response, _ ->
             response.status = HttpStatus.FORBIDDEN.value()
             response.contentType = "application/json;charset=UTF-8"
             response.writer.write(

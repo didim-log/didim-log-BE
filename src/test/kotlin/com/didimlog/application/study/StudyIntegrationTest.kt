@@ -120,13 +120,13 @@ class StudyIntegrationTest {
     }
 
     @Test
-    @DisplayName("updateTier를 통해 외부에서 티어를 업데이트할 수 있다")
+    @DisplayName("updateInfo를 통해 외부에서 Rating 점수로 티어를 업데이트할 수 있다")
     fun `외부에서 티어 업데이트 가능`() {
         // given
         assertThat(student.tier()).isEqualTo(Tier.BRONZE)
 
-        // when: Solved.ac API에서 가져온 티어 정보로 업데이트
-        val updatedStudent = student.updateTier(Tier.GOLD)
+        // when: Solved.ac API에서 가져온 Rating 점수로 업데이트 (GOLD 티어는 800점 이상)
+        val updatedStudent = student.updateInfo(800)
         studentRepository.save(updatedStudent)
 
         // then: 티어가 업데이트됨
