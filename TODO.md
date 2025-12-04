@@ -47,3 +47,29 @@
 - [x] **[Service]** `AuthService`: Solved.ac 실명 인증 및 회원가입/로그인 로직 구현
 - [x] **[API]** `AuthController`: 로그인/회원가입 API 및 문서화 (`API_SPECIFICATION.md`)
 - [x] **[Refactor]** 기존 임시 로그인 로직 제거 및 코드 정리
+
+## Phase 5: Service Enhancement (v1.2)
+> **Goal:** 사용자 경험 개선, 게이미피케이션 요소 추가, 데이터 조회 기능 강화
+
+### 5-1. Domain & DB Schema Update
+- [x] **[Domain]** `Quote` 엔티티 추가 (동기부여 명언 저장)
+- [x] **[Domain]** `Retrospective` 엔티티 수정: `mainCategory`(주요 풀이 알고리즘), `isBookmarked`(즐겨찾기) 필드 추가
+- [x] **[Domain]** `Student` 엔티티 수정: `consecutiveSolveDays`(연속 풀이 일수), `lastSolvedAt` 필드 추가
+
+### 5-2. User & Profile Feature
+- [ ] **[Service]** 내 정보 수정 로직 (닉네임 변경, 비밀번호 검증 및 변경)
+- [ ] **[API]** 회원 정보 수정 API (`PATCH /api/v1/students/me`)
+
+### 5-3. Dashboard & Quote Feature
+- [ ] **[Service]** 명언(Quote) 랜덤 조회 서비스 및 초기 데이터 시딩(Data Seeding)
+- [ ] **[Service]** 대시보드 로직 변경: '오늘 푼 문제' 목록 반환 추가
+- [ ] **[Service]** 통계 API 분리: 잔디(Heatmap) 및 카테고리별 통계 전용 API 구현
+
+### 5-4. Retrospective Enhancement
+- [ ] **[Infra]** QueryDSL 설정 (동적 쿼리 및 정렬 기능 구현용)
+- [ ] **[Service]** 회고 목록 조회 고도화: 페이징, 정렬(최신/오래된/즐겨찾기), 카테고리 필터링 적용
+- [ ] **[API]** 회고 즐겨찾기 토글 API (`POST /.../bookmark`)
+
+### 5-5. Leaderboard (Ranking)
+- [ ] **[Service]** 랭킹 집계 로직 (일간/주간/누적 회고 작성 수 기준)
+- [ ] **[API]** 랭킹 조회 API (`GET /api/v1/ranks`)
