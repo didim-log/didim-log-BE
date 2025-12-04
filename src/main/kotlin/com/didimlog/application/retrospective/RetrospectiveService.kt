@@ -7,6 +7,8 @@ import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.ProblemId
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -75,6 +77,36 @@ class RetrospectiveService(
         val retrospective = retrospectiveRepository.findById(retrospectiveId)
             .orElseThrow { IllegalArgumentException("회고를 찾을 수 없습니다. id=$retrospectiveId") }
         retrospectiveRepository.delete(retrospective)
+    }
+
+    /**
+     * 검색 조건에 따라 회고 목록을 조회한다.
+     *
+     * @param condition 검색 조건
+     * @param pageable 페이징 정보
+     * @return 회고 페이지
+     */
+    @Transactional(readOnly = true)
+    fun searchRetrospectives(condition: RetrospectiveSearchCondition, pageable: Pageable): Page<Retrospective> {
+        return retrospectiveRepository.search(condition, pageable)
+    }
+
+    /**
+     * 회고의 북마크 상태를 토글한다.
+     *
+     * @param retrospectiveId 회고 ID
+     * @return 변경된 북마크 상태
+     * @throws IllegalArgumentException 회고를 찾을 수 없는 경우
+     */
+    @Transactional
+    fun toggleBookmark(retrospectiveId: String): Boolean {
+        val retrospective = retrospectiveRepository.findById(retrospectiveId)
+            .orElseThrow { IllegalArgumentException("회고를 찾을 수 없습니다. id=$retrospectiveId") }
+        
+        val updatedRetrospective = retrospective.toggleBookmark()
+        retrospectiveRepository.save(updatedRetrospective)
+        
+        return updatedRetrospective.isBookmarked
     }
 
     /**
