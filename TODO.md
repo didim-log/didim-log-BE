@@ -57,8 +57,8 @@
 - [x] **[Domain]** `Student` 엔티티 수정: `consecutiveSolveDays`(연속 풀이 일수), `lastSolvedAt` 필드 추가
 
 ### 5-2. User & Profile Feature
-- [ ] **[Service]** 내 정보 수정 로직 (닉네임 변경, 비밀번호 검증 및 변경)
-- [ ] **[API]** 회원 정보 수정 API (`PATCH /api/v1/students/me`)
+- [x] **[Service]** 내 정보 수정 로직 (닉네임 변경, 비밀번호 검증 및 변경)
+- [x] **[API]** 회원 정보 수정 API (`PATCH /api/v1/students/me`)
 
 ### 5-3. Dashboard & Quote Feature
 - [ ] **[Service]** 명언(Quote) 랜덤 조회 서비스 및 초기 데이터 시딩(Data Seeding)

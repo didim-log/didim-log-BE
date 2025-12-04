@@ -9,6 +9,7 @@
 - [StudyController](#studycontroller)
 - [RetrospectiveController](#retrospectivecontroller)
 - [DashboardController](#dashboardcontroller)
+- [StudentController](#studentcontroller)
 
 ---
 
@@ -311,6 +312,97 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
       "url": "https://www.acmicpc.net/problem/2000"
     }
   ]
+}
+```
+
+---
+
+## StudentController
+
+학생 프로필 관리 관련 API를 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| PATCH | `/api/v1/students/me` | 학생의 닉네임 및 비밀번호를 수정합니다. 닉네임과 비밀번호를 선택적으로 변경할 수 있으며, 비밀번호 변경 시 현재 비밀번호 검증이 필요합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - 유효성: `@Size(min=2, max=20)` (2자 이상 20자 이하)<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
+
+**예시 요청 (닉네임만 변경):**
+```http
+PATCH /api/v1/students/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "nickname": "newNickname"
+}
+```
+
+**예시 요청 (비밀번호만 변경):**
+```http
+PATCH /api/v1/students/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "currentPassword": "currentPassword123",
+  "newPassword": "newPassword123!"
+}
+```
+
+**예시 요청 (닉네임과 비밀번호 모두 변경):**
+```http
+PATCH /api/v1/students/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "nickname": "newNickname",
+  "currentPassword": "currentPassword123",
+  "newPassword": "newPassword123!"
+}
+```
+
+**예시 응답 (성공):**
+```
+204 No Content
+```
+
+**에러 응답 예시 (닉네임 중복):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "DUPLICATE_NICKNAME",
+  "message": "이미 사용 중인 닉네임입니다. nickname=newNickname"
+}
+```
+
+**에러 응답 예시 (현재 비밀번호 불일치):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "PASSWORD_MISMATCH",
+  "message": "현재 비밀번호가 일치하지 않습니다."
+}
+```
+
+**에러 응답 예시 (현재 비밀번호 없이 새 비밀번호 변경 시도):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_INVALID_INPUT",
+  "message": "비밀번호를 변경하려면 현재 비밀번호를 입력해야 합니다."
+}
+```
+
+**에러 응답 예시 (비밀번호 정책 위반):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "INVALID_PASSWORD",
+  "message": "영문, 숫자, 특수문자 3종류 이상 조합 시 최소 8자리 이상이어야 합니다."
 }
 ```
 
