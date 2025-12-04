@@ -7,8 +7,8 @@ import java.time.LocalDateTime
  * 회고 응답 DTO
  */
 data class RetrospectiveResponse(
-    val id: String,
-    val studentId: String,
+    val id: String, // Retrospective 엔티티의 DB ID (@Id 필드)
+    val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
     val problemId: String,
     val content: String,
     val createdAt: LocalDateTime,

@@ -13,7 +13,7 @@ import org.springframework.data.mongodb.core.mapping.Document
 data class Retrospective(
     @Id
     val id: String? = null,
-    val studentId: String,
+    val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
     val problemId: String,
     val content: String,
     val createdAt: LocalDateTime = LocalDateTime.now(),

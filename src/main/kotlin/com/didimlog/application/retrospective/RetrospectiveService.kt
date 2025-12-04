@@ -27,7 +27,7 @@ class RetrospectiveService(
      * 회고를 작성하거나 수정한다.
      * 이미 해당 문제에 대한 회고가 있으면 수정하고, 없으면 새로 작성한다.
      *
-     * @param studentId 학생 ID
+     * @param studentId Student 엔티티의 DB ID (@Id 필드)
      * @param problemId 문제 ID
      * @param content 회고 내용
      * @return 저장된 회고

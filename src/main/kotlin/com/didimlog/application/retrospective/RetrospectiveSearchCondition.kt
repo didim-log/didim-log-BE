@@ -9,6 +9,6 @@ data class RetrospectiveSearchCondition(
     val keyword: String? = null,
     val category: ProblemCategory? = null,
     val isBookmarked: Boolean? = null,
-    val studentId: String? = null
+    val studentId: String? = null // Student 엔티티의 DB ID (@Id 필드)
 )
 
