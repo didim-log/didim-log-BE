@@ -10,6 +10,7 @@ import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.PersistenceCreator
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.security.crypto.password.PasswordEncoder
+import java.time.LocalDate
 
 /**
  * 알고리즘 학습자의 상태와 풀이 기록을 관리하는 Aggregate Root
@@ -29,7 +30,9 @@ data class Student(
     val password: String?, // BCrypt로 암호화된 비밀번호 (레거시 데이터 대비 nullable)
     val rating: Int = 0, // Solved.ac Rating (점수)
     val currentTier: Tier,
-    val solutions: Solutions = Solutions()
+    val solutions: Solutions = Solutions(),
+    val consecutiveSolveDays: Int = 0, // 연속 풀이 일수
+    val lastSolvedAt: LocalDate? = null // 마지막으로 문제를 푼 날짜
 ) {
     /**
      * Spring Data MongoDB가 DB에서 데이터를 읽어올 때 사용하는 생성자
@@ -53,7 +56,9 @@ data class Student(
         password: String?,
         rating: Int?,
         currentTier: Tier,
-        solutions: Solutions?
+        solutions: Solutions?,
+        consecutiveSolveDays: Int?,
+        lastSolvedAt: LocalDate?
     ) : this(
         id = id,
         nickname = nickname,
@@ -64,29 +69,70 @@ data class Student(
         ),
         rating = rating ?: 0,
         currentTier = currentTier,
-        solutions = solutions ?: Solutions()
+        solutions = solutions ?: Solutions(),
+        consecutiveSolveDays = consecutiveSolveDays ?: 0,
+        lastSolvedAt = lastSolvedAt
     )
 
     /**
      * 문제 풀이 결과를 기록한다.
      * Solved.ac를 Source of Truth로 사용하므로, 자동 승급 로직은 포함하지 않는다.
+     * 연속 풀이 일수와 마지막 풀이 날짜를 업데이트한다.
      *
      * @param problem 풀이한 문제
      * @param timeTakenSeconds 풀이에 소요된 시간 (초)
      * @param isSuccess 풀이 성공 여부
+     * @param codeContent 제출한 소스 코드 (선택사항)
+     * @return 풀이 기록이 업데이트된 새로운 Student 인스턴스
      */
-    fun solveProblem(problem: Problem, timeTakenSeconds: TimeTakenSeconds, isSuccess: Boolean): Student {
+    fun solveProblem(
+        problem: Problem,
+        timeTakenSeconds: TimeTakenSeconds,
+        isSuccess: Boolean,
+        codeContent: String? = null
+    ): Student {
         val result = toProblemResult(isSuccess)
         val newSolution = Solution(
             problemId = problem.id,
             timeTaken = timeTakenSeconds,
-            result = result
+            result = result,
+            codeContent = codeContent
         )
         val updatedSolutions = Solutions().apply {
             solutions.getAll().forEach { add(it) }
             add(newSolution)
         }
-        return copy(solutions = updatedSolutions)
+        
+        val today = LocalDate.now()
+        val updatedConsecutiveDays = calculateConsecutiveSolveDays(today)
+        val updatedLastSolvedAt = today
+        
+        return copy(
+            solutions = updatedSolutions,
+            consecutiveSolveDays = updatedConsecutiveDays,
+            lastSolvedAt = updatedLastSolvedAt
+        )
+    }
+
+    /**
+     * 오늘 날짜를 기준으로 연속 풀이 일수를 계산한다.
+     * 마지막 풀이 날짜가 어제면 연속 일수를 증가시키고, 오늘이면 유지하며, 그 이전이면 1로 초기화한다.
+     *
+     * @param today 오늘 날짜
+     * @return 업데이트된 연속 풀이 일수
+     */
+    private fun calculateConsecutiveSolveDays(today: LocalDate): Int {
+        if (lastSolvedAt == null) {
+            return 1
+        }
+        
+        val daysBetween = java.time.temporal.ChronoUnit.DAYS.between(lastSolvedAt, today)
+        
+        return when {
+            daysBetween == 0L -> consecutiveSolveDays // 오늘 이미 풀었으면 유지
+            daysBetween == 1L -> consecutiveSolveDays + 1 // 어제 풀었으면 증가
+            else -> 1 // 그 이전이면 초기화
+        }
     }
 
     /**
@@ -157,5 +203,3 @@ data class Student(
         return ProblemResult.FAIL
     }
 }
-
-
