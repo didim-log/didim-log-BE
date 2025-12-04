@@ -1,10 +1,9 @@
 package com.didimlog.application.dashboard
 
-import com.didimlog.application.recommendation.RecommendationService
-import com.didimlog.domain.Problem
+import com.didimlog.application.quote.QuoteService
+import com.didimlog.domain.Quote
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
@@ -12,14 +11,12 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
-import com.didimlog.global.exception.BusinessException
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.Optional
 
@@ -27,162 +24,112 @@ import java.util.Optional
 class DashboardServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
-    private val recommendationService: RecommendationService = mockk()
+    private val quoteService: QuoteService = mockk()
 
     private val dashboardService = DashboardService(
         studentRepository,
-        recommendationService
+        quoteService
     )
 
     @Test
-    @DisplayName("getDashboard는 학생의 대시보드 정보를 조회한다")
-    fun `대시보드 정보 조회`() {
+    @DisplayName("오늘 푼 문제가 제대로 포함되는지 검증한다")
+    fun `오늘 푼 문제 포함 검증`() {
         // given
-        val bojId = "tester123"
-        val student = Student(
-            nickname = Nickname("tester"),
-            bojId = BojId(bojId),
-            password = "test-password",
-            currentTier = Tier.GOLD
-        )
+        val bojId = "testuser"
+        val today = LocalDate.now()
+        val yesterday = today.minusDays(1)
 
-        val problem1 = Problem(
-            id = ProblemId("1000"),
-            title = "Problem 1",
-            category = ProblemCategory.UNKNOWN,
-            difficulty = Tier.BRONZE,
-            level = 3,
-            url = "https://www.acmicpc.net/problem/1000"
-        )
-        val problem2 = Problem(
-            id = ProblemId("1001"),
-            title = "Problem 2",
-            category = ProblemCategory.UNKNOWN,
-            difficulty = Tier.SILVER,
-            level = 7,
-            url = "https://www.acmicpc.net/problem/1001"
-        )
-
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { recommendationService.recommendProblems(bojId, count = 3) } returns listOf(problem1, problem2)
-
-        // when
-        val result = dashboardService.getDashboard(bojId)
-
-        // then
-        assertThat(result.currentTier).isEqualTo(Tier.GOLD)
-        assertThat(result.recommendedProblems).hasSize(2)
-        assertThat(result.recommendedProblems).containsExactlyInAnyOrder(problem1, problem2)
-        verify(exactly = 1) { recommendationService.recommendProblems(bojId, count = 3) }
-    }
-
-    @Test
-    @DisplayName("getDashboard는 최근 풀이 기록을 최신순으로 반환한다")
-    fun `최근 풀이 기록 최신순 정렬`() {
-        // given
-        val bojId = "tester123"
-        val student = Student(
-            nickname = Nickname("tester"),
-            bojId = BojId(bojId),
-            password = "test-password",
-            currentTier = Tier.BRONZE
-        )
-
-        val problem1 = Problem(
-            id = ProblemId("p1"),
-            title = "Problem 1",
-            category = ProblemCategory.UNKNOWN,
-            difficulty = Tier.BRONZE,
-            level = 3,
-            url = "https://www.acmicpc.net/problem/p1"
-        )
-
-        val solution1 = Solution(
-            problemId = ProblemId("p1"),
-            timeTaken = TimeTakenSeconds(100L),
+        val todaySolution1 = Solution(
+            problemId = ProblemId("1000"),
+            timeTaken = TimeTakenSeconds(120),
             result = ProblemResult.SUCCESS,
-            solvedAt = LocalDateTime.now().minusDays(2)
-        )
-        val solution2 = Solution(
-            problemId = ProblemId("p2"),
-            timeTaken = TimeTakenSeconds(120L),
-            result = ProblemResult.SUCCESS,
-            solvedAt = LocalDateTime.now().minusDays(1)
-        )
-        val solution3 = Solution(
-            problemId = ProblemId("p3"),
-            timeTaken = TimeTakenSeconds(150L),
-            result = ProblemResult.FAIL,
             solvedAt = LocalDateTime.now()
         )
+        val todaySolution2 = Solution(
+            problemId = ProblemId("1001"),
+            timeTaken = TimeTakenSeconds(90),
+            result = ProblemResult.SUCCESS,
+            solvedAt = LocalDateTime.now().minusHours(2)
+        )
+        val yesterdaySolution = Solution(
+            problemId = ProblemId("1002"),
+            timeTaken = TimeTakenSeconds(150),
+            result = ProblemResult.SUCCESS,
+            solvedAt = LocalDateTime.of(yesterday, LocalDateTime.now().toLocalTime())
+        )
 
-        val studentAfterFirst = student.solveProblem(problem1, TimeTakenSeconds(100L), isSuccess = true)
-        val studentAfterSecond = studentAfterFirst.solveProblem(problem1, TimeTakenSeconds(120L), isSuccess = true)
-        val studentWithSolutions = studentAfterSecond.solveProblem(problem1, TimeTakenSeconds(150L), isSuccess = false)
+        val solutions = com.didimlog.domain.Solutions().apply {
+            add(todaySolution1)
+            add(todaySolution2)
+            add(yesterdaySolution)
+        }
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(studentWithSolutions)
-        every { recommendationService.recommendProblems(bojId, count = 3) } returns emptyList()
-
-        // when
-        val result = dashboardService.getDashboard(bojId)
-
-        // then
-        assertThat(result.recentSolutions).hasSize(3)
-        val solvedAts = result.recentSolutions.map { it.solvedAt }
-        assertThat(solvedAts).isSortedAccordingTo { a, b -> b.compareTo(a) } // 최신순 정렬 확인
-    }
-
-    @Test
-    @DisplayName("getDashboard는 최근 풀이 기록을 최대 10개까지만 반환한다")
-    fun `최근 풀이 기록 최대 10개 제한`() {
-        // given
-        val bojId = "tester123"
         val student = Student(
-            nickname = Nickname("tester"),
+            id = "student-id",
+            nickname = Nickname("testuser"),
             bojId = BojId(bojId),
-            password = "test-password",
-            currentTier = Tier.BRONZE
+            password = "encoded-password",
+            currentTier = Tier.BRONZE,
+            solutions = solutions,
+            consecutiveSolveDays = 5
         )
 
-        val problem = Problem(
-            id = ProblemId("p1"),
-            title = "Problem 1",
-            category = ProblemCategory.UNKNOWN,
-            difficulty = Tier.BRONZE,
-            level = 3,
-            url = "https://www.acmicpc.net/problem/p1"
-        )
+        val quote = Quote(content = "테스트 명언", author = "테스트 작가")
 
-        var currentStudent = student
-        repeat(15) { index ->
-            currentStudent = currentStudent.solveProblem(
-                problem,
-                TimeTakenSeconds((100 + index).toLong()),
-                isSuccess = true
-            )
-        }
-        val studentWithManySolutions = currentStudent
-
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(studentWithManySolutions)
-        every { recommendationService.recommendProblems(bojId, count = 3) } returns emptyList()
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { quoteService.getRandomQuote() } returns quote
 
         // when
         val result = dashboardService.getDashboard(bojId)
 
         // then
-        assertThat(result.recentSolutions).hasSize(10)
+        assertThat(result.todaySolvedCount).isEqualTo(2)
+        assertThat(result.todaySolvedProblems).hasSize(2)
+        assertThat(result.todaySolvedProblems.map { it.problemId }).containsExactlyInAnyOrder("1000", "1001")
+        assertThat(result.studentProfile.nickname).isEqualTo("testuser")
+        assertThat(result.studentProfile.bojId).isEqualTo(bojId)
+        assertThat(result.studentProfile.consecutiveSolveDays).isEqualTo(5)
+        assertThat(result.quote).isNotNull()
+        assertThat(result.quote?.content).isEqualTo("테스트 명언")
     }
 
     @Test
-    @DisplayName("getDashboard는 학생이 없으면 예외를 발생시킨다")
-    fun `학생이 없으면 예외`() {
+    @DisplayName("오늘 푼 문제가 없으면 빈 리스트를 반환한다")
+    fun `오늘 푼 문제 없음`() {
         // given
-        every { studentRepository.findByBojId(BojId("missing")) } returns Optional.empty()
+        val bojId = "testuser"
+        val yesterday = LocalDate.now().minusDays(1)
 
-        // expect
-        assertThrows<com.didimlog.global.exception.BusinessException> {
-            dashboardService.getDashboard("missing")
+        val yesterdaySolution = Solution(
+            problemId = ProblemId("1000"),
+            timeTaken = TimeTakenSeconds(120),
+            result = ProblemResult.SUCCESS,
+            solvedAt = LocalDateTime.of(yesterday, LocalDateTime.now().toLocalTime())
+        )
+
+        val solutions = com.didimlog.domain.Solutions().apply {
+            add(yesterdaySolution)
         }
+
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("testuser"),
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            currentTier = Tier.BRONZE,
+            solutions = solutions
+        )
+
+        val quote = Quote(content = "테스트 명언", author = "테스트 작가")
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { quoteService.getRandomQuote() } returns quote
+
+        // when
+        val result = dashboardService.getDashboard(bojId)
+
+        // then
+        assertThat(result.todaySolvedCount).isEqualTo(0)
+        assertThat(result.todaySolvedProblems).isEmpty()
     }
 }
-

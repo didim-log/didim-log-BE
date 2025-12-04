@@ -1,5 +1,6 @@
 package com.didimlog.domain
 
+import com.didimlog.domain.enums.ProblemCategory
 import java.time.LocalDateTime
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
@@ -12,25 +13,34 @@ import org.springframework.data.mongodb.core.mapping.Document
 data class Retrospective(
     @Id
     val id: String? = null,
-    val studentId: String,
+    val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
     val problemId: String,
     val content: String,
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    val summary: String? = null, // 한 줄 요약
+    val createdAt: LocalDateTime = LocalDateTime.now(),
+    val isBookmarked: Boolean = false,
+    val mainCategory: ProblemCategory? = null
 ) {
 
     init {
         validateContent(content)
     }
 
-    fun updateContent(newContent: String): Retrospective {
+    fun updateContent(newContent: String, newSummary: String? = null): Retrospective {
         validateContent(newContent)
-        return copy(content = newContent)
+        return copy(content = newContent, summary = newSummary)
+    }
+
+    /**
+     * 즐겨찾기 상태를 토글한다.
+     *
+     * @return 즐겨찾기 상태가 변경된 새로운 Retrospective 인스턴스
+     */
+    fun toggleBookmark(): Retrospective {
+        return copy(isBookmarked = !isBookmarked)
     }
 
     private fun validateContent(target: String) {
         require(target.length >= 10) { "회고 내용은 10자 이상이어야 합니다." }
     }
 }
-
-
-

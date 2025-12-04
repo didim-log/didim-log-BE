@@ -9,6 +9,10 @@
 - [StudyController](#studycontroller)
 - [RetrospectiveController](#retrospectivecontroller)
 - [DashboardController](#dashboardcontroller)
+- [StudentController](#studentcontroller)
+- [QuoteController](#quotecontroller)
+- [StatisticsController](#statisticscontroller)
+- [LeaderboardController](#leaderboardcontroller)
 
 ---
 
@@ -229,11 +233,24 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. | **Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식) | None |
+| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. | **Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리 | None |
+| GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 0): 페이지 번호 (0부터 시작)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
+| POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
 
-**예시 요청 (회고 작성):**
+**예시 요청 (회고 작성 - summary 포함):**
+```http
+POST /api/v1/retrospectives?studentId=student-123&problemId=1000
+Content-Type: application/json
+
+{
+  "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
+  "summary": "두 수의 합을 구하는 기본 구현 문제"
+}
+```
+
+**예시 요청 (회고 작성 - summary 없음):**
 ```http
 POST /api/v1/retrospectives?studentId=student-123&problemId=1000
 Content-Type: application/json
@@ -250,7 +267,71 @@ Content-Type: application/json
   "studentId": "student-123",
   "problemId": "1000",
   "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
-  "createdAt": "2024-01-15T10:30:00"
+  "summary": "두 수의 합을 구하는 기본 구현 문제",
+  "createdAt": "2024-01-15T10:30:00",
+  "isBookmarked": false,
+  "mainCategory": null
+}
+```
+
+**예시 요청 (회고 목록 조회 - 기본):**
+```http
+GET /api/v1/retrospectives?page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 키워드 검색):**
+```http
+GET /api/v1/retrospectives?keyword=DFS&page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 카테고리 필터):**
+```http
+GET /api/v1/retrospectives?category=DFS&page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 북마크 필터):**
+```http
+GET /api/v1/retrospectives?isBookmarked=true&page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 정렬):**
+```http
+GET /api/v1/retrospectives?sort=createdAt,asc&page=0&size=10
+```
+
+**예시 응답 (회고 목록 조회):**
+```json
+{
+  "content": [
+    {
+      "id": "retrospective-123",
+      "studentId": "student-123",
+      "problemId": "1000",
+      "content": "이 문제는 DFS를 사용해서 풀었습니다.",
+      "summary": "DFS를 활용한 그래프 탐색 문제",
+      "createdAt": "2024-01-15T10:30:00",
+      "isBookmarked": true,
+      "mainCategory": "DFS"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1,
+  "currentPage": 0,
+  "size": 10,
+  "hasNext": false,
+  "hasPrevious": false
+}
+```
+
+**예시 요청 (북마크 토글):**
+```http
+POST /api/v1/retrospectives/retrospective-123/bookmark
+```
+
+**예시 응답 (북마크 토글):**
+```json
+{
+  "isBookmarked": true
 }
 ```
 
@@ -270,11 +351,11 @@ GET /api/v1/retrospectives/template?problemId=1000
 
 ## DashboardController
 
-대시보드 정보 조회 API를 제공합니다.
+대시보드 정보 조회 API를 제공합니다. 오늘의 활동 중심으로 경량화된 정보를 제공합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/dashboard` | 학생의 현재 티어, 최근 풀이 기록, 추천 문제를 포함한 대시보드 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `DashboardResponse`<br><br>**DashboardResponse 구조:**<br>- `currentTier` (String): 현재 티어명 (예: "BRONZE")<br>- `currentTierLevel` (Int): 현재 티어의 Solved.ac 레벨 값<br>- `recentSolutions` (List<SolutionResponse>): 최근 풀이 기록 (최대 10개, 최신순)<br>- `recommendedProblems` (List<ProblemResponse>): 추천 문제 목록 (기본 3개)<br><br>**SolutionResponse 구조:**<br>- `problemId` (String): 문제 ID<br>- `timeTaken` (Long): 풀이 소요 시간 (초)<br>- `result` (String): 풀이 결과 ("SUCCESS", "FAIL", "TIME_OVER")<br>- `solvedAt` (LocalDateTime): 풀이 일시 (ISO 8601 형식)<br><br>**ProblemResponse 구조:**<br>(ProblemController 섹션 참고) | JWT Token |
+| GET | `/api/v1/dashboard` | 학생의 오늘의 활동(오늘 푼 문제), 기본 프로필 정보, 랜덤 명언을 포함한 대시보드 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `DashboardResponse`<br><br>**DashboardResponse 구조:**<br>- `studentProfile` (StudentProfileResponse): 학생 기본 정보<br>- `todaySolvedCount` (Int): 오늘 푼 문제 수<br>- `todaySolvedProblems` (List<TodaySolvedProblemResponse>): 오늘 푼 문제 목록<br>- `quote` (QuoteResponse, nullable): 랜덤 명언 (없으면 null)<br><br>**StudentProfileResponse 구조:**<br>- `nickname` (String): 닉네임<br>- `bojId` (String): BOJ ID<br>- `currentTier` (String): 현재 티어명 (예: "BRONZE")<br>- `currentTierLevel` (Int): 현재 티어의 Solved.ac 레벨 값<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br><br>**TodaySolvedProblemResponse 구조:**<br>- `problemId` (String): 문제 ID<br>- `result` (String): 풀이 결과 ("SUCCESS", "FAIL", "TIME_OVER")<br>- `solvedAt` (LocalDateTime): 풀이 일시 (ISO 8601 형식)<br><br>**QuoteResponse 구조:**<br>- `id` (String): 명언 ID<br>- `content` (String): 명언 내용<br>- `author` (String): 저자명 | JWT Token |
 
 **예시 요청:**
 ```http
@@ -285,33 +366,243 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **예시 응답:**
 ```json
 {
-  "currentTier": "BRONZE",
-  "currentTierLevel": 3,
-  "recentSolutions": [
+  "studentProfile": {
+    "nickname": "testuser",
+    "bojId": "testuser123",
+    "currentTier": "BRONZE",
+    "currentTierLevel": 3,
+    "consecutiveSolveDays": 5
+  },
+  "todaySolvedCount": 2,
+  "todaySolvedProblems": [
     {
       "problemId": "1000",
-      "timeTaken": 120,
       "result": "SUCCESS",
       "solvedAt": "2024-01-15T10:30:00"
     },
     {
       "problemId": "1001",
-      "timeTaken": 90,
       "result": "SUCCESS",
       "solvedAt": "2024-01-15T09:15:00"
     }
   ],
-  "recommendedProblems": [
-    {
-      "id": "2000",
-      "title": "두 수의 합",
-      "category": "MATH",
-      "difficulty": "SILVER",
-      "difficultyLevel": 6,
-      "url": "https://www.acmicpc.net/problem/2000"
-    }
-  ]
+  "quote": {
+    "id": "quote-id-1",
+    "content": "코딩은 90%의 디버깅과 10%의 버그 생성으로 이루어진다.",
+    "author": "Unknown"
+  }
 }
+```
+
+---
+
+## StudentController
+
+학생 프로필 관리 관련 API를 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| PATCH | `/api/v1/students/me` | 학생의 닉네임 및 비밀번호를 수정합니다. 닉네임과 비밀번호를 선택적으로 변경할 수 있으며, 비밀번호 변경 시 현재 비밀번호 검증이 필요합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - 유효성: `@Size(min=2, max=20)` (2자 이상 20자 이하)<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
+
+**예시 요청 (닉네임만 변경):**
+```http
+PATCH /api/v1/students/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "nickname": "newNickname"
+}
+```
+
+**예시 요청 (비밀번호만 변경):**
+```http
+PATCH /api/v1/students/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "currentPassword": "currentPassword123",
+  "newPassword": "newPassword123!"
+}
+```
+
+**예시 요청 (닉네임과 비밀번호 모두 변경):**
+```http
+PATCH /api/v1/students/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "nickname": "newNickname",
+  "currentPassword": "currentPassword123",
+  "newPassword": "newPassword123!"
+}
+```
+
+**예시 응답 (성공):**
+```
+204 No Content
+```
+
+**에러 응답 예시 (닉네임 중복):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "DUPLICATE_NICKNAME",
+  "message": "이미 사용 중인 닉네임입니다. nickname=newNickname"
+}
+```
+
+**에러 응답 예시 (현재 비밀번호 불일치):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "PASSWORD_MISMATCH",
+  "message": "현재 비밀번호가 일치하지 않습니다."
+}
+```
+
+**에러 응답 예시 (현재 비밀번호 없이 새 비밀번호 변경 시도):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_INVALID_INPUT",
+  "message": "비밀번호를 변경하려면 현재 비밀번호를 입력해야 합니다."
+}
+```
+
+**에러 응답 예시 (비밀번호 정책 위반):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "INVALID_PASSWORD",
+  "message": "영문, 숫자, 특수문자 3종류 이상 조합 시 최소 8자리 이상이어야 합니다."
+}
+```
+
+---
+
+## QuoteController
+
+명언 관련 API를 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/quotes/random` | DB에 저장된 명언 중 하나를 무작위로 반환합니다. | 없음 | `QuoteResponse`<br><br>**QuoteResponse 구조:**<br>- `id` (String): 명언 ID<br>- `content` (String): 명언 내용<br>- `author` (String): 저자명<br><br>DB에 명언이 없으면 `204 No Content` 응답 | None |
+
+**예시 요청:**
+```http
+GET /api/v1/quotes/random
+```
+
+**예시 응답:**
+```json
+{
+  "id": "quote-id-1",
+  "content": "코딩은 90%의 디버깅과 10%의 버그 생성으로 이루어진다.",
+  "author": "Unknown"
+}
+```
+
+**예시 응답 (명언 없음):**
+```
+204 No Content
+```
+
+---
+
+## StatisticsController
+
+통계 관련 API를 제공합니다. 무거운 통계 데이터를 별도로 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/statistics` | 학생의 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 12개월간의 월별 잔디 데이터<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `totalSolvedCount` (Int): 누적 풀이 수<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수 | JWT Token |
+
+**예시 요청:**
+```http
+GET /api/v1/statistics
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답:**
+```json
+{
+  "monthlyHeatmap": [
+    {
+      "date": "2024-01-15",
+      "count": 3
+    },
+    {
+      "date": "2024-01-16",
+      "count": 2
+    },
+    {
+      "date": "2024-01-17",
+      "count": 1
+    }
+  ],
+  "categoryDistribution": {},
+  "totalSolvedCount": 150
+}
+```
+
+---
+
+## LeaderboardController
+
+랭킹 조회 관련 API를 제공합니다. Rating(점수) 기준 상위 사용자들의 랭킹을 조회할 수 있습니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/ranks` | Rating(점수) 기준 상위 100명의 랭킹을 조회합니다. 동점자 처리: 점수가 같을 경우 먼저 가입한 순서로 정렬합니다. | 없음 | `List<LeaderboardResponse>`<br><br>**LeaderboardResponse 구조:**<br>- `rank` (Int): 순위 (1부터 시작)<br>- `nickname` (String): 닉네임<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br>- `profileImageUrl` (String, nullable): 프로필 이미지 URL (향후 확장용, 현재는 null) | None |
+
+**예시 요청:**
+```http
+GET /api/v1/ranks
+```
+
+**예시 응답:**
+```json
+[
+  {
+    "rank": 1,
+    "nickname": "topuser",
+    "tier": "DIAMOND",
+    "tierLevel": 23,
+    "rating": 3500,
+    "consecutiveSolveDays": 30,
+    "profileImageUrl": null
+  },
+  {
+    "rank": 2,
+    "nickname": "seconduser",
+    "tier": "PLATINUM",
+    "tierLevel": 18,
+    "rating": 2000,
+    "consecutiveSolveDays": 15,
+    "profileImageUrl": null
+  },
+  {
+    "rank": 3,
+    "nickname": "thirduser",
+    "tier": "GOLD",
+    "tierLevel": 13,
+    "rating": 1200,
+    "consecutiveSolveDays": 7,
+    "profileImageUrl": null
+  }
+]
+```
+
+**예시 응답 (랭킹이 비어있는 경우):**
+```json
+[]
 ```
 
 ---
