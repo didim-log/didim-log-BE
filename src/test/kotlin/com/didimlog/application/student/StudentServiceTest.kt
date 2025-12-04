@@ -124,11 +124,8 @@ class StudentServiceTest {
             )
         }
             .isInstanceOf(BusinessException::class.java)
-            .satisfies { exception ->
-                val businessException = exception as BusinessException
-                assertThat(businessException.errorCode).isEqualTo(ErrorCode.DUPLICATE_NICKNAME)
-                assertThat(businessException.message).contains("이미 사용 중인 닉네임입니다")
-            }
+            .matches({ (it as BusinessException).errorCode == ErrorCode.DUPLICATE_NICKNAME })
+            .hasMessageContaining("이미 사용 중인 닉네임입니다")
     }
 
     @Test
@@ -161,11 +158,8 @@ class StudentServiceTest {
             )
         }
             .isInstanceOf(BusinessException::class.java)
-            .satisfies { exception ->
-                val businessException = exception as BusinessException
-                assertThat(businessException.errorCode).isEqualTo(ErrorCode.PASSWORD_MISMATCH)
-                assertThat(businessException.message).contains("현재 비밀번호가 일치하지 않습니다")
-            }
+            .matches({ (it as BusinessException).errorCode == ErrorCode.PASSWORD_MISMATCH })
+            .hasMessageContaining("현재 비밀번호가 일치하지 않습니다")
     }
 
     @Test
@@ -194,11 +188,8 @@ class StudentServiceTest {
             )
         }
             .isInstanceOf(BusinessException::class.java)
-            .satisfies { exception ->
-                val businessException = exception as BusinessException
-                assertThat(businessException.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
-                assertThat(businessException.message).contains("현재 비밀번호를 입력해야 합니다")
-            }
+            .matches({ (it as BusinessException).errorCode == ErrorCode.COMMON_INVALID_INPUT })
+            .hasMessageContaining("현재 비밀번호를 입력해야 합니다")
     }
 
     @Test
@@ -218,10 +209,7 @@ class StudentServiceTest {
             )
         }
             .isInstanceOf(BusinessException::class.java)
-            .satisfies { exception ->
-                val businessException = exception as BusinessException
-                assertThat(businessException.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
-            }
+            .matches({ (it as BusinessException).errorCode == ErrorCode.STUDENT_NOT_FOUND })
     }
 }
 

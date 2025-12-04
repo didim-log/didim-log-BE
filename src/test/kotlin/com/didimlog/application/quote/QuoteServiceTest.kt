@@ -64,7 +64,7 @@ class QuoteServiceTest {
 
         // then
         verify(exactly = 1) { quoteRepository.count() }
-        verify(exactly = 0) { quoteRepository.saveAll(any()) }
+        verify(exactly = 0) { quoteRepository.saveAll(any<List<Quote>>()) }
     }
 
     @Test
