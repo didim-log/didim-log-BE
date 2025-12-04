@@ -66,9 +66,9 @@
 - [x] **[Service]** 통계 API 분리: 잔디(Heatmap) 및 카테고리별 통계 전용 API 구현
 
 ### 5-4. Retrospective Enhancement
-- [ ] **[Infra]** QueryDSL 설정 (동적 쿼리 및 정렬 기능 구현용)
-- [ ] **[Service]** 회고 목록 조회 고도화: 페이징, 정렬(최신/오래된/즐겨찾기), 카테고리 필터링 적용
-- [ ] **[API]** 회고 즐겨찾기 토글 API (`POST /.../bookmark`)
+- [x] **[Infra]** QueryDSL 설정 (동적 쿼리 및 정렬 기능 구현용)
+- [x] **[Service]** 회고 목록 조회 고도화: 페이징, 정렬(최신/오래된/즐겨찾기), 카테고리 필터링 적용
+- [x] **[API]** 회고 즐겨찾기 토글 API (`POST /.../bookmark`)
 
 ### 5-5. Leaderboard (Ranking)
 - [ ] **[Service]** 랭킹 집계 로직 (일간/주간/누적 회고 작성 수 기준)

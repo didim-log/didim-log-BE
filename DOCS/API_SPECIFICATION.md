@@ -232,8 +232,10 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. | **Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식) | None |
+| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. | **Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리 | None |
+| GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 0): 페이지 번호 (0부터 시작)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
+| POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
 
 **예시 요청 (회고 작성):**
@@ -254,6 +256,66 @@ Content-Type: application/json
   "problemId": "1000",
   "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
   "createdAt": "2024-01-15T10:30:00"
+}
+```
+
+**예시 요청 (회고 목록 조회 - 기본):**
+```http
+GET /api/v1/retrospectives?page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 키워드 검색):**
+```http
+GET /api/v1/retrospectives?keyword=DFS&page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 카테고리 필터):**
+```http
+GET /api/v1/retrospectives?category=DFS&page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 북마크 필터):**
+```http
+GET /api/v1/retrospectives?isBookmarked=true&page=0&size=10
+```
+
+**예시 요청 (회고 목록 조회 - 정렬):**
+```http
+GET /api/v1/retrospectives?sort=createdAt,asc&page=0&size=10
+```
+
+**예시 응답 (회고 목록 조회):**
+```json
+{
+  "content": [
+    {
+      "id": "retrospective-123",
+      "studentId": "student-123",
+      "problemId": "1000",
+      "content": "이 문제는 DFS를 사용해서 풀었습니다.",
+      "createdAt": "2024-01-15T10:30:00",
+      "isBookmarked": true,
+      "mainCategory": "DFS"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1,
+  "currentPage": 0,
+  "size": 10,
+  "hasNext": false,
+  "hasPrevious": false
+}
+```
+
+**예시 요청 (북마크 토글):**
+```http
+POST /api/v1/retrospectives/retrospective-123/bookmark
+```
+
+**예시 응답 (북마크 토글):**
+```json
+{
+  "isBookmarked": true
 }
 ```
 
