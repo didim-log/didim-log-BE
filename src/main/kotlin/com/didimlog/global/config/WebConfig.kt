@@ -11,19 +11,16 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
  */
 @Configuration
 class WebConfig : WebMvcConfigurer {
-    @Value("\${app.server.url}")
-    private val serverUrl: String? = null
+
+    @Value("\${app.cors.allowed-origins}")
+    private lateinit var allowedOriginsString: String
 
     override fun addCorsMappings(registry: CorsRegistry) {
+        val allowedOrigins = allowedOriginsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        
         registry.addMapping("/api/**")
-            .allowedOriginPatterns(
-                "http://localhost:3000",
-                "http://localhost:5173",
-                "https://*.web.app",
-                "https://didim-log-fe.web.app",
-                serverUrl
-            )
-            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+            .allowedOriginPatterns(*allowedOrigins.toTypedArray())
+            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
             .allowedHeaders("*")
             .allowCredentials(true)
             .maxAge(3600)

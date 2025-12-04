@@ -24,7 +24,7 @@ class SolvedAcWebClient(
                         .build()
                 }
                 .retrieve()
-                .onStatus({ it == HttpStatus.NOT_FOUND }) { response ->
+                .onStatus({ it == HttpStatus.NOT_FOUND }) { _ ->
                     log.warn("Solved.ac에서 문제를 찾을 수 없음: problemId=$problemId, status=404")
                     throw IllegalStateException("Solved.ac에서 문제를 찾을 수 없습니다. problemId=$problemId")
                 }
@@ -57,7 +57,7 @@ class SolvedAcWebClient(
                         .build()
                 }
                 .retrieve()
-                .onStatus({ it == HttpStatus.NOT_FOUND }) { response ->
+                .onStatus({ it == HttpStatus.NOT_FOUND }) { _ ->
                     log.warn("Solved.ac에서 사용자를 찾을 수 없음: bojId=${bojId.value}, status=404")
                     throw IllegalStateException("Solved.ac에서 사용자를 찾을 수 없습니다. bojId=${bojId.value}")
                 }

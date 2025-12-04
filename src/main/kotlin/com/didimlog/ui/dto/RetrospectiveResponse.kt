@@ -7,11 +7,14 @@ import java.time.LocalDateTime
  * 회고 응답 DTO
  */
 data class RetrospectiveResponse(
-    val id: String,
-    val studentId: String,
+    val id: String, // Retrospective 엔티티의 DB ID (@Id 필드)
+    val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
     val problemId: String,
     val content: String,
-    val createdAt: LocalDateTime
+    val summary: String?, // 한 줄 요약
+    val createdAt: LocalDateTime,
+    val isBookmarked: Boolean,
+    val mainCategory: String?
 ) {
     companion object {
         fun from(retrospective: Retrospective): RetrospectiveResponse {
@@ -20,7 +23,10 @@ data class RetrospectiveResponse(
                 studentId = retrospective.studentId,
                 problemId = retrospective.problemId,
                 content = retrospective.content,
-                createdAt = retrospective.createdAt
+                summary = retrospective.summary,
+                createdAt = retrospective.createdAt,
+                isBookmarked = retrospective.isBookmarked,
+                mainCategory = retrospective.mainCategory?.name
             )
         }
     }

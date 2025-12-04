@@ -47,8 +47,8 @@ class StudentTest {
     }
 
     @Test
-    @DisplayName("updateTier는 외부에서 가져온 티어 정보로 티어를 업데이트한다")
-    fun `updateTier로 티어 업데이트`() {
+    @DisplayName("updateInfo는 외부에서 가져온 Rating 점수로 티어를 업데이트한다")
+    fun `updateInfo로 티어 업데이트`() {
         // given
         val student = Student(
             nickname = Nickname("tester"),
@@ -57,8 +57,8 @@ class StudentTest {
             currentTier = Tier.BRONZE
         )
 
-        // when
-        val updatedStudent = student.updateTier(Tier.GOLD)
+        // when: Solved.ac API에서 가져온 Rating 점수로 업데이트 (GOLD 티어는 800점 이상)
+        val updatedStudent = student.updateInfo(800)
 
         // then
         assertThat(updatedStudent.tier()).isEqualTo(Tier.GOLD)
