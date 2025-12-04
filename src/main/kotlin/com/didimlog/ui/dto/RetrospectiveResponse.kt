@@ -11,7 +11,9 @@ data class RetrospectiveResponse(
     val studentId: String,
     val problemId: String,
     val content: String,
-    val createdAt: LocalDateTime
+    val createdAt: LocalDateTime,
+    val isBookmarked: Boolean,
+    val mainCategory: String?
 ) {
     companion object {
         fun from(retrospective: Retrospective): RetrospectiveResponse {
@@ -20,7 +22,9 @@ data class RetrospectiveResponse(
                 studentId = retrospective.studentId,
                 problemId = retrospective.problemId,
                 content = retrospective.content,
-                createdAt = retrospective.createdAt
+                createdAt = retrospective.createdAt,
+                isBookmarked = retrospective.isBookmarked,
+                mainCategory = retrospective.mainCategory?.name
             )
         }
     }
