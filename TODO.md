@@ -49,27 +49,30 @@
 - [x] **[Refactor]** 기존 임시 로그인 로직 제거 및 코드 정리
 
 ## Phase 5: Service Enhancement (v1.2)
-> **Goal:** 사용자 경험 개선, 게이미피케이션 요소 추가, 데이터 조회 기능 강화
+> **Goal:** 회고 중심의 랭킹 개편, 대시보드 시각화 강화, 그리고 소셜 로그인 및 본인 인증 도입
 
-### 5-1. Domain & DB Schema Update
-- [x] **[Domain]** `Quote` 엔티티 추가 (동기부여 명언 저장)
-- [x] **[Domain]** `Retrospective` 엔티티 수정: `mainCategory`(주요 풀이 알고리즘), `isBookmarked`(즐겨찾기) 필드 추가
-- [x] **[Domain]** `Student` 엔티티 수정: `consecutiveSolveDays`(연속 풀이 일수), `lastSolvedAt` 필드 추가
+### 5-1. Advanced Authentication (Auth 2.0)
+- [ ] **[Config]** OAuth2 Client 설정 (Google, Kakao, Naver) 및 Provider 구현
+- [ ] **[Domain]** `User` 엔티티 수정: 소셜 ID, 프로바이더, 약관 동의 여부, 별명 필드 추가
+- [ ] **[Feature]** BOJ 계정 소유권 인증 로직 구현 (상태 메시지 검증 방식)
+- [ ] **[UI]** 로그인 페이지 개편: 소셜 로그인 버튼, 회원가입(약관 동의 -> BOJ 인증 -> 닉네임 설정) 위저드 구현
 
-### 5-2. User & Profile Feature
-- [x] **[Service]** 내 정보 수정 로직 (닉네임 변경, 비밀번호 검증 및 변경)
-- [x] **[API]** 회원 정보 수정 API (`PATCH /api/v1/students/me`)
+### 5-2. Dashboard 2.0 (Motivation & Layout)
+- [ ] **[Logic]** 다음 티어까지 남은 경험치(Rating) 계산 및 게이지바(%) 로직 구현
+- [ ] **[UI]** 대시보드 레이아웃 전면 수정:
+  - 상단: 내 정보 + 티어 경험치 게이지바
+  - 중단: 추천 문제 카드 (크게 배치)
+  - 하단: 최근 풀이 활동 잔디 (전체 너비 채움)
+- [ ] **[Navigation]** 헤더 '내 정보' 버튼을 드롭다운 메뉴(내 정보, 랭킹, 로그아웃)로 변경
 
-### 5-3. Dashboard & Quote Feature
-- [x] **[Service]** 명언(Quote) 랜덤 조회 서비스 및 초기 데이터 시딩(Data Seeding)
-- [x] **[Service]** 대시보드 로직 변경: '오늘 푼 문제' 목록 반환 추가
-- [x] **[Service]** 통계 API 분리: 잔디(Heatmap) 및 카테고리별 통계 전용 API 구현
+### 5-3. Ranking System 2.0 (Retrospective Based)
+- [ ] **[Logic]** 랭킹 산정 기준 변경: '문제 풀이 수' -> **'회고 작성 수'**
+- [ ] **[Infra]** QueryDSL을 활용한 기간별(일/월/연) 집계 쿼리 구현
+- [ ] **[UI]** 랭킹 페이지 개편:
+  - 상단: "꾸준한 회고가 성장의 지름길입니다" 등 감사/동기부여 배너
+  - 리스트: 1~3위 강조형 카드, 4~100위 테이블 리스트
+  - 필터: 일간/월간/연간 정렬 탭 구현
 
-### 5-4. Retrospective Enhancement
-- [x] **[Infra]** QueryDSL 설정 (동적 쿼리 및 정렬 기능 구현용)
-- [x] **[Service]** 회고 목록 조회 고도화: 페이징, 정렬(최신/오래된/즐겨찾기), 카테고리 필터링 적용
-- [x] **[API]** 회고 즐겨찾기 토글 API (`POST /.../bookmark`)
-
-### 5-5. Leaderboard (Ranking)
-- [x] **[Service]** 랭킹 집계 로직 (Rating 기준 상위 100명 조회)
-- [x] **[API]** 랭킹 조회 API (`GET /api/v1/ranks`)
+### 5-4. User Profile & Settings
+- [ ] **[API]** 내 정보 수정 (닉네임 변경) API
+- [ ] **[UI]** 마이페이지 내 설정 탭 구현

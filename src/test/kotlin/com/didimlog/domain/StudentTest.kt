@@ -2,6 +2,8 @@ package com.didimlog.domain
 
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -20,9 +22,12 @@ class StudentTest {
         // given
         val student = Student(
             nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
             bojId = BojId("tester123"),
             password = "test-password",
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
         val problem = Problem(
             id = ProblemId("p-1"),
@@ -52,9 +57,12 @@ class StudentTest {
         // given
         val student = Student(
             nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
             bojId = BojId("tester123"),
             password = "test-password",
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
 
         // when: Solved.ac API에서 가져온 Rating 점수로 업데이트 (GOLD 티어는 800점 이상)
@@ -70,9 +78,12 @@ class StudentTest {
         // given
         val student = Student(
             nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
             bojId = BojId("tester123"),
             password = "test-password",
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
         val problem1 = Problem(
             id = ProblemId("p-1"),

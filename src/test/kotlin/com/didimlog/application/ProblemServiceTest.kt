@@ -3,6 +3,8 @@ package com.didimlog.application
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
@@ -116,10 +118,13 @@ class ProblemServiceTest {
         val bojId = BojId("tester123")
         val student = Student(
             nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = bojId.value,
             bojId = bojId,
             password = "test-password",
             rating = 100,
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
         every { studentRepository.findByBojId(bojId) } returns Optional.of(student)
 
@@ -166,10 +171,13 @@ class ProblemServiceTest {
         val bojId = BojId(bojIdString)
         val student = Student(
             nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = bojId.value,
             bojId = bojId,
             password = "test-password",
             rating = 500,
-            currentTier = Tier.SILVER
+            currentTier = Tier.SILVER,
+            role = Role.USER
         )
         every { studentRepository.findByBojId(bojId) } returns Optional.of(student)
 

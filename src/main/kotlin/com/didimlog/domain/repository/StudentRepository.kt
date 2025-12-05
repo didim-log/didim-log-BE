@@ -1,6 +1,7 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import java.util.Optional
@@ -13,6 +14,16 @@ interface StudentRepository : MongoRepository<Student, String> {
     fun existsByBojId(bojId: BojId): Boolean
 
     fun existsByNickname(nickname: Nickname): Boolean
+
+    /**
+     * 소셜 로그인 제공자와 제공자 ID로 사용자를 조회한다.
+     * OAuth2 소셜 로그인 시 사용자를 찾기 위해 사용된다.
+     *
+     * @param provider 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER, BOJ)
+     * @param providerId 소셜 로그인 제공자의 사용자 ID
+     * @return 해당하는 Student 또는 Optional.empty()
+     */
+    fun findByProviderAndProviderId(provider: Provider, providerId: String): Optional<Student>
 
     /**
      * Rating(점수) 기준 내림차순으로 상위 100명을 조회한다.

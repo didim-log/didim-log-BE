@@ -6,6 +6,8 @@ import com.didimlog.domain.Solutions
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
@@ -238,6 +240,69 @@ class RecommendationServiceTest {
         verify { problemRepository.findByLevelBetween(11, 12) }
     }
 
+    @Test
+    @DisplayName("카테고리 필터가 정확히 동작한다")
+    fun `카테고리 필터 동작 검증`() {
+        // given
+        val bojId = "test123"
+        val student = createStudent(
+            id = "student-1",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+        val implementationProblems = listOf(
+            createProblem(id = "p1", tier = Tier.SILVER, level = 6, category = ProblemCategory.IMPLEMENTATION),
+            createProblem(id = "p2", tier = Tier.SILVER, level = 7, category = ProblemCategory.IMPLEMENTATION)
+        )
+        val graphProblems = listOf(
+            createProblem(id = "p3", tier = Tier.SILVER, level = 6, category = ProblemCategory.GRAPH_THEORY)
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        // RecommendationService는 category를 englishName으로 변환하므로, 실제 호출되는 값으로 모킹
+        // "IMPLEMENTATION"은 "Implementation"으로 변환되어 호출됨
+        // "Graph Theory"는 그대로 "Graph Theory"로 호출됨 (englishName과 일치)
+        // Tier.BRONZE의 다음 티어는 SILVER이고, SILVER의 minLevel은 6이므로 (6, 7)이 호출됨
+        every { problemRepository.findByLevelBetweenAndCategory(any(), any(), ProblemCategory.IMPLEMENTATION.englishName) } returns implementationProblems
+        every { problemRepository.findByLevelBetweenAndCategory(any(), any(), ProblemCategory.GRAPH_THEORY.englishName) } returns graphProblems
+
+        // when
+        // RecommendationService는 category를 englishName으로 변환하므로, 실제로는 "Implementation"과 "Graph Theory"로 변환됨
+        val recommendedImplementation = recommendationService.recommendProblems(bojId, count = 5, category = "IMPLEMENTATION")
+        val recommendedGraph = recommendationService.recommendProblems(bojId, count = 5, category = ProblemCategory.GRAPH_THEORY.englishName)
+
+        // then
+        assertThat(recommendedImplementation).hasSize(2)
+        assertThat(recommendedImplementation).allMatch { it.category == ProblemCategory.IMPLEMENTATION }
+        assertThat(recommendedGraph).hasSize(1)
+        assertThat(recommendedGraph).allMatch { it.category == ProblemCategory.GRAPH_THEORY }
+        // 카테고리 필터가 정확히 동작하는지 결과로 검증 (MockK verify는 제외)
+    }
+
+    @Test
+    @DisplayName("카테고리 필터 적용 시 해당 카테고리 문제가 없으면 빈 리스트를 반환한다")
+    fun `카테고리 필터 적용 시 문제 없으면 빈 리스트 반환`() {
+        // given
+        val bojId = "test123"
+        val student = createStudent(
+            id = "student-1",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenAndCategory(6, 7, "DYNAMIC_PROGRAMMING") } returns emptyList()
+
+        // when
+        val recommended = recommendationService.recommendProblems(bojId, count = 5, category = "DYNAMIC_PROGRAMMING")
+
+        // then
+        assertThat(recommended).isEmpty()
+        verify { problemRepository.findByLevelBetweenAndCategory(6, 7, "DYNAMIC_PROGRAMMING") }
+    }
+
     private fun createStudent(
         id: String,
         bojId: String,
@@ -257,18 +322,26 @@ class RecommendationServiceTest {
         return Student(
             id = id,
             nickname = Nickname("test-user"),
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = "test-password",
             currentTier = tier,
+            role = Role.USER,
             solutions = solutions
         )
     }
 
-    private fun createProblem(id: String, tier: Tier, level: Int = tier.minLevel): Problem {
+    private fun createProblem(
+        id: String,
+        tier: Tier,
+        level: Int = tier.minLevel,
+        category: ProblemCategory = ProblemCategory.IMPLEMENTATION
+    ): Problem {
         return Problem(
             id = ProblemId(id),
             title = "Test Problem $id",
-            category = ProblemCategory.IMPLEMENTATION,
+            category = category,
             difficulty = tier,
             level = level,
             url = "https://www.acmicpc.net/problem/$id"

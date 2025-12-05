@@ -43,6 +43,38 @@ class JwtTokenProvider(
     }
 
     /**
+     * 사용자 ID와 Role을 기반으로 JWT 토큰을 생성한다.
+     * Role 정보를 Payload에 포함시켜 권한 기반 접근 제어에 사용한다.
+     *
+     * @param subject 토큰의 주체 (보통 사용자 ID 또는 BOJ ID)
+     * @param role 사용자 권한 (USER, ADMIN 등)
+     * @return 생성된 JWT 토큰
+     */
+    fun createToken(subject: String, role: String): String {
+        val now = Date()
+        val expiryDate = Date(now.time + expiration)
+
+        return Jwts.builder()
+            .subject(subject)
+            .claim("role", role)
+            .issuedAt(now)
+            .expiration(expiryDate)
+            .signWith(secretKey)
+            .compact()
+    }
+
+    /**
+     * JWT 토큰에서 Role을 추출한다.
+     *
+     * @param token JWT 토큰
+     * @return 토큰에 포함된 Role (없으면 null)
+     */
+    fun getRole(token: String): String? {
+        val claims = getClaims(token)
+        return claims["role"] as? String
+    }
+
+    /**
      * JWT 토큰에서 주체(Subject)를 추출한다.
      *
      * @param token JWT 토큰

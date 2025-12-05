@@ -4,6 +4,8 @@ import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
@@ -44,9 +46,12 @@ class StudyIntegrationTest {
         
         student = Student(
             nickname = Nickname("test-user-$testId"),
+            provider = Provider.BOJ,
+            providerId = "test$testId",
             bojId = BojId("test$testId"),
             password = "test-password",
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
         student = studentRepository.save(student)
 
@@ -99,7 +104,7 @@ class StudyIntegrationTest {
 
         successProblems.forEach { p ->
             studyService.submitSolution(
-                bojId = student.bojId.value,
+                bojId = student.bojId!!.value,
                 problemId = p.id.value,
                 timeTaken = 100L,
                 isSuccess = true
@@ -108,7 +113,7 @@ class StudyIntegrationTest {
 
         // when: 추가 문제를 성공적으로 풀어도
         studyService.submitSolution(
-            bojId = student.bojId.value,
+            bojId = student.bojId!!.value,
             problemId = problem.id.value,
             timeTaken = 120L,
             isSuccess = true
@@ -162,13 +167,13 @@ class StudyIntegrationTest {
 
         // when
         studyService.submitSolution(
-            bojId = student.bojId.value,
+            bojId = student.bojId!!.value,
             problemId = problem1.id.value,
             timeTaken = 100L,
             isSuccess = true
         )
         studyService.submitSolution(
-            bojId = student.bojId.value,
+            bojId = student.bojId!!.value,
             problemId = problem2.id.value,
             timeTaken = 120L,
             isSuccess = false

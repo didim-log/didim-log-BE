@@ -1,6 +1,8 @@
 package com.didimlog.application.student
 
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -38,9 +40,12 @@ class StudentServiceTest {
         val student = Student(
             id = "student-id",
             nickname = oldNickname,
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = "encoded-password",
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
@@ -73,9 +78,12 @@ class StudentServiceTest {
         val student = Student(
             id = "student-id",
             nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = encodedCurrentPassword,
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
@@ -106,9 +114,12 @@ class StudentServiceTest {
         val student = Student(
             id = "student-id",
             nickname = oldNickname,
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = "encoded-password",
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
@@ -140,9 +151,12 @@ class StudentServiceTest {
         val student = Student(
             id = "student-id",
             nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = encodedCurrentPassword,
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
@@ -171,9 +185,17 @@ class StudentServiceTest {
         val student = Student(
             id = "student-id",
             nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = "encoded-password",
-            currentTier = Tier.BRONZE
+            rating = 0,
+            currentTier = Tier.BRONZE,
+            role = Role.USER,
+            termsAgreed = true,
+            solutions = com.didimlog.domain.Solutions(),
+            consecutiveSolveDays = 0,
+            lastSolvedAt = null
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)

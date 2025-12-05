@@ -40,10 +40,17 @@ class DashboardService(
         val todaySolutions = getTodaySolutions(student)
         val quote = quoteService.getRandomQuote()
 
+        // 소셜 로그인 사용자의 경우 bojId가 null일 수 있으므로 처리
+        val bojIdValue = student.bojId?.value
+            ?: throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "BOJ 인증이 완료되지 않은 사용자입니다. BOJ 계정을 연동해주세요."
+            )
+
         return DashboardInfo(
             studentProfile = StudentProfile(
                 nickname = student.nickname.value,
-                bojId = student.bojId.value,
+                bojId = bojIdValue,
                 currentTier = student.tier(),
                 consecutiveSolveDays = student.consecutiveSolveDays
             ),

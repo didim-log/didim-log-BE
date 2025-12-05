@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Min
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -36,7 +37,8 @@ class RetrospectiveController(
     @Operation(
         summary = "회고 작성",
         description = "학생이 문제 풀이 후 회고를 작성합니다. 이미 작성한 회고가 있으면 수정됩니다. " +
-                "요청 본문에 content(필수, 10자 이상)와 summary(선택, 200자 이하)를 포함할 수 있습니다."
+                "요청 본문에 content(필수, 10자 이상), summary(선택, 200자 이하), " +
+                "resultType(선택, SUCCESS/FAIL), solvedCategory(선택, 50자 이하)를 포함할 수 있습니다."
     )
     @PostMapping
     fun writeRetrospective(
@@ -55,7 +57,9 @@ class RetrospectiveController(
             studentId = studentId,
             problemId = problemId,
             content = request.content,
-            summary = request.summary
+            summary = request.summary,
+            solutionResult = request.resultType,
+            solvedCategory = request.solvedCategory
         )
         val response = RetrospectiveResponse.from(retrospective)
         return ResponseEntity.ok(response)
@@ -83,8 +87,9 @@ class RetrospectiveController(
         @RequestParam(required = false)
         studentId: String?,
 
-        @Parameter(description = "페이지 번호 (0부터 시작)", required = false)
-        @RequestParam(defaultValue = "0")
+        @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
+        @RequestParam(defaultValue = "1")
+        @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
         page: Int,
 
         @Parameter(description = "페이지 크기", required = false)
@@ -149,7 +154,7 @@ class RetrospectiveController(
             Sort.by(Sort.Direction.DESC, "createdAt")
         }
 
-        return PageRequest.of(page, size, sortObj)
+        return PageRequest.of(page - 1, size, sortObj)
     }
 
     @Operation(
@@ -167,14 +172,18 @@ class RetrospectiveController(
 
     @Operation(
         summary = "회고 템플릿 생성",
-        description = "문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다."
+        description = "문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. " +
+                "resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다."
     )
     @GetMapping("/template")
     fun generateTemplate(
         @Parameter(description = "문제 ID", required = true)
-        @RequestParam problemId: String
+        @RequestParam problemId: String,
+        
+        @Parameter(description = "풀이 결과 타입 (SUCCESS/FAIL)", required = true)
+        @RequestParam resultType: com.didimlog.domain.enums.ProblemResult
     ): ResponseEntity<TemplateResponse> {
-        val template = retrospectiveService.generateTemplate(problemId)
+        val template = retrospectiveService.generateTemplate(problemId, resultType)
         val response = TemplateResponse(template = template)
         return ResponseEntity.ok(response)
     }

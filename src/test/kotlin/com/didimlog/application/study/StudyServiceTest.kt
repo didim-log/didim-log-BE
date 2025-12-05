@@ -3,6 +3,8 @@ package com.didimlog.application.study
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
@@ -97,9 +99,12 @@ class StudyServiceTest {
         val bojId = "tester123"
         val student = Student(
             nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = "test-password",
-            currentTier = Tier.BRONZE
+            currentTier = Tier.BRONZE,
+            role = Role.USER
         )
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
         every { problemRepository.findById("missing-problem") } returns Optional.empty()
