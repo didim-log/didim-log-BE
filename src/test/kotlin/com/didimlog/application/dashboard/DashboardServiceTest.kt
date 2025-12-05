@@ -5,6 +5,8 @@ import com.didimlog.domain.Quote
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -67,9 +69,12 @@ class DashboardServiceTest {
         val student = Student(
             id = "student-id",
             nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = "encoded-password",
             currentTier = Tier.BRONZE,
+            role = Role.USER,
             solutions = solutions,
             consecutiveSolveDays = 5
         )
@@ -114,9 +119,12 @@ class DashboardServiceTest {
         val student = Student(
             id = "student-id",
             nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
             bojId = BojId(bojId),
             password = "encoded-password",
             currentTier = Tier.BRONZE,
+            role = Role.USER,
             solutions = solutions
         )
 

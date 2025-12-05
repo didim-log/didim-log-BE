@@ -16,7 +16,7 @@ import java.time.LocalDateTime
 
 @DisplayName("Retrospective 검색 통합 테스트")
 @DataMongoTest
-class RetrospectiveSearchTest {
+class RetrospectiveSearchIntegrationTest {
 
     @Autowired
     private lateinit var retrospectiveRepository: RetrospectiveRepository

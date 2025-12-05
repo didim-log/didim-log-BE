@@ -19,7 +19,17 @@ data class Retrospective(
     val summary: String? = null, // 한 줄 요약
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val isBookmarked: Boolean = false,
-    val mainCategory: ProblemCategory? = null
+    val mainCategory: ProblemCategory? = null,
+    /**
+     * 해당 회고가 성공한 풀이인지 실패한 풀이인지 저장
+     * 사용자가 직접 선택한 결과임을 명시한다.
+     */
+    val solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
+    /**
+     * 사용자가 직접 선택한 풀이 전략(알고리즘) 태그
+     * 예: "BruteForce", "Greedy" 등
+     */
+    val solvedCategory: String? = null
 ) {
 
     init {
@@ -29,6 +39,13 @@ data class Retrospective(
     fun updateContent(newContent: String, newSummary: String? = null): Retrospective {
         validateContent(newContent)
         return copy(content = newContent, summary = newSummary)
+    }
+
+    fun updateSolutionInfo(
+        solutionResult: com.didimlog.domain.enums.ProblemResult?,
+        solvedCategory: String?
+    ): Retrospective {
+        return copy(solutionResult = solutionResult, solvedCategory = solvedCategory)
     }
 
     /**

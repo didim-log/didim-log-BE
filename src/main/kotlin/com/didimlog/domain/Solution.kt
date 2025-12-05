@@ -13,6 +13,10 @@ import java.time.LocalDateTime
 data class Solution(
     val problemId: ProblemId,
     val timeTaken: TimeTakenSeconds,
+    /**
+     * 문제 풀이 결과 (SUCCESS/FAIL)
+     * 사용자가 직접 선택한 결과임을 명시한다.
+     */
     val result: ProblemResult,
     val solvedAt: LocalDateTime = LocalDateTime.now()
 ) {
