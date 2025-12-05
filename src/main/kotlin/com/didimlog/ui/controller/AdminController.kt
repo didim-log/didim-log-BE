@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import org.springframework.data.domain.Page
@@ -46,16 +47,16 @@ class AdminController(
     )
     @GetMapping("/users")
     fun getAllUsers(
-        @Parameter(description = "페이지 번호 (0부터 시작, 기본값: 0)", required = false)
-        @RequestParam(defaultValue = "0")
-        @Positive(message = "페이지 번호는 0 이상이어야 합니다.")
+        @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
+        @RequestParam(defaultValue = "1")
+        @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
         page: Int,
         @Parameter(description = "페이지 크기 (기본값: 20)", required = false)
         @RequestParam(defaultValue = "20")
         @Positive(message = "페이지 크기는 1 이상이어야 합니다.")
         size: Int
     ): ResponseEntity<Page<AdminUserResponse>> {
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "rating"))
+        val pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "rating"))
         val users = adminService.getAllUsers(pageable)
         return ResponseEntity.ok(users)
     }
@@ -82,16 +83,16 @@ class AdminController(
     )
     @GetMapping("/quotes")
     fun getAllQuotes(
-        @Parameter(description = "페이지 번호 (0부터 시작, 기본값: 0)", required = false)
-        @RequestParam(defaultValue = "0")
-        @Positive(message = "페이지 번호는 0 이상이어야 합니다.")
+        @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
+        @RequestParam(defaultValue = "1")
+        @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
         page: Int,
         @Parameter(description = "페이지 크기 (기본값: 20)", required = false)
         @RequestParam(defaultValue = "20")
         @Positive(message = "페이지 크기는 1 이상이어야 합니다.")
         size: Int
     ): ResponseEntity<Page<QuoteResponse>> {
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"))
+        val pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "id"))
         val quotes = adminService.getAllQuotes(pageable)
         val response = quotes.map { QuoteResponse.from(it) }
         return ResponseEntity.ok(response)
@@ -134,16 +135,16 @@ class AdminController(
     )
     @GetMapping("/feedbacks")
     fun getAllFeedbacks(
-        @Parameter(description = "페이지 번호 (0부터 시작, 기본값: 0)", required = false)
-        @RequestParam(defaultValue = "0")
-        @Positive(message = "페이지 번호는 0 이상이어야 합니다.")
+        @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
+        @RequestParam(defaultValue = "1")
+        @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
         page: Int,
         @Parameter(description = "페이지 크기 (기본값: 20)", required = false)
         @RequestParam(defaultValue = "20")
         @Positive(message = "페이지 크기는 1 이상이어야 합니다.")
         size: Int
     ): ResponseEntity<Page<FeedbackResponse>> {
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        val pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
         val feedbacks = feedbackService.getAllFeedbacks(pageable)
         val response = feedbacks.map { FeedbackResponse.from(it) }
         return ResponseEntity.ok(response)

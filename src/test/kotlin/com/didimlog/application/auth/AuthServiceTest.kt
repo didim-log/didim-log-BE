@@ -162,4 +162,69 @@ class AuthServiceTest {
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
         assertThat(exception.message).contains("가입되지 않은 BOJ ID입니다")
     }
+
+    @Test
+    @DisplayName("정상적인 회원가입이 성공한다")
+    fun `정상적인 회원가입 성공`() {
+        // given
+        val bojId = "newuser"
+        val password = "ValidPassword123!"
+        val bojIdVo = BojId(bojId)
+        val userResponse = SolvedAcUserResponse(handle = "newuser", rating = 100)
+        val encodedPassword = "encoded-password"
+        val token = "jwt-token"
+
+        mockkObject(PasswordValidator)
+        every { PasswordValidator.validate(password) } returns Unit
+        every { solvedAcClient.fetchUser(bojIdVo) } returns userResponse
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
+        every { passwordEncoder.encode(password) } returns encodedPassword
+        every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns token
+        every { studentRepository.save(any()) } answers { firstArg() }
+
+        // when
+        val result = authService.signup(bojId, password)
+
+        // then
+        assertThat(result.token).isEqualTo(token)
+        assertThat(result.rating).isEqualTo(100)
+        assertThat(result.tier).isEqualTo(Tier.BRONZE)
+        verify(exactly = 1) { studentRepository.save(any()) }
+        unmockkObject(PasswordValidator)
+    }
+
+    @Test
+    @DisplayName("정상적인 로그인이 성공한다")
+    fun `정상적인 로그인 성공`() {
+        // given
+        val bojId = "testuser"
+        val password = "ValidPassword123!"
+        val bojIdVo = BojId(bojId)
+        val student = Student(
+            id = "student1",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = bojIdVo,
+            password = "encoded-password",
+            rating = 100,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val token = "jwt-token"
+
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { student.matchPassword(password, passwordEncoder) } returns true
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(handle = "testuser", rating = 100)
+        every { studentRepository.save(any()) } answers { firstArg() }
+        every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns token
+
+        // when
+        val result = authService.login(bojId, password)
+
+        // then
+        assertThat(result.token).isEqualTo(token)
+        assertThat(result.rating).isEqualTo(100)
+        assertThat(result.tier).isEqualTo(Tier.BRONZE)
+    }
 }

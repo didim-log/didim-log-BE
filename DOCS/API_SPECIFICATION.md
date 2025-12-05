@@ -271,7 +271,7 @@ Content-Type: application/json
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. | **Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그 | None |
-| GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 0): 페이지 번호 (0부터 시작)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
+| GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br>- `resultType` (ProblemResult, required): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - SUCCESS: 성공 템플릿 (핵심 접근, 시간/공간 복잡도, 개선할 점)<br>  - FAIL/TIME_OVER: 실패 템플릿 (실패 원인, 부족했던 개념, 다음 시도 계획) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
@@ -679,7 +679,7 @@ GET /api/v1/ranks
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/admin/users` | 페이징을 적용하여 전체 회원 목록을 조회합니다. Rating 기준 내림차순으로 정렬됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 0): 페이지 번호 (0부터 시작)<br>  - 유효성: `@Positive` (0 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<AdminUserResponse>`<br><br>**AdminUserResponse 구조:**<br>- `id` (String): 학생 ID<br>- `nickname` (String): 닉네임<br>- `bojId` (String, nullable): BOJ ID (소셜 로그인 사용자는 null)<br>- `email` (String, nullable): 이메일 (소셜 로그인 사용자만 존재)<br>- `provider` (String): 인증 제공자 (BOJ, GOOGLE, GITHUB, NAVER)<br>- `role` (String): 사용자 권한 (GUEST, USER, ADMIN)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `currentTier` (String): 현재 티어명 (예: "GOLD")<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br><br>**Page 구조:**<br>- `content` (List<AdminUserResponse>): 회원 목록<br>- `totalElements` (Long): 전체 회원 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/users` | 페이징을 적용하여 전체 회원 목록을 조회합니다. Rating 기준 내림차순으로 정렬됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<AdminUserResponse>`<br><br>**AdminUserResponse 구조:**<br>- `id` (String): 학생 ID<br>- `nickname` (String): 닉네임<br>- `bojId` (String, nullable): BOJ ID (소셜 로그인 사용자는 null)<br>- `email` (String, nullable): 이메일 (소셜 로그인 사용자만 존재)<br>- `provider` (String): 인증 제공자 (BOJ, GOOGLE, GITHUB, NAVER)<br>- `role` (String): 사용자 권한 (GUEST, USER, ADMIN)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `currentTier` (String): 현재 티어명 (예: "GOLD")<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br><br>**Page 구조:**<br>- `content` (List<AdminUserResponse>): 회원 목록<br>- `totalElements` (Long): 전체 회원 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | JWT Token (ADMIN) |
 | DELETE | `/api/v1/admin/users/{studentId}` | 특정 회원을 강제로 탈퇴시킵니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `studentId` (String, required): 학생 ID | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): 응답 메시지 ("회원이 성공적으로 탈퇴되었습니다.") | JWT Token (ADMIN) |
 
 **예시 요청 (전체 회원 목록 조회):**
@@ -757,10 +757,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 }
 ```
 
-| GET | `/api/v1/admin/quotes` | 페이징을 적용하여 명언 목록을 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 0): 페이지 번호 (0부터 시작)<br>  - 유효성: `@Positive` (0 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<QuoteResponse>`<br><br>**QuoteResponse 구조:**<br>- `id` (String): 명언 ID<br>- `content` (String): 명언 내용<br>- `author` (String): 저자명<br><br>**Page 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/quotes` | 페이징을 적용하여 명언 목록을 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<QuoteResponse>`<br><br>**QuoteResponse 구조:**<br>- `id` (String): 명언 ID<br>- `content` (String): 명언 내용<br>- `author` (String): 저자명<br><br>**Page 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/quotes` | 새로운 명언을 추가합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`QuoteCreateRequest`<br>- `content` (String, required): 명언 내용<br>  - 유효성: `@NotBlank`<br>- `author` (String, required): 저자명<br>  - 유효성: `@NotBlank` | `QuoteResponse`<br><br>**QuoteResponse 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
 | DELETE | `/api/v1/admin/quotes/{quoteId}` | 특정 명언을 삭제합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `quoteId` (String, required): 명언 ID | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): 응답 메시지 ("명언이 성공적으로 삭제되었습니다.") | JWT Token (ADMIN) |
-| GET | `/api/v1/admin/feedbacks` | 페이징을 적용하여 피드백 목록을 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 0): 페이지 번호 (0부터 시작)<br>  - 유효성: `@Positive` (0 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<FeedbackResponse>`<br><br>**FeedbackResponse 구조:**<br>- `id` (String): 피드백 ID<br>- `writerId` (String): 작성자 ID (Student ID)<br>- `content` (String): 피드백 내용<br>- `type` (String): 피드백 유형 ("BUG", "SUGGESTION")<br>- `status` (String): 처리 상태 ("PENDING", "COMPLETED")<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시<br><br>**Page 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/feedbacks` | 페이징을 적용하여 피드백 목록을 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<FeedbackResponse>`<br><br>**FeedbackResponse 구조:**<br>- `id` (String): 피드백 ID<br>- `writerId` (String): 작성자 ID (Student ID)<br>- `content` (String): 피드백 내용<br>- `type` (String): 피드백 유형 ("BUG", "SUGGESTION")<br>- `status` (String): 처리 상태 ("PENDING", "COMPLETED")<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시<br><br>**Page 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
 | PATCH | `/api/v1/admin/feedbacks/{feedbackId}/status` | 피드백의 처리 상태를 변경합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `feedbackId` (String, required): 피드백 ID<br><br>**Request Body:**<br>`FeedbackStatusUpdateRequest`<br>- `status` (FeedbackStatus, required): 새로운 상태 ("PENDING", "COMPLETED") | `FeedbackResponse`<br><br>**FeedbackResponse 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
 
 **예시 요청 (명언 목록 조회):**
@@ -1003,23 +1003,35 @@ JWT 토큰 기반 인증을 지원합니다.
 
 **주요 에러 코드:**
 - `COMMON_INVALID_INPUT` (400): 입력값이 올바르지 않음
-- `COMMON_VALIDATION_FAILED` (400): 유효성 검사 실패
+- `COMMON_VALIDATION_FAILED` (400): 유효성 검사 실패 (DTO 검증 실패, 쿼리 파라미터 검증 실패 등)
 - `INVALID_PASSWORD` (400): 비밀번호 정책 위반 (복잡도 검증 실패)
 - `COMMON_RESOURCE_NOT_FOUND` (404): 요청한 자원을 찾을 수 없음
 - `STUDENT_NOT_FOUND` (404): 학생을 찾을 수 없음
 - `PROBLEM_NOT_FOUND` (404): 문제를 찾을 수 없음
 - `RETROSPECTIVE_NOT_FOUND` (404): 회고를 찾을 수 없음
+- `QUOTE_NOT_FOUND` (404): 명언을 찾을 수 없음
+- `FEEDBACK_NOT_FOUND` (404): 피드백을 찾을 수 없음
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
 
 **예시 에러 응답:**
 
-유효성 검사 실패 (400):
+유효성 검사 실패 - DTO 검증 (400):
 ```json
 {
   "status": 400,
   "error": "Bad Request",
   "code": "COMMON_VALIDATION_FAILED",
   "message": "content: 회고 내용은 10자 이상이어야 합니다."
+}
+```
+
+유효성 검사 실패 - 쿼리 파라미터 검증 (400):
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_VALIDATION_FAILED",
+  "message": "getAllUsers.page: 페이지 번호는 1 이상이어야 합니다."
 }
 ```
 
@@ -1033,10 +1045,32 @@ JWT 토큰 기반 인증을 지원합니다.
 }
 ```
 
+명언 없음 (404):
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "code": "QUOTE_NOT_FOUND",
+  "message": "명언을 찾을 수 없습니다."
+}
+```
+
+피드백 없음 (404):
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "code": "FEEDBACK_NOT_FOUND",
+  "message": "피드백을 찾을 수 없습니다."
+}
+```
+
 ### 유효성 검사 실패 시
 - `@NotBlank`, `@NotNull` 위반: 400 Bad Request (`COMMON_VALIDATION_FAILED`)
-- `@Size`, `@Positive` 위반: 400 Bad Request (`COMMON_VALIDATION_FAILED`)
-- 존재하지 않는 리소스 조회: 404 Not Found (해당 리소스에 맞는 에러 코드, 예: `STUDENT_NOT_FOUND`, `PROBLEM_NOT_FOUND`, `RETROSPECTIVE_NOT_FOUND`)
+- `@Size`, `@Positive`, `@Min` 위반: 400 Bad Request (`COMMON_VALIDATION_FAILED`)
+  - 쿼리 파라미터 검증 실패 시 `ConstraintViolationException` 발생
+  - 예: `page` 파라미터가 1 미만인 경우 "페이지 번호는 1 이상이어야 합니다." 메시지 반환
+- 존재하지 않는 리소스 조회: 404 Not Found (해당 리소스에 맞는 에러 코드, 예: `STUDENT_NOT_FOUND`, `PROBLEM_NOT_FOUND`, `RETROSPECTIVE_NOT_FOUND`, `QUOTE_NOT_FOUND`, `FEEDBACK_NOT_FOUND`)
 
 ### 날짜/시간 형식
 모든 날짜/시간 필드는 ISO 8601 형식을 따릅니다:

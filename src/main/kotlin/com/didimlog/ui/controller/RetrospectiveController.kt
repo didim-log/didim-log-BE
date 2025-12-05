@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Min
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -86,8 +87,9 @@ class RetrospectiveController(
         @RequestParam(required = false)
         studentId: String?,
 
-        @Parameter(description = "페이지 번호 (0부터 시작)", required = false)
-        @RequestParam(defaultValue = "0")
+        @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
+        @RequestParam(defaultValue = "1")
+        @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
         page: Int,
 
         @Parameter(description = "페이지 크기", required = false)
@@ -152,7 +154,7 @@ class RetrospectiveController(
             Sort.by(Sort.Direction.DESC, "createdAt")
         }
 
-        return PageRequest.of(page, size, sortObj)
+        return PageRequest.of(page - 1, size, sortObj)
     }
 
     @Operation(
