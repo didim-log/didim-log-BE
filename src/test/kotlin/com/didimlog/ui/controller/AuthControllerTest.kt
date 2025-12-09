@@ -218,3 +218,4 @@ class AuthControllerTest {
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
     }
 }
+

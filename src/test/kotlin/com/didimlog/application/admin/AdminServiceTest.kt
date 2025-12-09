@@ -176,3 +176,4 @@ class AdminServiceTest {
         assertThat(exception.message).contains("학생을 찾을 수 없습니다")
     }
 }
+

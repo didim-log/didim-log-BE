@@ -77,3 +77,4 @@ class QuoteControllerTest {
             .andExpect(status().isNoContent)
     }
 }
+

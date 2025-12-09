@@ -142,3 +142,4 @@ class RankingControllerTest {
             .andExpect(status().isBadRequest)
     }
 }
+

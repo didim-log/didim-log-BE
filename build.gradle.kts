@@ -57,9 +57,17 @@ tasks.withType<Test> {
 
 // 단위 테스트 태스크: 파일명 패턴 **/*Test.kt 포함, **/*IntegrationTest.kt 제외
 // DB나 Spring Context 없이 빠르게 실행되는 테스트만 수행
+// @SpringBootTest를 사용하는 테스트는 통합 테스트로 간주하여 제외
 tasks.named<Test>("test") {
 	exclude("**/*IntegrationTest.kt")
 	exclude("**/*IT.kt")
+	exclude("**/DidimLogApplicationTests.kt")
+	exclude("**/DidimLogApplicationIntegrationTests.kt")
+	exclude("**/JwtTokenProviderTest.kt") // @SpringBootTest 사용
+	exclude("**/SecurityIntegrationTest.kt")
+	exclude("**/StudyIntegrationTest.kt")
+	exclude("**/RetrospectiveSearchIntegrationTest.kt")
+	exclude("**/JwtTokenProviderIntegrationTest.kt")
 }
 
 // 통합 테스트 태스크: 파일명 패턴 **/*IntegrationTest.kt 또는 **/*IT.kt만 포함
@@ -71,7 +79,15 @@ tasks.register<Test>("integrationTest") {
 	useJUnitPlatform()
 	include("**/*IntegrationTest.kt")
 	include("**/*IT.kt")
+	include("**/DidimLogApplicationTests.kt")
+	include("**/DidimLogApplicationIntegrationTests.kt")
+	include("**/JwtTokenProviderTest.kt") // @SpringBootTest 사용
+	include("**/SecurityIntegrationTest.kt")
+	include("**/StudyIntegrationTest.kt")
+	include("**/RetrospectiveSearchIntegrationTest.kt")
+	include("**/JwtTokenProviderIntegrationTest.kt")
 	
 	// 통합 테스트는 단위 테스트가 완료된 후 실행
 	mustRunAfter("test")
 }
+
