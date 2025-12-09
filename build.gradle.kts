@@ -59,15 +59,15 @@ tasks.withType<Test> {
 // DB나 Spring Context 없이 빠르게 실행되는 테스트만 수행
 // @SpringBootTest를 사용하는 테스트는 통합 테스트로 간주하여 제외
 tasks.named<Test>("test") {
-	exclude("**/*IntegrationTest.kt")
-	exclude("**/*IT.kt")
-	exclude("**/DidimLogApplicationTests.kt")
-	exclude("**/DidimLogApplicationIntegrationTests.kt")
-	exclude("**/JwtTokenProviderTest.kt") // @SpringBootTest 사용
-	exclude("**/SecurityIntegrationTest.kt")
-	exclude("**/StudyIntegrationTest.kt")
-	exclude("**/RetrospectiveSearchIntegrationTest.kt")
-	exclude("**/JwtTokenProviderIntegrationTest.kt")
+	exclude("**/*IntegrationTest.class")
+	exclude("**/*IT.class")
+	exclude("**/DidimLogApplicationTests.class")
+	exclude("**/DidimLogApplicationIntegrationTests.class")
+	exclude("**/JwtTokenProviderTest.class") // @SpringBootTest 사용
+	exclude("**/SecurityIntegrationTest.class")
+	exclude("**/StudyIntegrationTest.class")
+	exclude("**/RetrospectiveSearchIntegrationTest.class")
+	exclude("**/JwtTokenProviderIntegrationTest.class")
 }
 
 // 통합 테스트 태스크: 파일명 패턴 **/*IntegrationTest.kt 또는 **/*IT.kt만 포함
@@ -77,15 +77,15 @@ tasks.register<Test>("integrationTest") {
 	group = "verification"
 	description = "Runs integration tests"
 	useJUnitPlatform()
-	include("**/*IntegrationTest.kt")
-	include("**/*IT.kt")
-	include("**/DidimLogApplicationTests.kt")
-	include("**/DidimLogApplicationIntegrationTests.kt")
-	include("**/JwtTokenProviderTest.kt") // @SpringBootTest 사용
-	include("**/SecurityIntegrationTest.kt")
-	include("**/StudyIntegrationTest.kt")
-	include("**/RetrospectiveSearchIntegrationTest.kt")
-	include("**/JwtTokenProviderIntegrationTest.kt")
+	include("**/*IntegrationTest.class")
+	include("**/*IT.class")
+	include("**/DidimLogApplicationTests.class")
+	include("**/DidimLogApplicationIntegrationTests.class")
+	include("**/JwtTokenProviderTest.class") // @SpringBootTest 사용
+	include("**/SecurityIntegrationTest.class")
+	include("**/StudyIntegrationTest.class")
+	include("**/RetrospectiveSearchIntegrationTest.class")
+	include("**/JwtTokenProviderIntegrationTest.class")
 	
 	// 통합 테스트는 단위 테스트가 완료된 후 실행
 	mustRunAfter("test")
