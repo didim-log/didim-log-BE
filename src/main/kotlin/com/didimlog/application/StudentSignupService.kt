@@ -3,11 +3,11 @@ package com.didimlog.application
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.infra.solvedac.SolvedAcClient
-import com.didimlog.infra.solvedac.SolvedAcTierMapper
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -27,7 +27,7 @@ class StudentSignupService(
         }
 
         val user = solvedAcClient.fetchUser(bojIdVo)
-        val initialTier = SolvedAcTierMapper.fromUserTier(user.tier)
+        val initialTier = Tier.fromRating(user.rating)
 
         val student = Student(
             nickname = nicknameVo,
