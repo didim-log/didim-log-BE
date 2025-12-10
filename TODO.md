@@ -30,6 +30,8 @@
 - [x] **[Service]** `StudyService`: 문제 풀이 트랜잭션 로직
 - [x] **[Service]** `RecommendationService`: 무한 성장 추천 알고리즘
 - [x] **[API]** 문제 추천 및 풀이 제출 API 구현
+- [x] **[Service]** `RankingService`: 사용자 Rating 기준 랭킹 조회 서비스 구현
+- [x] **[API]** 랭킹 조회 API 구현 (`/api/v1/ranks`)
 
 ## Phase 3: Retrospective & Dashboard
 > **Goal:** 회고 작성 기능 및 메인 대시보드 API
@@ -37,6 +39,8 @@
 - [x] **[Service]** `RetrospectiveService`: 회고 CRUD 및 템플릿 생성
 - [x] **[Service]** `DashboardService`: 대시보드 데이터 Aggregation
 - [x] **[API]** 회고 및 대시보드 API 구현
+- [x] **[Feature]** 회고에 한 줄 요약(summary) 필드 추가
+- [x] **[Feature]** 회고 검색 및 북마크 기능 구현
 
 ## Phase 4: Security & Authentication (New ⭐)
 > **Goal:** Solved.ac 인증 기반의 진짜 회원가입 및 JWT 보안 적용
@@ -47,17 +51,27 @@
 - [x] **[Service]** `AuthService`: Solved.ac 실명 인증 및 회원가입/로그인 로직 구현
 - [x] **[API]** `AuthController`: 로그인/회원가입 API 및 문서화 (`API_SPECIFICATION.md`)
 - [x] **[Refactor]** 기존 임시 로그인 로직 제거 및 코드 정리
+- [x] **[Config]** OAuth2 Client 설정 (Google, GitHub, Naver) 및 Provider 구현
+- [x] **[Test]** OAuth2 및 JWT 테스트 설정 추가
 
-## Phase 5: Service Enhancement (v1.2)
+## Phase 5: Code Quality & Documentation
+> **Goal:** 코드 품질 향상, 문서화, 및 프로젝트 정리
+
+- [x] **[Docs]** API 명세서 최신화 (DELETE 엔드포인트 추가, 페이지네이션 1-based로 수정)
+- [x] **[Refactor]** 클린코드 리팩토링 (else 키워드를 Early Return 패턴으로 변경)
+- [x] **[Cleanup]** 불필요한 공백 및 코드 정리 (파일 끝 공백 라인 제거, 라인 끝 공백 제거)
+- [x] **[Docs]** FE TODO.md에 백엔드 완료 작업 반영
+
+## Phase 6: Service Enhancement (v1.2)
 > **Goal:** 회고 중심의 랭킹 개편, 대시보드 시각화 강화, 그리고 소셜 로그인 및 본인 인증 도입
 
-### 5-1. Advanced Authentication (Auth 2.0)
+### 6-1. Advanced Authentication (Auth 2.0)
 - [ ] **[Config]** OAuth2 Client 설정 (Google, Kakao, Naver) 및 Provider 구현
 - [ ] **[Domain]** `User` 엔티티 수정: 소셜 ID, 프로바이더, 약관 동의 여부, 별명 필드 추가
 - [ ] **[Feature]** BOJ 계정 소유권 인증 로직 구현 (상태 메시지 검증 방식)
 - [ ] **[UI]** 로그인 페이지 개편: 소셜 로그인 버튼, 회원가입(약관 동의 -> BOJ 인증 -> 닉네임 설정) 위저드 구현
 
-### 5-2. Dashboard 2.0 (Motivation & Layout)
+### 6-2. Dashboard 2.0 (Motivation & Layout)
 - [ ] **[Logic]** 다음 티어까지 남은 경험치(Rating) 계산 및 게이지바(%) 로직 구현
 - [ ] **[UI]** 대시보드 레이아웃 전면 수정:
   - 상단: 내 정보 + 티어 경험치 게이지바
@@ -65,7 +79,7 @@
   - 하단: 최근 풀이 활동 잔디 (전체 너비 채움)
 - [ ] **[Navigation]** 헤더 '내 정보' 버튼을 드롭다운 메뉴(내 정보, 랭킹, 로그아웃)로 변경
 
-### 5-3. Ranking System 2.0 (Retrospective Based)
+### 6-3. Ranking System 2.0 (Retrospective Based)
 - [ ] **[Logic]** 랭킹 산정 기준 변경: '문제 풀이 수' -> **'회고 작성 수'**
 - [ ] **[Infra]** QueryDSL을 활용한 기간별(일/월/연) 집계 쿼리 구현
 - [ ] **[UI]** 랭킹 페이지 개편:
@@ -73,6 +87,6 @@
   - 리스트: 1~3위 강조형 카드, 4~100위 테이블 리스트
   - 필터: 일간/월간/연간 정렬 탭 구현
 
-### 5-4. User Profile & Settings
-- [ ] **[API]** 내 정보 수정 (닉네임 변경) API
+### 6-4. User Profile & Settings
+- [x] **[API]** 내 정보 수정 (닉네임 변경) API
 - [ ] **[UI]** 마이페이지 내 설정 탭 구현
