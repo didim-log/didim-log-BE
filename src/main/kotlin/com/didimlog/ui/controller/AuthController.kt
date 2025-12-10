@@ -128,7 +128,7 @@ class AuthController(
 
     @Operation(
         summary = "가입 마무리",
-        description = "소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되고 정식 Access Token이 발급됩니다."
+        description = "소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되고 정식 Access Token이 발급됩니다."
     )
     @ApiResponses(
         value = [
@@ -147,13 +147,18 @@ class AuthController(
     )
     @PostMapping("/signup/finalize")
     fun finalizeSignup(
-        authentication: Authentication,
         @RequestBody
         @Valid
         request: SignupFinalizeRequest
     ): ResponseEntity<AuthResponse> {
-        val studentId = authentication.name // JWT 토큰의 subject(studentId)
-        val result = authService.finalizeSignup(studentId, request.nickname, request.termsAgreed)
+        val result = authService.finalizeSignup(
+            email = request.email,
+            provider = request.provider,
+            providerId = request.providerId,
+            nickname = request.nickname,
+            bojId = request.bojId,
+            termsAgreed = request.termsAgreed
+        )
         val response = AuthResponse.signup(
             token = result.token,
             rating = result.rating,

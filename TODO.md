@@ -53,6 +53,9 @@
 - [x] **[Refactor]** 기존 임시 로그인 로직 제거 및 코드 정리
 - [x] **[Config]** OAuth2 Client 설정 (Google, GitHub, Naver) 및 Provider 구현
 - [x] **[Test]** OAuth2 및 JWT 테스트 설정 추가
+- [x] **[Handler]** OAuth2SuccessHandler 구현: 신규 유저는 DB 저장 없이 쿼리 파라미터로 전달, 기존 유저는 JWT 토큰 발급
+- [x] **[Service]** AuthService.finalizeSignup: 소셜 로그인 신규 유저의 Student 엔티티 생성 로직 구현
+- [x] **[API]** AuthController.finalizeSignup: 회원가입 마무리 API (email, provider, providerId, nickname, bojId, termsAgreed)
 
 ## Phase 5: Code Quality & Documentation
 > **Goal:** 코드 품질 향상, 문서화, 및 프로젝트 정리

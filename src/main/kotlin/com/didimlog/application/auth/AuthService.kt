@@ -286,37 +286,109 @@ class AuthService(
 
     /**
      * 소셜 로그인 후 가입 마무리를 처리한다.
-     * 약관 동의 및 닉네임 설정을 완료하고, GUEST에서 USER로 역할을 변경한다.
+     * 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의 및 닉네임 설정을 완료하여 GUEST에서 USER로 역할을 변경한다.
      *
-     * @param studentId 현재 사용자 ID (JWT 토큰에서 추출)
+     * @param email 사용자 이메일 (nullable)
+     * @param provider 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)
+     * @param providerId 제공자별 사용자 ID
      * @param nickname 설정할 닉네임
+     * @param bojId BOJ ID (선택사항, 나중에 연동 가능)
      * @param termsAgreed 약관 동의 여부
      * @return 인증 결과 (토큰, Rating, Tier)
-     * @throws BusinessException 사용자를 찾을 수 없거나 약관 동의가 false인 경우
+     * @throws BusinessException 약관 동의가 false이거나 닉네임이 중복되는 경우
      */
     @Transactional
-    fun finalizeSignup(studentId: String, nickname: String, termsAgreed: Boolean): AuthResult {
-        val student = studentRepository.findById(studentId)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. studentId=$studentId")
-            }
-
+    fun finalizeSignup(
+        email: String?,
+        provider: String,
+        providerId: String,
+        nickname: String,
+        bojId: String?,
+        termsAgreed: Boolean
+    ): AuthResult {
         // 약관 동의 확인
         if (!termsAgreed) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "약관 동의는 필수입니다.")
         }
 
-        // 닉네임 중복 체크
-        val nicknameVo = Nickname(nickname)
-        if (studentRepository.existsByNickname(nicknameVo) && student.nickname != nicknameVo) {
-            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 닉네임입니다. nickname=$nickname")
+        // Provider Enum 변환
+        val providerEnum = try {
+            Provider.valueOf(provider.uppercase())
+        } catch (e: IllegalArgumentException) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 프로바이더입니다. provider=$provider")
         }
 
-        // 가입 마무리 수행
-        val finalizedStudent = student.finalizeSignup(nickname, termsAgreed)
-        val savedStudent = studentRepository.save(finalizedStudent)
+        // 이미 가입된 사용자인지 확인 (provider + providerId로 조회)
+        val existingStudent = studentRepository.findByProviderAndProviderId(providerEnum, providerId)
+        
+        val savedStudent = if (existingStudent.isPresent) {
+            // 기존 유저: 닉네임 및 약관 동의 업데이트
+            val student = existingStudent.get()
+            val nicknameVo = Nickname(nickname)
+            
+            // 닉네임 중복 체크 (다른 사용자가 사용 중인 경우)
+            if (studentRepository.existsByNickname(nicknameVo) && student.nickname != nicknameVo) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 닉네임입니다. nickname=$nickname")
+            }
+            
+            val finalizedStudent = student.finalizeSignup(nickname, termsAgreed)
+            studentRepository.save(finalizedStudent)
+        } else {
+            // 신규 유저: Student 엔티티 생성
+            val nicknameVo = Nickname(nickname)
+            
+            // 닉네임 중복 체크
+            if (studentRepository.existsByNickname(nicknameVo)) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 닉네임입니다. nickname=$nickname")
+            }
+            
+            val bojIdVo = bojId?.let { BojId(it) }
+            
+            // BOJ ID가 제공된 경우 Solved.ac API로 검증 및 Rating 조회
+            val (rating, tier) = if (bojIdVo != null) {
+                try {
+                    val userResponse = solvedAcClient.fetchUser(bojIdVo)
+                    val calculatedTier = Tier.fromRating(userResponse.rating)
+                    Pair(userResponse.rating, calculatedTier)
+                } catch (e: Exception) {
+                    log.warn("BOJ ID 검증 실패: bojId=$bojId, message=${e.message}")
+                    // BOJ ID 검증 실패 시 기본값 사용
+                    Pair(0, Tier.BRONZE)
+                }
+            } else {
+                // BOJ ID가 없는 경우 기본값
+                Pair(0, Tier.BRONZE)
+            }
+            
+            val newStudent = Student(
+                nickname = nicknameVo,
+                provider = providerEnum,
+                providerId = providerId,
+                email = email,
+                bojId = bojIdVo,
+                password = null,
+                rating = rating,
+                currentTier = tier,
+                role = Role.USER, // 약관 동의 완료 시 USER로 설정
+                termsAgreed = true
+            )
+            
+            try {
+                studentRepository.save(newStudent)
+            } catch (e: MongoWriteException) {
+                if (e.code == 11000) {
+                    log.error("MongoDB 중복 키 에러 발생: provider=$provider, providerId=$providerId, errorCode=${e.code}, message=${e.message}", e)
+                    throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 가입된 계정입니다. provider=$provider, providerId=$providerId")
+                }
+                log.error("MongoDB 쓰기 에러 발생: provider=$provider, providerId=$providerId, errorCode=${e.code}, message=${e.message}", e)
+                throw e
+            } catch (e: DuplicateKeyException) {
+                log.error("중복 키 에러 발생: provider=$provider, providerId=$providerId, message=${e.message}", e)
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 가입된 계정입니다. provider=$provider, providerId=$providerId")
+            }
+        }
 
-        // 정식 Access Token 재발급 (USER role 포함)
+        // 정식 Access Token 발급 (USER role 포함)
         val token = jwtTokenProvider.createToken(savedStudent.id!!, Role.USER.value)
         return AuthResult(token, savedStudent.rating, savedStudent.tier())
     }
