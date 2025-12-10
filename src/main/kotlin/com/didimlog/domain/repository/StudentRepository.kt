@@ -33,4 +33,3 @@ interface StudentRepository : MongoRepository<Student, String> {
      */
     fun findTop100ByOrderByRatingDesc(): List<Student>
 }
-

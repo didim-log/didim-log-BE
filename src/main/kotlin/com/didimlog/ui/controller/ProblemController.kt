@@ -45,5 +45,3 @@ class ProblemController(
         return ResponseEntity.ok(response)
     }
 }
-
-

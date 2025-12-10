@@ -203,5 +203,3 @@ class RetrospectiveService(
         return template.toString()
     }
 }
-
-

@@ -22,4 +22,3 @@ enum class Provider(val value: String) {
         }
     }
 }
-

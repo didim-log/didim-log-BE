@@ -44,5 +44,3 @@ class StudyService(
         studentRepository.save(updatedStudent)
     }
 }
-
-

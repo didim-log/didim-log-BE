@@ -37,4 +37,3 @@ class Solutions(
         return successCount.toDouble() / recentItems.size
     }
 }
-

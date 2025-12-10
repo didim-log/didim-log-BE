@@ -24,5 +24,3 @@ data class RankingResponse(
         }
     }
 }
-
-

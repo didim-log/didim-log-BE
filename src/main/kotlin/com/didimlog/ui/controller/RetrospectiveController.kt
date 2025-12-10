@@ -187,5 +187,3 @@ class RetrospectiveController(
         return ResponseEntity.ok(response)
     }
 }
-
-

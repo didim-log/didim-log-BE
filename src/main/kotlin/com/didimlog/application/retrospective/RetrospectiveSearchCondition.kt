@@ -11,4 +11,3 @@ data class RetrospectiveSearchCondition(
     val isBookmarked: Boolean? = null,
     val studentId: String? = null // Student 엔티티의 DB ID (@Id 필드)
 )
-

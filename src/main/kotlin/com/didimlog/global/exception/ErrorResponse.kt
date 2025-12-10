@@ -39,5 +39,3 @@ data class ErrorResponse(
         }
     }
 }
-
-

@@ -11,4 +11,3 @@ enum class ProblemResult {
     FAIL,
     TIME_OVER
 }
-

@@ -40,4 +40,3 @@ class MongoConfig {
         return MongoCustomConversions(converters)
     }
 }
-

@@ -83,4 +83,3 @@ object PasswordValidator {
         return SPECIAL_PATTERN.containsMatchIn(password)
     }
 }
-

@@ -28,5 +28,3 @@ data class RetrospectiveRequest(
     @field:Size(max = 50, message = "풀이 전략 태그는 50자 이하여야 합니다.")
     val solvedCategory: String? = null
 )
-
-

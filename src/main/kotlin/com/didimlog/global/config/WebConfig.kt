@@ -26,4 +26,3 @@ class WebConfig : WebMvcConfigurer {
             .maxAge(3600)
     }
 }
-

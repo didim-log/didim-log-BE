@@ -28,4 +28,3 @@ data class Solution(
      */
     fun isSuccess(): Boolean = result == ProblemResult.SUCCESS
 }
-

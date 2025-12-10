@@ -82,4 +82,3 @@ class RetrospectiveRepositoryImpl(
         query.with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
     }
 }
-

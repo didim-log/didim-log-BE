@@ -158,4 +158,3 @@ class ProblemCollectorService(
         return "https://www.acmicpc.net/problem/$problemId"
     }
 }
-

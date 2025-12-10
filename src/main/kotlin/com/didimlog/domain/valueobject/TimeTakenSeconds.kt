@@ -13,5 +13,3 @@ value class TimeTakenSeconds(val value: Long) {
         require(value >= 0L) { "풀이 시간은 0초 이상이어야 합니다." }
     }
 }
-
-

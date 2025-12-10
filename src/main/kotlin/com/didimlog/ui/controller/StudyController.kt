@@ -55,5 +55,3 @@ class StudyController(
         return ResponseEntity.ok(response)
     }
 }
-
-

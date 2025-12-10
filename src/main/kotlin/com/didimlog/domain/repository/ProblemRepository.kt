@@ -12,5 +12,3 @@ interface ProblemRepository : MongoRepository<Problem, String> {
 
     fun findByDescriptionIsNull(): List<Problem>
 }
-
-

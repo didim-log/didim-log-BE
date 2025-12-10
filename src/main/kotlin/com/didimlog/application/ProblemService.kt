@@ -62,5 +62,3 @@ class ProblemService(
         return "https://www.acmicpc.net/problem/$problemId"
     }
 }
-
-
