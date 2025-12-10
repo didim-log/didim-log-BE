@@ -21,8 +21,8 @@ spring:
           # 환경 변수: OAUTH_GOOGLE_ID, OAUTH_GOOGLE_SECRET
           # 설정 방법: Google Cloud Console에서 OAuth 2.0 클라이언트 ID 생성 후 환경 변수에 설정
           google:
-            client-id: ${OAUTH_GOOGLE_ID:YOUR_GOOGLE_CLIENT_ID}
-            client-secret: ${OAUTH_GOOGLE_SECRET:YOUR_GOOGLE_CLIENT_SECRET}
+            client-id: ${OAUTH_GOOGLE_ID}
+            client-secret: ${OAUTH_GOOGLE_SECRET}
             scope:
               - profile
               - email
@@ -30,8 +30,8 @@ spring:
           # 환경 변수: OAUTH_GITHUB_ID, OAUTH_GITHUB_SECRET
           # 설정 방법: GitHub Developer Settings에서 OAuth App 생성 후 환경 변수에 설정
           github:
-            client-id: ${OAUTH_GITHUB_ID:YOUR_GITHUB_CLIENT_ID}
-            client-secret: ${OAUTH_GITHUB_SECRET:YOUR_GITHUB_CLIENT_SECRET}
+            client-id: ${OAUTH_GITHUB_ID}
+            client-secret: ${OAUTH_GITHUB_SECRET}
             scope:
               - user:email
               - read:user
@@ -39,8 +39,8 @@ spring:
           # 환경 변수: OAUTH_NAVER_ID, OAUTH_NAVER_SECRET
           # 설정 방법: Naver Developers에서 애플리케이션 등록 후 환경 변수에 설정
           naver:
-            client-id: ${OAUTH_NAVER_ID:YOUR_NAVER_CLIENT_ID}
-            client-secret: ${OAUTH_NAVER_SECRET:YOUR_NAVER_CLIENT_SECRET}
+            client-id: ${OAUTH_NAVER_ID}
+            client-secret: ${OAUTH_NAVER_SECRET}
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             client-name: Naver
@@ -64,7 +64,7 @@ app:
   server:
     url: ${SERVER_URL:http://localhost:8080}
   jwt:
-    secret: ${JWT_SECRET:didim-log-secret-key-change-this-in-production-environment-minimum-256-bits}
+    secret: ${JWT_SECRET}
     # Access Token: 30분 (유휴 상태 시 보안을 위해 짧게 유지)
     access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1800000} # 30분 (밀리초)
     # Refresh Token: 7일 (사용자 편의를 위해 로그인 유지) - 향후 구현 예정
@@ -76,5 +76,5 @@ app:
   oauth:
     redirect-uri: ${OAUTH_REDIRECT_URI:http://localhost:5173/oauth/callback}
   admin:
-    secret-key: ${ADMIN_SECRET_KEY:change-this-admin-secret-key-in-production}
+    secret-key: ${ADMIN_SECRET_KEY}
 
