@@ -274,6 +274,7 @@ Content-Type: application/json
 | GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
+| DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `204 No Content` (응답 본문 없음) | None |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br>- `resultType` (ProblemResult, required): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - SUCCESS: 성공 템플릿 (핵심 접근, 시간/공간 복잡도, 개선할 점)<br>  - FAIL/TIME_OVER: 실패 템플릿 (실패 원인, 부족했던 개념, 다음 시도 계획) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
 
 **예시 요청 (회고 작성 - 성공 케이스):**
@@ -330,27 +331,27 @@ Content-Type: application/json
 
 **예시 요청 (회고 목록 조회 - 기본):**
 ```http
-GET /api/v1/retrospectives?page=0&size=10
+GET /api/v1/retrospectives?page=1&size=10
 ```
 
 **예시 요청 (회고 목록 조회 - 키워드 검색):**
 ```http
-GET /api/v1/retrospectives?keyword=DFS&page=0&size=10
+GET /api/v1/retrospectives?keyword=DFS&page=1&size=10
 ```
 
 **예시 요청 (회고 목록 조회 - 카테고리 필터):**
 ```http
-GET /api/v1/retrospectives?category=DFS&page=0&size=10
+GET /api/v1/retrospectives?category=DFS&page=1&size=10
 ```
 
 **예시 요청 (회고 목록 조회 - 북마크 필터):**
 ```http
-GET /api/v1/retrospectives?isBookmarked=true&page=0&size=10
+GET /api/v1/retrospectives?isBookmarked=true&page=1&size=10
 ```
 
 **예시 요청 (회고 목록 조회 - 정렬):**
 ```http
-GET /api/v1/retrospectives?sort=createdAt,asc&page=0&size=10
+GET /api/v1/retrospectives?sort=createdAt,asc&page=1&size=10
 ```
 
 **예시 응답 (회고 목록 조회):**
@@ -365,12 +366,14 @@ GET /api/v1/retrospectives?sort=createdAt,asc&page=0&size=10
       "summary": "DFS를 활용한 그래프 탐색 문제",
       "createdAt": "2024-01-15T10:30:00",
       "isBookmarked": true,
-      "mainCategory": "DFS"
+      "mainCategory": "DFS",
+      "solutionResult": "SUCCESS",
+      "solvedCategory": "DFS"
     }
   ],
   "totalElements": 1,
   "totalPages": 1,
-  "currentPage": 0,
+  "currentPage": 1,
   "size": 10,
   "hasNext": false,
   "hasPrevious": false
@@ -387,6 +390,16 @@ POST /api/v1/retrospectives/retrospective-123/bookmark
 {
   "isBookmarked": true
 }
+```
+
+**예시 요청 (회고 삭제):**
+```http
+DELETE /api/v1/retrospectives/retrospective-123
+```
+
+**예시 응답 (회고 삭제):**
+```http
+HTTP/1.1 204 No Content
 ```
 
 **예시 요청 (템플릿 생성 - 성공 케이스):**

@@ -142,18 +142,17 @@ class RetrospectiveController(
     }
 
     private fun createPageable(page: Int, size: Int, sort: String?): Pageable {
-        val sortObj = if (sort != null) {
-            val parts = sort.split(",")
-            if (parts.size == 2) {
-                val direction = if (parts[1].lowercase() == "asc") Sort.Direction.ASC else Sort.Direction.DESC
-                Sort.by(direction, parts[0])
-            } else {
-                Sort.by(Sort.Direction.DESC, "createdAt")
-            }
-        } else {
-            Sort.by(Sort.Direction.DESC, "createdAt")
+        if (sort == null) {
+            return PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
         }
 
+        val parts = sort.split(",")
+        if (parts.size != 2) {
+            return PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        }
+
+        val direction = if (parts[1].lowercase() == "asc") Sort.Direction.ASC else Sort.Direction.DESC
+        val sortObj = Sort.by(direction, parts[0])
         return PageRequest.of(page - 1, size, sortObj)
     }
 
