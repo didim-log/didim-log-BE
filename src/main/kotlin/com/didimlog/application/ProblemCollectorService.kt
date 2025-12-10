@@ -1,7 +1,6 @@
 package com.didimlog.application
 
 import com.didimlog.domain.Problem
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.infra.crawler.BojCrawler
