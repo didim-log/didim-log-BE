@@ -5,6 +5,7 @@
 ## 목차
 
 - [AuthController](#authcontroller)
+- [OAuth2 Authentication](#oauth2-authentication)
 - [ProblemController](#problemcontroller)
 - [StudyController](#studycontroller)
 - [RetrospectiveController](#retrospectivecontroller)
@@ -185,6 +186,66 @@ Content-Type: application/json
   "message": "관리자 키가 일치하지 않습니다."
 }
 ```
+
+---
+
+## OAuth2 Authentication
+
+OAuth2 소셜 로그인을 지원합니다. Google, GitHub, Naver를 통한 소셜 로그인이 가능합니다.
+
+### OAuth2 로그인 플로우
+
+1. **소셜 로그인 시작**: 프론트엔드에서 `/oauth2/authorization/{provider}` 엔드포인트로 리다이렉트
+2. **소셜 로그인 인증**: 각 공급자(Google/GitHub/Naver)의 인증 페이지로 이동
+3. **콜백 처리**: 인증 성공 후 백엔드가 프론트엔드 콜백 URL로 리다이렉트
+4. **토큰 전달**: JWT 토큰이 쿼리 파라미터로 전달됨
+
+### 지원하는 공급자 (Provider)
+
+- **Google**: `/oauth2/authorization/google`
+- **GitHub**: `/oauth2/authorization/github`
+- **Naver**: `/oauth2/authorization/naver`
+
+### 콜백 처리
+
+인증 성공 시 백엔드는 프론트엔드 콜백 URL로 리다이렉트하며, 다음 쿼리 파라미터를 포함합니다:
+
+**성공 시:**
+- `token` (String, required): JWT Access Token
+- `isNewUser` (Boolean, required): 신규 사용자 여부 (`true` 또는 `false`)
+
+**실패 시:**
+- `error` (String, required): 에러 코드
+- `error_description` (String, optional): 에러 설명
+
+**예시 URL (성공):**
+```
+http://localhost:3000/oauth/callback?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...&isNewUser=false
+```
+
+**예시 URL (실패):**
+```
+http://localhost:3000/oauth/callback?error=access_denied&error_description=사용자가%20인증을%20거부했습니다
+```
+
+### 설정
+
+- **콜백 URL**: 환경 변수 `app.oauth.redirect-uri`로 설정 (기본값: `http://localhost:3000/oauth/callback`)
+- **인증 경로**: `/oauth2/**` 경로는 인증 없이 접근 가능 (`permitAll`)
+
+### 사용자 정보
+
+소셜 로그인으로 가입한 사용자는 다음 정보를 가집니다:
+- `provider`: 인증 제공자 (GOOGLE, GITHUB, NAVER)
+- `email`: 소셜 계정 이메일 (공급자별로 다를 수 있음)
+- `bojId`: null (BOJ 인증 전까지는 null)
+- `role`: GUEST (BOJ 인증 완료 전까지는 GUEST 권한)
+
+### 주의사항
+
+- 소셜 로그인만으로는 GUEST 권한만 부여되며, 일부 기능 사용이 제한될 수 있습니다.
+- BOJ 계정 연동을 완료하면 USER 권한으로 업그레이드됩니다.
+- OAuth2 인증은 Spring Security의 기본 동작을 따르므로, 공급자별 설정은 `application.yaml`에서 관리됩니다.
 
 ---
 
