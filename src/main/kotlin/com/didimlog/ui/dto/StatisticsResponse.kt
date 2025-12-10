@@ -38,3 +38,4 @@ data class HeatmapDataResponse(
     }
 }
 
+

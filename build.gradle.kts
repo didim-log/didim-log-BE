@@ -23,9 +23,10 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-data-mongodb")
 	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
-	implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -53,3 +54,40 @@ kotlin {
 tasks.withType<Test> {
 	useJUnitPlatform()
 }
+
+// 단위 테스트 태스크: 파일명 패턴 **/*Test.kt 포함, **/*IntegrationTest.kt 제외
+// DB나 Spring Context 없이 빠르게 실행되는 테스트만 수행
+// @SpringBootTest를 사용하는 테스트는 통합 테스트로 간주하여 제외
+tasks.named<Test>("test") {
+	exclude("**/*IntegrationTest.class")
+	exclude("**/*IT.class")
+	exclude("**/DidimLogApplicationTests.class")
+	exclude("**/DidimLogApplicationIntegrationTests.class")
+	exclude("**/JwtTokenProviderTest.class") // @SpringBootTest 사용
+	exclude("**/SecurityIntegrationTest.class")
+	exclude("**/StudyIntegrationTest.class")
+	exclude("**/RetrospectiveSearchIntegrationTest.class")
+	exclude("**/JwtTokenProviderIntegrationTest.class")
+}
+
+// 통합 테스트 태스크: 파일명 패턴 **/*IntegrationTest.kt 또는 **/*IT.kt만 포함
+// @SpringBootTest 등 무거운 의존성을 가진 테스트 수행
+// 참고: 앞으로 통합 테스트 파일명은 반드시 IntegrationTest 또는 IT로 끝나야 합니다.
+tasks.register<Test>("integrationTest") {
+	group = "verification"
+	description = "Runs integration tests"
+	useJUnitPlatform()
+	include("**/*IntegrationTest.class")
+	include("**/*IT.class")
+	include("**/DidimLogApplicationTests.class")
+	include("**/DidimLogApplicationIntegrationTests.class")
+	include("**/JwtTokenProviderTest.class") // @SpringBootTest 사용
+	include("**/SecurityIntegrationTest.class")
+	include("**/StudyIntegrationTest.class")
+	include("**/RetrospectiveSearchIntegrationTest.class")
+	include("**/JwtTokenProviderIntegrationTest.class")
+	
+	// 통합 테스트는 단위 테스트가 완료된 후 실행
+	mustRunAfter("test")
+}
+

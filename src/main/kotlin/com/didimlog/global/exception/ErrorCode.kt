@@ -21,6 +21,8 @@ enum class ErrorCode(
     STUDENT_NOT_FOUND(404, "STUDENT_NOT_FOUND", "학생을 찾을 수 없습니다."),
     PROBLEM_NOT_FOUND(404, "PROBLEM_NOT_FOUND", "문제를 찾을 수 없습니다."),
     RETROSPECTIVE_NOT_FOUND(404, "RETROSPECTIVE_NOT_FOUND", "회고를 찾을 수 없습니다."),
+    QUOTE_NOT_FOUND(404, "QUOTE_NOT_FOUND", "명언을 찾을 수 없습니다."),
+    FEEDBACK_NOT_FOUND(404, "FEEDBACK_NOT_FOUND", "피드백을 찾을 수 없습니다."),
 
     // 500 Internal Server Error
     COMMON_INTERNAL_ERROR(500, "COMMON_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")

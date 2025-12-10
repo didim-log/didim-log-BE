@@ -1,6 +1,8 @@
 package com.didimlog.domain
 
 import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -18,20 +20,25 @@ import java.time.LocalDate
  * 티어 정보는 Solved.ac API를 통해 외부에서 동기화되며, 자체 승급 로직은 사용하지 않는다.
  *
  * **주의사항:**
- * - 레거시 데이터(비밀번호 필드가 없는 데이터)가 있는 경우, DB Volume을 삭제하고 재시작하세요.
- * - 비밀번호는 보안상 필수이므로, null인 경우 예외가 발생합니다.
- * - MongoDB 커스텀 컨버터가 Value Object(Nickname, BojId)와 Enum(Tier)을 자동으로 변환합니다.
+ * - 소셜 로그인 사용자의 경우 password와 bojId가 null일 수 있습니다.
+ * - MongoDB 커스텀 컨버터가 Value Object(Nickname, BojId)와 Enum(Tier, Provider, Role)을 자동으로 변환합니다.
  */
 @Document(collection = "students")
 data class Student(
     @Id
     val id: String? = null,
     val nickname: Nickname,
-    val bojId: BojId,
-    val password: String?, // BCrypt로 암호화된 비밀번호 (레거시 데이터 대비 nullable)
+    val provider: Provider, // 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER, BOJ)
+    @Indexed
+    val providerId: String, // 소셜 로그인 제공자의 사용자 ID
+    val email: String? = null, // 이메일 (소셜 로그인 제공자가 제공하는 경우)
+    val bojId: BojId? = null, // BOJ ID (BOJ 인증을 완료한 경우에만 존재)
+    val password: String? = null, // BCrypt로 암호화된 비밀번호 (BOJ 로그인 사용자만 사용)
     @Indexed
     val rating: Int = 0, // Solved.ac Rating (점수) - 랭킹 조회 성능 최적화를 위한 인덱스
     val currentTier: Tier,
+    val role: Role = Role.GUEST, // 사용자 권한 (GUEST: 소셜 로그인만 완료, USER: BOJ 인증 완료)
+    val termsAgreed: Boolean = false, // 약관 동의 여부
     val solutions: Solutions = Solutions(),
     val consecutiveSolveDays: Int = 0, // 연속 풀이 일수
     val lastSolvedAt: LocalDate? = null // 마지막으로 문제를 푼 날짜
@@ -43,34 +50,47 @@ data class Student(
      *
      * @param id 학생 ID
      * @param nickname 닉네임 Value Object (컨버터가 자동 변환)
-     * @param bojId BOJ ID Value Object (컨버터가 자동 변환)
-     * @param password 암호화된 비밀번호 (레거시 데이터의 경우 null일 수 있음)
+     * @param provider 소셜 로그인 제공자 Enum (컨버터가 자동 변환)
+     * @param providerId 소셜 로그인 제공자의 사용자 ID
+     * @param email 이메일 (nullable)
+     * @param bojId BOJ ID Value Object (컨버터가 자동 변환, nullable)
+     * @param password 암호화된 비밀번호 (BOJ 로그인 사용자만 사용, nullable)
      * @param rating Solved.ac Rating (점수)
      * @param currentTier 티어 Enum (컨버터가 자동 변환)
+     * @param role 사용자 권한 Enum (컨버터가 자동 변환)
+     * @param termsAgreed 약관 동의 여부
      * @param solutions 풀이 기록 목록
-     * @throws IllegalArgumentException 레거시 데이터(비밀번호가 null)인 경우
+     * @param consecutiveSolveDays 연속 풀이 일수
+     * @param lastSolvedAt 마지막으로 문제를 푼 날짜
      */
     @PersistenceCreator
     constructor(
         id: String?,
         nickname: Nickname,
-        bojId: BojId,
+        provider: Provider,
+        providerId: String,
+        email: String?,
+        bojId: BojId?,
         password: String?,
         rating: Int?,
         currentTier: Tier,
+        role: Role?,
+        termsAgreed: Boolean?,
         solutions: Solutions?,
         consecutiveSolveDays: Int?,
         lastSolvedAt: LocalDate?
     ) : this(
         id = id,
         nickname = nickname,
+        provider = provider,
+        providerId = providerId,
+        email = email,
         bojId = bojId,
-        password = password ?: throw IllegalArgumentException(
-            "레거시 데이터 감지: 비밀번호 필드가 없습니다. " +
-                "DB Volume을 삭제하고 재시작하세요. (docker-compose down -v && docker-compose up -d)"
-        ),
+        password = password,
         rating = rating ?: 0,
         currentTier = currentTier,
+        role = role ?: Role.GUEST,
+        termsAgreed = termsAgreed ?: false,
         solutions = solutions ?: Solutions(),
         consecutiveSolveDays = consecutiveSolveDays ?: 0,
         lastSolvedAt = lastSolvedAt
@@ -181,18 +201,40 @@ data class Student(
 
     /**
      * 입력된 평문 비밀번호가 저장된 암호화된 비밀번호와 일치하는지 확인한다.
+     * 소셜 로그인 사용자의 경우 password가 null이므로 false를 반환한다.
      *
      * @param rawPassword 평문 비밀번호
      * @param encoder PasswordEncoder (BCryptPasswordEncoder)
      * @return 비밀번호가 일치하면 true, 그렇지 않으면 false
-     * @throws IllegalStateException 비밀번호가 null인 경우 (레거시 데이터)
      */
     fun matchPassword(rawPassword: String, encoder: PasswordEncoder): Boolean {
-        requireNotNull(password) {
-            "레거시 데이터 감지: 비밀번호 필드가 없습니다. " +
-                "DB Volume을 삭제하고 재시작하세요. (docker-compose down -v && docker-compose up -d)"
+        if (password == null) {
+            return false
         }
         return encoder.matches(rawPassword, password)
+    }
+
+    /**
+     * 소셜 로그인 후 가입 마무리를 수행한다.
+     * 약관 동의 및 닉네임 설정을 완료하고, GUEST에서 USER로 역할을 변경한다.
+     *
+     * @param nickname 설정할 닉네임
+     * @param termsAgreed 약관 동의 여부
+     * @return 가입 마무리가 완료된 새로운 Student 인스턴스
+     * @throws IllegalArgumentException 약관 동의가 false인 경우
+     */
+    fun finalizeSignup(nickname: String, termsAgreed: Boolean): Student {
+        if (!termsAgreed) {
+            throw IllegalArgumentException("약관 동의는 필수입니다.")
+        }
+        
+        val nicknameVo = Nickname(nickname)
+        
+        return copy(
+            nickname = nicknameVo,
+            termsAgreed = true,
+            role = Role.USER
+        )
     }
 
     private fun toProblemResult(isSuccess: Boolean): ProblemResult {
