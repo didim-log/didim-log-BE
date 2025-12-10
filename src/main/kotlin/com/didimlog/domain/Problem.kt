@@ -54,5 +54,3 @@ data class Problem(
         return level > tier.value
     }
 }
-
-

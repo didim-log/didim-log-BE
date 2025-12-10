@@ -14,4 +14,3 @@ data class SignupFinalizeRequest(
     @field:NotNull(message = "약관 동의는 필수입니다.")
     val termsAgreed: Boolean
 )
-

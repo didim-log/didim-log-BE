@@ -13,5 +13,3 @@ value class ProblemId(val value: String) {
         require(value.isNotBlank()) { "문제 ID는 필수입니다." }
     }
 }
-
-

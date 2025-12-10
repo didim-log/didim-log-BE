@@ -12,11 +12,11 @@ import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
-/**
- * 문제 추천 서비스
- * 학생의 현재 티어보다 한 단계 높은 난이도의 문제 중, 아직 풀지 않은 문제를 추천한다.
- * 무한 성장(Continuous Growth) 로직을 지원하여, 최대 티어에 도달해도 상위 난이도 문제를 추천한다.
- */
+    /**
+     * 문제 추천 서비스
+     * 학생의 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 문제 중, 아직 풀지 않은 문제를 추천한다.
+     * 무한 성장(Continuous Growth) 로직을 지원하여, 최대 티어에 도달해도 상위 난이도 문제를 추천한다.
+     */
 @Service
 @Transactional(readOnly = true)
 class RecommendationService(
@@ -26,7 +26,7 @@ class RecommendationService(
 
     /**
      * 학생에게 추천할 문제 목록을 반환한다.
-     * 현재 티어보다 한 단계 높은 난이도의 문제 중, 아직 풀지 않은 문제를 랜덤으로 선택한다.
+     * 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 문제 중, 아직 풀지 않은 문제를 랜덤으로 선택한다.
      * 무한 성장 로직: Tier Enum에 정의되지 않은 상위 난이도(DIAMOND, RUBY 등)도 추천 가능하다.
      *
      * @param bojId BOJ ID (JWT 토큰에서 추출)
@@ -54,25 +54,21 @@ class RecommendationService(
     }
 
     /**
-     * 현재 티어보다 한 단계 높은 난이도 레벨 범위를 계산한다.
-     * 타겟 범위: UserLevel + 1 ~ +2
+     * 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 레벨 범위를 계산한다.
+     * 타겟 범위: (현재 티어 최소 레벨 - 2) ~ (현재 티어 최대 레벨 + 2)
+     * 최소 레벨 제약: 계산된 최소 레벨이 1 미만인 경우 1로 제한
      * 무한 성장 로직: 최대 티어에 도달한 경우에도 상위 난이도 문제를 추천한다.
-     * 예: BRONZE 티어(레벨 1~5) 학생 -> 레벨 6~7 문제 추천
-     * 예: RUBY 티어(레벨 26~30) 학생 -> 레벨 31~32 문제 추천
+     * 예: BRONZE 티어(레벨 1~5) 학생 -> 레벨 (1-2) ~ (5+2) = 레벨 1~7 문제 추천
+     * 예: SILVER 티어(레벨 6~10) 학생 -> 레벨 (6-2) ~ (10+2) = 레벨 4~12 문제 추천
+     * 예: RUBY 티어(레벨 26~30) 학생 -> 레벨 (26-2) ~ (30+2) = 레벨 24~32 문제 추천
      *
      * @param currentTier 현재 티어
      * @return 타겟 난이도 레벨 범위 (minLevel, maxLevel) Pair
      */
     private fun calculateTargetDifficultyLevelRange(currentTier: Tier): Pair<Int, Int> {
-        val nextTier = currentTier.next()
-        if (nextTier == currentTier) {
-            // 최대 티어인 경우, 현재 티어의 최대 레벨 + 1 ~ +2를 반환 (무한 성장)
-            val minLevel = currentTier.maxLevel + 1
-            return Pair(minLevel, minLevel + 1)
-        }
-        // 다음 티어의 최소 레벨 ~ 최소 레벨 + 1
-        val minLevel = nextTier.minLevel
-        return Pair(minLevel, minLevel + 1)
+        val minLevel = (currentTier.minLevel - 2).coerceAtLeast(1)
+        val maxLevel = currentTier.maxLevel + 2
+        return Pair(minLevel, maxLevel)
     }
 
     private fun findCandidateProblems(minLevel: Int, maxLevel: Int, category: String?): List<Problem> {
@@ -112,4 +108,3 @@ class RecommendationService(
         return problems.shuffled().take(count)
     }
 }
-

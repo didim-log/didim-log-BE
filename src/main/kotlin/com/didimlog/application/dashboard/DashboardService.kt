@@ -137,4 +137,3 @@ data class QuoteInfo(
         }
     }
 }
-

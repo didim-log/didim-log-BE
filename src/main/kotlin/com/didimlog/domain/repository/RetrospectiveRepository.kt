@@ -9,5 +9,3 @@ interface RetrospectiveRepository : MongoRepository<Retrospective, String>, Retr
 
     fun findByStudentIdAndProblemId(studentId: String, problemId: String): Retrospective?
 }
-
-

@@ -27,4 +27,3 @@ enum class ErrorCode(
     // 500 Internal Server Error
     COMMON_INTERNAL_ERROR(500, "COMMON_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")
 }
-

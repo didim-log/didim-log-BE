@@ -106,4 +106,3 @@ data class HeatmapData(
     val date: String,
     val count: Int
 )
-

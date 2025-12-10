@@ -1,7 +1,6 @@
 package com.didimlog.application
 
 import com.didimlog.domain.Problem
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.infra.crawler.BojCrawler
@@ -80,9 +79,10 @@ class ProblemCollectorService(
                 // Solved.ac API에서 문제를 찾을 수 없는 경우 (404 등)
                 if (e.message?.contains("찾을 수 없습니다") == true) {
                     log.debug("Problem $problemId not found in Solved.ac (skipped)")
-                } else {
-                    log.warn("Failed to collect problem $problemId: ${e.message}")
+                    failCount++
+                    continue
                 }
+                log.warn("Failed to collect problem $problemId: ${e.message}")
                 failCount++
                 // 다음 문제로 넘어가기 (for 루프이므로 자동으로 continue)
             } catch (e: Exception) {
@@ -122,20 +122,23 @@ class ProblemCollectorService(
             try {
                 val details = bojCrawler.crawlProblemDetails(problem.id.value)
                 
-                if (details != null) {
-                    val updatedProblem = problem.copy(
-                        description = details.description,
-                        inputDescription = details.inputDescription,
-                        outputDescription = details.outputDescription,
-                        examples = details.examples
-                    )
-                    problemRepository.save(updatedProblem)
-                    successCount++
-                    log.debug("문제 상세 정보 수집 성공: problemId=${problem.id.value}")
-                } else {
+                if (details == null) {
                     failCount++
                     log.warn("문제 상세 정보 크롤링 실패: problemId=${problem.id.value}")
+                    val delay = 2000 + Random.nextInt(2000)
+                    Thread.sleep(delay.toLong())
+                    continue
                 }
+
+                val updatedProblem = problem.copy(
+                    description = details.description,
+                    inputDescription = details.inputDescription,
+                    outputDescription = details.outputDescription,
+                    examples = details.examples
+                )
+                problemRepository.save(updatedProblem)
+                successCount++
+                log.debug("문제 상세 정보 수집 성공: problemId=${problem.id.value}")
 
                 // Anti-Ban Logic: 2~4초 간격으로 요청
                 val delay = 2000 + Random.nextInt(2000)
@@ -154,4 +157,3 @@ class ProblemCollectorService(
         return "https://www.acmicpc.net/problem/$problemId"
     }
 }
-

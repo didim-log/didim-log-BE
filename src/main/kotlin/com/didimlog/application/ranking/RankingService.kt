@@ -90,4 +90,3 @@ data class RankingInfo(
     val rank: Int,
     val student: Student
 )
-

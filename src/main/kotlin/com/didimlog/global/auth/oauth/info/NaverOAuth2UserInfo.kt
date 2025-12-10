@@ -33,4 +33,3 @@ class NaverOAuth2UserInfo(
             ?: "Naver User"
     }
 }
-

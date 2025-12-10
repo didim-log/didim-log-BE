@@ -1,6 +1,14 @@
 package com.didimlog.global.config
 
-import com.didimlog.global.config.mongo.*
+import com.didimlog.global.config.mongo.BojIdReadConverter
+import com.didimlog.global.config.mongo.BojIdWriteConverter
+import com.didimlog.global.config.mongo.NicknameReadConverter
+import com.didimlog.global.config.mongo.NicknameWriteConverter
+import com.didimlog.global.config.mongo.ProblemCategoryReadConverter
+import com.didimlog.global.config.mongo.ProblemCategoryWriteConverter
+import com.didimlog.global.config.mongo.TierIntegerReadConverter
+import com.didimlog.global.config.mongo.TierStringReadConverter
+import com.didimlog.global.config.mongo.TierWriteConverter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.convert.converter.Converter
@@ -40,4 +48,3 @@ class MongoConfig {
         return MongoCustomConversions(converters)
     }
 }
-

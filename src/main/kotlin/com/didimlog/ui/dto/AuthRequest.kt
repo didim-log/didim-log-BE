@@ -14,4 +14,3 @@ data class AuthRequest(
     @field:Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다.")
     val password: String
 )
-

@@ -118,4 +118,3 @@ class ProblemCategoryReadConverter : Converter<String, ProblemCategory> {
             ?: ProblemCategory.UNKNOWN
     }
 }
-

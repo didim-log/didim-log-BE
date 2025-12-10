@@ -72,5 +72,3 @@ object SolvedAcTierMapper {
         return Tier.from(tier)
     }
 }
-
-

@@ -67,20 +67,18 @@ class RetrospectiveRepositoryImpl(
             criteriaList.add(Criteria("isBookmarked").`is`(true))
         }
 
-        return if (criteriaList.isEmpty()) {
-            Criteria()
-        } else {
-            Criteria().andOperator(*criteriaList.toTypedArray())
+        if (criteriaList.isEmpty()) {
+            return Criteria()
         }
+        return Criteria().andOperator(*criteriaList.toTypedArray())
     }
 
     private fun applySort(query: Query, sort: Sort) {
         if (sort.isSorted) {
             query.with(sort)
-        } else {
-            // 기본 정렬: createdAt DESC
-            query.with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+            return
         }
+        // 기본 정렬: createdAt DESC
+        query.with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
     }
 }
-

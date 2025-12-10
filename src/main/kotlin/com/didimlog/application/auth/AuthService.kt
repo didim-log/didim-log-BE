@@ -321,4 +321,3 @@ class AuthService(
         return AuthResult(token, savedStudent.rating, savedStudent.tier())
     }
 }
-

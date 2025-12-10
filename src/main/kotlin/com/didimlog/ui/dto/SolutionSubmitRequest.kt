@@ -18,5 +18,3 @@ data class SolutionSubmitRequest(
     @field:NotNull(message = "성공 여부는 필수입니다.")
     val isSuccess: Boolean
 )
-
-

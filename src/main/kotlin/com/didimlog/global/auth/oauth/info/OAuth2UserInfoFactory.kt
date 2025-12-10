@@ -29,4 +29,3 @@ object OAuth2UserInfoFactory {
         }
     }
 }
-
