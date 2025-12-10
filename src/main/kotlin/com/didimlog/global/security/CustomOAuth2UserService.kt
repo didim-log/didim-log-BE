@@ -38,70 +38,53 @@ class CustomOAuth2UserService(
         val email = oauth2UserInfo.getEmail()
         val nickname = oauth2UserInfo.getName()
 
-        // DB에서 사용자 조회 또는 생성
-        val (student, isNewUser) = findOrCreateStudent(provider, providerId, email, nickname)
-
-        val authorities = listOf(SimpleGrantedAuthority("ROLE_${student.role.value}"))
+        // DB에서 사용자 조회
+        val existingStudent = studentRepository.findByProviderAndProviderId(provider, providerId)
+        
         val attributes = oauth2User.attributes.toMutableMap()
         
-        // Student 정보를 attributes에 추가하여 SuccessHandler에서 사용할 수 있도록 함
-        attributes["studentId"] = student.id
-        attributes["provider"] = provider.value
-        attributes["providerId"] = providerId
-        attributes["isNewUser"] = isNewUser
-        attributes["role"] = student.role.value
-
-        return DefaultOAuth2User(
-            authorities,
-            attributes,
-            getProviderIdAttributeName(provider)
-        )
-    }
-
-    /**
-     * DB에서 사용자를 조회하거나 생성한다.
-     *
-     * @param provider 소셜 로그인 제공자
-     * @param providerId 제공자별 사용자 ID
-     * @param email 사용자 이메일 (nullable)
-     * @param nickname 사용자 닉네임
-     * @return Pair<Student, Boolean> (Student 엔티티, 신규 사용자 여부)
-     */
-    private fun findOrCreateStudent(
-        provider: Provider,
-        providerId: String,
-        email: String?,
-        nickname: String
-    ): Pair<Student, Boolean> {
-        val existingStudent = studentRepository.findByProviderAndProviderId(provider, providerId)
-
         if (existingStudent.isPresent) {
+            // 기존 유저: DB에서 조회한 정보 사용
             val student = existingStudent.get()
-            // 이메일이 변경되었을 수 있으므로 업데이트
             val updatedStudent = if (student.email != email) {
                 studentRepository.save(student.copy(email = email))
             } else {
                 student
             }
-            return Pair(updatedStudent, false)
+            
+            val authorities = listOf(SimpleGrantedAuthority("ROLE_${updatedStudent.role.value}"))
+            attributes["studentId"] = updatedStudent.id
+            attributes["provider"] = provider.value
+            attributes["providerId"] = providerId
+            attributes["isNewUser"] = false
+            attributes["role"] = updatedStudent.role.value
+            
+            return DefaultOAuth2User(
+                authorities,
+                attributes,
+                getProviderIdAttributeName(provider)
+            )
+        } else {
+            // 신규 유저: DB에 저장하지 않고 정보만 attributes에 저장
+            // SuccessHandler에서 쿼리 파라미터로 전달할 정보
+            attributes["provider"] = provider.value
+            attributes["providerId"] = providerId
+            attributes["email"] = email
+            attributes["nickname"] = nickname
+            attributes["isNewUser"] = true
+            attributes["role"] = "GUEST"
+            
+            // 신규 유저는 GUEST 권한으로 처리
+            val authorities = listOf(SimpleGrantedAuthority("ROLE_GUEST"))
+            
+            return DefaultOAuth2User(
+                authorities,
+                attributes,
+                getProviderIdAttributeName(provider)
+            )
         }
-
-        // 신규 유저 생성 (GUEST 역할, BOJ 미연동 상태, 약관 미동의)
-        val nicknameVo = Nickname(nickname)
-        val newStudent = Student(
-            nickname = nicknameVo,
-            provider = provider,
-            providerId = providerId,
-            email = email,
-            bojId = null,
-            currentTier = Tier.BRONZE,
-            role = Role.GUEST,
-            termsAgreed = false // 소셜 로그인 직후에는 약관 미동의 상태
-        )
-
-        val savedStudent = studentRepository.save(newStudent)
-        return Pair(savedStudent, true)
     }
+
 
     /**
      * 제공자별로 OAuth2User의 name attribute 키를 반환한다.
