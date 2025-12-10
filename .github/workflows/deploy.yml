@@ -11,6 +11,13 @@ name: didim-log-be Deploy CICD
 # - SPRING_DATA_REDIS_HOST: Redis 호스트 (docker-compose service name: 'redis')
 # - SPRING_DATA_REDIS_PORT: Redis 포트
 # - JWT_SECRET: JWT 토큰 서명용 시크릿 키
+# - OAUTH_GOOGLE_ID: Google OAuth2 Client ID
+# - OAUTH_GOOGLE_SECRET: Google OAuth2 Client Secret
+# - OAUTH_GITHUB_ID: GitHub OAuth2 Client ID
+# - OAUTH_GITHUB_SECRET: GitHub OAuth2 Client Secret
+# - OAUTH_NAVER_ID: Naver OAuth2 Client ID
+# - OAUTH_NAVER_SECRET: Naver OAuth2 Client Secret
+# - ADMIN_SECRET_KEY: 슈퍼 관리자 계정 생성용 보안 키
 
 on:
   push:
@@ -43,7 +50,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build with Gradle Wrapper
-        run: ./gradlew clean build -x test
+        run: ./gradlew clean assemble
 
       - name: Build Dockerfile and Push DockerHub
         run: |
@@ -82,6 +89,13 @@ jobs:
             echo "SPRING_DATA_REDIS_PORT=${{ secrets.SPRING_DATA_REDIS_PORT }}" >> .env
             echo "SERVER_URL=${{ secrets.SERVER_URL }}" >> .env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            echo "OAUTH_GOOGLE_ID=${{ secrets.OAUTH_GOOGLE_ID }}" >> .env
+            echo "OAUTH_GOOGLE_SECRET=${{ secrets.OAUTH_GOOGLE_SECRET }}" >> .env
+            echo "OAUTH_GITHUB_ID=${{ secrets.OAUTH_GITHUB_ID }}" >> .env
+            echo "OAUTH_GITHUB_SECRET=${{ secrets.OAUTH_GITHUB_SECRET }}" >> .env
+            echo "OAUTH_NAVER_ID=${{ secrets.OAUTH_NAVER_ID }}" >> .env
+            echo "OAUTH_NAVER_SECRET=${{ secrets.OAUTH_NAVER_SECRET }}" >> .env
+            echo "ADMIN_SECRET_KEY=${{ secrets.ADMIN_SECRET_KEY }}" >> .env
 
       - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@master
@@ -95,3 +109,13 @@ jobs:
             sudo docker-compose pull
             sudo docker-compose up -d --force-recreate
             sudo docker image prune -a -f
+
+# Secrets 체크리스트 (배포 전 확인):
+# ✅ DOCKER_USERNAME, DOCKER_PASSWORD, DOCKER_REPONAME
+# ✅ AWS_HOST, AWS_USER, AWS_EC2_PRIVATE_KEY
+# ✅ SPRING_DATA_MONGODB_URI, SPRING_DATA_REDIS_HOST, SPRING_DATA_REDIS_PORT
+# ✅ JWT_SECRET
+# ✅ OAUTH_GOOGLE_ID, OAUTH_GOOGLE_SECRET
+# ✅ OAUTH_GITHUB_ID, OAUTH_GITHUB_SECRET
+# ✅ OAUTH_NAVER_ID, OAUTH_NAVER_SECRET
+# ✅ ADMIN_SECRET_KEY

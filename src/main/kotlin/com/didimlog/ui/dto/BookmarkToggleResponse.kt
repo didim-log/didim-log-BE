@@ -7,3 +7,4 @@ data class BookmarkToggleResponse(
     val isBookmarked: Boolean
 )
 
+

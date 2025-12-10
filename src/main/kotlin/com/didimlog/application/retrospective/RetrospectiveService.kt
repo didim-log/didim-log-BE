@@ -31,18 +31,29 @@ class RetrospectiveService(
      * @param problemId 문제 ID
      * @param content 회고 내용
      * @param summary 한 줄 요약 (선택사항)
+     * @param solutionResult 풀이 결과 (SUCCESS/FAIL, 선택사항)
+     * @param solvedCategory 사용자가 선택한 풀이 전략 태그 (선택사항)
      * @return 저장된 회고
      * @throws IllegalArgumentException 학생이나 문제를 찾을 수 없는 경우
      */
     @Transactional
-    fun writeRetrospective(studentId: String, problemId: String, content: String, summary: String? = null): Retrospective {
+    fun writeRetrospective(
+        studentId: String,
+        problemId: String,
+        content: String,
+        summary: String? = null,
+        solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
+        solvedCategory: String? = null
+    ): Retrospective {
         validateStudentExists(studentId)
         validateProblemExists(problemId)
 
         val existingRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
 
         if (existingRetrospective != null) {
-            val updatedRetrospective = existingRetrospective.updateContent(content, summary)
+            val updatedRetrospective = existingRetrospective
+                .updateContent(content, summary)
+                .updateSolutionInfo(solutionResult, solvedCategory)
             return retrospectiveRepository.save(updatedRetrospective)
         }
 
@@ -50,7 +61,9 @@ class RetrospectiveService(
             studentId = studentId,
             problemId = problemId,
             content = content,
-            summary = summary
+            summary = summary,
+            solutionResult = solutionResult,
+            solvedCategory = solvedCategory
         )
         return retrospectiveRepository.save(newRetrospective)
     }
@@ -114,15 +127,17 @@ class RetrospectiveService(
     /**
      * 문제 정보를 바탕으로 회고 템플릿을 생성한다.
      * 마크다운 형식으로 제목, 문제 링크, 접근 방법, 코드 블록 등의 기본 구조를 제공한다.
+     * 결과 타입(SUCCESS/FAIL)에 따라 다른 템플릿을 반환한다.
      *
      * @param problemId 문제 ID
+     * @param resultType 풀이 결과 타입 (SUCCESS/FAIL)
      * @return 마크다운 형식의 템플릿 문자열
      * @throws IllegalArgumentException 문제를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun generateTemplate(problemId: String): String {
+    fun generateTemplate(problemId: String, resultType: com.didimlog.domain.enums.ProblemResult): String {
         val problem = findProblemOrThrow(problemId)
-        return buildTemplate(problem)
+        return buildTemplate(problem, resultType)
     }
 
     private fun validateStudentExists(studentId: String) {
@@ -140,36 +155,49 @@ class RetrospectiveService(
             .orElseThrow { IllegalArgumentException("문제를 찾을 수 없습니다. id=$problemId") }
     }
 
-    private fun buildTemplate(problem: Problem): String {
+    private fun buildTemplate(problem: Problem, resultType: com.didimlog.domain.enums.ProblemResult): String {
+        return when (resultType) {
+            com.didimlog.domain.enums.ProblemResult.SUCCESS -> buildSuccessTemplate(problem)
+            com.didimlog.domain.enums.ProblemResult.FAIL -> buildFailTemplate(problem)
+            com.didimlog.domain.enums.ProblemResult.TIME_OVER -> buildFailTemplate(problem)
+        }
+    }
+
+    private fun buildSuccessTemplate(problem: Problem): String {
         val template = StringBuilder()
-        template.appendLine("# ${problem.title}")
+        template.appendLine("# 🏆 ${problem.title} 해결 회고")
         template.appendLine()
-        template.appendLine("## 문제 정보")
+        template.appendLine("## 💡 핵심 접근 (Key Idea)")
         template.appendLine()
-        template.appendLine("- **문제 번호:** ${problem.id.value}")
-        template.appendLine("- **난이도:** ${problem.difficulty.name} (Level ${problem.level})")
-        template.appendLine("- **카테고리:** ${problem.category.englishName}")
-        template.appendLine("- **문제 링크:** [${problem.title}](${problem.url})")
+        template.appendLine("<!-- 여기에 문제 해결의 핵심 접근 방법을 작성하세요 -->")
         template.appendLine()
-        template.appendLine("---")
+        template.appendLine("## ⏱️ 시간/공간 복잡도")
         template.appendLine()
-        template.appendLine("## 접근 방법")
+        template.appendLine("<!-- 여기에 시간 복잡도와 공간 복잡도를 작성하세요 -->")
         template.appendLine()
-        template.appendLine("<!-- 여기에 문제 해결 접근 방법을 작성하세요 -->")
+        template.appendLine("## ✨ 개선할 점")
         template.appendLine()
-        template.appendLine("---")
+        template.appendLine("<!-- 여기에 더 나은 풀이 방법이나 개선할 점을 작성하세요 -->")
         template.appendLine()
-        template.appendLine("## 코드")
+
+        return template.toString()
+    }
+
+    private fun buildFailTemplate(problem: Problem): String {
+        val template = StringBuilder()
+        template.appendLine("# 💥 ${problem.title} 오답 노트")
         template.appendLine()
-        template.appendLine("```kotlin")
-        template.appendLine("// 여기에 코드를 작성하세요")
-        template.appendLine("```")
+        template.appendLine("## 🧐 실패 원인 (Why?)")
         template.appendLine()
-        template.appendLine("---")
+        template.appendLine("<!-- 여기에 문제를 풀지 못한 원인을 작성하세요 -->")
         template.appendLine()
-        template.appendLine("## 회고")
+        template.appendLine("## 📚 부족했던 개념")
         template.appendLine()
-        template.appendLine("<!-- 여기에 문제를 풀면서 느낀 점, 배운 점, 개선할 점 등을 작성하세요 -->")
+        template.appendLine("<!-- 여기에 부족했던 알고리즘 개념이나 자료구조를 작성하세요 -->")
+        template.appendLine()
+        template.appendLine("## 🔧 다음 시도 계획")
+        template.appendLine()
+        template.appendLine("<!-- 여기에 다음에 다시 시도할 때의 계획을 작성하세요 -->")
         template.appendLine()
 
         return template.toString()

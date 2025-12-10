@@ -1,7 +1,8 @@
-package com.didimlog.global.config
+package com.didimlog.global.config.security
 
 import com.didimlog.global.auth.JwtAuthenticationFilter
-import org.springframework.beans.factory.annotation.Value
+import com.didimlog.global.security.CustomOAuth2UserService
+import com.didimlog.global.security.OAuth2SuccessHandler
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
@@ -17,15 +18,15 @@ import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 /**
- * Spring Security 설정
- * JWT 기반 인증을 위한 보안 설정을 정의한다.
+ * Spring Security 설정 클래스
+ * OAuth2 소셜 로그인과 JWT 인증을 지원한다.
  */
 @Configuration
 @EnableWebSecurity
 class SecurityConfig(
-    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    @Value("\${app.cors.allowed-origins}")
-    private val allowedOriginsString: String
+    private val customOAuth2UserService: CustomOAuth2UserService,
+    private val oAuth2SuccessHandler: OAuth2SuccessHandler,
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter
 ) {
 
     @Bean
@@ -34,21 +35,25 @@ class SecurityConfig(
             .csrf { it.disable() }
             .cors { it.configurationSource(corsConfigurationSource()) }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
-            .formLogin { it.disable() }
-            .httpBasic { it.disable() }
             .authorizeHttpRequests { requests ->
                 requests
                     .requestMatchers(
                         "/api/v1/auth/**",
-                        "/api/v1/ranks",
+                        "/login/oauth2/**",
+                        "/oauth2/**",
                         "/swagger-ui/**",
-                        "/swagger-ui.html",
                         "/v3/api-docs/**",
-                        "/swagger-resources/**",
-                        "/webjars/**",
                         "/error"
                     ).permitAll()
+                    .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
+            }
+            .oauth2Login { oauth2 ->
+                oauth2
+                    .userInfoEndpoint { userInfo ->
+                        userInfo.userService(customOAuth2UserService)
+                    }
+                    .successHandler(oAuth2SuccessHandler)
             }
             .exceptionHandling { exceptions ->
                 exceptions
@@ -60,20 +65,13 @@ class SecurityConfig(
         return http.build()
     }
 
-    /**
-     * CORS 설정
-     * 프론트엔드에서의 접근을 허용한다.
-     * 허용 Origin은 application.yaml의 app.cors.allowed-origins 프로퍼티로 관리된다.
-     */
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        val allowedOrigins = allowedOriginsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        configuration.allowedOriginPatterns = allowedOrigins
-        configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
+        configuration.allowedOriginPatterns = listOf("*")
+        configuration.allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         configuration.allowedHeaders = listOf("*")
         configuration.allowCredentials = true
-        configuration.maxAge = 3600L
 
         val source = UrlBasedCorsConfigurationSource()
         source.registerCorsConfiguration("/**", configuration)
@@ -114,7 +112,7 @@ class SecurityConfig(
                 {
                     "status": 403,
                     "error": "Forbidden",
-                    "code": "FORBIDDEN",
+                    "code": "ACCESS_DENIED",
                     "message": "접근 권한이 없습니다."
                 }
                 """.trimIndent()
@@ -122,4 +120,3 @@ class SecurityConfig(
         }
     }
 }
-

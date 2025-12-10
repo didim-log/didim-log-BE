@@ -21,3 +21,4 @@ interface RetrospectiveRepositoryCustom {
     fun search(condition: RetrospectiveSearchCondition, pageable: Pageable): Page<Retrospective>
 }
 
+

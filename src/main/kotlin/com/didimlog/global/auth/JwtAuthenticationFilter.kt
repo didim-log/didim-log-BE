@@ -36,9 +36,10 @@ class JwtAuthenticationFilter(
         if (token != null && jwtTokenProvider.validateToken(token)) {
             try {
                 val userId = jwtTokenProvider.getSubject(token)
+                val role = jwtTokenProvider.getRole(token) ?: "USER" // 기본값: USER
                 
-                // Authentication 객체 생성 (권한은 기본적으로 USER로 설정)
-                val authorities = listOf(SimpleGrantedAuthority("ROLE_USER"))
+                // Authentication 객체 생성 (토큰의 role 정보를 기반으로 권한 설정)
+                val authorities = listOf(SimpleGrantedAuthority("ROLE_$role"))
                 val authentication = UsernamePasswordAuthenticationToken(
                     userId,
                     null,
@@ -48,7 +49,7 @@ class JwtAuthenticationFilter(
                 // SecurityContextHolder에 Authentication 설정
                 SecurityContextHolder.getContext().authentication = authentication
                 
-                log.debug("JWT 인증 성공: userId=$userId")
+                log.debug("JWT 인증 성공: userId=$userId, role=$role")
             } catch (e: Exception) {
                 log.error("JWT 토큰 처리 중 오류 발생", e)
                 SecurityContextHolder.clearContext()

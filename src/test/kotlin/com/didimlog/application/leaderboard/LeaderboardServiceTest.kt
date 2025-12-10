@@ -1,6 +1,10 @@
 package com.didimlog.application.leaderboard
 
+import com.didimlog.application.ranking.RankingService
 import com.didimlog.domain.Student
+import com.didimlog.domain.Solutions
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -11,12 +15,12 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 
-@DisplayName("LeaderboardService 테스트")
+@DisplayName("RankingService 테스트 (LeaderboardService에서 리팩토링됨)")
 class LeaderboardServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
 
-    private val leaderboardService = LeaderboardService(studentRepository)
+    private val rankingService = RankingService(studentRepository)
 
     @Test
     @DisplayName("Rating 기준 내림차순으로 정렬된 랭킹을 반환한다")
@@ -25,28 +29,40 @@ class LeaderboardServiceTest {
         val student1 = Student(
             id = "student-1",
             nickname = Nickname("user1"),
+            provider = Provider.BOJ,
+            providerId = "user1",
             bojId = BojId("user1"),
             password = "password1",
             rating = 1500,
             currentTier = Tier.PLATINUM,
+            role = Role.USER,
+            solutions = Solutions(),
             consecutiveSolveDays = 10
         )
         val student2 = Student(
             id = "student-2",
             nickname = Nickname("user2"),
+            provider = Provider.BOJ,
+            providerId = "user2",
             bojId = BojId("user2"),
             password = "password2",
             rating = 2000,
             currentTier = Tier.DIAMOND,
+            role = Role.USER,
+            solutions = Solutions(),
             consecutiveSolveDays = 5
         )
         val student3 = Student(
             id = "student-3",
             nickname = Nickname("user3"),
+            provider = Provider.BOJ,
+            providerId = "user3",
             bojId = BojId("user3"),
             password = "password3",
             rating = 1000,
             currentTier = Tier.GOLD,
+            role = Role.USER,
+            solutions = Solutions(),
             consecutiveSolveDays = 3
         )
 
@@ -55,7 +71,7 @@ class LeaderboardServiceTest {
         every { studentRepository.findTop100ByOrderByRatingDesc() } returns students
 
         // when
-        val result = leaderboardService.getTopRankers()
+        val result = rankingService.getTopRankers()
 
         // then
         assertThat(result).hasSize(3)
@@ -80,10 +96,14 @@ class LeaderboardServiceTest {
             Student(
                 id = "student-$index",
                 nickname = Nickname("user$index"),
+                provider = Provider.BOJ,
+                providerId = "user$index",
                 bojId = BojId("user$index"),
                 password = "password$index",
                 rating = 1000 - (index * 100), // 1000, 900, 800, 700, 600
                 currentTier = Tier.GOLD,
+                role = Role.USER,
+                solutions = Solutions(),
                 consecutiveSolveDays = index
             )
         }
@@ -91,7 +111,7 @@ class LeaderboardServiceTest {
         every { studentRepository.findTop100ByOrderByRatingDesc() } returns students
 
         // when
-        val result = leaderboardService.getTopRankers()
+        val result = rankingService.getTopRankers()
 
         // then
         assertThat(result).hasSize(5)
@@ -107,7 +127,7 @@ class LeaderboardServiceTest {
         every { studentRepository.findTop100ByOrderByRatingDesc() } returns emptyList()
 
         // when
-        val result = leaderboardService.getTopRankers()
+        val result = rankingService.getTopRankers()
 
         // then
         assertThat(result).isEmpty()
@@ -121,10 +141,14 @@ class LeaderboardServiceTest {
             Student(
                 id = "student-$index",
                 nickname = Nickname("user$index"),
+                provider = Provider.BOJ,
+                providerId = "user$index",
                 bojId = BojId("user$index"),
                 password = "password$index",
                 rating = 2000 - index, // 내림차순으로 정렬됨
                 currentTier = Tier.GOLD,
+                role = Role.USER,
+                solutions = Solutions(),
                 consecutiveSolveDays = index
             )
         }
@@ -132,7 +156,7 @@ class LeaderboardServiceTest {
         every { studentRepository.findTop100ByOrderByRatingDesc() } returns students.take(100)
 
         // when
-        val result = leaderboardService.getTopRankers()
+        val result = rankingService.getTopRankers()
 
         // then
         assertThat(result).hasSize(100)
