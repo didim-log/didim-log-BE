@@ -69,7 +69,7 @@ class CustomOAuth2UserService(
             // SuccessHandler에서 쿼리 파라미터로 전달할 정보
             attributes["provider"] = provider.value
             attributes["providerId"] = providerId
-            attributes["email"] = email
+            attributes["email"] = email ?: "" // GitHub 비공개 이메일 등 null인 경우 빈 문자열로 처리
             attributes["nickname"] = nickname
             attributes["isNewUser"] = true
             attributes["role"] = "GUEST"

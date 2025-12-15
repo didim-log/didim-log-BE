@@ -43,3 +43,4 @@ class GithubOAuth2UserInfo(
             ?: "GitHub User"
     }
 }
+

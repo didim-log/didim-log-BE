@@ -13,6 +13,10 @@ interface StudentRepository : MongoRepository<Student, String> {
 
     fun existsByBojId(bojId: BojId): Boolean
 
+    fun existsByBojId(bojId: String): Boolean {
+        return existsByBojId(BojId(bojId))
+    }
+
     fun existsByNickname(nickname: Nickname): Boolean
 
     /**

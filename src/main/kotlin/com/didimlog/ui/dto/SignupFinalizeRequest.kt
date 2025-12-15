@@ -1,5 +1,6 @@
 package com.didimlog.ui.dto
 
+import com.fasterxml.jackson.annotation.JsonAlias
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 
@@ -23,5 +24,6 @@ data class SignupFinalizeRequest(
     val bojId: String? = null, // BOJ ID (선택사항, 나중에 연동 가능)
 
     @field:NotNull(message = "약관 동의는 필수입니다.")
+    @field:JsonAlias("isAgreedToTerms")
     val termsAgreed: Boolean
 )

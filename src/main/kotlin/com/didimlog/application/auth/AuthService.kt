@@ -311,6 +311,10 @@ class AuthService(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "약관 동의는 필수입니다.")
         }
 
+        if (bojId != null && studentRepository.existsByBojId(bojId)) {
+            throw BusinessException(ErrorCode.DUPLICATE_BOJ_ID)
+        }
+
         // Provider Enum 변환
         val providerEnum = try {
             Provider.valueOf(provider.uppercase())

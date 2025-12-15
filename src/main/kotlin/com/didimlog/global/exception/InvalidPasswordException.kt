@@ -7,3 +7,4 @@ package com.didimlog.global.exception
 class InvalidPasswordException(
     message: String
 ) : RuntimeException(message)
+
