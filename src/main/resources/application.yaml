@@ -60,6 +60,9 @@ logging:
   level:
     root: INFO
 
+server:
+  forward-headers-strategy: framework
+
 app:
   server:
     url: ${SERVER_URL:http://localhost:8080}
