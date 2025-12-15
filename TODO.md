@@ -57,6 +57,25 @@
 - [x] **[Service]** AuthService.finalizeSignup: 소셜 로그인 신규 유저의 Student 엔티티 생성 로직 구현
 - [x] **[API]** AuthController.finalizeSignup: 회원가입 마무리 API (email, provider, providerId, nickname, bojId, termsAgreed)
 
+## User Management & Admin
+> **Goal:** OAuth/BOJ 혼합 인증 환경에서 계정 관리(찾기/탈퇴)와 관리자 기능을 체계화한다.
+
+- [x] **[API]** 아이디/비밀번호 찾기 로직(계정 조회) 구현
+  - **구현**: `POST /api/v1/auth/find-account` (email → provider 반환)
+  - **남은 결정(진행 중)**: 로컬(BOJ+password) 로그인 사용자의 비밀번호 재설정(메일 발송)까지 지원할지, OAuth-only로 제한할지
+
+- [x] **[API]** 회원 탈퇴(본인) API 구현
+  - **Endpoint**: `DELETE /api/v1/students/me`
+  - **구현 방식**: Hard Delete (Student + Retrospective(studentId) + Feedback(writerId) cascade)
+  - **남은 결정(진행 중)**: `DELETE /api/users/me` alias 제공 여부, Soft Delete 전환 여부
+
+- [x] **[Admin]** 관리자 대시보드 통계 조회 API (`GET /api/v1/admin/dashboard/stats`)
+- [x] **[Admin]** 사용자 전체 목록 조회(페이징) (`GET /api/v1/admin/users`)
+- [x] **[Admin]** 회원 강제 탈퇴 (`DELETE /api/v1/admin/users/{studentId}`)
+- [x] **[Admin]** 사용자 정보 강제 수정 API 구현
+  - **Endpoint**: `PATCH /api/v1/admin/users/{studentId}`
+  - **대상**: Role 변경, BOJ ID 변경(중복 검사 포함), 닉네임 변경(중복 검사 포함)
+
 ## Phase 5: Code Quality & Documentation
 > **Goal:** 코드 품질 향상, 문서화, 및 프로젝트 정리
 
@@ -75,7 +94,7 @@
 - [ ] **[UI]** 로그인 페이지 개편: 소셜 로그인 버튼, 회원가입(약관 동의 -> BOJ 인증 -> 닉네임 설정) 위저드 구현
 
 ### 6-2. Dashboard 2.0 (Motivation & Layout)
-- [ ] **[Logic]** 다음 티어까지 남은 경험치(Rating) 계산 및 게이지바(%) 로직 구현
+- [x] **[Logic]** 다음 티어까지 남은 경험치(Rating) 계산 및 게이지바(%) 로직 구현
 - [ ] **[UI]** 대시보드 레이아웃 전면 수정:
   - 상단: 내 정보 + 티어 경험치 게이지바
   - 중단: 추천 문제 카드 (크게 배치)
@@ -83,8 +102,8 @@
 - [ ] **[Navigation]** 헤더 '내 정보' 버튼을 드롭다운 메뉴(내 정보, 랭킹, 로그아웃)로 변경
 
 ### 6-3. Ranking System 2.0 (Retrospective Based)
-- [ ] **[Logic]** 랭킹 산정 기준 변경: '문제 풀이 수' -> **'회고 작성 수'**
-- [ ] **[Infra]** QueryDSL을 활용한 기간별(일/월/연) 집계 쿼리 구현
+- [x] **[Logic]** 랭킹 산정 기준 변경: '문제 풀이 수' -> **'회고 작성 수'**
+- [x] **[Infra]** Mongo Aggregation(MongoTemplate)을 활용한 기간별(DAILY/WEEKLY/MONTHLY/TOTAL) 집계 쿼리 구현
 - [ ] **[UI]** 랭킹 페이지 개편:
   - 상단: "꾸준한 회고가 성장의 지름길입니다" 등 감사/동기부여 배너
   - 리스트: 1~3위 강조형 카드, 4~100위 테이블 리스트
@@ -93,3 +112,28 @@
 ### 6-4. User Profile & Settings
 - [x] **[API]** 내 정보 수정 (닉네임 변경) API
 - [ ] **[UI]** 마이페이지 내 설정 탭 구현
+
+## Phase 7: AI-Powered Retrospective (Structured)
+> **Goal:** `docs/RETROSPECTIVE_STANDARDS.md`에 정의된 구조를 기반으로, AI가 분석 리포트를 제공한다.
+
+- [ ] **[Design]** 프롬프트 템플릿 구조화
+
+  - AI에게 "전체 회고를 써줘"가 아닌, "**리팩토링 제안** 항목과 **심화 학습** 항목만 JSON으로 채워줘"라고 요청하는 시스템 프롬프트 설계
+
+- [ ] **[API]** 섹션별 AI 분석 요청 API 구현 (`POST /api/v1/ai/analyze`)
+
+  - **Request:**
+
+    - `code`: 사용자 코드
+
+    - `problemId`: 문제 번호
+
+    - `sectionType`: `REFACTORING` | `ROOT_CAUSE` | `COUNTER_EXAMPLE` (요청할 항목 지정)
+
+  - **Response:** 해당 섹션에 들어갈 마크다운 텍스트
+
+- [ ] **[UI]** 회고 작성 에디터 고도화
+
+  - 성공/실패 선택 시 미리 정의된 목차(Markdown)가 에디터에 자동 세팅됨
+
+  - 'AI 분석' 버튼 클릭 시, 특정 섹션(예: 리팩토링 제안) 아래에 로딩 애니메이션 후 텍스트가 타이핑되듯 추가됨
