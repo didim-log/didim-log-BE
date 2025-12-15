@@ -31,10 +31,88 @@ class AiPromptFactory {
     private fun commonSystemRules(): String {
         return """
         - 너는 시니어 백엔드 개발자이며, 알고리즘 풀이 코드 리뷰에 능숙하다.
-        - 출력은 반드시 마크다운만 반환한다. (JSON/코드블록 외 추가 포맷 금지)
+        - 출력은 반드시 마크다운만 반환한다. (JSON/추가 포맷 금지)
         - 정답 코드를 그대로 제공하지 말고, 해당 섹션 목적에 맞는 분석만 작성한다.
         - 한국어로 작성한다.
+        - 불필요한 서론/결론/인사/요약을 금지한다. (본문만)
+        - 아래에 제공한 템플릿의 제목/번호/구조를 절대 변경하지 말고 그대로 유지한다.
+        - 템플릿에 없는 섹션을 추가하지 말고, 템플릿에 있는 항목만 채워라.
+        - 템플릿에 포함된 예시 문구(예: "...", "(여기에 내용)")는 출력에 남기지 말고 실제 내용으로 대체하라.
+        - 코드 조각이 필요하다면 10줄 이하의 부분 코드/의사코드만 허용한다. (정답 코드 전체 금지)
         """.trimIndent()
+    }
+
+    private fun injectionGuide(sectionType: AiSectionType): String {
+        val template = markdownTemplateFor(sectionType)
+        return """
+        ## 출력 템플릿 (RETROSPECTIVE_STANDARDS 기반)
+        - 아래 템플릿을 그대로 따르며, 템플릿의 본문 자리만 채워라.
+        - 출력은 템플릿 블록 전체만 반환하라. (템플릿 밖 텍스트 금지)
+        - 출력의 첫 줄은 반드시 템플릿의 섹션 제목/번호 라인으로 시작하라.
+
+        $template
+        """.trimIndent()
+    }
+
+    private fun markdownTemplateFor(sectionType: AiSectionType): String {
+        return when (sectionType) {
+            AiSectionType.REFACTORING -> """
+            3. **리팩토링 제안 (Refactoring)**
+               - 개선 포인트
+                 - ...
+               - 추천 리팩토링
+                 - ...
+               - 주의할 점
+                 - ...
+            """.trimIndent()
+
+            AiSectionType.BEST_PRACTICE -> """
+            4. **모범 답안 비교 (Best Practice)**
+               - 다른 접근/패턴
+                 - ...
+               - 내 풀이와의 차이
+                 - ...
+               - 트레이드오프
+                 - ...
+            """.trimIndent()
+
+            AiSectionType.DEEP_DIVE -> """
+            5. **심화 학습 키워드 (Deep Dive)**
+               - 키워드 1: ...
+               - 키워드 2: ...
+               - 키워드 3: ...
+               - 키워드 4: ...
+               - 키워드 5: ...
+            """.trimIndent()
+
+            AiSectionType.ROOT_CAUSE -> """
+            3. **원인 분석 (Root Cause)**
+               - 원인 1: ...
+               - 원인 2: ...
+               - 근거(코드/조건/경계): ...
+            """.trimIndent()
+
+            AiSectionType.COUNTER_EXAMPLE -> """
+            4. **반례 제안 (Counter Example)**
+               - 반례 1
+                 - 입력: ...
+                 - 기대: ...
+                 - 실패 원인: ...
+               - 반례 2
+                 - 입력: ...
+                 - 기대: ...
+                 - 실패 원인: ...
+            """.trimIndent()
+
+            AiSectionType.GUIDANCE -> """
+            5. **해결 가이드 (Guidance)**
+               - Hint 1 (방향): ...
+               - Hint 2 (구조): ...
+               - Hint 3 (결정적 단서): ...
+               - 체크리스트
+                 - ...
+            """.trimIndent()
+        }
     }
 
     private fun refactoringSystemPrompt(): String {
@@ -44,6 +122,8 @@ class AiPromptFactory {
         ### 목표: 리팩토링 제안(Refactoring)
         - 시간/공간 복잡도를 간단히 분석하고, 더 나은 구조/가독성/성능을 위한 리팩토링 제안만 작성한다.
         - 제안은 구체적인 변경 포인트 위주로 bullet로 작성한다.
+
+        ${injectionGuide(AiSectionType.REFACTORING)}
         """.trimIndent()
     }
 
@@ -54,6 +134,8 @@ class AiPromptFactory {
         ### 목표: 모범 답안 비교(Best Practice)
         - 다른 풀이 접근(전형적인 패턴/자료구조 선택)을 소개하되, 정답 코드를 제공하지 않는다.
         - 내 코드와의 차이점(Trade-off)을 중심으로 비교한다.
+
+        ${injectionGuide(AiSectionType.BEST_PRACTICE)}
         """.trimIndent()
     }
 
@@ -63,6 +145,8 @@ class AiPromptFactory {
 
         ### 목표: 심화 학습 키워드(Deep Dive)
         - 이 문제와 연관된 CS/알고리즘 키워드 5~8개를 제시하고, 각 키워드마다 1~2문장으로 학습 방향을 제안한다.
+
+        ${injectionGuide(AiSectionType.DEEP_DIVE)}
         """.trimIndent()
     }
 
@@ -73,6 +157,8 @@ class AiPromptFactory {
         ### 목표: 원인 분석(Root Cause)
         - 실패(오답/시간초과/런타임에러 등)의 원인을 코드 기반으로 추정하여 핵심 원인만 서술한다.
         - '어디서/왜'가 드러나도록 원인을 2~4개로 압축한다.
+
+        ${injectionGuide(AiSectionType.ROOT_CAUSE)}
         """.trimIndent()
     }
 
@@ -83,6 +169,8 @@ class AiPromptFactory {
         ### 목표: 반례 제안(Counter Example)
         - 코드가 틀릴 수 있는 입력(엣지 케이스)을 3~6개 제시한다.
         - 각 반례마다 왜 깨지는지(또는 위험한지) 한 줄 근거를 덧붙인다.
+
+        ${injectionGuide(AiSectionType.COUNTER_EXAMPLE)}
         """.trimIndent()
     }
 
@@ -93,6 +181,8 @@ class AiPromptFactory {
         ### 목표: 해결 가이드(Guidance)
         - 정답을 주지 말고, 힌트 3단계를 단계적으로 제공한다.
         - 수정해야 할 핵심 포인트를 마지막에 체크리스트로 요약한다.
+
+        ${injectionGuide(AiSectionType.GUIDANCE)}
         """.trimIndent()
     }
 }
