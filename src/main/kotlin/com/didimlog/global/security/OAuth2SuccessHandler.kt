@@ -35,7 +35,16 @@ class OAuth2SuccessHandler(
         val email = oauth2User.getAttribute<String>("email") ?: ""
 
         val provider = Provider.from(providerValue)
-            ?: throw IllegalStateException("유효하지 않은 provider 입니다. provider=$providerValue")
+        if (provider == null) {
+            val targetUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
+                .queryParam("error", "invalid_provider")
+                .queryParam("error_description", "유효하지 않은 provider 입니다. provider=$providerValue")
+                .build()
+                .toUriString()
+            clearAuthenticationAttributes(request)
+            redirectStrategy.sendRedirect(request, response, targetUrl)
+            return
+        }
 
         val existingStudent = studentRepository.findByProviderAndProviderId(provider, providerId)
         if (existingStudent.isEmpty) {
