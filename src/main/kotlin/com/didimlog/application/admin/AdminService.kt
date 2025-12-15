@@ -135,7 +135,10 @@ class AdminService(
             val currentBojId = student.bojId?.value
             if (currentBojId != bojIdVo.value) {
                 if (studentRepository.existsByBojId(bojIdVo.value)) {
-                    throw IllegalArgumentException("이미 존재하는 BOJ ID입니다.")
+                    throw BusinessException(
+                        ErrorCode.DUPLICATE_BOJ_ID,
+                        "이미 가입된 백준 아이디입니다. bojId=${bojIdVo.value}"
+                    )
                 }
                 updatedStudent = updatedStudent.copy(bojId = bojIdVo)
                 isChanged = true
