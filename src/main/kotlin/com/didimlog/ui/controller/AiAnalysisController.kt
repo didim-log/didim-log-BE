@@ -4,6 +4,10 @@ import com.didimlog.application.ai.AiAnalysisService
 import com.didimlog.ui.dto.AiAnalyzeRequest
 import com.didimlog.ui.dto.AiAnalyzeResponse
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
@@ -22,6 +26,26 @@ class AiAnalysisController(
     @Operation(
         summary = "회고 섹션 AI 분석",
         description = "회고 특정 섹션(리팩토링/원인분석/반례 등)만 AI가 분석하여 마크다운으로 반환합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "AI 분석 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패 또는 sectionType/요청 본문 형식 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류 또는 LLM 연동 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @PostMapping("/analyze")
     fun analyze(
