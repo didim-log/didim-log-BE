@@ -1,10 +1,13 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.auth.AuthService
+import com.didimlog.application.auth.FindAccountService
+import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.domain.enums.Tier
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AuthRequest
+import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.AuthResponse
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
@@ -52,10 +55,19 @@ class AuthControllerTest {
     @Autowired
     private lateinit var authService: AuthService
 
+    @Autowired
+    private lateinit var findAccountService: FindAccountService
+
     @TestConfiguration
     class TestConfig {
         @Bean
         fun authService(): AuthService = mockk(relaxed = true)
+
+        @Bean
+        fun findAccountService(): FindAccountService = mockk(relaxed = true)
+
+        @Bean
+        fun bojOwnershipVerificationService(): BojOwnershipVerificationService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -216,6 +228,50 @@ class AuthControllerTest {
             .andExpect(status().isNotFound)
 
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
+    }
+
+    @Test
+    @DisplayName("계정 찾기 요청 시 200 OK와 provider를 반환한다")
+    fun `계정 찾기 성공`() {
+        // given
+        val request = FindAccountRequest(email = "test@example.com")
+        every { findAccountService.findAccount(request.email) } returns FindAccountService.FindAccountResult(
+            provider = "GITHUB",
+            message = "해당 이메일은 GITHUB로 가입되었습니다."
+        )
+
+        // when & then
+        mockMvc.perform(
+            post("/api/v1/auth/find-account")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.provider").value("GITHUB"))
+            .andExpect(jsonPath("$.message").value("해당 이메일은 GITHUB로 가입되었습니다."))
+
+        verify(exactly = 1) { findAccountService.findAccount(request.email) }
+    }
+
+    @Test
+    @DisplayName("계정 찾기 요청 시 가입 정보가 없으면 404 Not Found를 반환한다")
+    fun `계정 찾기 실패 - 가입 정보 없음`() {
+        // given
+        val request = FindAccountRequest(email = "unknown@example.com")
+        every { findAccountService.findAccount(request.email) } throws BusinessException(
+            ErrorCode.STUDENT_NOT_FOUND,
+            "가입 정보가 없습니다."
+        )
+
+        // when & then
+        mockMvc.perform(
+            post("/api/v1/auth/find-account")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isNotFound)
+
+        verify(exactly = 1) { findAccountService.findAccount(request.email) }
     }
 }
 

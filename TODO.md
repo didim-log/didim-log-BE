@@ -90,7 +90,7 @@
 ### 6-1. Advanced Authentication (Auth 2.0)
 - [ ] **[Config]** OAuth2 Client 설정 (Google, Kakao, Naver) 및 Provider 구현
 - [ ] **[Domain]** `User` 엔티티 수정: 소셜 ID, 프로바이더, 약관 동의 여부, 별명 필드 추가
-- [ ] **[Feature]** BOJ 계정 소유권 인증 로직 구현 (상태 메시지 검증 방식)
+- [x] **[Feature]** BOJ 계정 소유권 인증 로직 구현 (상태 메시지 검증 방식)
 - [ ] **[UI]** 로그인 페이지 개편: 소셜 로그인 버튼, 회원가입(약관 동의 -> BOJ 인증 -> 닉네임 설정) 위저드 구현
 
 ### 6-2. Dashboard 2.0 (Motivation & Layout)
