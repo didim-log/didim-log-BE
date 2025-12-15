@@ -33,3 +33,4 @@ class StatisticsController(
         return ResponseEntity.ok(response)
     }
 }
+

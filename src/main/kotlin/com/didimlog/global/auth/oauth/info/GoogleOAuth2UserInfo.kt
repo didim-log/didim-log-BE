@@ -28,3 +28,4 @@ class GoogleOAuth2UserInfo(
             ?: "Google User"
     }
 }
+

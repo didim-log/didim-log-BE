@@ -14,3 +14,4 @@ class SolvedAcConfig {
             .build()
     }
 }
+

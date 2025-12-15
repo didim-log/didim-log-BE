@@ -17,3 +17,4 @@ data class SuperAdminRequest(
     @field:NotBlank(message = "관리자 키는 필수입니다.")
     val adminKey: String
 )
+

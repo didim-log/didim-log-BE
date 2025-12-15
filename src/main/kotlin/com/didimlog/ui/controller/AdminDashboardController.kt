@@ -28,3 +28,4 @@ class AdminDashboardController(
         return ResponseEntity.ok(AdminDashboardStatsResponse.from(stats))
     }
 }
+

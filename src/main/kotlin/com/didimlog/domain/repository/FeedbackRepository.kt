@@ -18,3 +18,4 @@ interface FeedbackRepository : MongoRepository<Feedback, String> {
      */
     fun findByWriterId(writerId: String): List<Feedback>
 }
+

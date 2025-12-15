@@ -90,3 +90,4 @@ data class ProblemDetails(
     val outputDescription: String?,
     val examples: List<Example>
 )
+

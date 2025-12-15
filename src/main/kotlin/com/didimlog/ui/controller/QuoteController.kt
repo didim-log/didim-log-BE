@@ -29,3 +29,4 @@ class QuoteController(
         return ResponseEntity.ok(response)
     }
 }
+
