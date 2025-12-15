@@ -80,6 +80,8 @@
 > **Goal:** 코드 품질 향상, 문서화, 및 프로젝트 정리
 
 - [x] **[Docs]** API 명세서 최신화 (DELETE 엔드포인트 추가, 페이지네이션 1-based로 수정)
+- [x] **[Docs]** Swagger(SpringDoc) 명세 및 `DOCS/API_SPECIFICATION.md` 전면 최신화
+- [x] **[Fix]** GlobalExceptionHandler 예외 처리 강화 및 ErrorResponse 표준화(401/403/enum 파싱/타입 변환 등)
 - [x] **[Refactor]** 클린코드 리팩토링 (else 키워드를 Early Return 패턴으로 변경)
 - [x] **[Cleanup]** 불필요한 공백 및 코드 정리 (파일 끝 공백 라인 제거, 라인 끝 공백 제거)
 - [x] **[Docs]** FE TODO.md에 백엔드 완료 작업 반영
@@ -120,7 +122,8 @@
 
 - [x] **[Design]** 프롬프트 템플릿 구조화
 
-  - AI에게 "전체 회고를 써줘"가 아닌, "**리팩토링 제안** 항목과 **심화 학습** 항목만 JSON으로 채워줘"라고 요청하는 시스템 프롬프트 설계
+  - AI에게 전체 회고 작성이 아닌, **요청된 섹션 본문만** 생성하도록 제한
+  - `RETROSPECTIVE_STANDARDS.md` 기반의 **정형화된 마크다운 템플릿**(섹션 번호/제목/구조)을 시스템 프롬프트에 주입하여 일관성 보장
 
 - [x] **[API]** 섹션별 AI 분석 요청 API 구현 (`POST /api/v1/ai/analyze`)
 
