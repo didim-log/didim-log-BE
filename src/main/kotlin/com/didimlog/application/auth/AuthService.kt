@@ -311,8 +311,23 @@ class AuthService(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "약관 동의는 필수입니다.")
         }
 
-        if (bojId != null && studentRepository.existsByBojId(bojId)) {
-            throw BusinessException(ErrorCode.DUPLICATE_BOJ_ID)
+        if (bojId.isNullOrBlank()) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "백준 아이디는 필수입니다.")
+        }
+
+        val bojIdVo = BojId(bojId)
+
+        val userResponse = try {
+            solvedAcClient.fetchUser(bojIdVo)
+        } catch (e: IllegalStateException) {
+            log.warn("Solved.ac 사용자 조회 실패: bojId=$bojId, message=${e.message}", e)
+            throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "유효하지 않은 BOJ ID입니다. bojId=$bojId")
+        } catch (e: Exception) {
+            log.error(
+                "Solved.ac API 호출 중 예상치 못한 예외 발생: bojId=$bojId, exceptionType=${e.javaClass.simpleName}, message=${e.message}",
+                e
+            )
+            throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "유효하지 않은 BOJ ID입니다. bojId=$bojId")
         }
 
         // Provider Enum 변환
@@ -324,6 +339,15 @@ class AuthService(
 
         // 이미 가입된 사용자인지 확인 (provider + providerId로 조회)
         val existingStudent = studentRepository.findByProviderAndProviderId(providerEnum, providerId)
+
+        // BOJ ID 중복 체크 (본인 계정 제외)
+        val existingBojOwner = studentRepository.findByBojId(bojIdVo)
+        if (existingBojOwner.isPresent) {
+            val isSameAccount = existingStudent.isPresent && existingBojOwner.get().id == existingStudent.get().id
+            if (!isSameAccount) {
+                throw BusinessException(ErrorCode.DUPLICATE_BOJ_ID)
+            }
+        }
         
         val savedStudent = if (existingStudent.isPresent) {
             // 기존 유저: 닉네임 및 약관 동의 업데이트
@@ -335,7 +359,7 @@ class AuthService(
                 throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 닉네임입니다. nickname=$nickname")
             }
             
-            val finalizedStudent = student.finalizeSignup(nickname, termsAgreed)
+            val finalizedStudent = student.finalizeSignup(nickname, bojIdVo, email, termsAgreed)
             studentRepository.save(finalizedStudent)
         } else {
             // 신규 유저: Student 엔티티 생성
@@ -346,23 +370,8 @@ class AuthService(
                 throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 닉네임입니다. nickname=$nickname")
             }
             
-            val bojIdVo = bojId?.let { BojId(it) }
-            
-            // BOJ ID가 제공된 경우 Solved.ac API로 검증 및 Rating 조회
-            val (rating, tier) = if (bojIdVo != null) {
-                try {
-                    val userResponse = solvedAcClient.fetchUser(bojIdVo)
-                    val calculatedTier = Tier.fromRating(userResponse.rating)
-                    Pair(userResponse.rating, calculatedTier)
-                } catch (e: Exception) {
-                    log.warn("BOJ ID 검증 실패: bojId=$bojId, message=${e.message}")
-                    // BOJ ID 검증 실패 시 기본값 사용
-                    Pair(0, Tier.BRONZE)
-                }
-            } else {
-                // BOJ ID가 없는 경우 기본값
-                Pair(0, Tier.BRONZE)
-            }
+            val rating = userResponse.rating
+            val tier = Tier.fromRating(rating)
             
             val newStudent = Student(
                 nickname = nicknameVo,
@@ -393,7 +402,7 @@ class AuthService(
         }
 
         // 정식 Access Token 발급 (USER role 포함)
-        val token = jwtTokenProvider.createToken(savedStudent.id!!, Role.USER.value)
+        val token = jwtTokenProvider.createToken(bojIdVo.value, Role.USER.value)
         return AuthResult(token, savedStudent.rating, savedStudent.tier())
     }
 }
