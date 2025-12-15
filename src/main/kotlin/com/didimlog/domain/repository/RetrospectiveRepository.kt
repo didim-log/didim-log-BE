@@ -8,4 +8,6 @@ interface RetrospectiveRepository : MongoRepository<Retrospective, String>, Retr
     fun findAllByStudentId(studentId: String): List<Retrospective>
 
     fun findByStudentIdAndProblemId(studentId: String, problemId: String): Retrospective?
+
+    fun deleteAllByStudentId(studentId: String)
 }

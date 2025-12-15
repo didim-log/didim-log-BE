@@ -8,17 +8,21 @@ data class RankingResponse(
     val nickname: String, // 사용자 닉네임
     val tier: String, // 티어 정보 (Enum name)
     val rating: Int, // 점수
-    val solvedCount: Int, // 푼 문제 수
+    val retrospectiveCount: Long, // 작성한 회고 수
     val bio: String? = null // 한줄 소개 (없으면 생략)
 ) {
     companion object {
-        fun from(student: com.didimlog.domain.Student, rank: Int): RankingResponse {
+        fun from(
+            student: com.didimlog.domain.Student,
+            rank: Int,
+            retrospectiveCount: Long
+        ): RankingResponse {
             return RankingResponse(
                 rank = rank,
                 nickname = student.nickname.value,
                 tier = student.currentTier.name,
                 rating = student.rating,
-                solvedCount = student.solutions.getAll().size,
+                retrospectiveCount = retrospectiveCount,
                 bio = null // 향후 한줄 소개 기능 추가 시 구현
             )
         }

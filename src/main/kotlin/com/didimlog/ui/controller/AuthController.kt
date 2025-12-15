@@ -1,10 +1,17 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.auth.AuthService
+import com.didimlog.application.auth.FindAccountService
+import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AuthRequest
 import com.didimlog.ui.dto.AuthResponse
+import com.didimlog.ui.dto.BojCodeIssueResponse
+import com.didimlog.ui.dto.BojVerifyRequest
+import com.didimlog.ui.dto.BojVerifyResponse
+import com.didimlog.ui.dto.FindAccountRequest
+import com.didimlog.ui.dto.FindAccountResponse
 import com.didimlog.ui.dto.SignupFinalizeRequest
 import com.didimlog.ui.dto.SuperAdminRequest
 import io.swagger.v3.oas.annotations.Operation
@@ -27,6 +34,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/auth")
 class AuthController(
     private val authService: AuthService,
+    private val findAccountService: FindAccountService,
+    private val bojOwnershipVerificationService: BojOwnershipVerificationService,
     @Value("\${app.admin.secret-key}")
     private val adminSecretKey: String
 ) {
@@ -166,5 +175,72 @@ class AuthController(
             tierLevel = result.tier.value
         )
         return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "계정 찾기",
+        description = "이메일을 입력받아 가입된 소셜 제공자(Provider)를 반환합니다. (OAuth-only 환경용)"
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 이메일 형식",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "가입 정보 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/find-account")
+    fun findAccount(
+        @RequestBody
+        @Valid
+        request: FindAccountRequest
+    ): ResponseEntity<FindAccountResponse> {
+        val result = findAccountService.findAccount(request.email)
+        return ResponseEntity.ok(
+            FindAccountResponse(
+                provider = result.provider,
+                message = result.message
+            )
+        )
+    }
+
+    @Operation(
+        summary = "BOJ 소유권 인증 코드 발급",
+        description = "백준 프로필 상태 메시지 인증에 사용할 코드를 발급하고, sessionId와 함께 일정 시간 저장합니다."
+    )
+    @PostMapping("/boj/code")
+    fun issueBojVerificationCode(): ResponseEntity<BojCodeIssueResponse> {
+        val issued = bojOwnershipVerificationService.issueVerificationCode()
+        return ResponseEntity.ok(
+            BojCodeIssueResponse(
+                sessionId = issued.sessionId,
+                code = issued.code,
+                expiresInSeconds = issued.expiresInSeconds
+            )
+        )
+    }
+
+    @Operation(
+        summary = "BOJ 소유권 인증 확인",
+        description = "백준 프로필 상태 메시지에 발급된 인증 코드가 포함되어 있는지 확인하고, 성공 시 Student.isVerified를 true로 업데이트합니다."
+    )
+    @PostMapping("/boj/verify")
+    fun verifyBojOwnership(
+        @RequestBody
+        @Valid
+        request: BojVerifyRequest
+    ): ResponseEntity<BojVerifyResponse> {
+        bojOwnershipVerificationService.verifyOwnership(
+            sessionId = request.sessionId,
+            bojId = request.bojId
+        )
+        return ResponseEntity.ok(BojVerifyResponse())
     }
 }

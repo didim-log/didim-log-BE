@@ -17,5 +17,7 @@ interface FeedbackRepository : MongoRepository<Feedback, String> {
      * 작성자 ID로 피드백 목록을 조회한다.
      */
     fun findByWriterId(writerId: String): List<Feedback>
+
+    fun deleteAllByWriterId(writerId: String)
 }
 

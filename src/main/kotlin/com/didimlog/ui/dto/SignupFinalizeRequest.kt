@@ -10,7 +10,7 @@ import jakarta.validation.constraints.NotNull
  */
 data class SignupFinalizeRequest(
     @field:NotBlank(message = "이메일은 필수입니다.")
-    val email: String?,
+    val email: String,
 
     @field:NotBlank(message = "프로바이더는 필수입니다.")
     val provider: String,

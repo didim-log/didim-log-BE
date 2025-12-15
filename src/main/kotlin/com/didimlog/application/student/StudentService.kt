@@ -1,12 +1,15 @@
 package com.didimlog.application.student
 
 import com.didimlog.domain.Student
+import com.didimlog.domain.repository.FeedbackRepository
+import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.PasswordValidator
+import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -18,8 +21,12 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class StudentService(
     private val studentRepository: StudentRepository,
+    private val retrospectiveRepository: RetrospectiveRepository,
+    private val feedbackRepository: FeedbackRepository,
     private val passwordEncoder: PasswordEncoder
 ) {
+
+    private val log = LoggerFactory.getLogger(StudentService::class.java)
 
     /**
      * 학생의 프로필 정보를 수정한다.
@@ -88,5 +95,32 @@ class StudentService(
         }
 
         return studentRepository.save(updatedStudent)
+    }
+
+    /**
+     * 회원 탈퇴(본인)를 처리한다. (Hard Delete)
+     * - Student 및 연관 데이터(Retrospective, Feedback)를 DB에서 완전히 삭제한다.
+     *
+     * ⚠️ 이 작업은 복구할 수 없다.
+     */
+    @Transactional
+    fun withdraw(bojId: String) {
+        val bojIdVo = BojId(bojId)
+        val student = studentRepository.findByBojId(bojIdVo)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+            }
+
+        val studentId = student.id
+            ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다.")
+
+        log.warn("회원 탈퇴 처리 시작(Hard Delete). 복구 불가. bojId={}, studentId={}", bojId, studentId)
+
+        // 연관 데이터 삭제 (studentId 기반)
+        retrospectiveRepository.deleteAllByStudentId(studentId)
+        feedbackRepository.deleteAllByWriterId(studentId)
+
+        // 본인 데이터 삭제
+        studentRepository.delete(student)
     }
 }

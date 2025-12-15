@@ -1,7 +1,8 @@
 package com.didimlog.global.auth.oauth.info
 
 import com.didimlog.domain.enums.Provider
-import org.springframework.security.oauth2.core.user.OAuth2User
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 
 /**
  * GitHub OAuth2 사용자 정보를 파싱하는 구현체
@@ -26,7 +27,7 @@ class GithubOAuth2UserInfo(
         }
         val login = attributes["login"] as? String
         
-        return id ?: login ?: throw IllegalStateException("GitHub 사용자 ID를 찾을 수 없습니다.")
+        return id ?: login ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "GitHub 사용자 ID를 찾을 수 없습니다.")
     }
 
     override fun getProvider(): Provider = Provider.GITHUB

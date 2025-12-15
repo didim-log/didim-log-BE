@@ -11,6 +11,8 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -146,9 +148,10 @@ class RetrospectiveServiceTest {
         every { studentRepository.existsById("missing") } returns false
 
         // expect
-        assertThrows<IllegalArgumentException> {
+        val exception = assertThrows<BusinessException> {
             retrospectiveService.writeRetrospective("missing", "1000", "content", null)
         }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
     }
 
     @Test
@@ -159,9 +162,10 @@ class RetrospectiveServiceTest {
         every { problemRepository.findById("missing") } returns Optional.empty()
 
         // expect
-        assertThrows<IllegalArgumentException> {
+        val exception = assertThrows<BusinessException> {
             retrospectiveService.writeRetrospective("student-id", "missing", "content", null)
         }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.PROBLEM_NOT_FOUND)
     }
 
     @Test
@@ -194,9 +198,10 @@ class RetrospectiveServiceTest {
         every { retrospectiveRepository.findById("missing") } returns Optional.empty()
 
         // expect
-        assertThrows<IllegalArgumentException> {
+        val exception = assertThrows<BusinessException> {
             retrospectiveService.getRetrospective("missing")
         }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RETROSPECTIVE_NOT_FOUND)
     }
 
     @Test
@@ -290,9 +295,10 @@ class RetrospectiveServiceTest {
         every { problemRepository.findById("missing") } returns Optional.empty()
 
         // expect
-        assertThrows<IllegalArgumentException> {
+        val exception = assertThrows<BusinessException> {
             retrospectiveService.generateTemplate("missing", com.didimlog.domain.enums.ProblemResult.SUCCESS)
         }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.PROBLEM_NOT_FOUND)
     }
 }
 

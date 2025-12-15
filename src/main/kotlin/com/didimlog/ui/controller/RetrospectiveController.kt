@@ -3,6 +3,8 @@ package com.didimlog.ui.controller
 import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.BookmarkToggleResponse
 import com.didimlog.ui.dto.RetrospectivePageResponse
 import com.didimlog.ui.dto.RetrospectiveRequest
@@ -10,6 +12,10 @@ import com.didimlog.ui.dto.RetrospectiveResponse
 import com.didimlog.ui.dto.TemplateResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
@@ -40,6 +46,26 @@ class RetrospectiveController(
                 "요청 본문에 content(필수, 10자 이상), summary(선택, 200자 이하), " +
                 "resultType(선택, SUCCESS/FAIL), solvedCategory(선택, 50자 이하)를 포함할 수 있습니다."
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "작성/수정 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패 또는 잘못된 입력",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생 또는 문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
     @PostMapping
     fun writeRetrospective(
         @Parameter(description = "학생 ID", required = true)
@@ -68,6 +94,21 @@ class RetrospectiveController(
     @Operation(
         summary = "회고 목록 조회",
         description = "검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 요청 파라미터(페이지/정렬/카테고리 등)",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @GetMapping
     fun getRetrospectives(
@@ -103,7 +144,7 @@ class RetrospectiveController(
         val pageable = createPageable(page, size, sort)
         val condition = RetrospectiveSearchCondition(
             keyword = keyword,
-            category = category?.let { ProblemCategory.valueOf(it.uppercase()) },
+            category = category?.let { parseProblemCategory(it) },
             isBookmarked = isBookmarked,
             studentId = studentId
         )
@@ -116,6 +157,16 @@ class RetrospectiveController(
     @Operation(
         summary = "회고 조회",
         description = "회고 ID로 회고를 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @GetMapping("/{retrospectiveId}")
     fun getRetrospective(
@@ -130,6 +181,16 @@ class RetrospectiveController(
     @Operation(
         summary = "북마크 토글",
         description = "회고의 북마크 상태를 토글합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "토글 성공"),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @PostMapping("/{retrospectiveId}/bookmark")
     fun toggleBookmark(
@@ -156,9 +217,31 @@ class RetrospectiveController(
         return PageRequest.of(page - 1, size, sortObj)
     }
 
+    private fun parseProblemCategory(raw: String): ProblemCategory {
+        val normalized = raw.trim()
+        if (normalized.isBlank()) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "category는 공백일 수 없습니다.")
+        }
+        return try {
+            ProblemCategory.valueOf(normalized.uppercase())
+        } catch (e: IllegalArgumentException) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 category 입니다. category=$raw")
+        }
+    }
+
     @Operation(
         summary = "회고 삭제",
         description = "회고 ID로 회고를 삭제합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "삭제 성공 (응답 본문 없음)"),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @DeleteMapping("/{retrospectiveId}")
     fun deleteRetrospective(
@@ -173,6 +256,21 @@ class RetrospectiveController(
         summary = "회고 템플릿 생성",
         description = "문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. " +
                 "resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "생성 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 요청 파라미터(resultType 등)",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @GetMapping("/template")
     fun generateTemplate(

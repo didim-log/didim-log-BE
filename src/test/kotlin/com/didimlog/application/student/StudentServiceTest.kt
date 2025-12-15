@@ -5,6 +5,8 @@ import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
@@ -23,10 +25,14 @@ import java.util.Optional
 class StudentServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
+    private val retrospectiveRepository: RetrospectiveRepository = mockk(relaxed = true)
+    private val feedbackRepository: FeedbackRepository = mockk(relaxed = true)
     private val passwordEncoder: PasswordEncoder = mockk()
 
     private val studentService = StudentService(
         studentRepository,
+        retrospectiveRepository,
+        feedbackRepository,
         passwordEncoder
     )
 
@@ -232,6 +238,37 @@ class StudentServiceTest {
         }
             .isInstanceOf(BusinessException::class.java)
             .matches({ (it as BusinessException).errorCode == ErrorCode.STUDENT_NOT_FOUND })
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 시 학생과 연관 데이터(회고/피드백)를 Hard Delete 한다")
+    fun `회원 탈퇴 Hard Delete 성공`() {
+        // given
+        val bojId = "testuser"
+        val studentId = "student-id"
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.delete(student) } returns Unit
+        every { retrospectiveRepository.deleteAllByStudentId(studentId) } returns Unit
+        every { feedbackRepository.deleteAllByWriterId(studentId) } returns Unit
+
+        // when
+        studentService.withdraw(bojId)
+
+        // then
+        verify(exactly = 1) { retrospectiveRepository.deleteAllByStudentId(studentId) }
+        verify(exactly = 1) { feedbackRepository.deleteAllByWriterId(studentId) }
+        verify(exactly = 1) { studentRepository.delete(student) }
     }
 }
 

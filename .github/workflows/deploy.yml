@@ -18,6 +18,8 @@ name: didim-log-be Deploy CICD
 # - OAUTH_NAVER_ID: Naver OAuth2 Client ID
 # - OAUTH_NAVER_SECRET: Naver OAuth2 Client Secret
 # - ADMIN_SECRET_KEY: 슈퍼 관리자 계정 생성용 보안 키
+# - GEMINI_API_KEY: Gemini API Key
+# - GEMINI_API_URL: Gemini API URL (generateContent endpoint)
 
 on:
   push:
@@ -50,6 +52,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build with Gradle Wrapper
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_URL: ${{ secrets.GEMINI_API_URL }}
         run: ./gradlew clean assemble
 
       - name: Build Dockerfile and Push DockerHub
@@ -89,6 +94,8 @@ jobs:
             echo "SPRING_DATA_REDIS_PORT=${{ secrets.SPRING_DATA_REDIS_PORT }}" >> .env
             echo "SERVER_URL=${{ secrets.SERVER_URL }}" >> .env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+            echo "GEMINI_API_URL=${{ secrets.GEMINI_API_URL }}" >> .env
             echo "OAUTH_GOOGLE_ID=${{ secrets.OAUTH_GOOGLE_ID }}" >> .env
             echo "OAUTH_GOOGLE_SECRET=${{ secrets.OAUTH_GOOGLE_SECRET }}" >> .env
             echo "OAUTH_GITHUB_ID=${{ secrets.OAUTH_GITHUB_ID }}" >> .env
@@ -119,3 +126,4 @@ jobs:
 # ✅ OAUTH_GITHUB_ID, OAUTH_GITHUB_SECRET
 # ✅ OAUTH_NAVER_ID, OAUTH_NAVER_SECRET
 # ✅ ADMIN_SECRET_KEY
+# ✅ GEMINI_API_KEY, GEMINI_API_URL

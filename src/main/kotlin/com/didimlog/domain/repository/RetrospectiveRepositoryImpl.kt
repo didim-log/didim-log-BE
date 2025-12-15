@@ -2,11 +2,24 @@ package com.didimlog.domain.repository
 
 import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.domain.Retrospective
+import com.didimlog.domain.enums.RankingPeriod
+import java.time.LocalDateTime
+import org.bson.Document
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.data.mongodb.core.aggregation.Aggregation
+import org.springframework.data.mongodb.core.aggregation.Aggregation.group
+import org.springframework.data.mongodb.core.aggregation.Aggregation.limit
+import org.springframework.data.mongodb.core.aggregation.Aggregation.lookup
+import org.springframework.data.mongodb.core.aggregation.Aggregation.match
+import org.springframework.data.mongodb.core.aggregation.Aggregation.newAggregation
+import org.springframework.data.mongodb.core.aggregation.Aggregation.project
+import org.springframework.data.mongodb.core.aggregation.Aggregation.skip
+import org.springframework.data.mongodb.core.aggregation.Aggregation.sort
+import org.springframework.data.mongodb.core.aggregation.Aggregation.unwind
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.stereotype.Repository
@@ -19,6 +32,63 @@ import org.springframework.stereotype.Repository
 class RetrospectiveRepositoryImpl(
     private val mongoTemplate: MongoTemplate
 ) : RetrospectiveRepositoryCustom {
+
+    override fun findTopStudentsByRetrospectiveCount(
+        period: RankingPeriod,
+        pageable: Pageable
+    ): Page<StudentRetrospectiveCount> {
+        val criteria = buildPeriodCriteria(period)
+
+        val basePipeline = mutableListOf(
+            match(criteria),
+            group("studentId").count().`as`("retrospectiveCount"),
+            project("retrospectiveCount").and("_id").`as`("studentId"),
+            lookup("students", "studentId", "_id", "student"),
+            unwind("student", true),
+            sort(
+                Sort.by(
+                    Sort.Order.desc("retrospectiveCount"),
+                    Sort.Order.desc("student.rating"),
+                    Sort.Order.asc("studentId")
+                )
+            )
+        )
+
+        val dataPipeline = basePipeline.toMutableList().apply {
+            add(skip(pageable.offset))
+            add(limit(pageable.pageSize.toLong()))
+            add(project("studentId", "retrospectiveCount"))
+        }
+
+        val totalPipeline = listOf(
+            match(criteria),
+            group("studentId"),
+            group().count().`as`("total")
+        )
+
+        val aggregation = newAggregation(
+            Aggregation.facet(*dataPipeline.toTypedArray()).`as`("data")
+                .and(*totalPipeline.toTypedArray()).`as`("total")
+        )
+
+        val result = mongoTemplate.aggregate(aggregation, "retrospectives", Document::class.java).uniqueMappedResult
+            ?: return PageImpl(emptyList(), pageable, 0)
+
+        val content = (result["data"] as? List<*>)?.mapNotNull { raw ->
+            val doc = raw as? Document ?: return@mapNotNull null
+            StudentRetrospectiveCount(
+                studentId = doc.getString("studentId"),
+                retrospectiveCount = (doc.get("retrospectiveCount") as Number).toLong()
+            )
+        }.orEmpty()
+
+        val total = (result["total"] as? List<*>)?.firstOrNull()?.let { raw ->
+            val doc = raw as? Document ?: return@let 0L
+            (doc.get("total") as Number).toLong()
+        } ?: 0L
+
+        return PageImpl(content, pageable, total)
+    }
 
     override fun search(condition: RetrospectiveSearchCondition, pageable: Pageable): Page<Retrospective> {
         val criteria = buildCriteria(condition)
@@ -71,6 +141,21 @@ class RetrospectiveRepositoryImpl(
             return Criteria()
         }
         return Criteria().andOperator(*criteriaList.toTypedArray())
+    }
+
+    private fun buildPeriodCriteria(period: RankingPeriod): Criteria {
+        if (period == RankingPeriod.TOTAL) {
+            return Criteria()
+        }
+
+        val now = LocalDateTime.now()
+        val from = when (period) {
+            RankingPeriod.DAILY -> now.minusDays(1)
+            RankingPeriod.WEEKLY -> now.minusDays(7)
+            RankingPeriod.MONTHLY -> now.minusMonths(1)
+            RankingPeriod.TOTAL -> now
+        }
+        return Criteria("createdAt").gte(from)
     }
 
     private fun applySort(query: Query, sort: Sort) {

@@ -39,6 +39,7 @@ data class Student(
     val currentTier: Tier,
     val role: Role = Role.GUEST, // 사용자 권한 (GUEST: 소셜 로그인만 완료, USER: BOJ 인증 완료)
     val termsAgreed: Boolean = false, // 약관 동의 여부
+    val isVerified: Boolean = false, // BOJ 계정 소유권 인증 여부 (상태 메시지 기반)
     val solutions: Solutions = Solutions(),
     val consecutiveSolveDays: Int = 0, // 연속 풀이 일수
     val lastSolvedAt: LocalDate? = null // 마지막으로 문제를 푼 날짜
@@ -76,6 +77,7 @@ data class Student(
         currentTier: Tier,
         role: Role?,
         termsAgreed: Boolean?,
+        isVerified: Boolean?,
         solutions: Solutions?,
         consecutiveSolveDays: Int?,
         lastSolvedAt: LocalDate?
@@ -91,6 +93,7 @@ data class Student(
         currentTier = currentTier,
         role = role ?: Role.GUEST,
         termsAgreed = termsAgreed ?: false,
+        isVerified = isVerified ?: false,
         solutions = solutions ?: Solutions(),
         consecutiveSolveDays = consecutiveSolveDays ?: 0,
         lastSolvedAt = lastSolvedAt
@@ -232,6 +235,31 @@ data class Student(
         
         return copy(
             nickname = nicknameVo,
+            termsAgreed = true,
+            role = Role.USER
+        )
+    }
+
+    /**
+     * 소셜 로그인 후 가입 마무리를 수행한다. (BOJ ID 필수)
+     * - 닉네임/약관 동의/권한(USER) 뿐 아니라 BOJ ID 및 이메일까지 확정한다.
+     *
+     * @param nickname 설정할 닉네임
+     * @param bojId BOJ ID (필수)
+     * @param email 이메일 (nullable)
+     * @param termsAgreed 약관 동의 여부
+     */
+    fun finalizeSignup(nickname: String, bojId: BojId, email: String?, termsAgreed: Boolean): Student {
+        if (!termsAgreed) {
+            throw IllegalArgumentException("약관 동의는 필수입니다.")
+        }
+
+        val nicknameVo = Nickname(nickname)
+
+        return copy(
+            nickname = nicknameVo,
+            bojId = bojId,
+            email = email,
             termsAgreed = true,
             role = Role.USER
         )

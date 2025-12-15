@@ -11,6 +11,8 @@ interface StudentRepository : MongoRepository<Student, String> {
 
     fun findByBojId(bojId: BojId): Optional<Student>
 
+    fun findByEmail(email: String): Optional<Student>
+
     fun existsByBojId(bojId: BojId): Boolean
 
     fun existsByBojId(bojId: String): Boolean {

@@ -3,11 +3,14 @@ package com.didimlog.application.ranking
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
 import com.didimlog.domain.Solutions
+import com.didimlog.domain.enums.RankingPeriod
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.repository.StudentRetrospectiveCount
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
@@ -18,98 +21,75 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
 
 @DisplayName("RankingService 테스트")
 class RankingServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
-    private val rankingService = RankingService(studentRepository)
+    private val retrospectiveRepository: RetrospectiveRepository = mockk()
+    private val rankingService = RankingService(studentRepository, retrospectiveRepository)
 
     @Test
-    @DisplayName("Rating 기준 내림차순으로 정렬되는지 검증한다")
-    fun `Rating 기준 내림차순 정렬 검증`() {
+    @DisplayName("회고 작성 수 기준 내림차순으로 랭킹이 구성된다")
+    fun `회고 작성 수 기준 내림차순 랭킹`() {
         // given
-        val student1 = createStudent("user1", rating = 1000, solvedCount = 10)
-        val student2 = createStudent("user2", rating = 2000, solvedCount = 5)
-        val student3 = createStudent("user3", rating = 1500, solvedCount = 8)
+        val student1 = createStudent("user1", rating = 1000, solvedCount = 0, id = "student-1")
+        val student2 = createStudent("user2", rating = 2000, solvedCount = 0, id = "student-2")
+        val student3 = createStudent("user3", rating = 1500, solvedCount = 0, id = "student-3")
 
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns listOf(
-            student1, student2, student3
+        val page = PageImpl(
+            listOf(
+                StudentRetrospectiveCount(studentId = "student-2", retrospectiveCount = 10),
+                StudentRetrospectiveCount(studentId = "student-3", retrospectiveCount = 8),
+                StudentRetrospectiveCount(studentId = "student-1", retrospectiveCount = 5)
+            ),
+            PageRequest.of(0, 10),
+            3
+        )
+
+        every { retrospectiveRepository.findTopStudentsByRetrospectiveCount(RankingPeriod.TOTAL, any()) } returns page
+        every { studentRepository.findAllById(listOf("student-2", "student-3", "student-1")) } returns listOf(
+            student2, student3, student1
         )
 
         // when
-        val result = rankingService.getTopRankers(limit = 10)
+        val result = rankingService.getTopRankers(limit = 10, period = RankingPeriod.TOTAL)
 
         // then
         assertThat(result).hasSize(3)
         assertThat(result[0].rank).isEqualTo(1)
-        assertThat(result[0].student.rating).isEqualTo(2000) // 가장 높은 rating
+        assertThat(result[0].student.nickname.value).isEqualTo("user2")
+        assertThat(result[0].retrospectiveCount).isEqualTo(10)
         assertThat(result[1].rank).isEqualTo(2)
-        assertThat(result[1].student.rating).isEqualTo(1500)
+        assertThat(result[1].student.nickname.value).isEqualTo("user3")
+        assertThat(result[1].retrospectiveCount).isEqualTo(8)
         assertThat(result[2].rank).isEqualTo(3)
-        assertThat(result[2].student.rating).isEqualTo(1000) // 가장 낮은 rating
+        assertThat(result[2].student.nickname.value).isEqualTo("user1")
+        assertThat(result[2].retrospectiveCount).isEqualTo(5)
     }
 
     @Test
-    @DisplayName("Rating이 같으면 solvedCount가 많은 순으로 정렬되는지 검증한다")
-    fun `동점자 처리 - solvedCount 기준 정렬 검증`() {
+    @DisplayName("회고 작성 수 동점자는 같은 순위를 부여받는다")
+    fun `회고 작성 수 동점자 같은 순위`() {
         // given
-        val student1 = createStudent("user1", rating = 1000, solvedCount = 5)
-        val student2 = createStudent("user2", rating = 1000, solvedCount = 10)
-        val student3 = createStudent("user3", rating = 1000, solvedCount = 8)
+        val student1 = createStudent("user1", rating = 1000, solvedCount = 0, id = "student-1")
+        val student2 = createStudent("user2", rating = 1200, solvedCount = 0, id = "student-2")
+        val student3 = createStudent("user3", rating = 900, solvedCount = 0, id = "student-3")
 
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns listOf(
-            student1, student2, student3
+        val page = PageImpl(
+            listOf(
+                StudentRetrospectiveCount(studentId = "student-1", retrospectiveCount = 10),
+                StudentRetrospectiveCount(studentId = "student-2", retrospectiveCount = 10),
+                StudentRetrospectiveCount(studentId = "student-3", retrospectiveCount = 5)
+            ),
+            PageRequest.of(0, 10),
+            3
         )
 
-        // when
-        val result = rankingService.getTopRankers(limit = 10)
-
-        // then
-        assertThat(result).hasSize(3)
-        assertThat(result[0].rank).isEqualTo(1)
-        assertThat(result[0].student.nickname.value).isEqualTo("user2") // solvedCount 10
-        assertThat(result[0].student.solutions.getAll().size).isEqualTo(10)
-        assertThat(result[1].rank).isEqualTo(2)
-        assertThat(result[1].student.nickname.value).isEqualTo("user3") // solvedCount 8
-        assertThat(result[1].student.solutions.getAll().size).isEqualTo(8)
-        assertThat(result[2].rank).isEqualTo(3)
-        assertThat(result[2].student.nickname.value).isEqualTo("user1") // solvedCount 5
-        assertThat(result[2].student.solutions.getAll().size).isEqualTo(5)
-    }
-
-    @Test
-    @DisplayName("Rating과 solvedCount가 같으면 id(가입일) 순으로 정렬되는지 검증한다")
-    fun `동점자 처리 - id 기준 정렬 검증`() {
-        // given
-        val student1 = createStudent("user1", rating = 1000, solvedCount = 5, id = "id1")
-        val student2 = createStudent("user2", rating = 1000, solvedCount = 5, id = "id2")
-        val student3 = createStudent("user3", rating = 1000, solvedCount = 5, id = "id3")
-
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns listOf(
-            student1, student2, student3
-        )
-
-        // when
-        val result = rankingService.getTopRankers(limit = 10)
-
-        // then
-        assertThat(result).hasSize(3)
-        // id가 작을수록 먼저 가입한 것으로 간주 (문자열 비교)
-        assertThat(result[0].student.id).isEqualTo("id1")
-        assertThat(result[1].student.id).isEqualTo("id2")
-        assertThat(result[2].student.id).isEqualTo("id3")
-    }
-
-    @Test
-    @DisplayName("동점자는 같은 순위를 부여받는지 검증한다")
-    fun `동점자 같은 순위 부여 검증`() {
-        // given
-        val student1 = createStudent("user1", rating = 1000, solvedCount = 10)
-        val student2 = createStudent("user2", rating = 1000, solvedCount = 10) // 동점
-        val student3 = createStudent("user3", rating = 900, solvedCount = 5)
-
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns listOf(
+        every { retrospectiveRepository.findTopStudentsByRetrospectiveCount(RankingPeriod.TOTAL, any()) } returns page
+        every { studentRepository.findAllById(listOf("student-1", "student-2", "student-3")) } returns listOf(
             student1, student2, student3
         )
 
@@ -124,86 +104,64 @@ class RankingServiceTest {
     }
 
     @Test
-    @DisplayName("limit 파라미터가 제대로 적용되는지 검증한다")
-    fun `limit 파라미터 적용 검증`() {
+    @DisplayName("limit 파라미터가 repository paging에 반영된다")
+    fun `limit 파라미터 적용`() {
         // given
-        val students = (1..20).map { i ->
-            createStudent("user$i", rating = 2000 - i * 10, solvedCount = 10)
-        }
+        val student1 = createStudent("user1", rating = 1000, solvedCount = 0, id = "student-1")
 
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns students
+        val page = PageImpl(
+            listOf(
+                StudentRetrospectiveCount(studentId = "student-1", retrospectiveCount = 1)
+            ),
+            PageRequest.of(0, 1),
+            1
+        )
+
+        every { retrospectiveRepository.findTopStudentsByRetrospectiveCount(RankingPeriod.TOTAL, any()) } returns page
+        every { studentRepository.findAllById(listOf("student-1")) } returns listOf(student1)
 
         // when
-        val result = rankingService.getTopRankers(limit = 10)
+        val result = rankingService.getTopRankers(limit = 1)
 
         // then
-        assertThat(result).hasSize(10)
-        assertThat(result.map { it.student.nickname.value }).containsExactly(
-            "user1", "user2", "user3", "user4", "user5",
-            "user6", "user7", "user8", "user9", "user10"
-        )
+        assertThat(result).hasSize(1)
     }
 
     @Test
     @DisplayName("기본 limit 값(100)이 적용되는지 검증한다")
     fun `기본 limit 값 적용 검증`() {
         // given
-        val students = (1..150).map { i ->
-            createStudent("user$i", rating = 2000 - i * 10, solvedCount = 10)
-        }
-
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns students
+        val page = PageImpl(
+            emptyList<StudentRetrospectiveCount>(),
+            PageRequest.of(0, 100),
+            0
+        )
+        every { retrospectiveRepository.findTopStudentsByRetrospectiveCount(RankingPeriod.TOTAL, any()) } returns page
+        every { studentRepository.findAllById(emptyList()) } returns emptyList()
 
         // when
         val result = rankingService.getTopRankers() // limit 생략
-
-        // then
-        assertThat(result).hasSize(100)
-    }
-
-    @Test
-    @DisplayName("랭킹이 비어있으면 빈 리스트를 반환한다")
-    fun `빈 랭킹 반환 검증`() {
-        // given
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns emptyList()
-
-        // when
-        val result = rankingService.getTopRankers(limit = 10)
 
         // then
         assertThat(result).isEmpty()
     }
 
     @Test
-    @DisplayName("복합 정렬 조건이 모두 적용되는지 검증한다")
-    fun `복합 정렬 조건 적용 검증`() {
+    @DisplayName("랭킹이 비어있으면 빈 리스트를 반환한다")
+    fun `빈 랭킹 반환 검증`() {
         // given
-        val student1 = createStudent("user1", rating = 2000, solvedCount = 10, id = "id1")
-        val student2 = createStudent("user2", rating = 2000, solvedCount = 15, id = "id2") // rating 동일, solvedCount 더 많음
-        val student3 = createStudent("user3", rating = 2000, solvedCount = 15, id = "id3") // rating, solvedCount 동일
-        val student4 = createStudent("user4", rating = 1500, solvedCount = 20, id = "id4") // rating 낮음
-
-        every { studentRepository.findTop100ByOrderByRatingDesc() } returns listOf(
-            student1, student2, student3, student4
+        val page = PageImpl(
+            emptyList<StudentRetrospectiveCount>(),
+            PageRequest.of(0, 10),
+            0
         )
+        every { retrospectiveRepository.findTopStudentsByRetrospectiveCount(RankingPeriod.TOTAL, any()) } returns page
 
         // when
         val result = rankingService.getTopRankers(limit = 10)
 
         // then
-        assertThat(result).hasSize(4)
-        // 1등: user2 (rating 2000, solvedCount 15, id가 더 작음)
-        assertThat(result[0].rank).isEqualTo(1)
-        assertThat(result[0].student.nickname.value).isEqualTo("user2")
-        // 1등(동점): user3 (rating 2000, solvedCount 15, id가 더 큼) - 동점자이므로 같은 순위
-        assertThat(result[1].rank).isEqualTo(1) // 동점자이므로 같은 순위
-        assertThat(result[1].student.nickname.value).isEqualTo("user3")
-        // 3등: user1 (rating 2000, solvedCount 10)
-        assertThat(result[2].rank).isEqualTo(3)
-        assertThat(result[2].student.nickname.value).isEqualTo("user1")
-        // 4등: user4 (rating 1500)
-        assertThat(result[3].rank).isEqualTo(4)
-        assertThat(result[3].student.nickname.value).isEqualTo("user4")
+        assertThat(result).isEmpty()
     }
 
     private fun createStudent(

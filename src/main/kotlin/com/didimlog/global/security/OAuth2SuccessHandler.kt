@@ -35,7 +35,16 @@ class OAuth2SuccessHandler(
         val email = oauth2User.getAttribute<String>("email") ?: ""
 
         val provider = Provider.from(providerValue)
-            ?: throw IllegalStateException("유효하지 않은 provider 입니다. provider=$providerValue")
+        if (provider == null) {
+            val targetUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
+                .queryParam("error", "invalid_provider")
+                .queryParam("error_description", "유효하지 않은 provider 입니다. provider=$providerValue")
+                .build()
+                .toUriString()
+            clearAuthenticationAttributes(request)
+            redirectStrategy.sendRedirect(request, response, targetUrl)
+            return
+        }
 
         val existingStudent = studentRepository.findByProviderAndProviderId(provider, providerId)
         if (existingStudent.isEmpty) {
@@ -53,8 +62,21 @@ class OAuth2SuccessHandler(
         }
 
         val student = existingStudent.get()
-        val tokenSubject = student.bojId?.value ?: student.id
-            ?: throw IllegalStateException("토큰 subject를 만들 수 없습니다. studentId=${student.id}, provider=$providerValue, providerId=$providerId")
+        if (student.bojId == null) {
+            val targetUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
+                .queryParam("isNewUser", true)
+                .queryParam("email", email)
+                .queryParam("provider", providerValue)
+                .queryParam("providerId", providerId)
+                .build()
+                .toUriString()
+
+            clearAuthenticationAttributes(request)
+            redirectStrategy.sendRedirect(request, response, targetUrl)
+            return
+        }
+
+        val tokenSubject = student.bojId.value
 
         val token = jwtTokenProvider.createToken(tokenSubject, student.role.value)
         val targetUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)

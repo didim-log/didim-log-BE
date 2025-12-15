@@ -2,6 +2,7 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.ranking.RankingService
 import com.didimlog.application.ranking.RankingInfo
+import com.didimlog.domain.enums.RankingPeriod
 import com.didimlog.domain.Student
 import com.didimlog.domain.Solutions
 import com.didimlog.domain.enums.Provider
@@ -93,16 +94,17 @@ class RankingControllerTest {
             )
         )
         val rankers = listOf(
-            RankingInfo(rank = 1, student = students[0]),
-            RankingInfo(rank = 2, student = students[1])
+            RankingInfo(rank = 1, student = students[0], retrospectiveCount = 3),
+            RankingInfo(rank = 2, student = students[1], retrospectiveCount = 1)
         )
 
-        every { rankingService.getTopRankers(100) } returns rankers
+        every { rankingService.getTopRankers(100, RankingPeriod.TOTAL) } returns rankers
 
         // when & then
         mockMvc.perform(
             get("/api/v1/ranks")
                 .param("limit", "100")
+                .param("period", "TOTAL")
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
@@ -110,17 +112,19 @@ class RankingControllerTest {
             .andExpect(jsonPath("$[0].nickname").value("user1"))
             .andExpect(jsonPath("$[0].tier").value("GOLD"))
             .andExpect(jsonPath("$[0].rating").value(1000))
+            .andExpect(jsonPath("$[0].retrospectiveCount").value(3))
             .andExpect(jsonPath("$[1].rank").value(2))
             .andExpect(jsonPath("$[1].nickname").value("user2"))
             .andExpect(jsonPath("$[1].tier").value("SILVER"))
             .andExpect(jsonPath("$[1].rating").value(500))
+            .andExpect(jsonPath("$[1].retrospectiveCount").value(1))
     }
 
     @Test
     @DisplayName("limit 파라미터가 없으면 기본값 100으로 조회한다")
     fun `랭킹 조회 기본값 사용`() {
         // given
-        every { rankingService.getTopRankers(100) } returns emptyList()
+        every { rankingService.getTopRankers(100, RankingPeriod.TOTAL) } returns emptyList()
 
         // when & then
         mockMvc.perform(

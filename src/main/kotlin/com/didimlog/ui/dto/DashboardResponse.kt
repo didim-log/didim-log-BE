@@ -10,7 +10,12 @@ data class DashboardResponse(
     val studentProfile: StudentProfileResponse,
     val todaySolvedCount: Int,
     val todaySolvedProblems: List<TodaySolvedProblemResponse>,
-    val quote: QuoteResponse?
+    val quote: QuoteResponse?,
+    val currentTierTitle: String,
+    val nextTierTitle: String,
+    val currentRating: Int,
+    val requiredRatingForNextTier: Int,
+    val progressPercentage: Int
 ) {
     companion object {
         fun from(dashboardInfo: DashboardInfo): DashboardResponse {
@@ -18,7 +23,12 @@ data class DashboardResponse(
                 studentProfile = StudentProfileResponse.from(dashboardInfo.studentProfile),
                 todaySolvedCount = dashboardInfo.todaySolvedCount,
                 todaySolvedProblems = dashboardInfo.todaySolvedProblems.map { TodaySolvedProblemResponse.from(it) },
-                quote = dashboardInfo.quote?.let { QuoteResponse.from(it) }
+                quote = dashboardInfo.quote?.let { QuoteResponse.from(it) },
+                currentTierTitle = dashboardInfo.currentTierTitle,
+                nextTierTitle = dashboardInfo.nextTierTitle,
+                currentRating = dashboardInfo.currentRating,
+                requiredRatingForNextTier = dashboardInfo.requiredRatingForNextTier,
+                progressPercentage = dashboardInfo.progressPercentage
             )
         }
     }

@@ -7,6 +7,8 @@ import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
@@ -78,7 +80,7 @@ class RetrospectiveService(
     @Transactional(readOnly = true)
     fun getRetrospective(retrospectiveId: String): Retrospective {
         return retrospectiveRepository.findById(retrospectiveId)
-            .orElseThrow { IllegalArgumentException("회고를 찾을 수 없습니다. id=$retrospectiveId") }
+            .orElseThrow { BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND, "회고를 찾을 수 없습니다. id=$retrospectiveId") }
     }
 
     /**
@@ -90,7 +92,7 @@ class RetrospectiveService(
     @Transactional
     fun deleteRetrospective(retrospectiveId: String) {
         val retrospective = retrospectiveRepository.findById(retrospectiveId)
-            .orElseThrow { IllegalArgumentException("회고를 찾을 수 없습니다. id=$retrospectiveId") }
+            .orElseThrow { BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND, "회고를 찾을 수 없습니다. id=$retrospectiveId") }
         retrospectiveRepository.delete(retrospective)
     }
 
@@ -116,7 +118,7 @@ class RetrospectiveService(
     @Transactional
     fun toggleBookmark(retrospectiveId: String): Boolean {
         val retrospective = retrospectiveRepository.findById(retrospectiveId)
-            .orElseThrow { IllegalArgumentException("회고를 찾을 수 없습니다. id=$retrospectiveId") }
+            .orElseThrow { BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND, "회고를 찾을 수 없습니다. id=$retrospectiveId") }
         
         val updatedRetrospective = retrospective.toggleBookmark()
         retrospectiveRepository.save(updatedRetrospective)
@@ -142,7 +144,7 @@ class RetrospectiveService(
 
     private fun validateStudentExists(studentId: String) {
         if (!studentRepository.existsById(studentId)) {
-            throw IllegalArgumentException("학생을 찾을 수 없습니다. id=$studentId")
+            throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. id=$studentId")
         }
     }
 
@@ -152,7 +154,7 @@ class RetrospectiveService(
 
     private fun findProblemOrThrow(problemId: String): Problem {
         return problemRepository.findById(problemId)
-            .orElseThrow { IllegalArgumentException("문제를 찾을 수 없습니다. id=$problemId") }
+            .orElseThrow { BusinessException(ErrorCode.PROBLEM_NOT_FOUND, "문제를 찾을 수 없습니다. id=$problemId") }
     }
 
     private fun buildTemplate(problem: Problem, resultType: com.didimlog.domain.enums.ProblemResult): String {

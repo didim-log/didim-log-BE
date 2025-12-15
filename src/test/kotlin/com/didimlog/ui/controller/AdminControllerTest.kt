@@ -40,6 +40,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import com.didimlog.global.auth.JwtTokenProvider
 import java.time.LocalDateTime
@@ -185,6 +186,24 @@ class AdminControllerTest {
             .andExpect(status().isNotFound)
 
         verify(exactly = 1) { adminService.deleteUser(studentId) }
+    }
+
+    @Test
+    @DisplayName("사용자 정보 강제 수정 성공")
+    fun `사용자 정보 강제 수정 성공`() {
+        // given
+        val studentId = "student1"
+        every { adminService.updateUser(studentId, any()) } returns mockk(relaxed = true)
+
+        // when & then
+        mockMvc.perform(
+            patch("/api/v1/admin/users/$studentId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"role":"ROLE_ADMIN","nickname":"newNickname","bojId":"newBojId"}""")
+        )
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) { adminService.updateUser(studentId, any()) }
     }
 
     @Test

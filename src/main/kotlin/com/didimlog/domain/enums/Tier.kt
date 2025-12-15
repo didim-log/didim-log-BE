@@ -16,8 +16,8 @@ enum class Tier(val value: Int, val minLevel: Int, val maxLevel: Int, val minRat
     SILVER(8, 6, 10, 200),    // Silver V~I (200~650점)
     GOLD(13, 11, 15, 800),    // Gold V~I (800~1400점)
     PLATINUM(18, 16, 20, 1600), // Platinum V~I (1600점 이상)
-    DIAMOND(23, 21, 25, 3000), // Diamond V~I (3000점 이상)
-    RUBY(28, 26, 30, 5000);    // Ruby V~I (5000점 이상)
+    DIAMOND(23, 21, 25, 2200), // Diamond V~I (2200점 이상)
+    RUBY(28, 26, 30, 2700);    // Ruby V~I (2700점 이상)
 
     companion object {
         /**
