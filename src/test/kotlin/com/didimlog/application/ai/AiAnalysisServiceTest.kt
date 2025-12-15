@@ -28,7 +28,11 @@ class AiAnalysisServiceTest {
         assertThat(result).isEqualTo("result")
         verify(exactly = 1) {
             llmClient.generateMarkdown(
-                match { it.contains("리팩토링") },
+                match {
+                    it.contains("리팩토링 제안") &&
+                        it.contains("RETROSPECTIVE_STANDARDS") &&
+                        it.contains("3. **리팩토링 제안 (Refactoring)**")
+                },
                 match { it.contains("problemId: 1000") && it.contains("print(1)") }
             )
         }
