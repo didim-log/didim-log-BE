@@ -10,11 +10,16 @@ import com.didimlog.ui.dto.FeedbackResponse
 import com.didimlog.ui.dto.QuoteResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Positive
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
@@ -47,6 +52,26 @@ class AdminController(
         description = "페이징을 적용하여 전체 회원 목록을 조회합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 page/size 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
     @GetMapping("/users")
     fun getAllUsers(
         @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
@@ -68,6 +93,26 @@ class AdminController(
         description = "특정 회원을 강제로 탈퇴시킵니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "탈퇴 처리 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
     @DeleteMapping("/users/{studentId}")
     fun deleteUser(
         @Parameter(description = "학생 ID")
@@ -82,6 +127,36 @@ class AdminController(
         summary = "사용자 정보 강제 수정",
         description = "특정 사용자의 권한(Role), 닉네임, BOJ ID를 선택적으로 수정합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "수정 성공 (응답 본문 없음)"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 입력 또는 닉네임/BOJ ID 중복",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "BOJ ID 중복",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/users/{studentId}")
@@ -101,6 +176,26 @@ class AdminController(
         summary = "명언 목록 조회",
         description = "페이징을 적용하여 명언 목록을 조회합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 page/size 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @GetMapping("/quotes")
     fun getAllQuotes(
@@ -124,6 +219,26 @@ class AdminController(
         description = "새로운 명언을 추가합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "201", description = "생성 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
     @PostMapping("/quotes")
     fun createQuote(
         @Valid
@@ -139,6 +254,26 @@ class AdminController(
         description = "특정 명언을 삭제합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "삭제 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "명언을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
     @DeleteMapping("/quotes/{quoteId}")
     fun deleteQuote(
         @Parameter(description = "명언 ID")
@@ -153,6 +288,26 @@ class AdminController(
         summary = "피드백 목록 조회",
         description = "페이징을 적용하여 피드백 목록을 조회합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 page/size 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @GetMapping("/feedbacks")
     fun getAllFeedbacks(
@@ -176,6 +331,31 @@ class AdminController(
         description = "피드백의 처리 상태를 변경합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "변경 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "피드백을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
     @PatchMapping("/feedbacks/{feedbackId}/status")
     fun updateFeedbackStatus(
         @Parameter(description = "피드백 ID")
@@ -194,6 +374,7 @@ class AdminController(
  * 피드백 상태 변경 요청 DTO
  */
 data class FeedbackStatusUpdateRequest(
+    @field:NotNull(message = "상태 값은 필수입니다.")
     val status: FeedbackStatus
 )
 
