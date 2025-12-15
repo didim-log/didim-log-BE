@@ -5,6 +5,7 @@ import com.didimlog.application.feedback.FeedbackService
 import com.didimlog.domain.Quote
 import com.didimlog.domain.enums.FeedbackStatus
 import com.didimlog.ui.dto.AdminUserResponse
+import com.didimlog.ui.dto.AdminUserUpdateDto
 import com.didimlog.ui.dto.FeedbackResponse
 import com.didimlog.ui.dto.QuoteResponse
 import io.swagger.v3.oas.annotations.Operation
@@ -20,6 +21,7 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -74,6 +76,25 @@ class AdminController(
     ): ResponseEntity<Map<String, String>> {
         adminService.deleteUser(studentId)
         return ResponseEntity.ok(mapOf("message" to "회원이 성공적으로 탈퇴되었습니다."))
+    }
+
+    @Operation(
+        summary = "사용자 정보 강제 수정",
+        description = "특정 사용자의 권한(Role), 닉네임, BOJ ID를 선택적으로 수정합니다. ADMIN 권한이 필요합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/users/{studentId}")
+    fun updateUser(
+        @Parameter(description = "학생 ID")
+        @PathVariable
+        studentId: String,
+        @Valid
+        @RequestBody
+        request: AdminUserUpdateDto
+    ): ResponseEntity<Void> {
+        adminService.updateUser(studentId, request)
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 
     @Operation(

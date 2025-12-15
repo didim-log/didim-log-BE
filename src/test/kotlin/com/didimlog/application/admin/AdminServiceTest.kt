@@ -11,6 +11,7 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.ui.dto.AdminUserUpdateDto
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -174,6 +175,43 @@ class AdminServiceTest {
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
         assertThat(exception.message).contains("학생을 찾을 수 없습니다")
+    }
+
+    @Test
+    @DisplayName("관리자는 사용자 정보를 선택적으로 수정할 수 있다 (Role/Nickname/BOJ ID)")
+    fun `관리자 사용자 강제 수정 성공`() {
+        // given
+        val studentId = "student1"
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("user1"),
+            provider = Provider.BOJ,
+            providerId = "user1",
+            bojId = BojId("user1"),
+            password = "encoded",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val request = AdminUserUpdateDto(
+            role = "ROLE_ADMIN",
+            nickname = "newNickname",
+            bojId = "newBojId"
+        )
+
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { studentRepository.existsByNickname(Nickname("newNickname")) } returns false
+        every { studentRepository.existsByBojId("newBojId") } returns false
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+
+        // when
+        val updated = adminService.updateUser(studentId, request)
+
+        // then
+        assertThat(updated.role).isEqualTo(Role.ADMIN)
+        assertThat(updated.nickname.value).isEqualTo("newNickname")
+        assertThat(updated.bojId?.value).isEqualTo("newBojId")
+        verify(exactly = 1) { studentRepository.findById(studentId) }
+        verify(exactly = 1) { studentRepository.save(any<Student>()) }
     }
 }
 
