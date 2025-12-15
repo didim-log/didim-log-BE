@@ -24,6 +24,9 @@ enum class ErrorCode(
     QUOTE_NOT_FOUND(404, "QUOTE_NOT_FOUND", "명언을 찾을 수 없습니다."),
     FEEDBACK_NOT_FOUND(404, "FEEDBACK_NOT_FOUND", "피드백을 찾을 수 없습니다."),
 
+    // 409 Conflict
+    DUPLICATE_BOJ_ID(409, "DUPLICATE_BOJ_ID", "이미 가입된 백준 아이디입니다."),
+
     // 500 Internal Server Error
     COMMON_INTERNAL_ERROR(500, "COMMON_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")
 }

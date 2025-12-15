@@ -1,5 +1,7 @@
 package com.didimlog.global.security
 
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -17,6 +19,7 @@ import org.springframework.web.util.UriComponentsBuilder
 @Component
 class OAuth2SuccessHandler(
     private val jwtTokenProvider: JwtTokenProvider,
+    private val studentRepository: StudentRepository,
     @Value("\${app.oauth.redirect-uri:http://localhost:5173/oauth/callback}")
     private val frontendRedirectUri: String
 ) : SimpleUrlAuthenticationSuccessHandler() {
@@ -27,34 +30,38 @@ class OAuth2SuccessHandler(
         authentication: Authentication
     ) {
         val oauth2User = authentication.principal as OAuth2User
-        val studentId = oauth2User.getAttribute<String>("studentId")
-        val isNewUser = oauth2User.getAttribute<Boolean>("isNewUser") ?: false
-        val provider = oauth2User.getAttribute<String>("provider") ?: ""
+        val providerValue = oauth2User.getAttribute<String>("provider") ?: ""
         val providerId = oauth2User.getAttribute<String>("providerId") ?: ""
-        val email = oauth2User.getAttribute<String>("email")
+        val email = oauth2User.getAttribute<String>("email") ?: ""
 
-        val targetUrl = if (isNewUser) {
-            // 신규 유저: 가입 마무리를 위한 정보를 쿼리 파라미터로 전달
-            UriComponentsBuilder.fromUriString(frontendRedirectUri)
+        val provider = Provider.from(providerValue)
+            ?: throw IllegalStateException("유효하지 않은 provider 입니다. provider=$providerValue")
+
+        val existingStudent = studentRepository.findByProviderAndProviderId(provider, providerId)
+        if (existingStudent.isEmpty) {
+            val targetUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
                 .queryParam("isNewUser", true)
-                .apply {
-                    email?.let { queryParam("email", it) }
-                    queryParam("provider", provider)
-                    queryParam("providerId", providerId)
-                }
+                .queryParam("email", email)
+                .queryParam("provider", providerValue)
+                .queryParam("providerId", providerId)
                 .build()
                 .toUriString()
-        } else {
-            // 기존 유저: JWT 토큰 발급 및 리다이렉트
-            val role = oauth2User.getAttribute<String>("role") ?: "GUEST"
-            val token = jwtTokenProvider.createToken(studentId!!, role)
-            
-            UriComponentsBuilder.fromUriString(frontendRedirectUri)
-                .queryParam("token", token)
-                .queryParam("isNewUser", false)
-                .build()
-                .toUriString()
+
+            clearAuthenticationAttributes(request)
+            redirectStrategy.sendRedirect(request, response, targetUrl)
+            return
         }
+
+        val student = existingStudent.get()
+        val tokenSubject = student.bojId?.value ?: student.id
+            ?: throw IllegalStateException("토큰 subject를 만들 수 없습니다. studentId=${student.id}, provider=$providerValue, providerId=$providerId")
+
+        val token = jwtTokenProvider.createToken(tokenSubject, student.role.value)
+        val targetUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
+            .queryParam("token", token)
+            .queryParam("isNewUser", false)
+            .build()
+            .toUriString()
 
         clearAuthenticationAttributes(request)
         redirectStrategy.sendRedirect(request, response, targetUrl)

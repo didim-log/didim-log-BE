@@ -41,6 +41,28 @@ class AuthServiceTest {
     )
 
     @Test
+    @DisplayName("finalizeSignup은 이미 사용 중인 BOJ ID면 가입을 막는다")
+    fun `finalizeSignup 중복 BOJ ID면 예외 발생`() {
+        // given
+        every { studentRepository.existsByBojId("dupboj") } returns true
+
+        // when & then
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            authService.finalizeSignup(
+                email = "test@example.com",
+                provider = "github",
+                providerId = "123",
+                nickname = "tester",
+                bojId = "dupboj",
+                termsAgreed = true
+            )
+        }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.DUPLICATE_BOJ_ID)
+        verify(exactly = 1) { studentRepository.existsByBojId("dupboj") }
+        verify(exactly = 0) { studentRepository.findByProviderAndProviderId(any(), any()) }
+    }
+
+    @Test
     @DisplayName("중복된 BOJ ID로 회원가입 시 예외가 발생한다")
     fun `중복된 BOJ ID 회원가입 시 예외 발생`() {
         // given
