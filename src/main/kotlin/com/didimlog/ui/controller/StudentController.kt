@@ -9,6 +9,7 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -40,6 +41,20 @@ class StudentController(
             currentPassword = request.currentPassword,
             newPassword = request.newPassword
         )
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
+    }
+
+    @Operation(
+        summary = "회원 탈퇴(본인)",
+        description = "로그인한 사용자의 계정 및 연관 데이터를 완전히 삭제합니다. (Hard Delete, 복구 불가)",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @DeleteMapping("/me")
+    fun withdraw(
+        authentication: Authentication
+    ): ResponseEntity<Void> {
+        val bojId = authentication.name // JWT 토큰의 subject(bojId)
+        studentService.withdraw(bojId)
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 }
