@@ -73,7 +73,8 @@ class DashboardServiceTest {
             providerId = bojId,
             bojId = BojId(bojId),
             password = "encoded-password",
-            currentTier = Tier.BRONZE,
+            rating = 850,
+            currentTier = Tier.fromRating(850),
             role = Role.USER,
             solutions = solutions,
             consecutiveSolveDays = 5
@@ -94,6 +95,11 @@ class DashboardServiceTest {
         assertThat(result.studentProfile.nickname).isEqualTo("testuser")
         assertThat(result.studentProfile.bojId).isEqualTo(bojId)
         assertThat(result.studentProfile.consecutiveSolveDays).isEqualTo(5)
+        assertThat(result.currentRating).isEqualTo(850)
+        assertThat(result.currentTierTitle).isEqualTo("Gold V")
+        assertThat(result.nextTierTitle).isEqualTo("Gold IV")
+        assertThat(result.requiredRatingForNextTier).isEqualTo(950)
+        assertThat(result.progressPercentage).isEqualTo(33)
         assertThat(result.quote).isNotNull()
         assertThat(result.quote?.content).isEqualTo("테스트 명언")
     }
@@ -139,5 +145,35 @@ class DashboardServiceTest {
         // then
         assertThat(result.todaySolvedCount).isEqualTo(0)
         assertThat(result.todaySolvedProblems).isEmpty()
+    }
+
+    @Test
+    @DisplayName("Master 구간이면 진행률은 100%이며 다음 티어는 없다")
+    fun `Master 진행률 계산`() {
+        // given
+        val bojId = "masterUser"
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("masterUser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            rating = 3100,
+            currentTier = Tier.fromRating(3100),
+            role = Role.USER
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { quoteService.getRandomQuote() } returns null
+
+        // when
+        val result = dashboardService.getDashboard(bojId)
+
+        // then
+        assertThat(result.currentTierTitle).isEqualTo("Master")
+        assertThat(result.nextTierTitle).isEqualTo("Master")
+        assertThat(result.requiredRatingForNextTier).isEqualTo(3000)
+        assertThat(result.progressPercentage).isEqualTo(100)
     }
 }

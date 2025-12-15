@@ -5,6 +5,7 @@ import com.didimlog.domain.Problem
 import com.didimlog.domain.Quote
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.SolvedAcTierStep
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -47,6 +48,8 @@ class DashboardService(
                 "BOJ 인증이 완료되지 않은 사용자입니다. BOJ 계정을 연동해주세요."
             )
 
+        val tierProgress = SolvedAcTierStep.UNRATED.calculateProgress(student.rating)
+
         return DashboardInfo(
             studentProfile = StudentProfile(
                 nickname = student.nickname.value,
@@ -56,7 +59,12 @@ class DashboardService(
             ),
             todaySolvedCount = todaySolutions.size,
             todaySolvedProblems = todaySolutions.map { TodaySolvedProblem.from(it) },
-            quote = quote?.let { QuoteInfo.from(it) }
+            quote = quote?.let { QuoteInfo.from(it) },
+            currentTierTitle = tierProgress.currentTierTitle,
+            nextTierTitle = tierProgress.nextTierTitle,
+            currentRating = tierProgress.currentRating,
+            requiredRatingForNextTier = tierProgress.requiredRatingForNextTier,
+            progressPercentage = tierProgress.progressPercentage
         )
     }
 
@@ -87,7 +95,12 @@ data class DashboardInfo(
     val studentProfile: StudentProfile,
     val todaySolvedCount: Int,
     val todaySolvedProblems: List<TodaySolvedProblem>,
-    val quote: QuoteInfo?
+    val quote: QuoteInfo?,
+    val currentTierTitle: String,
+    val nextTierTitle: String,
+    val currentRating: Int,
+    val requiredRatingForNextTier: Int,
+    val progressPercentage: Int
 )
 
 /**
