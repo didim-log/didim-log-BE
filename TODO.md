@@ -116,11 +116,13 @@
 ## Phase 7: AI-Powered Retrospective (Structured)
 > **Goal:** `docs/RETROSPECTIVE_STANDARDS.md`에 정의된 구조를 기반으로, AI가 분석 리포트를 제공한다.
 
-- [ ] **[Design]** 프롬프트 템플릿 구조화
+- [x] **[Config]** Gemini 2.0 Flash 연동 설정 및 LLM 클라이언트 구현
+
+- [x] **[Design]** 프롬프트 템플릿 구조화
 
   - AI에게 "전체 회고를 써줘"가 아닌, "**리팩토링 제안** 항목과 **심화 학습** 항목만 JSON으로 채워줘"라고 요청하는 시스템 프롬프트 설계
 
-- [ ] **[API]** 섹션별 AI 분석 요청 API 구현 (`POST /api/v1/ai/analyze`)
+- [x] **[API]** 섹션별 AI 분석 요청 API 구현 (`POST /api/v1/ai/analyze`)
 
   - **Request:**
 

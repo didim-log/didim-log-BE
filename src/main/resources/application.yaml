@@ -81,3 +81,9 @@ app:
   admin:
     secret-key: ${ADMIN_SECRET_KEY}
 
+ai:
+  gemini:
+    # 운영/로컬 환경변수로 주입 (하드코딩 금지)
+    api-key: ${GEMINI_API_KEY:}
+    url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent}
+
