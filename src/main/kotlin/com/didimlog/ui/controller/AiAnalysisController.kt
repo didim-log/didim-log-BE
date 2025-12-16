@@ -56,7 +56,8 @@ class AiAnalysisController(
         val markdown = aiAnalysisService.analyze(
             code = request.code,
             problemId = request.problemId,
-            sectionType = request.sectionType
+            sectionType = request.sectionType,
+            isSuccess = request.isSuccess
         )
         return ResponseEntity.ok(AiAnalyzeResponse(sectionType = request.sectionType, markdown = markdown))
     }
