@@ -1,8 +1,7 @@
 package com.didimlog.global.auth.oauth.info
 
 import com.didimlog.domain.enums.Provider
-import com.didimlog.global.exception.BusinessException
-import com.didimlog.global.exception.ErrorCode
+import org.springframework.security.oauth2.core.user.OAuth2User
 
 /**
  * Naver OAuth2 사용자 정보를 파싱하는 구현체
@@ -14,12 +13,12 @@ class NaverOAuth2UserInfo(
 
     private val response: Map<String, Any> by lazy {
         attributes["response"] as? Map<String, Any>
-            ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Naver 응답(response)을 찾을 수 없습니다.")
+            ?: throw IllegalStateException("Naver 응답(response)을 찾을 수 없습니다.")
     }
 
     override fun getProviderId(): String {
         return response["id"]?.toString()
-            ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Naver 사용자 ID를 찾을 수 없습니다.")
+            ?: throw IllegalStateException("Naver 사용자 ID를 찾을 수 없습니다.")
     }
 
     override fun getProvider(): Provider = Provider.NAVER
