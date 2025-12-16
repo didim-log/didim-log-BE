@@ -5,3 +5,5 @@ package com.didimlog.global.exception
  */
 class QuoteNotFoundException(message: String) : BusinessException(ErrorCode.QUOTE_NOT_FOUND, message)
 
+
+
