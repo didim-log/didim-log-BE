@@ -1,8 +1,7 @@
 package com.didimlog.global.auth.oauth.info
 
 import com.didimlog.domain.enums.Provider
-import com.didimlog.global.exception.BusinessException
-import com.didimlog.global.exception.ErrorCode
+import org.springframework.security.oauth2.core.user.OAuth2User
 
 /**
  * OAuth2UserInfo 객체를 생성하는 팩토리 클래스
@@ -20,13 +19,13 @@ object OAuth2UserInfoFactory {
      */
     fun create(registrationId: String, attributes: Map<String, Any>): OAuth2UserInfo {
         val provider = Provider.from(registrationId)
-            ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "지원하지 않는 소셜 로그인 제공자입니다: $registrationId")
+            ?: throw IllegalArgumentException("지원하지 않는 소셜 로그인 제공자입니다: $registrationId")
 
         return when (provider) {
             Provider.GOOGLE -> GoogleOAuth2UserInfo(attributes)
             Provider.GITHUB -> GithubOAuth2UserInfo(attributes)
             Provider.NAVER -> NaverOAuth2UserInfo(attributes)
-            Provider.BOJ -> throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "BOJ는 OAuth2를 지원하지 않습니다.")
+            Provider.BOJ -> throw IllegalArgumentException("BOJ는 OAuth2를 지원하지 않습니다.")
         }
     }
 }

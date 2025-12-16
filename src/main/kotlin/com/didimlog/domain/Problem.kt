@@ -12,10 +12,15 @@ import org.springframework.data.mongodb.core.mapping.Document
  *
  * @property level Solved.ac 기준 난이도 레벨 (1~30)
  * @property category 문제 카테고리 (영문 표준명으로 저장)
- * @property description 문제 본문 HTML (크롤링으로 수집, nullable)
- * @property inputDescription 입력 설명 HTML (크롤링으로 수집, nullable)
- * @property outputDescription 출력 설명 HTML (크롤링으로 수집, nullable)
- * @property examples 입출력 예시 리스트 (크롤링으로 수집, nullable)
+ * @property description 문제 본문 HTML (크롤링으로 수집, nullable) - deprecated: descriptionHtml 사용 권장
+ * @property inputDescription 입력 설명 HTML (크롤링으로 수집, nullable) - deprecated: inputDescriptionHtml 사용 권장
+ * @property outputDescription 출력 설명 HTML (크롤링으로 수집, nullable) - deprecated: outputDescriptionHtml 사용 권장
+ * @property examples 입출력 예시 리스트 (크롤링으로 수집, nullable) - deprecated: sampleInputs, sampleOutputs 사용 권장
+ * @property descriptionHtml 문제 본문 HTML (크롤링으로 수집, nullable)
+ * @property inputDescriptionHtml 입력 설명 HTML (크롤링으로 수집, nullable)
+ * @property outputDescriptionHtml 출력 설명 HTML (크롤링으로 수집, nullable)
+ * @property sampleInputs 샘플 입력 리스트 (크롤링으로 수집, nullable)
+ * @property sampleOutputs 샘플 출력 리스트 (크롤링으로 수집, nullable)
  * @property tags 알고리즘 분류 태그 리스트 (영문 표준명으로 저장)
  */
 @Document(collection = "problems")
@@ -31,6 +36,11 @@ data class Problem(
     val inputDescription: String? = null,
     val outputDescription: String? = null,
     val examples: List<Example>? = null,
+    val descriptionHtml: String? = null,
+    val inputDescriptionHtml: String? = null,
+    val outputDescriptionHtml: String? = null,
+    val sampleInputs: List<String>? = null,
+    val sampleOutputs: List<String>? = null,
     val tags: List<String> = emptyList()
 ) {
     init {

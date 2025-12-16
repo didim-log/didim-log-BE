@@ -10,5 +10,5 @@ interface ProblemRepository : MongoRepository<Problem, String> {
 
     fun findByLevelBetweenAndCategory(min: Int, max: Int, category: String): List<Problem>
 
-    fun findByDescriptionIsNull(): List<Problem>
+    fun findByDescriptionHtmlIsNull(): List<Problem>
 }

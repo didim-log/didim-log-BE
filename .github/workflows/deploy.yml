@@ -17,6 +17,7 @@ name: didim-log-be Deploy CICD
 # - OAUTH_GITHUB_SECRET: GitHub OAuth2 Client Secret
 # - OAUTH_NAVER_ID: Naver OAuth2 Client ID
 # - OAUTH_NAVER_SECRET: Naver OAuth2 Client Secret
+# - OAUTH_REDIRECT_URI: OAuth2 인증 후 프론트엔드 리다이렉트 URI
 # - ADMIN_SECRET_KEY: 슈퍼 관리자 계정 생성용 보안 키
 # - GEMINI_API_KEY: Gemini API Key
 # - GEMINI_API_URL: Gemini API URL (generateContent endpoint)
@@ -102,6 +103,7 @@ jobs:
             echo "OAUTH_GITHUB_SECRET=${{ secrets.OAUTH_GITHUB_SECRET }}" >> .env
             echo "OAUTH_NAVER_ID=${{ secrets.OAUTH_NAVER_ID }}" >> .env
             echo "OAUTH_NAVER_SECRET=${{ secrets.OAUTH_NAVER_SECRET }}" >> .env
+            echo "OAUTH_REDIRECT_URI=${{ secrets.OAUTH_REDIRECT_URI }}" >> .env
             echo "ADMIN_SECRET_KEY=${{ secrets.ADMIN_SECRET_KEY }}" >> .env
 
       - name: Deploy to AWS EC2
@@ -125,5 +127,6 @@ jobs:
 # ✅ OAUTH_GOOGLE_ID, OAUTH_GOOGLE_SECRET
 # ✅ OAUTH_GITHUB_ID, OAUTH_GITHUB_SECRET
 # ✅ OAUTH_NAVER_ID, OAUTH_NAVER_SECRET
+# ✅ OAUTH_REDIRECT_URI (프론트엔드 리다이렉트 URI)
 # ✅ ADMIN_SECRET_KEY
 # ✅ GEMINI_API_KEY, GEMINI_API_URL

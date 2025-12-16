@@ -1,6 +1,5 @@
 package com.didimlog.infra.crawler
 
-import com.didimlog.domain.Example
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.slf4j.LoggerFactory
@@ -26,16 +25,17 @@ class BojCrawler {
             val url = "https://www.acmicpc.net/problem/$problemId"
             val doc = fetchDocument(url)
 
-            val description = extractDescription(doc)
-            val inputDescription = extractInputDescription(doc)
-            val outputDescription = extractOutputDescription(doc)
-            val examples = extractExamples(doc)
+            val descriptionHtml = extractDescription(doc)
+            val inputDescriptionHtml = extractInputDescription(doc)
+            val outputDescriptionHtml = extractOutputDescription(doc)
+            val (sampleInputs, sampleOutputs) = extractSampleData(doc)
 
             ProblemDetails(
-                description = description,
-                inputDescription = inputDescription,
-                outputDescription = outputDescription,
-                examples = examples
+                descriptionHtml = descriptionHtml,
+                inputDescriptionHtml = inputDescriptionHtml,
+                outputDescriptionHtml = outputDescriptionHtml,
+                sampleInputs = sampleInputs,
+                sampleOutputs = sampleOutputs
             )
         } catch (e: Exception) {
             log.warn("BOJ 크롤링 실패: problemId=$problemId, error=${e.message}", e)
@@ -65,19 +65,20 @@ class BojCrawler {
         return element?.html()
     }
 
-    private fun extractExamples(doc: Document): List<Example> {
-        val examples = mutableListOf<Example>()
-        val sampleInputs = doc.select("#sample-input-1, #sample-input-2, #sample-input-3, #sample-input-4, #sample-input-5")
-        val sampleOutputs = doc.select("#sample-output-1, #sample-output-2, #sample-output-3, #sample-output-4, #sample-output-5")
+    private fun extractSampleData(doc: Document): Pair<List<String>, List<String>> {
+        val sampleInputs = mutableListOf<String>()
+        val sampleOutputs = mutableListOf<String>()
 
-        val maxSize = minOf(sampleInputs.size, sampleOutputs.size)
+        val inputElements = doc.select("#sample-input-1, #sample-input-2, #sample-input-3, #sample-input-4, #sample-input-5")
+        val outputElements = doc.select("#sample-output-1, #sample-output-2, #sample-output-3, #sample-output-4, #sample-output-5")
+
+        val maxSize = minOf(inputElements.size, outputElements.size)
         for (i in 0 until maxSize) {
-            val input = sampleInputs[i].text()
-            val output = sampleOutputs[i].text()
-            examples.add(Example(input = input, output = output))
+            sampleInputs.add(inputElements[i].text())
+            sampleOutputs.add(outputElements[i].text())
         }
 
-        return examples
+        return Pair(sampleInputs, sampleOutputs)
     }
 }
 
@@ -85,9 +86,9 @@ class BojCrawler {
  * BOJ 크롤링으로 수집한 문제 상세 정보
  */
 data class ProblemDetails(
-    val description: String?,
-    val inputDescription: String?,
-    val outputDescription: String?,
-    val examples: List<Example>
+    val descriptionHtml: String?,
+    val inputDescriptionHtml: String?,
+    val outputDescriptionHtml: String?,
+    val sampleInputs: List<String>,
+    val sampleOutputs: List<String>
 )
-

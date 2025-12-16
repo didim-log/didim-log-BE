@@ -3,10 +3,6 @@ package com.didimlog.ui.controller
 import com.didimlog.application.quote.QuoteService
 import com.didimlog.ui.dto.QuoteResponse
 import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.media.Content
-import io.swagger.v3.oas.annotations.media.Schema
-import io.swagger.v3.oas.annotations.responses.ApiResponse
-import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -23,17 +19,6 @@ class QuoteController(
     @Operation(
         summary = "랜덤 명언 조회",
         description = "DB에 저장된 명언 중 하나를 무작위로 반환합니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "조회 성공"),
-            ApiResponse(responseCode = "204", description = "저장된 명언이 없음 (응답 본문 없음)"),
-            ApiResponse(
-                responseCode = "500",
-                description = "서버 내부 오류",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
     )
     @GetMapping("/random")
     fun getRandomQuote(): ResponseEntity<QuoteResponse> {

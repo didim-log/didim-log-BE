@@ -5,3 +5,5 @@ package com.didimlog.global.exception
  */
 class FeedbackNotFoundException(message: String) : BusinessException(ErrorCode.FEEDBACK_NOT_FOUND, message)
 
+
+
