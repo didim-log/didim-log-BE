@@ -54,12 +54,13 @@ class AiAnalysisControllerTest {
     @Test
     @DisplayName("AI 분석 요청 시 마크다운을 반환한다")
     fun `analyze returns markdown`() {
-        every { aiAnalysisService.analyze(any(), any(), any()) } returns "markdown"
+        every { aiAnalysisService.analyze(any(), any(), any(), any()) } returns "markdown"
 
         val body = mapOf(
             "code" to "print(1)",
             "problemId" to "1000",
-            "sectionType" to AiSectionType.REFACTORING.name
+            "sectionType" to AiSectionType.REFACTORING.name,
+            "isSuccess" to true
         )
 
         mockMvc.perform(
