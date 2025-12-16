@@ -4,6 +4,7 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
+import com.didimlog.global.exception.BusinessException
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.every
@@ -58,7 +59,7 @@ class StudentSignupServiceTest {
         every { studentRepository.existsByBojId(BojId("dup")) } returns true
 
         // expect
-        assertThrows<IllegalStateException> {
+        assertThrows<BusinessException> {
             studentSignupService.registerWithSolvedAc(
                 nickname = "tester",
                 bojId = "dup"

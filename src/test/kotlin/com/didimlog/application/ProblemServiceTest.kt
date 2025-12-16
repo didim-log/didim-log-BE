@@ -11,6 +11,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
 import com.didimlog.infra.solvedac.SolvedAcTag
@@ -34,8 +35,9 @@ class ProblemServiceTest {
     private val solvedAcClient: SolvedAcClient = mockk()
     private val problemRepository: ProblemRepository = mockk(relaxed = true)
     private val studentRepository: StudentRepository = mockk(relaxed = true)
+    private val bojCrawler: BojCrawler = mockk(relaxed = true)
 
-    private val problemService = ProblemService(solvedAcClient, problemRepository, studentRepository)
+    private val problemService = ProblemService(solvedAcClient, problemRepository, studentRepository, bojCrawler)
 
     @Test
     @DisplayName("syncProblem은 Solved_ac 문제 정보를 조회하여 Problem을 upsert한다")
