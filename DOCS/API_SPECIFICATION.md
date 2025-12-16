@@ -375,11 +375,11 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 
 ## AiAnalysisController
 
-AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_STANDARDS.md` 기반으로 섹션별 마크다운을 생성합니다.
+AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_TEMPLATES.md` 기반으로 회고록을 생성합니다. 문제 설명과 사용자 코드가 포함된 완성된 회고록을 반환합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/ai/analyze` | 회고 섹션별 AI 분석을 요청합니다. (섹션 템플릿 기반, 템플릿 외 출력 금지) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`AiAnalyzeRequest`<br>- `code` (String, required)<br>- `problemId` (String, required)<br>- `sectionType` (String, required): REFACTORING/BEST_PRACTICE/DEEP_DIVE/ROOT_CAUSE/COUNTER_EXAMPLE/GUIDANCE | `AiAnalyzeResponse`<br>- `sectionType` (String)<br>- `markdown` (String) | JWT Token |
+| POST | `/api/v1/ai/analyze` | 회고 섹션별 AI 분석을 요청합니다. 문제 설명 요약, 사용자 코드, 핵심 분석, 개선점이 포함된 마크다운 회고록을 생성합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`AiAnalyzeRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `sectionType` (String, required): REFACTORING/BEST_PRACTICE/DEEP_DIVE/ROOT_CAUSE/COUNTER_EXAMPLE/GUIDANCE<br>- `isSuccess` (Boolean, required): 풀이 성공 여부 | `AiAnalyzeResponse`<br>- `sectionType` (String): 섹션 타입<br>- `markdown` (String): 생성된 마크다운 회고록<br><br>**응답 마크다운 구조:**<br>- 문제 제목 및 번호<br>- 문제 설명 요약<br>- 사용자 코드 (코드 블록 포함)<br>- 핵심 분석 (성공/실패에 따른 분석)<br>- 개선점 및 팁 | JWT Token |
 
 ---
 
