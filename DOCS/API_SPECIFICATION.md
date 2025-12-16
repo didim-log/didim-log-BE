@@ -385,11 +385,12 @@ AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_STANDARDS.md` 기반으�
 
 ## ProblemController
 
-문제 추천 관련 API를 제공합니다.
+문제 추천 및 상세 조회 관련 API를 제공합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/problems/recommend` | 학생의 현재 티어보다 한 단계 높은 난이도(UserLevel + 1 ~ +2)의 문제 중, 아직 풀지 않은 문제를 추천합니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 1): 추천할 문제 개수<br>  - 유효성: `@Positive` (1 이상)<br>- `category` (String, optional): 문제 카테고리 필터<br>  - 예: "IMPLEMENTATION", "GRAPH", "DP" 등<br>  - 미지정 시 모든 카테고리에서 추천 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL | JWT Token |
+| GET | `/api/v1/problems/{problemId}` | 문제 ID로 문제 상세 정보를 조회합니다. DB에 상세 정보(HTML 본문)가 없으면 백준 웹사이트에서 실시간으로 크롤링하여 가져온 후 DB에 저장합니다. (Read-Through 전략) | **Path Variables:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Positive` (1 이상) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력 리스트<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력 리스트<br>- `tags` (List<String>): 알고리즘 분류 태그 리스트 | None |
 
 **예시 요청 (기본 추천):**
 ```http
@@ -423,6 +424,39 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "url": "https://www.acmicpc.net/problem/1001"
   }
 ]
+```
+
+**예시 요청 (문제 상세 조회):**
+```http
+GET /api/v1/problems/1000
+```
+
+**예시 응답 (문제 상세 조회):**
+```json
+{
+  "id": "1000",
+  "title": "A+B",
+  "category": "IMPLEMENTATION",
+  "difficulty": "BRONZE",
+  "difficultyLevel": 3,
+  "url": "https://www.acmicpc.net/problem/1000",
+  "descriptionHtml": "<p>두 정수 A와 B를 입력받은 다음, A+B를 출력하는 프로그램을 작성하시오.</p>",
+  "inputDescriptionHtml": "<p>첫째 줄에 A와 B가 주어진다. (0 < A, B < 10)</p>",
+  "outputDescriptionHtml": "<p>첫째 줄에 A+B를 출력한다.</p>",
+  "sampleInputs": ["1 2"],
+  "sampleOutputs": ["3"],
+  "tags": ["implementation", "arithmetic"]
+}
+```
+
+**에러 응답 예시 (문제를 찾을 수 없음):**
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "code": "PROBLEM_NOT_FOUND",
+  "message": "문제를 찾을 수 없습니다. problemId=99999"
+}
 ```
 
 ---
