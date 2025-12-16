@@ -1,6 +1,8 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.ProblemService
 import com.didimlog.application.recommendation.RecommendationService
+import com.didimlog.ui.dto.ProblemDetailResponse
 import com.didimlog.ui.dto.ProblemResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -15,6 +17,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -24,7 +27,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/problems")
 @Validated
 class ProblemController(
-    private val recommendationService: RecommendationService
+    private val recommendationService: RecommendationService,
+    private val problemService: ProblemService
 ) {
 
     @Operation(
@@ -71,6 +75,42 @@ class ProblemController(
         val bojId = authentication.name // JWT 토큰의 subject(bojId)
         val problems = recommendationService.recommendProblems(bojId, count, category)
         val response = problems.map { ProblemResponse.from(it) }
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "문제 상세 조회",
+        description = "문제 ID로 문제 상세 정보를 조회합니다. DB에 상세 정보가 없으면 백준 웹사이트에서 실시간으로 크롤링하여 가져옵니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 problemId 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/{problemId}")
+    fun getProblemDetail(
+        @Parameter(description = "문제 ID", required = true)
+        @PathVariable
+        @Positive(message = "문제 ID는 1 이상이어야 합니다.")
+        problemId: Long
+    ): ResponseEntity<ProblemDetailResponse> {
+        val problem = problemService.getProblemDetail(problemId)
+        val response = ProblemDetailResponse.from(problem)
         return ResponseEntity.ok(response)
     }
 }
