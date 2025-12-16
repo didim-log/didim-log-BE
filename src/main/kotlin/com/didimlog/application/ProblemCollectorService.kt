@@ -100,14 +100,14 @@ class ProblemCollectorService(
     }
 
     /**
-     * DB에서 description이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다.
+     * DB에서 descriptionHtml이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다.
      * Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둔다.
      * 추후 @Scheduled로 주기적으로 실행할 수 있도록 설계되었다.
      */
     @Transactional
     fun collectDetailsBatch() {
         log.info("문제 상세 정보 크롤링 시작")
-        val problemsWithoutDetails = problemRepository.findByDescriptionIsNull()
+        val problemsWithoutDetails = problemRepository.findByDescriptionHtmlIsNull()
         
         if (problemsWithoutDetails.isEmpty()) {
             log.info("상세 정보가 없는 문제가 없습니다.")
@@ -131,10 +131,11 @@ class ProblemCollectorService(
                 }
 
                 val updatedProblem = problem.copy(
-                    description = details.description,
-                    inputDescription = details.inputDescription,
-                    outputDescription = details.outputDescription,
-                    examples = details.examples
+                    descriptionHtml = details.descriptionHtml,
+                    inputDescriptionHtml = details.inputDescriptionHtml,
+                    outputDescriptionHtml = details.outputDescriptionHtml,
+                    sampleInputs = details.sampleInputs.takeIf { it.isNotEmpty() },
+                    sampleOutputs = details.sampleOutputs.takeIf { it.isNotEmpty() }
                 )
                 problemRepository.save(updatedProblem)
                 successCount++
