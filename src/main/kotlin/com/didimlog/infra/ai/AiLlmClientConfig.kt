@@ -20,9 +20,10 @@ class AiLlmClientConfig {
     fun geminiLlmClient(
         properties: AiGeminiProperties,
         webClientBuilder: WebClient.Builder,
-        objectMapper: ObjectMapper
+        objectMapper: ObjectMapper,
+        rateLimiter: GeminiRateLimiter
     ): LlmClient {
-        return GeminiLlmClient(properties, webClientBuilder, objectMapper)
+        return GeminiLlmClient(properties, webClientBuilder, objectMapper, rateLimiter)
     }
 
     /**
