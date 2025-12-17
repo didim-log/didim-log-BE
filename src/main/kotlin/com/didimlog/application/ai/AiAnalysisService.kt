@@ -12,7 +12,7 @@ class AiAnalysisService(
     private val problemService: ProblemService
 ) {
 
-    fun analyze(code: String, problemId: String, sectionType: AiSectionType, isSuccess: Boolean): String {
+    fun analyze(code: String, problemId: String, isSuccess: Boolean): String {
         if (code.isBlank()) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "code는 비어 있을 수 없습니다.")
         }
@@ -21,8 +21,8 @@ class AiAnalysisService(
         }
 
         val problem = problemService.getProblemDetail(problemId.toLong())
-        val systemPrompt = promptFactory.systemPromptFor(sectionType)
-        val userPrompt = promptFactory.userPrompt(
+        val systemPrompt = promptFactory.createSystemPrompt(isSuccess)
+        val userPrompt = promptFactory.createUserPrompt(
             problemId = problemId,
             problemTitle = problem.title,
             problemDescription = problem.descriptionHtml,
