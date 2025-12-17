@@ -1,5 +1,8 @@
 package com.didimlog.application.ai
 
+import com.didimlog.infra.ai.PromptTemplateLoader
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -7,7 +10,8 @@ import org.junit.jupiter.api.Test
 @DisplayName("AiPromptFactory 특수문자 및 템플릿 분기 테스트")
 class AiPromptFactoryTest {
 
-    private val promptFactory = AiPromptFactory()
+    private val templateLoader = PromptTemplateLoader()
+    private val promptFactory = AiPromptFactory(templateLoader)
 
     @Test
     @DisplayName("C언어 코드의 특수문자(#include, printf, 줄바꿈)가 원본 그대로 프롬프트에 포함된다")
@@ -135,46 +139,49 @@ class AiPromptFactoryTest {
     }
 
     @Test
-    @DisplayName("isSuccess가 true일 때 systemPrompt에 성공 관련 키워드가 포함된다")
+    @DisplayName("isSuccess가 true일 때 success-retrospective.md 템플릿이 로드되고 추천 학습 키워드 섹션이 포함된다")
     fun `성공용 시스템 프롬프트 키워드 검증`() {
         // when
         val result = promptFactory.createSystemPrompt(isSuccess = true)
 
         // then
-        assertThat(result).contains("분석 (성공)")
-        assertThat(result).contains("효율성")
-        assertThat(result).contains("시간/공간 복잡도")
-        assertThat(result).contains("잘한 점")
-        assertThat(result).contains("알고리즘 선택")
-        assertThat(result).contains("코드 가독성")
-        assertThat(result).contains("칭찬")
-        assertThat(result).contains("리팩토링 팁")
-
+        // 새로운 템플릿 구조 검증
+        assertThat(result).contains("추천 학습 키워드")
+        assertThat(result).contains("코드 상세 회고")
+        assertThat(result).contains("잘된 점")
+        assertThat(result).contains("효율성 분석")
+        assertThat(result).contains("개선 가능성")
+        assertThat(result).contains("시니어 개발자 멘토")
+        
+        // Output Format에 Keywords 섹션이 포함되는지 확인
+        assertThat(result).contains("🔑 추천 학습 키워드")
+        
         // 실패 관련 키워드는 포함되지 않아야 함
-        assertThat(result).doesNotContain("분석 (실패)")
-        assertThat(result).doesNotContain("실패 원인")
-        assertThat(result).doesNotContain("학습해야 할 핵심 키워드")
+        assertThat(result).doesNotContain("실패 분석")
+        assertThat(result).doesNotContain("원인 분석 (Why)")
     }
 
     @Test
-    @DisplayName("isSuccess가 false일 때 systemPrompt에 실패 관련 키워드가 포함된다")
+    @DisplayName("isSuccess가 false일 때 failure-retrospective.md 템플릿이 로드되고 추천 학습 키워드 섹션이 포함된다")
     fun `실패용 시스템 프롬프트 키워드 검증`() {
         // when
         val result = promptFactory.createSystemPrompt(isSuccess = false)
 
         // then
-        assertThat(result).contains("분석 (실패)")
-        assertThat(result).contains("실패 원인")
-        assertThat(result).contains("논리 오류")
-        assertThat(result).contains("엣지 케이스")
-        assertThat(result).contains("시간 초과")
-        assertThat(result).contains("학습해야 할 핵심 키워드")
-        assertThat(result).contains("개념을 제시")
-
+        // 새로운 템플릿 구조 검증
+        assertThat(result).contains("추천 학습 키워드")
+        assertThat(result).contains("실패 분석 회고")
+        assertThat(result).contains("원인 분석 (Why)")
+        assertThat(result).contains("해결 방안 (How)")
+        assertThat(result).contains("트러블슈팅 전문가")
+        
+        // Output Format에 Keywords 섹션이 포함되는지 확인
+        assertThat(result).contains("🔑 추천 학습 키워드")
+        assertThat(result).contains("❌ 실패 분석")
+        
         // 성공 관련 키워드는 포함되지 않아야 함
-        assertThat(result).doesNotContain("분석 (성공)")
-        assertThat(result).doesNotContain("효율성")
-        assertThat(result).doesNotContain("칭찬")
+        assertThat(result).doesNotContain("코드 상세 회고")
+        assertThat(result).doesNotContain("잘된 점")
     }
 
     @Test

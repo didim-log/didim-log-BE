@@ -18,7 +18,8 @@ import java.util.Optional
 class AiAnalysisServiceMockApiTest {
 
     private val llmClient = mockk<LlmClient>(relaxed = true)
-    private val promptFactory = AiPromptFactory()
+    private val templateLoader = com.didimlog.infra.ai.PromptTemplateLoader()
+    private val promptFactory = AiPromptFactory(templateLoader)
     private val problemService = mockk<ProblemService>(relaxed = true)
 
     private val aiAnalysisService = AiAnalysisService(
@@ -57,9 +58,9 @@ class AiAnalysisServiceMockApiTest {
         verify(exactly = 1) {
             llmClient.generateMarkdown(
                 systemPrompt = match {
-                    it.contains("디딤로그 AI") &&
-                        it.contains("분석 (성공)") &&
-                        it.contains("효율성")
+                    it.contains("추천 학습 키워드") &&
+                        it.contains("코드 상세 회고") &&
+                        it.contains("시니어 개발자 멘토")
                 },
                 userPrompt = match {
                     it.contains("문제 번호: $problemId") &&
@@ -101,9 +102,9 @@ class AiAnalysisServiceMockApiTest {
         verify(exactly = 1) {
             llmClient.generateMarkdown(
                 systemPrompt = match {
-                    it.contains("분석 (실패)") &&
-                        it.contains("실패 원인") &&
-                        it.contains("학습해야 할 핵심 키워드")
+                    it.contains("추천 학습 키워드") &&
+                        it.contains("실패 분석 회고") &&
+                        it.contains("트러블슈팅 전문가")
                 },
                 userPrompt = match {
                     it.contains("풀이 결과: false") &&

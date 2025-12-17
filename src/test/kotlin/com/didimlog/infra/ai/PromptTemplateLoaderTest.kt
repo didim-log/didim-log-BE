@@ -15,14 +15,13 @@ class PromptTemplateLoaderTest {
     @DisplayName("템플릿 파일을 정상적으로 로드한다")
     fun `템플릿 파일 로드 성공`() {
         // when
-        val template = templateLoader.loadTemplate("system-prompt-success.md")
+        val template = templateLoader.loadTemplate("success-retrospective.md")
 
         // then
         assertThat(template).isNotBlank()
         assertThat(template).contains("# Role")
-        assertThat(template).contains("디딤로그 AI")
-        assertThat(template).contains("{problemId}")
-        assertThat(template).contains("{userCode}")
+        assertThat(template).contains("추천 학습 키워드")
+        assertThat(template).contains("시니어 개발자 멘토")
     }
 
     @Test
