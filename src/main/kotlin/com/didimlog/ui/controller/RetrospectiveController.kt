@@ -10,6 +10,8 @@ import com.didimlog.ui.dto.RetrospectivePageResponse
 import com.didimlog.ui.dto.RetrospectiveRequest
 import com.didimlog.ui.dto.RetrospectiveResponse
 import com.didimlog.ui.dto.TemplateResponse
+import com.didimlog.application.template.StaticTemplateService
+import com.didimlog.ui.dto.StaticTemplateRequest
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -38,7 +40,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/retrospectives")
 @org.springframework.validation.annotation.Validated
 class RetrospectiveController(
-    private val retrospectiveService: RetrospectiveService
+    private val retrospectiveService: RetrospectiveService,
+    private val staticTemplateService: StaticTemplateService
 ) {
 
     @Operation(
@@ -282,6 +285,41 @@ class RetrospectiveController(
         @RequestParam resultType: com.didimlog.domain.enums.ProblemResult
     ): ResponseEntity<TemplateResponse> {
         val template = retrospectiveService.generateTemplate(problemId, resultType)
+        val response = TemplateResponse(template = template)
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "정적 회고 템플릿 생성",
+        description = "AI 서비스 없이 정적 템플릿을 생성하여 반환합니다. 문제 카테고리, 사용자 코드, 에러 메시지(실패 시)를 포함한 기본 템플릿을 제공합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "템플릿 생성 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/template/static")
+    fun generateStaticTemplate(
+        @RequestBody
+        @Valid
+        request: StaticTemplateRequest
+    ): ResponseEntity<TemplateResponse> {
+        val template = staticTemplateService.generateRetrospectiveTemplate(
+            problemId = request.problemId,
+            code = request.code,
+            isSuccess = request.isSuccess,
+            errorMessage = request.errorMessage
+        )
         val response = TemplateResponse(template = template)
         return ResponseEntity.ok(response)
     }

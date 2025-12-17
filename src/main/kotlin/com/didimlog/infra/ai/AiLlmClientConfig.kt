@@ -11,7 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient
 import com.fasterxml.jackson.databind.ObjectMapper
 
 @Configuration
-@EnableConfigurationProperties(AiGeminiProperties::class, AiProperties::class)
+@EnableConfigurationProperties(AiGeminiProperties::class)
 class AiLlmClientConfig {
 
     @Bean

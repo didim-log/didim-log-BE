@@ -21,13 +21,11 @@ class AiAnalysisServiceMockApiTest {
     private val templateLoader = com.didimlog.infra.ai.PromptTemplateLoader()
     private val promptFactory = AiPromptFactory(templateLoader)
     private val problemService = mockk<ProblemService>(relaxed = true)
-    private val aiProperties = com.didimlog.infra.ai.AiProperties(enabled = true)
 
     private val aiAnalysisService = AiAnalysisService(
         llmClient = llmClient,
         promptFactory = promptFactory,
-        problemService = problemService,
-        aiProperties = aiProperties
+        problemService = problemService
     )
 
     @Test

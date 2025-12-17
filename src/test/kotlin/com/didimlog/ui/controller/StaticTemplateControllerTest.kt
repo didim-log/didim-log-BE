@@ -1,9 +1,7 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.ai.AiAnalysisService
-import com.didimlog.global.auth.JwtTokenProvider
-import com.didimlog.global.exception.BusinessException
-import com.didimlog.global.exception.ErrorCode
+import com.didimlog.application.retrospective.RetrospectiveService
+import com.didimlog.application.template.StaticTemplateService
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
@@ -22,9 +20,9 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
-@DisplayName("AiAnalysisController 테스트")
+@DisplayName("StaticTemplateController 테스트 (RetrospectiveController 내부)")
 @WebMvcTest(
-    controllers = [AiAnalysisController::class],
+    controllers = [RetrospectiveController::class],
     excludeAutoConfiguration = [
         SecurityAutoConfiguration::class,
         org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration::class
@@ -32,7 +30,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 )
 @Import(GlobalExceptionHandler::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
-class AiAnalysisControllerTest {
+class StaticTemplateControllerTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
@@ -41,62 +39,71 @@ class AiAnalysisControllerTest {
     private lateinit var objectMapper: ObjectMapper
 
     @Autowired
-    private lateinit var aiAnalysisService: AiAnalysisService
+    private lateinit var staticTemplateService: StaticTemplateService
 
     @TestConfiguration
     class TestConfig {
         @Bean
-        fun aiAnalysisService(): AiAnalysisService = mockk(relaxed = true)
+        fun retrospectiveService(): RetrospectiveService = mockk(relaxed = true)
 
         @Bean
-        fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
+        fun staticTemplateService(): StaticTemplateService = mockk(relaxed = true)
     }
 
     @Test
-    @DisplayName("AI 회고록 생성 요청 시 마크다운을 반환한다")
-    fun `analyze returns markdown`() {
-        every { aiAnalysisService.analyze(any(), any(), any()) } returns "markdown"
+    @DisplayName("정적 템플릿 생성 요청 시 마크다운을 반환한다 (성공 케이스)")
+    fun `정적 템플릿 생성 - 성공 케이스`() {
+        every { staticTemplateService.generateRetrospectiveTemplate(any(), any(), any(), any()) } returns "static template"
 
         val body = mapOf(
-            "code" to "print(1)",
+            "code" to "print(1 + 2)",
             "problemId" to "1000",
             "isSuccess" to true
         )
 
         mockMvc.perform(
-            post("/api/v1/ai/analyze")
+            post("/api/v1/retrospectives/template/static")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(body))
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.markdown").value("markdown"))
+            .andExpect(jsonPath("$.template").value("static template"))
     }
 
     @Test
-    @DisplayName("429 에러가 지속적으로 발생하면 503 Service Unavailable을 반환한다")
-    fun `429 지속 발생 시 최종 응답 검증`() {
-        // given
-        // GeminiLlmClient에서 RetryExhaustedException이 발생하면 BusinessException(AI_SERVICE_BUSY)로 변환됨
-        every { aiAnalysisService.analyze(any(), any(), any()) } throws BusinessException(
-            ErrorCode.AI_SERVICE_BUSY,
-            "서버 사용량이 많아 잠시 후 다시 시도해주세요."
-        )
+    @DisplayName("정적 템플릿 생성 요청 시 마크다운을 반환한다 (실패 케이스)")
+    fun `정적 템플릿 생성 - 실패 케이스`() {
+        every { staticTemplateService.generateRetrospectiveTemplate(any(), any(), any(), any()) } returns "static template with error"
 
         val body = mapOf(
-            "code" to "print(1)",
+            "code" to "print(1 + 2)",
             "problemId" to "1000",
-            "isSuccess" to true
+            "isSuccess" to false,
+            "errorMessage" to "IndexError: list index out of range"
         )
 
-        // when & then
         mockMvc.perform(
-            post("/api/v1/ai/analyze")
+            post("/api/v1/retrospectives/template/static")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(body))
         )
-            .andExpect(status().isServiceUnavailable) // GlobalExceptionHandler에서 503으로 매핑
-            .andExpect(jsonPath("$.code").value("AI_SERVICE_BUSY"))
-            .andExpect(jsonPath("$.message").value("서버 사용량이 많아 잠시 후 다시 시도해주세요."))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.template").value("static template with error"))
+    }
+
+    @Test
+    @DisplayName("필수 필드가 누락되면 400 Bad Request를 반환한다")
+    fun `필수 필드 누락 검증`() {
+        val body = mapOf(
+            "code" to "print(1)"
+            // problemId, isSuccess 누락
+        )
+
+        mockMvc.perform(
+            post("/api/v1/retrospectives/template/static")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body))
+        )
+            .andExpect(status().isBadRequest)
     }
 }
-
