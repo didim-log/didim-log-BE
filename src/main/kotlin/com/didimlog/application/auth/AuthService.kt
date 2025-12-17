@@ -11,6 +11,7 @@ import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.PasswordValidator
+import com.didimlog.infra.email.EmailService
 import com.didimlog.infra.solvedac.SolvedAcClient
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DuplicateKeyException
@@ -18,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import com.mongodb.MongoWriteException
+import kotlin.random.Random
 
 /**
  * 인증 서비스
@@ -29,7 +31,8 @@ class AuthService(
     private val solvedAcClient: SolvedAcClient,
     private val studentRepository: StudentRepository,
     private val jwtTokenProvider: JwtTokenProvider,
-    private val passwordEncoder: PasswordEncoder
+    private val passwordEncoder: PasswordEncoder,
+    private val emailService: EmailService
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -404,5 +407,82 @@ class AuthService(
         // 정식 Access Token 발급 (USER role 포함)
         val token = jwtTokenProvider.createToken(bojIdVo.value, Role.USER.value)
         return AuthResult(token, savedStudent.rating, savedStudent.tier())
+    }
+
+    /**
+     * 이메일을 입력받아 해당 이메일을 가진 사용자의 BOJ ID를 이메일로 전송한다.
+     *
+     * @param email 사용자 이메일
+     * @throws BusinessException 해당 이메일을 가진 사용자가 없는 경우
+     */
+    @Transactional(readOnly = true)
+    fun findId(email: String) {
+        val student = studentRepository.findByEmail(email)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "해당 이메일로 가입된 계정을 찾을 수 없습니다. email=$email")
+            }
+
+        val bojId = student.bojId?.value
+            ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "BOJ ID가 등록되지 않은 계정입니다. email=$email")
+
+        val subject = "[디딤로그] 아이디 찾기"
+        val variables = mapOf(
+            "nickname" to student.nickname.value,
+            "bojId" to bojId
+        )
+
+        emailService.sendTemplateEmail(email, subject, "mail/find-id", variables)
+        log.info("아이디 찾기 이메일 발송 완료: email=$email, bojId=$bojId")
+    }
+
+    /**
+     * 이메일과 BOJ ID를 입력받아 일치하는 사용자가 있으면 임시 비밀번호를 생성하여 DB에 저장하고 이메일로 발송한다.
+     *
+     * @param email 사용자 이메일
+     * @param bojId BOJ ID
+     * @throws BusinessException 해당 이메일과 BOJ ID로 가입된 사용자가 없는 경우
+     */
+    @Transactional
+    fun findPassword(email: String, bojId: String) {
+        val bojIdVo = BojId(bojId)
+        val student = studentRepository.findByEmail(email)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "해당 이메일로 가입된 계정을 찾을 수 없습니다. email=$email")
+            }
+
+        if (student.bojId != bojIdVo) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이메일과 BOJ ID가 일치하지 않습니다. email=$email, bojId=$bojId")
+        }
+
+        if (student.password == null) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 설정되지 않은 계정입니다. 소셜 로그인 계정은 비밀번호 찾기를 사용할 수 없습니다. email=$email")
+        }
+
+        val temporaryPassword = generateTemporaryPassword()
+        val encodedPassword = passwordEncoder.encode(temporaryPassword)
+
+        val updatedStudent = student.copy(password = encodedPassword)
+        studentRepository.save(updatedStudent)
+
+        val subject = "[디딤로그] 임시 비밀번호 발급"
+        val variables = mapOf(
+            "nickname" to student.nickname.value,
+            "tempPassword" to temporaryPassword
+        )
+
+        emailService.sendTemplateEmail(email, subject, "mail/find-password", variables)
+        log.info("임시 비밀번호 이메일 발송 완료: email=$email, bojId=$bojId")
+    }
+
+    /**
+     * 영문+숫자 조합의 8자리 임시 비밀번호를 생성한다.
+     *
+     * @return 임시 비밀번호 문자열
+     */
+    private fun generateTemporaryPassword(): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        return (1..8)
+            .map { chars[Random.nextInt(chars.length)] }
+            .joinToString("")
     }
 }
