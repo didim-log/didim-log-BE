@@ -379,7 +379,7 @@ AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_TEMPLATES.md` 기반으�
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/ai/analyze` | 회고 섹션별 AI 분석을 요청합니다. 문제 설명 요약, 사용자 코드, 핵심 분석, 개선점이 포함된 마크다운 회고록을 생성합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`AiAnalyzeRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `sectionType` (String, required): REFACTORING/BEST_PRACTICE/DEEP_DIVE/ROOT_CAUSE/COUNTER_EXAMPLE/GUIDANCE<br>- `isSuccess` (Boolean, required): 풀이 성공 여부 | `AiAnalyzeResponse`<br>- `sectionType` (String): 섹션 타입<br>- `markdown` (String): 생성된 마크다운 회고록<br><br>**응답 마크다운 구조:**<br>- 문제 제목 및 번호<br>- 문제 설명 요약<br>- 사용자 코드 (코드 블록 포함)<br>- 핵심 분석 (성공/실패에 따른 분석)<br>- 개선점 및 팁 | JWT Token |
+| POST | `/api/v1/ai/analyze` | 풀이 성공 여부에 따라 성공 회고 또는 실패 회고를 AI가 생성하여 마크다운으로 반환합니다. 문제 설명 요약, 사용자 코드, 핵심 분석, 개선점이 포함된 완성된 회고록을 생성합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`AiAnalyzeRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `isSuccess` (Boolean, required): 풀이 성공 여부<br>  - `true`: 성공 회고 (효율성 칭찬, 리팩토링 제안 중심)<br>  - `false`: 실패 회고 (원인 분석, 학습 키워드 제시 중심) | `AiAnalyzeResponse`<br>- `markdown` (String): 생성된 마크다운 회고록<br><br>**응답 마크다운 구조:**<br>- 문제 제목 및 번호<br>- 문제 설명 요약<br>- 사용자 코드 (코드 블록 포함)<br>- 핵심 분석 (성공/실패에 따른 분석)<br>- 개선점 및 팁 | JWT Token |
 
 ---
 
