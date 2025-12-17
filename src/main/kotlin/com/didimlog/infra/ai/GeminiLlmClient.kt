@@ -11,6 +11,7 @@ import org.springframework.http.MediaType
 import org.springframework.web.util.UriComponentsBuilder
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientResponseException
+import reactor.core.Exceptions
 import reactor.core.publisher.Mono
 import reactor.util.retry.Retry
 import java.time.Duration
@@ -41,30 +42,60 @@ class GeminiLlmClient(
                 .bodyToMono(String::class.java)
                 .retryWhen(
                     Retry.backoff(3, Duration.ofSeconds(2))
-                        .jitter(0.5)
+                        .maxBackoff(Duration.ofSeconds(16)) // 최대 백오프 16초 (2^3 * 2)
+                        .jitter(0.5) // 50% Jitter 적용
                         .filter { throwable ->
                             throwable is WebClientResponseException.TooManyRequests
                         }
                         .doBeforeRetry { retrySignal ->
                             log.warn(
-                                "Gemini API 429 에러 발생, 재시도 중: attempt={}, error={}",
+                                "Gemini API 429 에러 발생, 재시도 중: attempt={}/{}, error={}",
                                 retrySignal.totalRetries() + 1,
+                                3,
                                 retrySignal.failure().message
+                            )
+                        }
+                        .onRetryExhaustedThrow { _, retrySignal ->
+                            // Exceptions.retryExhausted()를 사용하여 재시도 한도 초과 예외 생성
+                            Exceptions.retryExhausted(
+                                "재시도 한도 초과: ${retrySignal.totalRetries()}회 재시도 후에도 실패",
+                                retrySignal.failure()
                             )
                         }
                 )
                 .onErrorResume { throwable ->
-                    when (throwable) {
-                        is WebClientResponseException.TooManyRequests -> {
-                            log.error("Gemini API 429 에러: 재시도 후에도 실패", throwable)
+                    when {
+                        Exceptions.isRetryExhausted(throwable) -> {
+                            // 재시도 한도 초과 예외인 경우, 원인 예외 확인
+                            val cause = throwable.cause
+                            if (cause is WebClientResponseException.TooManyRequests) {
+                                log.error(
+                                    "Gemini API 429 에러: 재시도 한도 초과 (재시도 후 실패)",
+                                    cause
+                                )
+                                // RetryExhaustedException을 그대로 전파하여 GlobalExceptionHandler에서 503으로 처리
+                                return@onErrorResume Mono.error(throwable)
+                            }
+                            // 다른 원인인 경우 기존 로직 유지
+                            log.error("재시도 한도 초과: 원인={}", cause?.javaClass?.simpleName, throwable)
                             Mono.error(
                                 BusinessException(
-                                    ErrorCode.AI_SERVICE_BUSY,
-                                    "무료 사용량이 많아 잠시 대기 중입니다. 잠시 후 다시 시도해주세요."
+                                    ErrorCode.COMMON_INTERNAL_ERROR,
+                                    "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
                                 )
                             )
                         }
-                        is WebClientResponseException -> {
+                        throwable is WebClientResponseException.TooManyRequests -> {
+                            // 재시도 전에 바로 429가 발생한 경우 (필터를 통과하지 못한 경우)
+                            log.error("Gemini API 429 에러: 재시도 전 실패", throwable)
+                            Mono.error(
+                                BusinessException(
+                                    ErrorCode.AI_SERVICE_BUSY,
+                                    "서버 사용량이 많아 잠시 후 다시 시도해주세요."
+                                )
+                            )
+                        }
+                        throwable is WebClientResponseException -> {
                             // 400 Bad Request: 토큰 제한 초과 (1M 토큰) 또는 잘못된 요청
                             if (throwable.statusCode == HttpStatus.BAD_REQUEST) {
                                 val responseBody = throwable.responseBodyAsString

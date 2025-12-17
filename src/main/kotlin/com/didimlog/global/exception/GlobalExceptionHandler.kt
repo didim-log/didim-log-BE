@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.reactive.function.client.WebClientResponseException
+import reactor.core.Exceptions
 
 /**
  * 전역 예외 처리 핸들러
@@ -156,6 +157,7 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse)
     }
 
+
     /**
      * WebClient 응답 예외 처리
      * 외부 API 호출 시 발생하는 HTTP 에러를 처리한다.
@@ -204,9 +206,42 @@ class GlobalExceptionHandler {
 
     /**
      * 기타 예외 처리
+     * 재시도 한도 초과 예외도 여기서 처리한다.
+     * BusinessException보다 먼저 처리되어야 하므로 @ExceptionHandler 순서에 주의
      */
     @ExceptionHandler(Exception::class)
     fun handleException(e: Exception): ResponseEntity<ErrorResponse> {
+        // 재시도 한도 초과 예외 처리 (BusinessException보다 먼저 체크)
+        if (Exceptions.isRetryExhausted(e)) {
+            val cause = e.cause
+            
+            // 원인이 TooManyRequests인 경우
+            if (cause is WebClientResponseException.TooManyRequests) {
+                log.warn(
+                    "재시도 한도 초과: 원인=429 Too Many Requests",
+                    e
+                )
+                val errorResponse = ErrorResponse.of(
+                    ErrorCode.AI_SERVICE_BUSY,
+                    "서버 사용량이 많아 잠시 후 다시 시도해주세요."
+                )
+                // 429 또는 503 반환 (서비스 일시 중단을 나타내므로 503도 적절)
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(errorResponse)
+            }
+            
+            // 다른 원인인 경우 500 에러 반환
+            log.error(
+                "재시도 한도 초과: 원인={}",
+                cause?.javaClass?.simpleName ?: "Unknown",
+                e
+            )
+            val errorResponse = ErrorResponse.of(
+                ErrorCode.COMMON_INTERNAL_ERROR,
+                "외부 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
+            )
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse)
+        }
+        
         log.error(
             "Unexpected exception occurred: exceptionType=${e.javaClass.simpleName}, message=${e.message}",
             e
