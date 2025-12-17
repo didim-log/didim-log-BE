@@ -1,7 +1,7 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.quote.QuoteService
-import com.didimlog.domain.Quote
+import com.didimlog.application.statistics.StatisticsService
+import com.didimlog.application.statistics.StatisticsInfo
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
@@ -19,9 +19,9 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
-@DisplayName("QuoteController 테스트")
+@DisplayName("StatisticsController 테스트")
 @WebMvcTest(
-    controllers = [QuoteController::class],
+    controllers = [StatisticsController::class],
     excludeAutoConfiguration = [
         org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration::class,
         org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration::class
@@ -29,53 +29,50 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 )
 @Import(GlobalExceptionHandler::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
-class QuoteControllerTest {
+class StatisticsControllerTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
 
     @Autowired
-    private lateinit var quoteService: QuoteService
+    private lateinit var statisticsService: StatisticsService
 
     @TestConfiguration
     class TestConfig {
         @Bean
-        fun quoteService(): QuoteService = mockk(relaxed = true)
+        fun statisticsService(): StatisticsService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
+
+        @Bean
+        fun methodValidationPostProcessor(): org.springframework.validation.beanvalidation.MethodValidationPostProcessor {
+            return org.springframework.validation.beanvalidation.MethodValidationPostProcessor()
+        }
     }
 
     @Test
-    @DisplayName("랜덤 명언 조회 시 200 OK 및 Response JSON 구조 검증")
-    fun `랜덤 명언 조회 성공`() {
+    @DisplayName("통계 조회 시 200 OK 및 Response JSON 구조 검증")
+    fun `통계 조회 성공`() {
         // given
-        val quote = Quote(id = "quote1", content = "명언 내용", author = "작가명")
+        val statisticsInfo = StatisticsInfo(
+            monthlyHeatmap = emptyList(),
+            categoryDistribution = emptyMap(),
+            totalSolvedCount = 10
+        )
 
-        every { quoteService.getRandomQuote() } returns quote
+        every { statisticsService.getStatistics("bojId") } returns statisticsInfo
 
         // when & then
         mockMvc.perform(
-            get("/api/v1/quotes/random")
+            get("/api/v1/statistics")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.id").value("quote1"))
-            .andExpect(jsonPath("$.content").value("명언 내용"))
-            .andExpect(jsonPath("$.author").value("작가명"))
-    }
-
-    @Test
-    @DisplayName("랜덤 명언이 없을 때 204 No Content 반환")
-    fun `랜덤 명언 없음`() {
-        // given
-        every { quoteService.getRandomQuote() } returns null
-
-        // when & then
-        mockMvc.perform(
-            get("/api/v1/quotes/random")
-                .contentType(MediaType.APPLICATION_JSON)
-        )
-            .andExpect(status().isNoContent)
+            .andExpect(jsonPath("$.monthlyHeatmap").exists())
+            .andExpect(jsonPath("$.categoryDistribution").exists())
+            .andExpect(jsonPath("$.totalSolvedCount").value(10))
     }
 }
+
