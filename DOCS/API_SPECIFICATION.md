@@ -17,6 +17,7 @@
 - [RankingController](#rankingcontroller)
 - [AdminController](#admincontroller)
 - [AdminDashboardController](#admindashboardcontroller)
+- [ProblemCollectorController](#problemcollectorcontroller)
 - [FeedbackController](#feedbackcontroller)
 
 ---
@@ -32,6 +33,8 @@
 | POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/signup/finalize` | 소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되며 정식 Access Token이 발급됩니다. | **Request Body:**<br>`SignupFinalizeRequest`<br>- `email` (String, required): 사용자 이메일<br>  - 유효성: `@NotBlank` (null/공백 불가)<br>  - **GitHub 비공개 이메일 등 제공자에서 이메일을 내려주지 않는 경우**: 프론트엔드에서 사용자가 직접 입력한 값을 전달해야 함<br>- `provider` (String, required): 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)<br>  - 유효성: `@NotBlank`<br>- `providerId` (String, required): 제공자별 사용자 ID<br>  - 유효성: `@NotBlank`<br>- `nickname` (String, required): 설정할 닉네임<br>  - 유효성: `@NotBlank`<br>- `bojId` (String, optional): BOJ ID (선택)<br>  - 제공된 경우 Solved.ac API로 검증 및 Rating 조회<br>  - **중복 불가** (이미 존재하는 BOJ ID면 409 발생)<br>- `isAgreedToTerms` (Boolean, required): 약관 동의 여부<br>  - 유효성: `@NotNull`<br>  - 반드시 `true`여야 함 (약관 동의는 필수)<br><br>※ 서버는 호환성을 위해 `termsAgreed`도 함께 지원합니다. | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (USER role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수, BOJ ID가 제공된 경우)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER", "BRONZE")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/find-account` | 이메일을 입력받아 가입된 소셜 제공자(Provider)를 반환합니다. | **Request Body:**<br>`FindAccountRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindAccountResponse`<br>- `provider` (String)<br>- `message` (String) | None |
+| POST | `/api/v1/auth/find-id` | 이메일을 입력받아 해당 이메일로 가입된 계정의 BOJ ID를 이메일로 전송합니다. | **Request Body:**<br>`FindIdRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindIdPasswordResponse`<br>- `message` (String): "이메일로 아이디가 전송되었습니다." | None |
+| POST | `/api/v1/auth/find-password` | 이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 임시 비밀번호(8자리 영문+숫자 조합)를 생성하여 DB에 저장하고 이메일로 전송합니다. | **Request Body:**<br>`FindPasswordRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank` | `FindIdPasswordResponse`<br>- `message` (String): "이메일로 임시 비밀번호가 전송되었습니다." | None |
 | POST | `/api/v1/auth/boj/code` | BOJ 프로필 상태 메시지 인증에 사용할 코드를 발급합니다. | 없음 | `BojCodeIssueResponse`<br>- `sessionId` (String)<br>- `code` (String)<br>- `expiresInSeconds` (Long) | None |
 | POST | `/api/v1/auth/boj/verify` | BOJ 프로필 상태 메시지에서 발급 코드 포함 여부를 확인하고 성공 시 소유권 인증을 완료합니다. | **Request Body:**<br>`BojVerifyRequest`<br>- `sessionId` (String, required)<br>- `bojId` (String, required) | `BojVerifyResponse`<br>- `verified` (Boolean) | None |
 
@@ -1150,6 +1153,64 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "todaySignups": 5,
   "totalSolvedProblems": 1250,
   "todayRetrospectives": 12
+}
+```
+
+---
+
+## ProblemCollectorController
+
+문제 데이터 수집 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 수집하여 DB에 저장합니다. (Upsert 방식) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 메타데이터 수집이 완료되었습니다."<br>- `range` (String): "start-end" 형식의 범위 문자열 | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 상세 정보 크롤링이 완료되었습니다." | JWT Token (ADMIN) |
+
+**예시 요청 (메타데이터 수집):**
+```http
+POST /api/v1/admin/problems/collect-metadata?start=1000&end=1100
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (메타데이터 수집):**
+```json
+{
+  "message": "문제 메타데이터 수집이 완료되었습니다.",
+  "range": "1000-1100"
+}
+```
+
+**예시 요청 (상세 정보 크롤링):**
+```http
+POST /api/v1/admin/problems/collect-details
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (상세 정보 크롤링):**
+```json
+{
+  "message": "문제 상세 정보 크롤링이 완료되었습니다."
+}
+```
+
+**에러 응답 예시 (유효하지 않은 start/end 값):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_VALIDATION_FAILED",
+  "message": "collectMetadata.start: 시작 문제 ID는 1 이상이어야 합니다."
+}
+```
+
+**에러 응답 예시 (ADMIN 권한 없음):**
+```json
+{
+  "status": 403,
+  "error": "Forbidden",
+  "code": "ACCESS_DENIED",
+  "message": "접근 권한이 없습니다."
 }
 ```
 
