@@ -36,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Retrospective", description = "회고 관련 API")
 @RestController
 @RequestMapping("/api/v1/retrospectives")
+@org.springframework.validation.annotation.Validated
 class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService
 ) {
