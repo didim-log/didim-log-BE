@@ -1,6 +1,7 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.retrospective.RetrospectiveService
+import com.didimlog.application.template.StaticTemplateService
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
@@ -56,6 +57,9 @@ class RetrospectiveControllerTest {
     class TestConfig {
         @Bean
         fun retrospectiveService(): RetrospectiveService = mockk(relaxed = true)
+
+        @Bean
+        fun staticTemplateService(): StaticTemplateService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
