@@ -33,6 +33,12 @@ enum class ErrorCode(
     // 409 Conflict
     DUPLICATE_BOJ_ID(409, "DUPLICATE_BOJ_ID", "이미 가입된 백준 아이디입니다."),
 
+    // 400 Bad Request
+    AI_CONTEXT_TOO_LARGE(400, "AI_CONTEXT_TOO_LARGE", "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."),
+
+    // 429 Too Many Requests / 503 Service Unavailable
+    AI_SERVICE_BUSY(429, "AI_SERVICE_BUSY", "AI 서비스 사용량이 많아 잠시 후 다시 시도해주세요."),
+
     // 500 Internal Server Error
     COMMON_INTERNAL_ERROR(500, "COMMON_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")
 }
