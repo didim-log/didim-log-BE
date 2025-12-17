@@ -24,7 +24,7 @@ class PromptTemplateLoader {
     /**
      * 템플릿 파일을 로드한다.
      *
-     * @param templateFileName 템플릿 파일명 (예: "system-prompt-success.md")
+     * @param templateFileName 템플릿 파일명 (예: "success-retrospective.md")
      * @return 템플릿 내용 문자열
      * @throws FileNotFoundException 템플릿 파일을 찾을 수 없는 경우
      */
