@@ -5,6 +5,7 @@ import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.application.ai.LlmClient
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
