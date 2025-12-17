@@ -98,6 +98,7 @@ app:
     secret-key: ${ADMIN_SECRET_KEY}
 
 ai:
+  enabled: ${AI_ENABLED:true}
   gemini:
     # 운영/로컬 환경변수로 주입 (하드코딩 금지)
     api-key: ${GEMINI_API_KEY:}

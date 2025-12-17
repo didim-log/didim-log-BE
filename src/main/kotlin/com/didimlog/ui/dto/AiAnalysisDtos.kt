@@ -9,7 +9,8 @@ data class AiAnalyzeRequest(
     @field:NotBlank(message = "problemId는 필수입니다.")
     val problemId: String,
     @field:NotNull(message = "isSuccess는 필수입니다.")
-    val isSuccess: Boolean
+    val isSuccess: Boolean,
+    val errorMessage: String? = null
 )
 
 data class AiAnalyzeResponse(
