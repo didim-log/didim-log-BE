@@ -24,15 +24,15 @@ class AiAnalysisController(
 ) {
 
     @Operation(
-        summary = "회고 섹션 AI 분석",
-        description = "회고 특정 섹션(리팩토링/원인분석/반례 등)만 AI가 분석하여 마크다운으로 반환합니다."
+        summary = "회고록 AI 생성",
+        description = "풀이 성공 여부에 따라 성공 회고 또는 실패 회고를 AI가 생성하여 마크다운으로 반환합니다. 문제 설명 요약, 사용자 코드, 핵심 분석, 개선점이 포함된 완성된 회고록을 생성합니다."
     )
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "AI 분석 성공"),
+            ApiResponse(responseCode = "200", description = "AI 회고록 생성 성공"),
             ApiResponse(
                 responseCode = "400",
-                description = "요청 값 검증 실패 또는 sectionType/요청 본문 형식 오류",
+                description = "요청 값 검증 실패 또는 요청 본문 형식 오류",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
@@ -56,10 +56,9 @@ class AiAnalysisController(
         val markdown = aiAnalysisService.analyze(
             code = request.code,
             problemId = request.problemId,
-            sectionType = request.sectionType,
             isSuccess = request.isSuccess
         )
-        return ResponseEntity.ok(AiAnalyzeResponse(sectionType = request.sectionType, markdown = markdown))
+        return ResponseEntity.ok(AiAnalyzeResponse(markdown = markdown))
     }
 }
 
