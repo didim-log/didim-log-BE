@@ -48,6 +48,11 @@ class StaticTemplateControllerTest {
 
         @Bean
         fun staticTemplateService(): StaticTemplateService = mockk(relaxed = true)
+
+        @Bean
+        fun methodValidationPostProcessor(): org.springframework.validation.beanvalidation.MethodValidationPostProcessor {
+            return org.springframework.validation.beanvalidation.MethodValidationPostProcessor()
+        }
     }
 
     @Test
@@ -107,3 +112,4 @@ class StaticTemplateControllerTest {
             .andExpect(status().isBadRequest)
     }
 }
+

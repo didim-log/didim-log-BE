@@ -12,3 +12,4 @@ data class StaticTemplateRequest(
     val isSuccess: Boolean,
     val errorMessage: String? = null
 )
+
