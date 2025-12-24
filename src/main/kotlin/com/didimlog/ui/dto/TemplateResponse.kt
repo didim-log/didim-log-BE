@@ -6,9 +6,3 @@ package com.didimlog.ui.dto
 data class TemplateResponse(
     val template: String
 )
-
-
-
-
-
-

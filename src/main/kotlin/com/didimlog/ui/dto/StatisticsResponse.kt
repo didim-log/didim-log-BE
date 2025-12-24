@@ -37,9 +37,3 @@ data class HeatmapDataResponse(
         }
     }
 }
-
-
-
-
-
-

@@ -6,9 +6,3 @@ package com.didimlog.ui.dto
 data class BookmarkToggleResponse(
     val isBookmarked: Boolean
 )
-
-
-
-
-
-

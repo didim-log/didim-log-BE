@@ -23,9 +23,3 @@ data class SolutionResponse(
         }
     }
 }
-
-
-
-
-
-
