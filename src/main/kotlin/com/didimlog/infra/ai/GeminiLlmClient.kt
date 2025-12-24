@@ -25,6 +25,151 @@ class GeminiLlmClient(
 
     private val log = LoggerFactory.getLogger(GeminiLlmClient::class.java)
 
+    override fun extractKeywords(systemPrompt: String, userPrompt: String): String {
+        validateConfiguration()
+
+        // Rate Limiting 체크
+        rateLimiter.checkAndIncrement()
+
+        return try {
+            val response = webClientBuilder.build()
+                .post()
+                .uri(buildRequestUrl())
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(buildRequestBody(systemPrompt, userPrompt))
+                .retrieve()
+                .bodyToMono(String::class.java)
+                .retryWhen(
+                    Retry.backoff(3, Duration.ofSeconds(2))
+                        .maxBackoff(Duration.ofSeconds(16))
+                        .jitter(0.5)
+                        .filter { throwable ->
+                            throwable is WebClientResponseException.TooManyRequests
+                        }
+                        .doBeforeRetry { retrySignal ->
+                            log.warn(
+                                "Gemini API 429 에러 발생, 재시도 중: attempt={}/{}",
+                                retrySignal.totalRetries() + 1,
+                                3
+                            )
+                        }
+                        .onRetryExhaustedThrow { _, retrySignal ->
+                            Exceptions.retryExhausted(
+                                "재시도 한도 초과: ${retrySignal.totalRetries()}회 재시도 후에도 실패",
+                                retrySignal.failure()
+                            )
+                        }
+                )
+                .onErrorResume { throwable ->
+                    when {
+                        Exceptions.isRetryExhausted(throwable) -> {
+                            val cause = throwable.cause
+                            if (cause is WebClientResponseException.TooManyRequests) {
+                                log.error("Gemini API 429 에러: 재시도 한도 초과", cause)
+                                return@onErrorResume Mono.error(throwable)
+                            }
+                            log.error("재시도 한도 초과: 원인={}", cause?.javaClass?.simpleName, throwable)
+                            Mono.error(
+                                BusinessException(
+                                    ErrorCode.COMMON_INTERNAL_ERROR,
+                                    "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
+                                )
+                            )
+                        }
+                        throwable is WebClientResponseException.TooManyRequests -> {
+                            log.error("Gemini API 429 에러: 재시도 전 실패", throwable)
+                            Mono.error(
+                                BusinessException(
+                                    ErrorCode.AI_SERVICE_BUSY,
+                                    "서버 사용량이 많아 잠시 후 다시 시도해주세요."
+                                )
+                            )
+                        }
+                        throwable is WebClientResponseException -> {
+                            if (throwable.statusCode == HttpStatus.BAD_REQUEST) {
+                                val responseBody = throwable.responseBodyAsString
+                                if (responseBody.contains("INVALID_ARGUMENT") ||
+                                    responseBody.contains("context_length_exceeded") ||
+                                    responseBody.contains("token") && responseBody.contains("limit")) {
+                                    log.error(
+                                        "Gemini API 토큰 제한 초과: status={}, message={}",
+                                        throwable.statusCode,
+                                        throwable.message,
+                                        throwable
+                                    )
+                                    return@onErrorResume Mono.error(
+                                        BusinessException(
+                                            ErrorCode.AI_CONTEXT_TOO_LARGE,
+                                            "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."
+                                        )
+                                    )
+                                }
+                            }
+                            log.error(
+                                "Gemini API 호출 실패: status={}, message={}",
+                                throwable.statusCode,
+                                throwable.message,
+                                throwable
+                            )
+                            Mono.error(
+                                BusinessException(
+                                    ErrorCode.COMMON_INTERNAL_ERROR,
+                                    "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
+                                )
+                            )
+                        }
+                        else -> {
+                            log.error("Gemini API 호출 중 예상치 못한 오류 발생", throwable)
+                            Mono.error(
+                                BusinessException(
+                                    ErrorCode.COMMON_INTERNAL_ERROR,
+                                    "AI 서비스 호출 중 오류가 발생했습니다."
+                                )
+                            )
+                        }
+                    }
+                }
+                .block()
+                ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Gemini 응답이 비어있습니다.")
+
+            val text = extractText(response)
+            // 키워드만 추출: 쉼표로 구분된 부분 찾기
+            extractKeywordsFromText(text)
+        } catch (e: BusinessException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Gemini API 키워드 추출 중 예외 발생", e)
+            throw BusinessException(
+                ErrorCode.COMMON_INTERNAL_ERROR,
+                "AI 서비스 호출 중 오류가 발생했습니다."
+            )
+        }
+    }
+
+    /**
+     * AI 응답 텍스트에서 키워드만 추출한다.
+     * 쉼표로 구분된 키워드 패턴을 찾아 반환한다.
+     *
+     * @param text AI 응답 텍스트
+     * @return 추출된 키워드 문자열
+     */
+    private fun extractKeywordsFromText(text: String): String {
+        val lines = text.lines()
+        for (line in lines) {
+            val trimmed = line.trim()
+            // 쉼표로 구분된 키워드 패턴 찾기 (2~4개)
+            if (trimmed.contains(",")) {
+                val parts = trimmed.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                if (parts.size in 2..4) {
+                    return parts.take(3).joinToString(", ")
+                }
+            }
+        }
+        // 패턴을 찾지 못한 경우 첫 줄 반환 (공백 제거)
+        return lines.firstOrNull()?.trim()?.take(100) ?: ""
+    }
+
     override fun generateMarkdown(systemPrompt: String, userPrompt: String): String {
         validateConfiguration()
 
