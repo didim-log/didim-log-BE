@@ -113,9 +113,3 @@ data class TierProgress(
     val requiredRatingForNextTier: Int,
     val progressPercentage: Int
 )
-
-
-
-
-
-
