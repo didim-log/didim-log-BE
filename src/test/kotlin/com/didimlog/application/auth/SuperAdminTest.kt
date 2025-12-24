@@ -10,6 +10,7 @@ import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.infra.email.EmailService
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.every
@@ -30,12 +31,14 @@ class SuperAdminTest {
     private val studentRepository: StudentRepository = mockk()
     private val jwtTokenProvider: JwtTokenProvider = mockk()
     private val passwordEncoder: PasswordEncoder = mockk()
+    private val emailService: EmailService = mockk()
 
     private val authService = AuthService(
         solvedAcClient,
         studentRepository,
         jwtTokenProvider,
-        passwordEncoder
+        passwordEncoder,
+        emailService
     )
 
     @Test

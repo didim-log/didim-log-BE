@@ -17,6 +17,7 @@
 - [RankingController](#rankingcontroller)
 - [AdminController](#admincontroller)
 - [AdminDashboardController](#admindashboardcontroller)
+- [ProblemCollectorController](#problemcollectorcontroller)
 - [FeedbackController](#feedbackcontroller)
 
 ---
@@ -32,6 +33,8 @@
 | POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/signup/finalize` | 소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되며 정식 Access Token이 발급됩니다. | **Request Body:**<br>`SignupFinalizeRequest`<br>- `email` (String, required): 사용자 이메일<br>  - 유효성: `@NotBlank` (null/공백 불가)<br>  - **GitHub 비공개 이메일 등 제공자에서 이메일을 내려주지 않는 경우**: 프론트엔드에서 사용자가 직접 입력한 값을 전달해야 함<br>- `provider` (String, required): 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)<br>  - 유효성: `@NotBlank`<br>- `providerId` (String, required): 제공자별 사용자 ID<br>  - 유효성: `@NotBlank`<br>- `nickname` (String, required): 설정할 닉네임<br>  - 유효성: `@NotBlank`<br>- `bojId` (String, optional): BOJ ID (선택)<br>  - 제공된 경우 Solved.ac API로 검증 및 Rating 조회<br>  - **중복 불가** (이미 존재하는 BOJ ID면 409 발생)<br>- `isAgreedToTerms` (Boolean, required): 약관 동의 여부<br>  - 유효성: `@NotNull`<br>  - 반드시 `true`여야 함 (약관 동의는 필수)<br><br>※ 서버는 호환성을 위해 `termsAgreed`도 함께 지원합니다. | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (USER role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수, BOJ ID가 제공된 경우)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER", "BRONZE")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/find-account` | 이메일을 입력받아 가입된 소셜 제공자(Provider)를 반환합니다. | **Request Body:**<br>`FindAccountRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindAccountResponse`<br>- `provider` (String)<br>- `message` (String) | None |
+| POST | `/api/v1/auth/find-id` | 이메일을 입력받아 해당 이메일로 가입된 계정의 BOJ ID를 이메일로 전송합니다. | **Request Body:**<br>`FindIdRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindIdPasswordResponse`<br>- `message` (String): "이메일로 아이디가 전송되었습니다." | None |
+| POST | `/api/v1/auth/find-password` | 이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 임시 비밀번호(8자리 영문+숫자 조합)를 생성하여 DB에 저장하고 이메일로 전송합니다. | **Request Body:**<br>`FindPasswordRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank` | `FindIdPasswordResponse`<br>- `message` (String): "이메일로 임시 비밀번호가 전송되었습니다." | None |
 | POST | `/api/v1/auth/boj/code` | BOJ 프로필 상태 메시지 인증에 사용할 코드를 발급합니다. | 없음 | `BojCodeIssueResponse`<br>- `sessionId` (String)<br>- `code` (String)<br>- `expiresInSeconds` (Long) | None |
 | POST | `/api/v1/auth/boj/verify` | BOJ 프로필 상태 메시지에서 발급 코드 포함 여부를 확인하고 성공 시 소유권 인증을 완료합니다. | **Request Body:**<br>`BojVerifyRequest`<br>- `sessionId` (String, required)<br>- `bojId` (String, required) | `BojVerifyResponse`<br>- `verified` (Boolean) | None |
 
@@ -375,11 +378,13 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 
 ## AiAnalysisController
 
-AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_STANDARDS.md` 기반으로 섹션별 마크다운을 생성합니다.
+AI 분석 관련 API를 제공합니다. 풀이 성공 여부(`isSuccess`)에 따라 `success-retrospective.md` 또는 `failure-retrospective.md` 프롬프트 템플릿을 사용하여 회고록을 생성합니다. **추천 학습 키워드**를 최상단에 제시하고, 문제 설명과 사용자 코드가 포함된 완성된 회고록을 반환합니다.
+
+**참고:** AI 서비스가 비활성화된 경우 정적 템플릿이 필요한 경우, `POST /api/v1/retrospectives/template/static` API를 사용하세요.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/ai/analyze` | 회고 섹션별 AI 분석을 요청합니다. (섹션 템플릿 기반, 템플릿 외 출력 금지) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`AiAnalyzeRequest`<br>- `code` (String, required)<br>- `problemId` (String, required)<br>- `sectionType` (String, required): REFACTORING/BEST_PRACTICE/DEEP_DIVE/ROOT_CAUSE/COUNTER_EXAMPLE/GUIDANCE | `AiAnalyzeResponse`<br>- `sectionType` (String)<br>- `markdown` (String) | JWT Token |
+| POST | `/api/v1/ai/analyze` | 풀이 성공 여부에 따라 성공 회고 또는 실패 회고를 AI가 생성하여 마크다운으로 반환합니다. **추천 학습 키워드**를 최상단에 제시하고, 문제 설명 요약, 사용자 코드, 핵심 분석, 개선점이 포함된 완성된 회고록을 생성합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`AiAnalyzeRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `isSuccess` (Boolean, required): 풀이 성공 여부<br>  - `true`: 성공 회고 (`success-retrospective.md` 사용)<br>    - 코드 구조, 가독성, 패턴 분석 후 학습 키워드 3~4개 제시<br>    - 효율성 칭찬, 리팩토링 제안 중심<br>  - `false`: 실패 회고 (`failure-retrospective.md` 사용)<br>    - 에러 원인 관련 CS 지식/프레임워크 동작 원리 키워드 3~4개 제시<br>    - 원인 분석, 학습 키워드 제시 중심 | `AiAnalyzeResponse`<br>- `markdown` (String): 생성된 마크다운 회고록<br><br>**응답 마크다운 구조 (성공):**<br>- 🔑 추천 학습 키워드 (최상단)<br>- 📝 문제 설명<br>- 💻 나의 풀이 (코드 블록 포함)<br>- 💡 코드 분석 (잘된 점, 효율성 분석, 개선 가능성)<br><br>**응답 마크다운 구조 (실패):**<br>- 🔑 추천 학습 키워드 (최상단)<br>- 📝 문제 설명<br>- 💻 나의 풀이 (코드 블록 포함)<br>- ❌ 실패 분석 (원인 분석, 해결 방안) | JWT Token |
 
 ---
 
@@ -505,6 +510,7 @@ Content-Type: application/json
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
 | DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `204 No Content` (응답 본문 없음) | None |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br>- `resultType` (ProblemResult, required): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - SUCCESS: 성공 템플릿 (핵심 접근, 시간/공간 복잡도, 개선할 점)<br>  - FAIL/TIME_OVER: 실패 템플릿 (실패 원인, 부족했던 개념, 다음 시도 계획) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
+| POST | `/api/v1/retrospectives/template/static` | 정적 템플릿을 반환합니다. `RETROSPECTIVE_STANDARDS.md`에 의거하여 사용자가 작성할 영역만 포함된 마크다운을 제공합니다. AI가 활성화된 경우(`app.ai.enabled=true`) 키워드 3개를 자동으로 주입하며, 비활성화된 경우 기본 문구가 포함됩니다. AI 호출 실패 시에도 정적 템플릿은 정상적으로 반환됩니다. | **Request Body:**<br>`StaticTemplateRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `isSuccess` (Boolean, required): 풀이 성공 여부<br>- `errorMessage` (String, optional): 에러 메시지 (실패 시) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열<br><br>**응답 마크다운 구조 (성공):**<br>- `🔑 추천 학습 키워드 (AI Generated)`: AI가 활성화된 경우 키워드 3개가 주입되며, 비활성화된 경우 기본 문구 포함<br>- `1. 접근 방법 (Approach)`: 문제 해결을 위한 알고리즘/자료구조 선택 및 핵심 로직 요약<br>- `2. 복잡도 분석 (Complexity)`: 시간 복잡도, 공간 복잡도<br>- `제출한 코드`: 언어에 맞는 코드 블록<br><br>**응답 마크다운 구조 (실패):**<br>- `🔑 추천 학습 키워드 (AI Generated)`: AI가 활성화된 경우 에러 원인 관련 키워드 3개가 주입되며, 비활성화된 경우 기본 문구 포함<br>- `1. 실패 현상 (Symptom)`: 에러 종류 및 통과하지 못한 테스트 케이스<br>- `2. 나의 접근 (My Attempt)`: 시도한 로직<br>- `제출한 코드`: 언어에 맞는 코드 블록<br>- `에러 로그`: 발생한 에러 메시지 | None |
 
 **예시 요청 (회고 작성 - 성공 케이스):**
 ```http
@@ -652,6 +658,59 @@ GET /api/v1/retrospectives/template?problemId=1000&resultType=FAIL
 ```json
 {
   "template": "# 💥 A+B 오답 노트\n\n## 🧐 실패 원인 (Why?)\n\n<!-- 여기에 문제를 풀지 못한 원인을 작성하세요 -->\n\n## 📚 부족했던 개념\n\n<!-- 여기에 부족했던 알고리즘 개념이나 자료구조를 작성하세요 -->\n\n## 🔧 다음 시도 계획\n\n<!-- 여기에 다음에 다시 시도할 때의 계획을 작성하세요 -->\n"
+}
+```
+
+**예시 요청 (정적 템플릿 생성 - 성공 케이스):**
+```http
+POST /api/v1/retrospectives/template/static
+Content-Type: application/json
+
+{
+  "code": "def solve(a, b):\n    return a + b",
+  "problemId": "1000",
+  "isSuccess": true
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 성공 케이스, AI 비활성화):**
+```json
+{
+  "template": "# 🏆 A+B 해결 회고\n\n## 🔑 추천 학습 키워드 (AI Generated)\n*(AI 서비스가 비활성화되어 직접 키워드를 입력해보세요)*\n\n## 1. 접근 방법 (Approach)\n\n- 문제를 해결하기 위해 어떤 알고리즘이나 자료구조를 선택했나요?\n- 풀이의 핵심 로직을 한 줄로 요약해 보세요.\n\n## 2. 복잡도 분석 (Complexity)\n\n- 시간 복잡도: O(?)\n- 공간 복잡도: O(?)\n\n## 제출한 코드\n\n```python\ndef solve(a, b):\n    return a + b\n```"
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 성공 케이스, AI 활성화):**
+```json
+{
+  "template": "# 🏆 A+B 해결 회고\n\n## 🔑 추천 학습 키워드 (AI Generated)\n- DFS\n- 백트래킹\n- 재귀\n\n## 1. 접근 방법 (Approach)\n\n- 문제를 해결하기 위해 어떤 알고리즘이나 자료구조를 선택했나요?\n- 풀이의 핵심 로직을 한 줄로 요약해 보세요.\n\n## 2. 복잡도 분석 (Complexity)\n\n- 시간 복잡도: O(?)\n- 공간 복잡도: O(?)\n\n## 제출한 코드\n\n```python\ndef solve(a, b):\n    return a + b\n```"
+}
+```
+
+**예시 요청 (정적 템플릿 생성 - 실패 케이스):**
+```http
+POST /api/v1/retrospectives/template/static
+Content-Type: application/json
+
+{
+  "code": "public class Solution {\n    public int solve(int a, int b) {\n        return a - b;\n    }\n}",
+  "problemId": "1000",
+  "isSuccess": false,
+  "errorMessage": "틀렸습니다"
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 실패 케이스, AI 비활성화):**
+```json
+{
+  "template": "# 💥 A+B 오답 노트\n\n## 🔑 추천 학습 키워드 (AI Generated)\n*(AI 서비스가 비활성화되어 직접 키워드를 입력해보세요)*\n\n## 1. 실패 현상 (Symptom)\n\n- 어떤 종류의 에러가 발생했나요? (시간 초과, 메모리 초과, 틀렸습니다, 런타임 에러)\n- 테스트 케이스 중 통과하지 못한 예시가 있나요?\n\n## 2. 나의 접근 (My Attempt)\n\n- 어떤 로직으로 풀려고 시도했나요?\n\n## 제출한 코드\n\n```java\npublic class Solution {\n    public int solve(int a, int b) {\n        return a - b;\n    }\n}\n```\n\n## 에러 로그\n\n```text\n틀렸습니다\n```"
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 실패 케이스, AI 활성화):**
+```json
+{
+  "template": "# 💥 A+B 오답 노트\n\n## 🔑 추천 학습 키워드 (AI Generated)\n- 시간 복잡도\n- 배열 인덱싱\n- 경계 조건\n\n## 1. 실패 현상 (Symptom)\n\n- 어떤 종류의 에러가 발생했나요? (시간 초과, 메모리 초과, 틀렸습니다, 런타임 에러)\n- 테스트 케이스 중 통과하지 못한 예시가 있나요?\n\n## 2. 나의 접근 (My Attempt)\n\n- 어떤 로직으로 풀려고 시도했나요?\n\n## 제출한 코드\n\n```java\npublic class Solution {\n    public int solve(int a, int b) {\n        return a - b;\n    }\n}\n```\n\n## 에러 로그\n\n```text\n틀렸습니다\n```"
 }
 ```
 
@@ -1150,6 +1209,64 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "todaySignups": 5,
   "totalSolvedProblems": 1250,
   "todayRetrospectives": 12
+}
+```
+
+---
+
+## ProblemCollectorController
+
+문제 데이터 수집 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 수집하여 DB에 저장합니다. (Upsert 방식) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 메타데이터 수집이 완료되었습니다."<br>- `range` (String): "start-end" 형식의 범위 문자열 | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 상세 정보 크롤링이 완료되었습니다." | JWT Token (ADMIN) |
+
+**예시 요청 (메타데이터 수집):**
+```http
+POST /api/v1/admin/problems/collect-metadata?start=1000&end=1100
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (메타데이터 수집):**
+```json
+{
+  "message": "문제 메타데이터 수집이 완료되었습니다.",
+  "range": "1000-1100"
+}
+```
+
+**예시 요청 (상세 정보 크롤링):**
+```http
+POST /api/v1/admin/problems/collect-details
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (상세 정보 크롤링):**
+```json
+{
+  "message": "문제 상세 정보 크롤링이 완료되었습니다."
+}
+```
+
+**에러 응답 예시 (유효하지 않은 start/end 값):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_VALIDATION_FAILED",
+  "message": "collectMetadata.start: 시작 문제 ID는 1 이상이어야 합니다."
+}
+```
+
+**에러 응답 예시 (ADMIN 권한 없음):**
+```json
+{
+  "status": 403,
+  "error": "Forbidden",
+  "code": "ACCESS_DENIED",
+  "message": "접근 권한이 없습니다."
 }
 ```
 

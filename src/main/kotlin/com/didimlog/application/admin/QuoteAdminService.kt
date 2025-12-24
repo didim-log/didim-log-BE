@@ -59,6 +59,3 @@ class QuoteAdminService(
         quoteRepository.delete(quote)
     }
 }
-
-
-

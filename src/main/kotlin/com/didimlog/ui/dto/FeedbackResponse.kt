@@ -29,6 +29,3 @@ data class FeedbackResponse(
         }
     }
 }
-
-
-

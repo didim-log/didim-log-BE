@@ -75,6 +75,3 @@ class QuoteService(
         return allQuotes.elementAt(randomIndex.toInt())
     }
 }
-
-
-

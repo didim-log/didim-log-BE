@@ -90,7 +90,7 @@
 > **Goal:** 회고 중심의 랭킹 개편, 대시보드 시각화 강화, 그리고 소셜 로그인 및 본인 인증 도입
 
 ### 6-1. Advanced Authentication (Auth 2.0)
-- [ ] **[Config]** OAuth2 Client 설정 (Google, Kakao, Naver) 및 Provider 구현
+- [ ] **[Config]** OAuth2 Client 설정 (Google, Github, Naver) 및 Provider 구현
 - [ ] **[Domain]** `User` 엔티티 수정: 소셜 ID, 프로바이더, 약관 동의 여부, 별명 필드 추가
 - [x] **[Feature]** BOJ 계정 소유권 인증 로직 구현 (상태 메시지 검증 방식)
 - [ ] **[UI]** 로그인 페이지 개편: 소셜 로그인 버튼, 회원가입(약관 동의 -> BOJ 인증 -> 닉네임 설정) 위저드 구현
@@ -136,6 +136,14 @@
     - `sectionType`: `REFACTORING` | `ROOT_CAUSE` | `COUNTER_EXAMPLE` (요청할 항목 지정)
 
   - **Response:** 해당 섹션에 들어갈 마크다운 텍스트
+
+- [x] **[Refactor]** 비용 절감을 위한 정적 템플릿 + AI 키워드 주입 방식 구현
+
+  - `StaticTemplateService`: RETROSPECTIVE_STANDARDS.md 구조에 맞춘 정적 템플릿 생성 (플레이스홀더 포함)
+  - `AiKeywordService`: AI가 키워드 3개만 추출하도록 최적화 (토큰 절감)
+  - `LlmClient.extractKeywords()`: 키워드 추출 전용 메서드 추가
+  - AI 활성화 여부(`app.ai.enabled`)에 따른 동적 키워드 주입 로직
+  - AI 호출 실패 시에도 정적 템플릿 정상 반환 (안정성 보장)
 
 - [ ] **[UI]** 회고 작성 에디터 고도화
 

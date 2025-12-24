@@ -17,6 +17,3 @@ class PasswordEncoderConfig {
         return BCryptPasswordEncoder()
     }
 }
-
-
-

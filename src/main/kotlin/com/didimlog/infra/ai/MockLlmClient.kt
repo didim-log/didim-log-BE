@@ -15,5 +15,10 @@ class MockLlmClient : LlmClient {
         - 시스템 프롬프트와 사용자 프롬프트를 기반으로 실제 LLM 연동 시 결과를 생성합니다.
         """.trimIndent()
     }
+
+    override fun extractKeywords(systemPrompt: String, userPrompt: String): String {
+        // Mock 구현: 테스트용 키워드 반환
+        return "DFS, 백트래킹, 재귀"
+    }
 }
 

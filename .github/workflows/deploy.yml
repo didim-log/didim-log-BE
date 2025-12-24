@@ -21,6 +21,8 @@ name: didim-log-be Deploy CICD
 # - ADMIN_SECRET_KEY: 슈퍼 관리자 계정 생성용 보안 키
 # - GEMINI_API_KEY: Gemini API Key
 # - GEMINI_API_URL: Gemini API URL (generateContent endpoint)
+# - MAIL_USERNAME: SMTP 이메일 발송 계정 (기본값: didimlognoreply@gmail.com)
+# - MAIL_PASSWORD: SMTP 이메일 발송 앱 비밀번호 (Gmail 앱 비밀번호 필수)
 
 on:
   push:
@@ -105,6 +107,8 @@ jobs:
             echo "OAUTH_NAVER_SECRET=${{ secrets.OAUTH_NAVER_SECRET }}" >> .env
             echo "OAUTH_REDIRECT_URI=${{ secrets.OAUTH_REDIRECT_URI }}" >> .env
             echo "ADMIN_SECRET_KEY=${{ secrets.ADMIN_SECRET_KEY }}" >> .env
+            echo "MAIL_USERNAME=${{ secrets.MAIL_USERNAME }}" >> .env
+            echo "MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}" >> .env
 
       - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@master
@@ -130,3 +134,4 @@ jobs:
 # ✅ OAUTH_REDIRECT_URI (프론트엔드 리다이렉트 URI)
 # ✅ ADMIN_SECRET_KEY
 # ✅ GEMINI_API_KEY, GEMINI_API_URL
+# ✅ MAIL_USERNAME, MAIL_PASSWORD (SMTP 이메일 발송)
