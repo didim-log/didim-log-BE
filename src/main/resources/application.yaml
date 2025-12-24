@@ -96,8 +96,15 @@ app:
     redirect-uri: ${OAUTH_REDIRECT_URI:http://localhost:5173/oauth/callback}
   admin:
     secret-key: ${ADMIN_SECRET_KEY}
+  # AI 서비스 활성화 여부 (기본값: false)
+  # true로 설정하면 정적 템플릿에 AI 키워드가 주입됩니다.
+  ai:
+    enabled: ${AI_ENABLED:false}
 
 ai:
+  # AI 서비스 활성화 여부 (기본값: false)
+  # true로 설정하면 키워드 추출 기능이 활성화됩니다.
+  enabled: ${AI_ENABLED:false}
   gemini:
     # 운영/로컬 환경변수로 주입 (하드코딩 금지)
     api-key: ${GEMINI_API_KEY:}
