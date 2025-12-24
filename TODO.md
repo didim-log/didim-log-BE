@@ -137,6 +137,14 @@
 
   - **Response:** 해당 섹션에 들어갈 마크다운 텍스트
 
+- [x] **[Refactor]** 비용 절감을 위한 정적 템플릿 + AI 키워드 주입 방식 구현
+
+  - `StaticTemplateService`: RETROSPECTIVE_STANDARDS.md 구조에 맞춘 정적 템플릿 생성 (플레이스홀더 포함)
+  - `AiKeywordService`: AI가 키워드 3개만 추출하도록 최적화 (토큰 절감)
+  - `LlmClient.extractKeywords()`: 키워드 추출 전용 메서드 추가
+  - AI 활성화 여부(`app.ai.enabled`)에 따른 동적 키워드 주입 로직
+  - AI 호출 실패 시에도 정적 템플릿 정상 반환 (안정성 보장)
+
 - [ ] **[UI]** 회고 작성 에디터 고도화
 
   - 성공/실패 선택 시 미리 정의된 목차(Markdown)가 에디터에 자동 세팅됨
