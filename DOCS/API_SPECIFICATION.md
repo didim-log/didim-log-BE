@@ -510,7 +510,7 @@ Content-Type: application/json
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
 | DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `204 No Content` (응답 본문 없음) | None |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br>- `resultType` (ProblemResult, required): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - SUCCESS: 성공 템플릿 (핵심 접근, 시간/공간 복잡도, 개선할 점)<br>  - FAIL/TIME_OVER: 실패 템플릿 (실패 원인, 부족했던 개념, 다음 시도 계획) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
-| POST | `/api/v1/retrospectives/template/static` | AI 서비스 없이 정적 템플릿을 생성하여 반환합니다. 문제 카테고리, 사용자 코드, 에러 메시지(실패 시)를 포함한 기본 템플릿을 제공합니다. | **Request Body:**<br>`StaticTemplateRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `isSuccess` (Boolean, required): 풀이 성공 여부<br>- `errorMessage` (String, optional): 에러 메시지 (실패 시) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열<br><br>**응답 마크다운 구조 (성공):**<br>- 문제 카테고리, 제출한 코드, 개선할 점/배운 점<br><br>**응답 마크다운 구조 (실패):**<br>- 문제 카테고리, 에러 로그, 문제 코드, 원인 분석, 해결 방안 | None |
+| POST | `/api/v1/retrospectives/template/static` | 정적 템플릿을 반환합니다. `RETROSPECTIVE_STANDARDS.md`에 의거하여 사용자가 작성할 영역만 포함된 마크다운을 제공합니다. AI가 활성화된 경우(`app.ai.enabled=true`) 키워드 3개를 자동으로 주입하며, 비활성화된 경우 기본 문구가 포함됩니다. AI 호출 실패 시에도 정적 템플릿은 정상적으로 반환됩니다. | **Request Body:**<br>`StaticTemplateRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `isSuccess` (Boolean, required): 풀이 성공 여부<br>- `errorMessage` (String, optional): 에러 메시지 (실패 시) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열<br><br>**응답 마크다운 구조 (성공):**<br>- `🔑 추천 학습 키워드 (AI Generated)`: AI가 활성화된 경우 키워드 3개가 주입되며, 비활성화된 경우 기본 문구 포함<br>- `1. 접근 방법 (Approach)`: 문제 해결을 위한 알고리즘/자료구조 선택 및 핵심 로직 요약<br>- `2. 복잡도 분석 (Complexity)`: 시간 복잡도, 공간 복잡도<br>- `제출한 코드`: 언어에 맞는 코드 블록<br><br>**응답 마크다운 구조 (실패):**<br>- `🔑 추천 학습 키워드 (AI Generated)`: AI가 활성화된 경우 에러 원인 관련 키워드 3개가 주입되며, 비활성화된 경우 기본 문구 포함<br>- `1. 실패 현상 (Symptom)`: 에러 종류 및 통과하지 못한 테스트 케이스<br>- `2. 나의 접근 (My Attempt)`: 시도한 로직<br>- `제출한 코드`: 언어에 맞는 코드 블록<br>- `에러 로그`: 발생한 에러 메시지 | None |
 
 **예시 요청 (회고 작성 - 성공 케이스):**
 ```http
@@ -658,6 +658,59 @@ GET /api/v1/retrospectives/template?problemId=1000&resultType=FAIL
 ```json
 {
   "template": "# 💥 A+B 오답 노트\n\n## 🧐 실패 원인 (Why?)\n\n<!-- 여기에 문제를 풀지 못한 원인을 작성하세요 -->\n\n## 📚 부족했던 개념\n\n<!-- 여기에 부족했던 알고리즘 개념이나 자료구조를 작성하세요 -->\n\n## 🔧 다음 시도 계획\n\n<!-- 여기에 다음에 다시 시도할 때의 계획을 작성하세요 -->\n"
+}
+```
+
+**예시 요청 (정적 템플릿 생성 - 성공 케이스):**
+```http
+POST /api/v1/retrospectives/template/static
+Content-Type: application/json
+
+{
+  "code": "def solve(a, b):\n    return a + b",
+  "problemId": "1000",
+  "isSuccess": true
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 성공 케이스, AI 비활성화):**
+```json
+{
+  "template": "# 🏆 A+B 해결 회고\n\n## 🔑 추천 학습 키워드 (AI Generated)\n*(AI 서비스가 비활성화되어 직접 키워드를 입력해보세요)*\n\n## 1. 접근 방법 (Approach)\n\n- 문제를 해결하기 위해 어떤 알고리즘이나 자료구조를 선택했나요?\n- 풀이의 핵심 로직을 한 줄로 요약해 보세요.\n\n## 2. 복잡도 분석 (Complexity)\n\n- 시간 복잡도: O(?)\n- 공간 복잡도: O(?)\n\n## 제출한 코드\n\n```python\ndef solve(a, b):\n    return a + b\n```"
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 성공 케이스, AI 활성화):**
+```json
+{
+  "template": "# 🏆 A+B 해결 회고\n\n## 🔑 추천 학습 키워드 (AI Generated)\n- DFS\n- 백트래킹\n- 재귀\n\n## 1. 접근 방법 (Approach)\n\n- 문제를 해결하기 위해 어떤 알고리즘이나 자료구조를 선택했나요?\n- 풀이의 핵심 로직을 한 줄로 요약해 보세요.\n\n## 2. 복잡도 분석 (Complexity)\n\n- 시간 복잡도: O(?)\n- 공간 복잡도: O(?)\n\n## 제출한 코드\n\n```python\ndef solve(a, b):\n    return a + b\n```"
+}
+```
+
+**예시 요청 (정적 템플릿 생성 - 실패 케이스):**
+```http
+POST /api/v1/retrospectives/template/static
+Content-Type: application/json
+
+{
+  "code": "public class Solution {\n    public int solve(int a, int b) {\n        return a - b;\n    }\n}",
+  "problemId": "1000",
+  "isSuccess": false,
+  "errorMessage": "틀렸습니다"
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 실패 케이스, AI 비활성화):**
+```json
+{
+  "template": "# 💥 A+B 오답 노트\n\n## 🔑 추천 학습 키워드 (AI Generated)\n*(AI 서비스가 비활성화되어 직접 키워드를 입력해보세요)*\n\n## 1. 실패 현상 (Symptom)\n\n- 어떤 종류의 에러가 발생했나요? (시간 초과, 메모리 초과, 틀렸습니다, 런타임 에러)\n- 테스트 케이스 중 통과하지 못한 예시가 있나요?\n\n## 2. 나의 접근 (My Attempt)\n\n- 어떤 로직으로 풀려고 시도했나요?\n\n## 제출한 코드\n\n```java\npublic class Solution {\n    public int solve(int a, int b) {\n        return a - b;\n    }\n}\n```\n\n## 에러 로그\n\n```text\n틀렸습니다\n```"
+}
+```
+
+**예시 응답 (정적 템플릿 생성 - 실패 케이스, AI 활성화):**
+```json
+{
+  "template": "# 💥 A+B 오답 노트\n\n## 🔑 추천 학습 키워드 (AI Generated)\n- 시간 복잡도\n- 배열 인덱싱\n- 경계 조건\n\n## 1. 실패 현상 (Symptom)\n\n- 어떤 종류의 에러가 발생했나요? (시간 초과, 메모리 초과, 틀렸습니다, 런타임 에러)\n- 테스트 케이스 중 통과하지 못한 예시가 있나요?\n\n## 2. 나의 접근 (My Attempt)\n\n- 어떤 로직으로 풀려고 시도했나요?\n\n## 제출한 코드\n\n```java\npublic class Solution {\n    public int solve(int a, int b) {\n        return a - b;\n    }\n}\n```\n\n## 에러 로그\n\n```text\n틀렸습니다\n```"
 }
 ```
 
