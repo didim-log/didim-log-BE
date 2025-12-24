@@ -145,3 +145,4 @@ class AiAnalysisServiceMockApiTest {
         verify(exactly = 1) { problemService.getProblemDetail(1000L) } // 문제 조회는 1번 호출됨
     }
 }
+

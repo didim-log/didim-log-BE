@@ -347,3 +347,4 @@ class AiPromptFactoryTest {
         assertThat(result).contains(specialCharsCode)
     }
 }
+

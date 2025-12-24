@@ -233,3 +233,4 @@ class AuthServiceFindIdPasswordTest {
         verify(exactly = 0) { emailService.sendEmail(any(), any(), any()) }
     }
 }
+

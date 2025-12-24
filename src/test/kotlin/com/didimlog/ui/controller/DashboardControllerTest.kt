@@ -105,3 +105,4 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.progressPercentage").value(50))
     }
 }
+
