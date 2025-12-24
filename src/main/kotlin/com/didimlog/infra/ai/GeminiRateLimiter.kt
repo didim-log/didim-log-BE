@@ -169,4 +169,3 @@ class GeminiRateLimiter(
         return getDailyUsage() >= threshold
     }
 }
-

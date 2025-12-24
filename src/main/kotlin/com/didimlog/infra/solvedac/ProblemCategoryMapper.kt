@@ -47,9 +47,3 @@ object ProblemCategoryMapper {
             ?: ProblemCategory.UNKNOWN
     }
 }
-
-
-
-
-
-
