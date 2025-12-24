@@ -75,4 +75,3 @@ class StatisticsControllerTest {
             .andExpect(jsonPath("$.totalSolvedCount").value(10))
     }
 }
-

@@ -55,5 +55,3 @@ app:
     allowed-origins: http://localhost:3000,http://localhost:5173
   admin:
     secret-key: test-admin-secret-key
-
-

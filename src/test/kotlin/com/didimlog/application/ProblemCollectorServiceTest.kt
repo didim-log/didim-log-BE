@@ -128,11 +128,3 @@ class ProblemCollectorServiceTest {
         verify(exactly = 1) { problemRepository.save(any<Problem>()) }
     }
 }
-
-
-
-
-
-
-
-

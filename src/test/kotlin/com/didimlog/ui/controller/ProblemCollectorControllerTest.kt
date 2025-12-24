@@ -100,4 +100,3 @@ class ProblemCollectorControllerTest {
         verify(exactly = 1) { problemCollectorService.collectDetailsBatch() }
     }
 }
-

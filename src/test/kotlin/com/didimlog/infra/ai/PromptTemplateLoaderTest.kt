@@ -119,4 +119,3 @@ class PromptTemplateLoaderTest {
         assertThat(result).contains("설명: {description}") // 치환되지 않음
     }
 }
-
