@@ -57,6 +57,34 @@ data class Retrospective(
         return copy(isBookmarked = !isBookmarked)
     }
 
+    /**
+     * 회고의 소유자인지 확인한다.
+     * 객체 지향적 설계: 데이터를 꺼내지 말고 객체에 메시지를 보낸다.
+     *
+     * @param student 확인할 학생
+     * @return 소유자이면 true, 그렇지 않으면 false
+     */
+    fun isOwner(student: Student): Boolean {
+        val studentId = student.id
+        if (studentId == null) {
+            return false
+        }
+        return this.studentId == studentId
+    }
+
+    /**
+     * 회고의 소유자인지 검증한다.
+     * 소유자가 아니면 예외를 발생시킨다.
+     *
+     * @param student 확인할 학생
+     * @throws IllegalArgumentException 소유자가 아닌 경우
+     */
+    fun validateOwner(student: Student) {
+        if (!isOwner(student)) {
+            throw IllegalArgumentException("회고 소유자가 아닙니다. studentId=${student.id}")
+        }
+    }
+
     private fun validateContent(target: String) {
         require(target.length >= 10) { "회고 내용은 10자 이상이어야 합니다." }
     }
