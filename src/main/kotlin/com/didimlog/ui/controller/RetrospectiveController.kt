@@ -2,7 +2,10 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.application.retrospective.RetrospectiveService
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.BookmarkToggleResponse
@@ -18,6 +21,7 @@ import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
@@ -26,6 +30,7 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
 import org.springframework.http.HttpStatus
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -41,14 +46,16 @@ import org.springframework.web.bind.annotation.RestController
 @org.springframework.validation.annotation.Validated
 class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
-    private val staticTemplateService: StaticTemplateService
+    private val staticTemplateService: StaticTemplateService,
+    private val studentRepository: StudentRepository
 ) {
 
     @Operation(
         summary = "회고 작성",
-        description = "학생이 문제 풀이 후 회고를 작성합니다. 이미 작성한 회고가 있으면 수정됩니다. " +
+        description = "학생이 문제 풀이 후 회고를 작성합니다. 이미 작성한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. " +
                 "요청 본문에 content(필수, 10자 이상), summary(선택, 200자 이하), " +
-                "resultType(선택, SUCCESS/FAIL), solvedCategory(선택, 50자 이하)를 포함할 수 있습니다."
+                "resultType(선택, SUCCESS/FAIL), solvedCategory(선택, 50자 이하)를 포함할 수 있습니다.",
+        security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
@@ -56,6 +63,11 @@ class RetrospectiveController(
             ApiResponse(
                 responseCode = "400",
                 description = "요청 값 검증 실패 또는 잘못된 입력",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
@@ -72,9 +84,9 @@ class RetrospectiveController(
     )
     @PostMapping
     fun writeRetrospective(
+        authentication: Authentication,
         @Parameter(description = "학생 ID", required = true)
         @RequestParam studentId: String,
-
         @Parameter(description = "문제 ID", required = true)
         @RequestParam problemId: String,
 
@@ -83,6 +95,14 @@ class RetrospectiveController(
         @Valid
         request: RetrospectiveRequest
     ): ResponseEntity<RetrospectiveResponse> {
+        // 1. JWT 토큰에서 현재 사용자 정보 추출
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+
+        // 2. 쿼리 파라미터의 studentId와 JWT 토큰의 사용자 일치 여부 검증
+        validateStudentIdMatch(currentStudent.id, studentId)
+
+        // 3. 회고 작성 (RetrospectiveService에서 추가 소유권 검증 수행)
         val retrospective = retrospectiveService.writeRetrospective(
             studentId = studentId,
             problemId = problemId,
@@ -233,6 +253,37 @@ class RetrospectiveController(
         }
     }
 
+    /**
+     * BOJ ID로 Student를 조회한다.
+     *
+     * @param bojId BOJ ID
+     * @return Student
+     * @throws BusinessException 학생을 찾을 수 없는 경우
+     */
+    private fun getStudentByBojId(bojId: String): Student {
+        val bojIdVo = BojId(bojId)
+        return studentRepository.findByBojId(bojIdVo)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+            }
+    }
+
+    /**
+     * 쿼리 파라미터의 studentId와 JWT 토큰의 사용자 ID가 일치하는지 검증한다.
+     *
+     * @param currentStudentId 현재 로그인한 사용자의 Student ID
+     * @param requestedStudentId 쿼리 파라미터로 전달된 Student ID
+     * @throws BusinessException 일치하지 않는 경우 (403 Forbidden)
+     */
+    private fun validateStudentIdMatch(currentStudentId: String?, requestedStudentId: String) {
+        if (currentStudentId == null) {
+            throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다.")
+        }
+        if (currentStudentId != requestedStudentId) {
+            throw BusinessException(ErrorCode.ACCESS_DENIED, "회고를 작성할 권한이 없습니다. studentId=$requestedStudentId")
+        }
+    }
+
     @Operation(
         summary = "회고 삭제",
         description = "회고 ID로 회고를 삭제합니다."
@@ -249,10 +300,18 @@ class RetrospectiveController(
     )
     @DeleteMapping("/{retrospectiveId}")
     fun deleteRetrospective(
+        authentication: Authentication,
         @Parameter(description = "회고 ID", required = true)
         @PathVariable retrospectiveId: String
     ): ResponseEntity<Void> {
-        retrospectiveService.deleteRetrospective(retrospectiveId)
+        // JWT 토큰에서 현재 사용자 정보 추출
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        // 소유권 검증 포함된 삭제
+        retrospectiveService.deleteRetrospective(retrospectiveId, studentId)
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 
