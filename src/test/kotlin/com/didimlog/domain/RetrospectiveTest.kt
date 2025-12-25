@@ -1,6 +1,12 @@
 package com.didimlog.domain
 
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.Nickname
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -69,6 +75,104 @@ class RetrospectiveTest {
             retrospective.updateContent("짧아요")
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("회고 내용은 10자 이상이어야 합니다.")
+    }
+
+    @Test
+    @DisplayName("isOwner는 회고 소유자일 때 true를 반환한다")
+    fun `소유자인 경우 true 반환`() {
+        // given
+        val ownerId = "owner-123"
+        val student = createStudent(id = ownerId)
+        val retrospective = createRetrospective(studentId = ownerId)
+
+        // when
+        val result = retrospective.isOwner(student)
+
+        // then
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    @DisplayName("isOwner는 회고 소유자가 아닐 때 false를 반환한다")
+    fun `소유자가 아닌 경우 false 반환`() {
+        // given
+        val ownerId = "owner-123"
+        val otherId = "other-456"
+        val otherStudent = createStudent(id = otherId)
+        val retrospective = createRetrospective(studentId = ownerId)
+
+        // when
+        val result = retrospective.isOwner(otherStudent)
+
+        // then
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    @DisplayName("isOwner는 Student의 id가 null일 때 false를 반환한다")
+    fun `Student id가 null인 경우 false 반환`() {
+        // given
+        val student = createStudent(id = null)
+        val retrospective = createRetrospective(studentId = "owner-123")
+
+        // when
+        val result = retrospective.isOwner(student)
+
+        // then
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    @DisplayName("validateOwner는 소유자일 때 예외를 발생시키지 않는다")
+    fun `소유자 검증 성공`() {
+        // given
+        val ownerId = "owner-123"
+        val student = createStudent(id = ownerId)
+        val retrospective = createRetrospective(studentId = ownerId)
+
+        // when & then
+        assertThatCode {
+            retrospective.validateOwner(student)
+        }.doesNotThrowAnyException()
+    }
+
+    @Test
+    @DisplayName("validateOwner는 소유자가 아닐 때 예외를 발생시킨다")
+    fun `소유자 검증 실패 시 예외 발생`() {
+        // given
+        val ownerId = "owner-123"
+        val otherId = "other-456"
+        val otherStudent = createStudent(id = otherId)
+        val retrospective = createRetrospective(studentId = ownerId)
+
+        // when & then
+        assertThatThrownBy {
+            retrospective.validateOwner(otherStudent)
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("회고 소유자가 아닙니다")
+    }
+
+    private fun createStudent(id: String?): Student {
+        return Student(
+            id = id,
+            nickname = Nickname("test-user"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            bojId = BojId("testuser"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER,
+            primaryLanguage = null
+        )
+    }
+
+    private fun createRetrospective(studentId: String, id: String? = null): Retrospective {
+        return Retrospective(
+            id = id,
+            studentId = studentId,
+            problemId = "problem-1",
+            content = "충분히 긴 회고 내용입니다."
+        )
     }
 }
 

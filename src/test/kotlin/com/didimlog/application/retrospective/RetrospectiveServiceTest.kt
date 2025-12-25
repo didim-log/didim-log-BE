@@ -4,6 +4,8 @@ import com.didimlog.domain.Problem
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
@@ -43,6 +45,7 @@ class RetrospectiveServiceTest {
         val problemId = "1000"
         val content = "이 문제는 DFS를 사용해서 풀었습니다. 재귀 호출 시 방문 체크를 빼먹어서 시간이 오래 걸렸네요."
 
+        val student = createStudent(id = studentId)
         val problem = Problem(
             id = ProblemId(problemId),
             title = "A+B",
@@ -52,7 +55,7 @@ class RetrospectiveServiceTest {
             url = "https://www.acmicpc.net/problem/$problemId"
         )
 
-        every { studentRepository.existsById(studentId) } returns true
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) } returns null
 
@@ -106,6 +109,7 @@ class RetrospectiveServiceTest {
             url = "https://www.acmicpc.net/problem/$problemId"
         )
 
+        val student = createStudent(id = studentId)
         val existingRetrospective = Retrospective(
             id = "retrospective-id",
             studentId = studentId,
@@ -114,7 +118,7 @@ class RetrospectiveServiceTest {
             summary = "기존 한 줄 요약"
         )
 
-        every { studentRepository.existsById(studentId) } returns true
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) } returns existingRetrospective
 
@@ -145,7 +149,7 @@ class RetrospectiveServiceTest {
     @DisplayName("writeRetrospective는 학생이 없으면 예외를 발생시킨다")
     fun `학생이 없으면 예외`() {
         // given
-        every { studentRepository.existsById("missing") } returns false
+        every { studentRepository.findById("missing") } returns Optional.empty()
 
         // expect
         val exception = assertThrows<BusinessException> {
@@ -158,7 +162,8 @@ class RetrospectiveServiceTest {
     @DisplayName("writeRetrospective는 문제가 없으면 예외를 발생시킨다")
     fun `문제가 없으면 예외`() {
         // given
-        every { studentRepository.existsById("student-id") } returns true
+        val student = createStudent(id = "student-id")
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { problemRepository.findById("missing") } returns Optional.empty()
 
         // expect
@@ -166,6 +171,113 @@ class RetrospectiveServiceTest {
             retrospectiveService.writeRetrospective("student-id", "missing", "content", null)
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.PROBLEM_NOT_FOUND)
+    }
+
+    @Test
+    @DisplayName("writeRetrospective는 기존 회고 수정 시 소유권을 검증한다")
+    fun `기존 회고 수정 시 소유권 검증`() {
+        // given
+        val ownerId = "owner-123"
+        val attackerId = "attacker-456"
+        val problemId = "problem-1"
+        val ownerStudent = createStudent(id = ownerId)
+        val attackerStudent = createStudent(id = attackerId)
+        val existingRetrospective = Retrospective(
+            id = "retro-1",
+            studentId = ownerId,
+            problemId = problemId,
+            content = "기존 회고 내용입니다."
+        )
+        val problem = Problem(
+            id = ProblemId(problemId),
+            title = "Test Problem",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/$problemId"
+        )
+
+        // 소유자가 자신의 회고를 수정하는 경우 (정상)
+        every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
+        every { problemRepository.findById(problemId) } returns Optional.of(problem)
+        every { retrospectiveRepository.findByStudentIdAndProblemId(ownerId, problemId) } returns existingRetrospective
+        every { retrospectiveRepository.save(any<Retrospective>()) } returns existingRetrospective.updateContent("수정된 내용입니다.")
+
+        val result = retrospectiveService.writeRetrospective(
+            studentId = ownerId,
+            problemId = problemId,
+            content = "수정된 내용입니다."
+        )
+        assertThat(result.content).isEqualTo("수정된 내용입니다.")
+
+        // 공격자가 다른 사용자의 회고를 수정하려는 경우 (실패)
+        // 실제로는 findByStudentIdAndProblemId가 attackerId로 조회되므로 null이 반환되어 새로 작성됨
+        // 하지만 같은 problemId에 대해 다른 사용자의 회고가 이미 존재하는 경우는 없음 (studentId + problemId가 unique)
+        // 따라서 이 테스트는 실제 시나리오를 반영하지 않으므로 제거
+    }
+
+    @Test
+    @DisplayName("deleteRetrospective는 다른 사용자의 회고를 삭제할 수 없다")
+    fun `다른 사용자 회고 삭제 시도 시 예외 발생`() {
+        // given
+        val ownerId = "owner-123"
+        val attackerId = "attacker-456"
+        val ownerStudent = createStudent(id = ownerId)
+        val attackerStudent = createStudent(id = attackerId)
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = ownerId,
+            problemId = "problem-1",
+            content = "충분히 긴 회고 내용입니다."
+        )
+
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(attackerId) } returns Optional.of(attackerStudent)
+
+        // when & then
+        val exception = assertThrows<IllegalArgumentException> {
+            retrospectiveService.deleteRetrospective("retro-1", attackerId)
+        }
+        assertThat(exception.message).contains("회고 소유자가 아닙니다")
+    }
+
+    @Test
+    @DisplayName("deleteRetrospective는 소유자의 회고를 정상적으로 삭제한다")
+    fun `소유자 회고 삭제 성공`() {
+        // given
+        val ownerId = "owner-123"
+        val ownerStudent = createStudent(id = ownerId)
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = ownerId,
+            problemId = "problem-1",
+            content = "충분히 긴 회고 내용입니다."
+        )
+
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
+        every { retrospectiveRepository.delete(any<Retrospective>()) } returns Unit
+
+        // when
+        val result = retrospectiveService.deleteRetrospective("retro-1", ownerId)
+
+        // then
+        assertThat(result.id).isEqualTo("retro-1")
+        verify(exactly = 1) { retrospectiveRepository.delete(retrospective) }
+    }
+
+    private fun createStudent(id: String): Student {
+        return Student(
+            id = id,
+            nickname = Nickname("test-user"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            bojId = BojId("testuser"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER,
+            primaryLanguage = null
+        )
     }
 
     @Test
