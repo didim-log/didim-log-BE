@@ -30,12 +30,13 @@ class StudentService(
 
     /**
      * 학생의 프로필 정보를 수정한다.
-     * 닉네임과 비밀번호를 선택적으로 변경할 수 있다.
+     * 닉네임, 비밀번호, 주 언어를 선택적으로 변경할 수 있다.
      *
      * @param bojId BOJ ID (JWT 토큰에서 추출)
      * @param nickname 변경할 닉네임 (null이면 변경하지 않음)
      * @param currentPassword 현재 비밀번호 (비밀번호 변경 시 필수)
      * @param newPassword 새로운 비밀번호 (null이면 변경하지 않음)
+     * @param primaryLanguage 변경할 주 언어 (null이면 변경하지 않음)
      * @return 수정된 Student 엔티티
      * @throws BusinessException 닉네임 중복, 비밀번호 불일치, 비밀번호 정책 위반 시
      */
@@ -44,7 +45,8 @@ class StudentService(
         bojId: String,
         nickname: String?,
         currentPassword: String?,
-        newPassword: String?
+        newPassword: String?,
+        primaryLanguage: com.didimlog.domain.enums.PrimaryLanguage? = null
     ): Student {
         val bojIdVo = BojId(bojId)
         val student = studentRepository.findByBojId(bojIdVo)
@@ -92,6 +94,11 @@ class StudentService(
             // 새 비밀번호 암호화
             val encodedNewPassword = passwordEncoder.encode(newPassword)
             updatedStudent = updatedStudent.copy(password = encodedNewPassword)
+        }
+
+        // 주 언어 변경 처리
+        if (primaryLanguage != null) {
+            updatedStudent = updatedStudent.updatePrimaryLanguage(primaryLanguage)
         }
 
         return studentRepository.save(updatedStudent)
