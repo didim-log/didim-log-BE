@@ -66,7 +66,6 @@ tasks.named<Test>("test") {
 	exclude("**/*IT.class")
 	exclude("**/DidimLogApplicationTests.class")
 	exclude("**/DidimLogApplicationIntegrationTests.class")
-	exclude("**/JwtTokenProviderTest.class") // @SpringBootTest 사용
 	exclude("**/SecurityIntegrationTest.class")
 	exclude("**/StudyIntegrationTest.class")
 	exclude("**/RetrospectiveSearchIntegrationTest.class")
@@ -84,7 +83,6 @@ tasks.register<Test>("integrationTest") {
 	include("**/*IT.class")
 	include("**/DidimLogApplicationTests.class")
 	include("**/DidimLogApplicationIntegrationTests.class")
-	include("**/JwtTokenProviderTest.class") // @SpringBootTest 사용
 	include("**/SecurityIntegrationTest.class")
 	include("**/StudyIntegrationTest.class")
 	include("**/RetrospectiveSearchIntegrationTest.class")

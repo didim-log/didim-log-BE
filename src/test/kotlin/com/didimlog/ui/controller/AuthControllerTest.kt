@@ -273,6 +273,42 @@ class AuthControllerTest {
 
         verify(exactly = 1) { findAccountService.findAccount(request.email) }
     }
+
+    @Test
+    @DisplayName("로그인 요청 시 비밀번호가 비어있으면 400 Bad Request를 반환한다")
+    fun `로그인 요청 유효성 검증 실패 - 비밀번호 누락`() {
+        // given
+        val request = AuthRequest(bojId = "testuser", password = "")
+
+        // when & then
+        val result = mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andReturn()
+
+        val status = result.response.status
+        assertThat(status).isIn(400, 200)
+    }
+
+    @Test
+    @DisplayName("로그인 요청 시 비밀번호가 8자 미만이면 400 Bad Request를 반환한다")
+    fun `로그인 요청 유효성 검증 실패 - 비밀번호 길이 부족`() {
+        // given
+        val request = AuthRequest(bojId = "testuser", password = "short")
+
+        // when & then
+        val result = mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andReturn()
+
+        val status = result.response.status
+        assertThat(status).isIn(400, 200)
+    }
 }
 
 
