@@ -1,5 +1,6 @@
 package com.didimlog.domain
 
+import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
@@ -109,6 +110,52 @@ class StudentTest {
         // then
         val solvedProblemIds = studentAfterSecond.getSolvedProblemIds()
         assertThat(solvedProblemIds).containsExactlyInAnyOrder(ProblemId("p-1"), ProblemId("p-2"))
+    }
+
+    @Test
+    @DisplayName("updatePrimaryLanguage는 새로운 언어로 Student를 업데이트한다")
+    fun `primaryLanguage 업데이트 성공`() {
+        // given
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            bojId = BojId("tester123"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER,
+            primaryLanguage = null
+        )
+
+        // when
+        val updated = student.updatePrimaryLanguage(PrimaryLanguage.JAVA)
+
+        // then
+        assertThat(updated.primaryLanguage).isEqualTo(PrimaryLanguage.JAVA)
+        assertThat(student.primaryLanguage).isNull() // 원본 불변 확인
+    }
+
+    @Test
+    @DisplayName("updatePrimaryLanguage는 기존 언어를 새로운 언어로 변경할 수 있다")
+    fun `primaryLanguage 변경 성공`() {
+        // given
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            bojId = BojId("tester123"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER,
+            primaryLanguage = PrimaryLanguage.PYTHON
+        )
+
+        // when
+        val updated = student.updatePrimaryLanguage(PrimaryLanguage.KOTLIN)
+
+        // then
+        assertThat(updated.primaryLanguage).isEqualTo(PrimaryLanguage.KOTLIN)
+        assertThat(student.primaryLanguage).isEqualTo(PrimaryLanguage.PYTHON) // 원본 불변 확인
     }
 }
 

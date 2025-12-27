@@ -2,6 +2,7 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.application.template.StaticTemplateService
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -49,6 +50,9 @@ class StaticTemplateControllerTest {
 
         @Bean
         fun staticTemplateService(): StaticTemplateService = mockk(relaxed = true)
+
+        @Bean
+        fun studentRepository(): StudentRepository = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -168,5 +172,6 @@ class StaticTemplateControllerTest {
             .andExpect(status().isBadRequest)
     }
 }
+
 
 

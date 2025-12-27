@@ -46,7 +46,7 @@ class StaticTemplateServiceTest {
         )
 
         // then
-        assertThat(result).contains("# 🏆 A+B 해결 회고")
+        assertThat(result).contains("# 🏆 [백준/BOJ] 1000번 A+B (PYTHON) 해결 회고")
         assertThat(result).contains("## 🔑 추천 학습 키워드 (AI Generated)")
         assertThat(result).contains("## 1. 접근 방법 (Approach)")
         assertThat(result).contains("## 2. 복잡도 분석 (Complexity)")
@@ -86,7 +86,7 @@ class StaticTemplateServiceTest {
         )
 
         // then
-        assertThat(result).contains("# 💥 A+B 오답 노트")
+        assertThat(result).contains("# 💥 [백준/BOJ] 1000번 A+B (PYTHON) 오답 노트")
         assertThat(result).contains("## 1. 실패 현상 (Symptom)")
         assertThat(result).contains("## 2. 나의 접근 (My Attempt)")
         assertThat(result).contains("## 제출한 코드")
@@ -316,5 +316,6 @@ class StaticTemplateServiceTest {
         assertThat(result).doesNotContain("- 그래프")
     }
 }
+
 
 

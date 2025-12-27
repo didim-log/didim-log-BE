@@ -45,10 +45,11 @@ class StaticTemplateService(
         }
 
         val problem = problemService.getProblemDetail(problemId.toLong())
+        val codeLanguage = detectCodeLanguage(code).uppercase()
 
         val template = when {
-            isSuccess -> generateSuccessTemplate(problem.title, code)
-            else -> generateFailureTemplate(problem.title, code, errorMessage ?: "에러 로그를 확인할 수 없습니다.")
+            isSuccess -> generateSuccessTemplate(problem.id.value, problem.title, codeLanguage, code)
+            else -> generateFailureTemplate(problem.id.value, problem.title, codeLanguage, code, errorMessage ?: "에러 로그를 확인할 수 없습니다.")
         }
 
         return injectAiKeywords(template, problemId, code, isSuccess)
@@ -124,10 +125,10 @@ class StaticTemplateService(
      * [User 작성 영역]만 포함: 1. 접근 방법, 2. 복잡도 분석, 제출한 코드
      * AI 키워드는 플레이스홀더로 포함되며, 이후 주입된다.
      */
-    private fun generateSuccessTemplate(problemTitle: String, code: String): String {
-        val codeLanguage = detectCodeLanguage(code)
+    private fun generateSuccessTemplate(problemId: String, problemTitle: String, codeLanguage: String, code: String): String {
+        val title = "[백준/BOJ] ${problemId}번 $problemTitle ($codeLanguage)"
         return """
-            # 🏆 $problemTitle 해결 회고
+            # 🏆 $title 해결 회고
 
             ## 🔑 추천 학습 키워드 (AI Generated)
             {AI_KEYWORDS_PLACEHOLDER}
@@ -144,7 +145,7 @@ class StaticTemplateService(
 
             ## 제출한 코드
 
-            ```$codeLanguage
+            ```${codeLanguage.lowercase()}
             $code
             ```
             """.trimIndent()
@@ -156,10 +157,10 @@ class StaticTemplateService(
      * [User 작성 영역]만 포함: 1. 실패 현상, 2. 나의 접근, 제출한 코드, 에러 로그
      * AI 키워드는 플레이스홀더로 포함되며, 이후 주입된다.
      */
-    private fun generateFailureTemplate(problemTitle: String, code: String, errorMessage: String): String {
-        val codeLanguage = detectCodeLanguage(code)
+    private fun generateFailureTemplate(problemId: String, problemTitle: String, codeLanguage: String, code: String, errorMessage: String): String {
+        val title = "[백준/BOJ] ${problemId}번 $problemTitle ($codeLanguage)"
         return """
-            # 💥 $problemTitle 오답 노트
+            # 💥 $title 오답 노트
 
             ## 🔑 추천 학습 키워드 (AI Generated)
             {AI_KEYWORDS_PLACEHOLDER}
@@ -175,7 +176,7 @@ class StaticTemplateService(
 
             ## 제출한 코드
 
-            ```$codeLanguage
+            ```${codeLanguage.lowercase()}
             $code
             ```
 
@@ -212,6 +213,8 @@ class StaticTemplateService(
             else -> return "text"
         }
     }
+
 }
+
 
 

@@ -1,5 +1,6 @@
 package com.didimlog.domain
 
+import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
@@ -42,7 +43,8 @@ data class Student(
     val isVerified: Boolean = false, // BOJ 계정 소유권 인증 여부 (상태 메시지 기반)
     val solutions: Solutions = Solutions(),
     val consecutiveSolveDays: Int = 0, // 연속 풀이 일수
-    val lastSolvedAt: LocalDate? = null // 마지막으로 문제를 푼 날짜
+    val lastSolvedAt: LocalDate? = null, // 마지막으로 문제를 푼 날짜
+    val primaryLanguage: PrimaryLanguage? = null // 주로 사용하는 프로그래밍 언어 (nullable: 기존 사용자 호환성)
 ) {
     /**
      * Spring Data MongoDB가 DB에서 데이터를 읽어올 때 사용하는 생성자
@@ -63,6 +65,7 @@ data class Student(
      * @param solutions 풀이 기록 목록
      * @param consecutiveSolveDays 연속 풀이 일수
      * @param lastSolvedAt 마지막으로 문제를 푼 날짜
+     * @param primaryLanguage 주로 사용하는 프로그래밍 언어 (nullable)
      */
     @PersistenceCreator
     constructor(
@@ -80,7 +83,8 @@ data class Student(
         isVerified: Boolean?,
         solutions: Solutions?,
         consecutiveSolveDays: Int?,
-        lastSolvedAt: LocalDate?
+        lastSolvedAt: LocalDate?,
+        primaryLanguage: PrimaryLanguage?
     ) : this(
         id = id,
         nickname = nickname,
@@ -96,7 +100,8 @@ data class Student(
         isVerified = isVerified ?: false,
         solutions = solutions ?: Solutions(),
         consecutiveSolveDays = consecutiveSolveDays ?: 0,
-        lastSolvedAt = lastSolvedAt
+        lastSolvedAt = lastSolvedAt,
+        primaryLanguage = primaryLanguage
     )
 
     /**
@@ -263,6 +268,16 @@ data class Student(
             termsAgreed = true,
             role = Role.USER
         )
+    }
+
+    /**
+     * 주로 사용하는 프로그래밍 언어를 업데이트한다.
+     *
+     * @param language 새로운 언어
+     * @return 언어가 업데이트된 새로운 Student 인스턴스
+     */
+    fun updatePrimaryLanguage(language: PrimaryLanguage): Student {
+        return copy(primaryLanguage = language)
     }
 
     private fun toProblemResult(isSuccess: Boolean): ProblemResult {

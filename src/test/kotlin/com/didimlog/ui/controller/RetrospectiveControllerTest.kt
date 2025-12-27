@@ -3,8 +3,15 @@ package com.didimlog.ui.controller
 import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.application.template.StaticTemplateService
 import com.didimlog.domain.Retrospective
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ui.dto.RetrospectiveRequest
@@ -51,6 +58,9 @@ class RetrospectiveControllerTest {
     private lateinit var retrospectiveService: RetrospectiveService
 
     @Autowired
+    private lateinit var studentRepository: StudentRepository
+
+    @Autowired
     private lateinit var objectMapper: ObjectMapper
 
     @TestConfiguration
@@ -60,6 +70,9 @@ class RetrospectiveControllerTest {
 
         @Bean
         fun staticTemplateService(): StaticTemplateService = mockk(relaxed = true)
+
+        @Bean
+        fun studentRepository(): StudentRepository = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -104,11 +117,12 @@ class RetrospectiveControllerTest {
     fun `회고 작성 시 content 필드 누락 검증`() {
         // given
         val request = mapOf<String, Any>() // content 누락
+        val bojId = "testuser"
 
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/retrospectives")
-                .param("studentId", "student1")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -128,11 +142,12 @@ class RetrospectiveControllerTest {
     fun `회고 작성 시 content 길이 검증`() {
         // given
         val request = RetrospectiveRequest(content = "짧음") // 10자 미만
+        val bojId = "testuser"
 
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/retrospectives")
-                .param("studentId", "student1")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -153,11 +168,16 @@ class RetrospectiveControllerTest {
             resultType = ProblemResult.SUCCESS,
             solvedCategory = "DFS"
         )
-        val savedRetrospective = createRetrospective("retro1", "student1", "1000", request.content)
+        val studentId = "student1"
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val student = createStudent(id = studentId, bojId = bojId)
+        val savedRetrospective = createRetrospective("retro1", studentId, "1000", request.content)
 
+        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every {
             retrospectiveService.writeRetrospective(
-                studentId = "student1",
+                studentId = studentId,
                 problemId = "1000",
                 content = request.content,
                 summary = request.summary,
@@ -169,7 +189,7 @@ class RetrospectiveControllerTest {
         // when & then
         mockMvc.perform(
             post("/api/v1/retrospectives")
-                .param("studentId", "student1")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -177,7 +197,7 @@ class RetrospectiveControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.id").value("retro1"))
             .andExpect(jsonPath("$.content").value(request.content))
-            .andExpect(jsonPath("$.studentId").value("student1"))
+            .andExpect(jsonPath("$.studentId").value(studentId))
             .andExpect(jsonPath("$.problemId").value("1000"))
     }
 
@@ -207,16 +227,25 @@ class RetrospectiveControllerTest {
     fun `회고 삭제 성공`() {
         // given
         val retrospectiveId = "retro1"
-        every { retrospectiveService.deleteRetrospective(retrospectiveId) } returns Unit
+        val studentId = "student1"
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val student = createStudent(id = studentId, bojId = bojId)
+        val retrospective = createRetrospective(retrospectiveId, studentId, "1000", "충분히 긴 회고 내용입니다.")
+
+        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
+        every { retrospectiveService.getRetrospective(retrospectiveId) } returns retrospective
+        every { retrospectiveService.deleteRetrospective(retrospectiveId, studentId) } returns retrospective
 
         // when & then
         mockMvc.perform(
             delete("/api/v1/retrospectives/$retrospectiveId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isNoContent)
 
-        verify(exactly = 1) { retrospectiveService.deleteRetrospective(retrospectiveId) }
+        verify(exactly = 1) { retrospectiveService.deleteRetrospective(retrospectiveId, studentId) }
     }
 
     @Test
@@ -280,5 +309,20 @@ class RetrospectiveControllerTest {
             createdAt = LocalDateTime.now()
         )
     }
+
+    private fun createStudent(id: String, bojId: String = "testuser"): Student {
+        return Student(
+            id = id,
+            nickname = Nickname("test-user"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER,
+            primaryLanguage = null
+        )
+    }
 }
+
 

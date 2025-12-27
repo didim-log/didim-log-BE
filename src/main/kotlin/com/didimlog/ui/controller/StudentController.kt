@@ -63,7 +63,8 @@ class StudentController(
             bojId = bojId,
             nickname = request.nickname,
             currentPassword = request.currentPassword,
-            newPassword = request.newPassword
+            newPassword = request.newPassword,
+            primaryLanguage = request.primaryLanguage
         )
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }

@@ -47,12 +47,13 @@ class RetrospectiveService(
         solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
         solvedCategory: String? = null
     ): Retrospective {
-        validateStudentExists(studentId)
+        val student = getStudent(studentId)
         validateProblemExists(problemId)
 
         val existingRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
 
         if (existingRetrospective != null) {
+            existingRetrospective.validateOwner(student)
             val updatedRetrospective = existingRetrospective
                 .updateContent(content, summary)
                 .updateSolutionInfo(solutionResult, solvedCategory)
@@ -85,15 +86,33 @@ class RetrospectiveService(
 
     /**
      * 회고를 삭제한다.
+     * 소유권 검증을 수행한다.
      *
      * @param retrospectiveId 회고 ID
-     * @throws IllegalArgumentException 회고를 찾을 수 없는 경우
+     * @param studentId 삭제를 시도하는 학생 ID (보안 검증용)
+     * @throws BusinessException 회고를 찾을 수 없거나 소유자가 아닌 경우
      */
     @Transactional
-    fun deleteRetrospective(retrospectiveId: String) {
-        val retrospective = retrospectiveRepository.findById(retrospectiveId)
-            .orElseThrow { BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND, "회고를 찾을 수 없습니다. id=$retrospectiveId") }
+    fun deleteRetrospective(retrospectiveId: String, studentId: String): Retrospective {
+        val retrospective = getRetrospective(retrospectiveId)
+        val student = getStudent(studentId)
+
+        retrospective.validateOwner(student)
+
         retrospectiveRepository.delete(retrospective)
+        return retrospective
+    }
+
+    /**
+     * 학생을 조회한다.
+     *
+     * @param studentId 학생 ID
+     * @return 학생
+     * @throws BusinessException 학생을 찾을 수 없는 경우
+     */
+    private fun getStudent(studentId: String): Student {
+        return studentRepository.findById(studentId)
+            .orElseThrow { BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. id=$studentId") }
     }
 
     /**
@@ -142,11 +161,6 @@ class RetrospectiveService(
         return buildTemplate(problem, resultType)
     }
 
-    private fun validateStudentExists(studentId: String) {
-        if (!studentRepository.existsById(studentId)) {
-            throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. id=$studentId")
-        }
-    }
 
     private fun validateProblemExists(problemId: String) {
         findProblemOrThrow(problemId)
