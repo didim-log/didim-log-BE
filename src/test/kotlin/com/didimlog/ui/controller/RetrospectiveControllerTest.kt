@@ -117,11 +117,12 @@ class RetrospectiveControllerTest {
     fun `회고 작성 시 content 필드 누락 검증`() {
         // given
         val request = mapOf<String, Any>() // content 누락
+        val bojId = "testuser"
 
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/retrospectives")
-                .param("studentId", "student1")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -141,11 +142,12 @@ class RetrospectiveControllerTest {
     fun `회고 작성 시 content 길이 검증`() {
         // given
         val request = RetrospectiveRequest(content = "짧음") // 10자 미만
+        val bojId = "testuser"
 
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/retrospectives")
-                .param("studentId", "student1")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -188,7 +190,6 @@ class RetrospectiveControllerTest {
         mockMvc.perform(
             post("/api/v1/retrospectives")
                 .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
-                .param("studentId", studentId)
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
