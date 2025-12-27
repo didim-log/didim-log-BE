@@ -19,8 +19,11 @@ class BojOwnershipVerificationService(
 
     companion object {
         private const val CODE_PREFIX = "DIDIM-LOG-"
-        private const val CODE_LENGTH = 4
+        private const val CODE_LENGTH = 6
         private const val DEFAULT_TTL_SECONDS = 5 * 60L
+        private const val RATE_LIMIT_KEY_PREFIX = "boj:code:rate:"
+        private const val MAX_REQUESTS_PER_MINUTE = 5
+        private const val RATE_LIMIT_TTL_SECONDS = 60L
     }
 
     data class IssuedCode(
@@ -30,7 +33,20 @@ class BojOwnershipVerificationService(
     )
 
     @Transactional(readOnly = true)
-    fun issueVerificationCode(): IssuedCode {
+    fun issueVerificationCode(identifier: String?): IssuedCode {
+        // Rate Limiting 체크
+        val rateLimitKey = RATE_LIMIT_KEY_PREFIX + (identifier ?: "unknown")
+        val currentCount = codeStore.getRateLimitCount(rateLimitKey)
+
+        if (currentCount >= MAX_REQUESTS_PER_MINUTE) {
+            throw BusinessException(
+                ErrorCode.TOO_MANY_REQUESTS,
+                "요청이 너무 많습니다. 1분 후 다시 시도해주세요."
+            )
+        }
+
+        codeStore.incrementRateLimitCount(rateLimitKey, RATE_LIMIT_TTL_SECONDS)
+
         val sessionId = UUID.randomUUID().toString()
         val code = CODE_PREFIX + randomUpperAlphaNumeric(CODE_LENGTH)
         codeStore.save(sessionId, code, DEFAULT_TTL_SECONDS)
@@ -45,7 +61,7 @@ class BojOwnershipVerificationService(
         val bojIdVo = BojId(bojId)
         val statusMessage = statusMessageClient.fetchStatusMessage(bojIdVo.value).orEmpty()
 
-        if (!statusMessage.contains(storedCode)) {
+        if (!isCodePresentInMessage(statusMessage, storedCode)) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "상태 메시지에서 코드를 찾을 수 없습니다.")
         }
 
@@ -56,6 +72,38 @@ class BojOwnershipVerificationService(
         studentRepository.save(verifiedStudent)
 
         codeStore.delete(sessionId)
+    }
+
+    /**
+     * 상태 메시지에 코드가 정확히 포함되어 있는지 검증한다.
+     * 부분 문자열 일치 문제를 방지하기 위해 단어 경계 또는 공백/문자열 끝을 확인한다.
+     *
+     * 예시:
+     * - 코드 "DIDIM-LOG-1234"가 상태 메시지 "DIDIM-LOG-12345"에 포함되는 것을 방지
+     * - 코드 "DIDIM-LOG-1234"가 상태 메시지 "DIDIM-LOG-1234"와 정확히 일치하면 통과
+     * - 코드 "DIDIM-LOG-1234"가 상태 메시지 "코드: DIDIM-LOG-1234 입니다"에 포함되면 통과
+     *
+     * @param statusMessage BOJ 프로필 상태 메시지
+     * @param code 검증할 코드
+     * @return 코드가 정확히 포함되어 있으면 true
+     */
+    private fun isCodePresentInMessage(statusMessage: String, code: String): Boolean {
+        val trimmedStatus = statusMessage.trim()
+        val trimmedCode = code.trim()
+
+        // 정확한 일치
+        if (trimmedStatus == trimmedCode) {
+            return true
+        }
+
+        // 단어 경계 또는 공백/문자열 끝으로 감싸져 있는지 확인 (부분 문자열 일치 방지)
+        // Regex.escape를 사용하여 특수문자(하이픈 등)를 이스케이프 처리
+        // \b는 단어 경계를 의미하지만, 하이픈이 포함된 경우 더 정확한 패턴 사용
+        val escapedCode = Regex.escape(trimmedCode)
+        
+        // 패턴: 문자열 시작 또는 공백/비단어 문자 뒤에 코드가 오고, 문자열 끝 또는 공백/비단어 문자가 뒤에 오는 경우
+        val pattern = Regex("(^|[\\s\\W])$escapedCode([\\s\\W]|\$)")
+        return pattern.containsMatchIn(trimmedStatus)
     }
 
     private fun randomUpperAlphaNumeric(length: Int): String {

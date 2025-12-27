@@ -38,6 +38,7 @@ enum class ErrorCode(
 
     // 429 Too Many Requests / 503 Service Unavailable
     AI_SERVICE_BUSY(429, "AI_SERVICE_BUSY", "AI 서비스 사용량이 많아 잠시 후 다시 시도해주세요."),
+    TOO_MANY_REQUESTS(429, "TOO_MANY_REQUESTS", "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
 
     // 500 Internal Server Error
     COMMON_INTERNAL_ERROR(500, "COMMON_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")

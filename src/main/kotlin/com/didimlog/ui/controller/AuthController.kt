@@ -24,6 +24,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -216,11 +217,14 @@ class AuthController(
 
     @Operation(
         summary = "BOJ 소유권 인증 코드 발급",
-        description = "백준 프로필 상태 메시지 인증에 사용할 코드를 발급하고, sessionId와 함께 일정 시간 저장합니다."
+        description = "백준 프로필 상태 메시지 인증에 사용할 코드를 발급하고, sessionId와 함께 일정 시간 저장합니다. Rate Limiting: 1분당 최대 5회 요청 가능합니다."
     )
     @PostMapping("/boj/code")
-    fun issueBojVerificationCode(): ResponseEntity<BojCodeIssueResponse> {
-        val issued = bojOwnershipVerificationService.issueVerificationCode()
+    fun issueBojVerificationCode(
+        request: HttpServletRequest
+    ): ResponseEntity<BojCodeIssueResponse> {
+        val clientIdentifier = getClientIdentifier(request)
+        val issued = bojOwnershipVerificationService.issueVerificationCode(clientIdentifier)
         return ResponseEntity.ok(
             BojCodeIssueResponse(
                 sessionId = issued.sessionId,
@@ -228,6 +232,22 @@ class AuthController(
                 expiresInSeconds = issued.expiresInSeconds
             )
         )
+    }
+
+    /**
+     * 클라이언트 식별자를 가져온다.
+     * X-Forwarded-For 헤더(프록시 환경) 또는 직접 IP 주소를 사용한다.
+     *
+     * @param request HTTP 요청
+     * @return 클라이언트 식별자 (IP 주소)
+     */
+    private fun getClientIdentifier(request: HttpServletRequest): String {
+        val xForwardedFor = request.getHeader("X-Forwarded-For")
+        if (!xForwardedFor.isNullOrBlank()) {
+            // X-Forwarded-For는 쉼표로 구분된 여러 IP를 가질 수 있음 (첫 번째가 실제 클라이언트)
+            return xForwardedFor.split(",").firstOrNull()?.trim() ?: request.remoteAddr
+        }
+        return request.remoteAddr ?: "unknown"
     }
 
     @Operation(
