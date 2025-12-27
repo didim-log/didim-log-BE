@@ -200,7 +200,7 @@ class AdminServiceTest {
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
         every { studentRepository.existsByNickname(Nickname("newNickname")) } returns false
-        every { studentRepository.existsByBojId("newBojId") } returns false
+        every { studentRepository.existsByBojId(BojId("newBojId")) } returns false
         every { studentRepository.save(any<Student>()) } answers { firstArg() }
 
         // when
