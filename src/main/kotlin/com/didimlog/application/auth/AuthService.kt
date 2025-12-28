@@ -52,11 +52,12 @@ class AuthService(
      *
      * @param bojId BOJ ID
      * @param password 평문 비밀번호
+     * @param email 이메일 주소 (필수)
      * @return 인증 결과 (토큰, Rating, Tier)
-     * @throws BusinessException BOJ ID가 유효하지 않거나 이미 가입된 경우
+     * @throws BusinessException BOJ ID가 유효하지 않거나 이미 가입된 경우, 이메일이 중복된 경우
      */
     @Transactional
-    fun signup(bojId: String, password: String): AuthResult {
+    fun signup(bojId: String, password: String, email: String): AuthResult {
         val bojIdVo = BojId(bojId)
 
         try {
@@ -83,6 +84,12 @@ class AuthService(
                 throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 가입된 BOJ ID입니다. bojId=$bojId")
             }
 
+            // 이메일 중복 체크
+            val existingEmailStudent = studentRepository.findByEmail(email)
+            if (existingEmailStudent.isPresent) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 이메일입니다. email=$email")
+            }
+
             // 비밀번호 암호화
             val encodedPassword = passwordEncoder.encode(password)
 
@@ -97,12 +104,13 @@ class AuthService(
                 throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 닉네임입니다. handle=${userResponse.handle}")
             }
 
-            log.info("회원가입 진행: bojId=$bojId, nickname=${nickname.value}, rating=$rating, tier=$initialTier")
+            log.info("회원가입 진행: bojId=$bojId, email=$email, nickname=${nickname.value}, rating=$rating, tier=$initialTier")
             
             val student = Student(
                 nickname = nickname,
                 provider = Provider.BOJ,
                 providerId = bojIdVo.value,
+                email = email,
                 bojId = bojIdVo,
                 password = encodedPassword,
                 rating = rating,
@@ -195,12 +203,13 @@ class AuthService(
      *
      * @param bojId BOJ ID
      * @param password 평문 비밀번호
+     * @param email 이메일 주소 (필수)
      * @param adminKey 관리자 생성용 보안 키
      * @return 인증 결과 (토큰, Rating, Tier)
-     * @throws BusinessException adminKey가 일치하지 않거나 BOJ ID가 유효하지 않은 경우
+     * @throws BusinessException adminKey가 일치하지 않거나 BOJ ID가 유효하지 않은 경우, 이메일이 중복된 경우
      */
     @Transactional
-    fun createSuperAdmin(bojId: String, password: String, adminKey: String): AuthResult {
+    fun createSuperAdmin(bojId: String, password: String, email: String, adminKey: String): AuthResult {
         // adminKey 검증은 Controller에서 수행 (여기서는 서비스 로직만 처리)
         val bojIdVo = BojId(bojId)
 
@@ -228,6 +237,12 @@ class AuthService(
                 throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 가입된 BOJ ID입니다. bojId=$bojId")
             }
 
+            // 이메일 중복 체크
+            val existingEmailStudent = studentRepository.findByEmail(email)
+            if (existingEmailStudent.isPresent) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 이메일입니다. email=$email")
+            }
+
             // 비밀번호 암호화
             val encodedPassword = passwordEncoder.encode(password)
 
@@ -242,12 +257,13 @@ class AuthService(
                 throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 닉네임입니다. handle=${userResponse.handle}")
             }
 
-            log.info("슈퍼 관리자 계정 생성: bojId=$bojId, nickname=${nickname.value}, rating=$rating, tier=$initialTier")
+            log.info("슈퍼 관리자 계정 생성: bojId=$bojId, email=$email, nickname=${nickname.value}, rating=$rating, tier=$initialTier")
             
             val student = Student(
                 nickname = nickname,
                 provider = Provider.BOJ,
                 providerId = bojIdVo.value,
+                email = email,
                 bojId = bojIdVo,
                 password = encodedPassword,
                 rating = rating,
@@ -291,18 +307,18 @@ class AuthService(
      * 소셜 로그인 후 가입 마무리를 처리한다.
      * 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의 및 닉네임 설정을 완료하여 GUEST에서 USER로 역할을 변경한다.
      *
-     * @param email 사용자 이메일 (nullable)
+     * @param email 사용자 이메일 (필수)
      * @param provider 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)
      * @param providerId 제공자별 사용자 ID
      * @param nickname 설정할 닉네임
      * @param bojId BOJ ID (선택사항, 나중에 연동 가능)
      * @param termsAgreed 약관 동의 여부
      * @return 인증 결과 (토큰, Rating, Tier)
-     * @throws BusinessException 약관 동의가 false이거나 닉네임이 중복되는 경우
+     * @throws BusinessException 약관 동의가 false이거나 닉네임이 중복되는 경우, 이메일이 중복된 경우
      */
     @Transactional
     fun finalizeSignup(
-        email: String?,
+        email: String,
         provider: String,
         providerId: String,
         nickname: String,
@@ -349,6 +365,15 @@ class AuthService(
             val isSameAccount = existingStudent.isPresent && existingBojOwner.get().id == existingStudent.get().id
             if (!isSameAccount) {
                 throw BusinessException(ErrorCode.DUPLICATE_BOJ_ID)
+            }
+        }
+
+        // 이메일 중복 체크 (본인 계정 제외)
+        val existingEmailStudent = studentRepository.findByEmail(email)
+        if (existingEmailStudent.isPresent) {
+            val isSameAccount = existingStudent.isPresent && existingEmailStudent.get().id == existingStudent.get().id
+            if (!isSameAccount) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 이메일입니다. email=$email")
             }
         }
         
