@@ -4,6 +4,7 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -32,13 +33,15 @@ class SuperAdminTest {
     private val jwtTokenProvider: JwtTokenProvider = mockk()
     private val passwordEncoder: PasswordEncoder = mockk()
     private val emailService: EmailService = mockk()
+    private val passwordResetCodeRepository: PasswordResetCodeRepository = mockk()
 
     private val authService = AuthService(
         solvedAcClient,
         studentRepository,
         jwtTokenProvider,
         passwordEncoder,
-        emailService
+        emailService,
+        passwordResetCodeRepository
     )
 
     @Test

@@ -122,9 +122,8 @@ class AdminServiceTest {
             )
         )
         val pageable = PageRequest.of(0, 20)
-        val studentPage = PageImpl(students, pageable, students.size.toLong())
 
-        every { studentRepository.findAll(pageable) } returns studentPage
+        every { studentRepository.findAll() } returns students
 
         // when
         val result = adminService.getAllUsers(pageable)
@@ -132,7 +131,7 @@ class AdminServiceTest {
         // then
         assertThat(result.content).hasSize(1)
         assertThat(result.content[0].nickname).isEqualTo("user1")
-        verify(exactly = 1) { studentRepository.findAll(pageable) }
+        verify(exactly = 1) { studentRepository.findAll() }
     }
 
     @Test

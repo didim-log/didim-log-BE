@@ -58,6 +58,8 @@ class StatisticsControllerTest {
         val statisticsInfo = StatisticsInfo(
             monthlyHeatmap = emptyList(),
             categoryDistribution = emptyMap(),
+            algorithmCategoryDistribution = emptyMap(),
+            topUsedAlgorithms = emptyList(),
             totalSolvedCount = 10
         )
 
@@ -72,7 +74,10 @@ class StatisticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.monthlyHeatmap").exists())
             .andExpect(jsonPath("$.categoryDistribution").exists())
+            .andExpect(jsonPath("$.algorithmCategoryDistribution").exists())
+            .andExpect(jsonPath("$.topUsedAlgorithms").exists())
             .andExpect(jsonPath("$.totalSolvedCount").value(10))
     }
 }
+
 

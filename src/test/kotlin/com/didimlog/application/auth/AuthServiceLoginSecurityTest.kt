@@ -4,6 +4,7 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -30,7 +31,7 @@ class AuthServiceLoginSecurityTest {
     private val jwtTokenProvider = mockk<JwtTokenProvider>(relaxed = true)
     private val passwordEncoder = mockk<PasswordEncoder>(relaxed = true)
     private val emailService = mockk<EmailService>(relaxed = true)
-    private val passwordResetCodeStore = mockk<PasswordResetCodeStore>(relaxed = true)
+    private val passwordResetCodeRepository = mockk<PasswordResetCodeRepository>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient = solvedAcClient,
@@ -38,7 +39,7 @@ class AuthServiceLoginSecurityTest {
         jwtTokenProvider = jwtTokenProvider,
         passwordEncoder = passwordEncoder,
         emailService = emailService,
-        passwordResetCodeStore = passwordResetCodeStore
+        passwordResetCodeRepository = passwordResetCodeRepository
     )
 
     @Test

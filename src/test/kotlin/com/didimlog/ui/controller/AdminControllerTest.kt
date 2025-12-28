@@ -53,8 +53,9 @@ import java.time.LocalDateTime
         org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration::class
     ]
 )
-@Import(GlobalExceptionHandler::class)
+@Import(GlobalExceptionHandler::class, AdminControllerTest.TestConfig::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class AdminControllerTest {
 
     @Autowired
