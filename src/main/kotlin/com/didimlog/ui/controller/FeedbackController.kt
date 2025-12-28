@@ -50,7 +50,7 @@ class FeedbackController(
             ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다.")
         
         val feedback = feedbackService.createFeedback(writerId, request.content, request.type)
-        return ResponseEntity.status(HttpStatus.CREATED).body(FeedbackResponse.from(feedback))
+        return ResponseEntity.status(HttpStatus.CREATED).body(FeedbackResponse.from(feedback, student))
     }
 }
 

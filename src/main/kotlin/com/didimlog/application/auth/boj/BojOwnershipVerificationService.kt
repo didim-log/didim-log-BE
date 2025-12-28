@@ -59,10 +59,20 @@ class BojOwnershipVerificationService(
             ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "인증 코드가 만료되었거나 존재하지 않습니다.")
 
         val bojIdVo = BojId(bojId)
-        val statusMessage = statusMessageClient.fetchStatusMessage(bojIdVo.value).orEmpty()
+        val statusMessage = statusMessageClient.fetchStatusMessage(bojIdVo.value)
+        
+        if (statusMessage.isNullOrBlank()) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "백준 프로필 상태 메시지를 가져올 수 없습니다. BOJ ID가 올바른지 확인하고, 프로필 페이지가 공개되어 있는지 확인해주세요. bojId=$bojId"
+            )
+        }
 
         if (!isCodePresentInMessage(statusMessage, storedCode)) {
-            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "상태 메시지에서 코드를 찾을 수 없습니다.")
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "상태 메시지에서 코드를 찾을 수 없습니다. 상태 메시지에 인증 코드($storedCode)를 정확히 입력하고 저장한 후, 몇 초 대기한 뒤 다시 시도해주세요."
+            )
         }
 
         val student = studentRepository.findByBojId(bojIdVo)

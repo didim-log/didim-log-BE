@@ -105,6 +105,7 @@ class FeedbackControllerTest {
             .andExpect(jsonPath("$.content").value(feedback.content))
             .andExpect(jsonPath("$.type").value("BUG"))
             .andExpect(jsonPath("$.status").value("PENDING"))
+            .andExpect(jsonPath("$.bojId").value(bojId))
 
         verify(exactly = 1) { feedbackService.createFeedback("student1", feedback.content, feedback.type) }
     }

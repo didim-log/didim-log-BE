@@ -66,6 +66,9 @@ class AdminControllerTest {
     @Autowired
     private lateinit var feedbackService: FeedbackService
 
+    @Autowired
+    private lateinit var studentRepository: com.didimlog.domain.repository.StudentRepository
+
     @TestConfiguration
     class TestConfig {
         @Bean
@@ -73,6 +76,9 @@ class AdminControllerTest {
 
         @Bean
         fun feedbackService(): FeedbackService = mockk(relaxed = true)
+
+        @Bean
+        fun studentRepository(): com.didimlog.domain.repository.StudentRepository = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -272,6 +278,17 @@ class AdminControllerTest {
     @DisplayName("피드백 목록 조회 성공")
     fun `피드백 목록 조회 성공`() {
         // given
+        val student = Student(
+            id = "student1",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            bojId = BojId("testuser"),
+            password = "encoded",
+            rating = 100,
+            currentTier = fromRating(100),
+            role = Role.USER
+        )
         val feedbacks = listOf(
             Feedback(
                 writerId = "student1",
@@ -284,6 +301,7 @@ class AdminControllerTest {
         val page = PageImpl(feedbacks, pageable, feedbacks.size.toLong())
 
         every { feedbackService.getAllFeedbacks(any()) } returns page
+        every { studentRepository.findById("student1") } returns java.util.Optional.of(student)
 
         // when & then
         mockMvc.perform(
@@ -295,6 +313,7 @@ class AdminControllerTest {
             .andExpect(status().isOk)
 
         verify(exactly = 1) { feedbackService.getAllFeedbacks(any()) }
+        verify(exactly = 1) { studentRepository.findById("student1") }
     }
 
     @Test
@@ -302,6 +321,17 @@ class AdminControllerTest {
     fun `피드백 상태 변경 성공`() {
         // given
         val feedbackId = "feedback1"
+        val student = Student(
+            id = "student1",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            bojId = BojId("testuser"),
+            password = "encoded",
+            rating = 100,
+            currentTier = fromRating(100),
+            role = Role.USER
+        )
         val request = FeedbackStatusUpdateRequest(status = FeedbackStatus.COMPLETED)
         val updatedFeedback = Feedback(
             writerId = "student1",
@@ -311,6 +341,7 @@ class AdminControllerTest {
         ).copy(id = feedbackId)
 
         every { feedbackService.updateFeedbackStatus(feedbackId, request.status) } returns updatedFeedback
+        every { studentRepository.findById("student1") } returns java.util.Optional.of(student)
 
         // when & then
         mockMvc.perform(
@@ -321,5 +352,6 @@ class AdminControllerTest {
             .andExpect(status().isOk)
 
         verify(exactly = 1) { feedbackService.updateFeedbackStatus(feedbackId, request.status) }
+        verify(atLeast = 1) { studentRepository.findById("student1") }
     }
 }

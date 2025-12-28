@@ -44,7 +44,8 @@ import org.springframework.web.bind.annotation.RestController
 @Validated
 class AdminController(
     private val adminService: AdminService,
-    private val feedbackService: FeedbackService
+    private val feedbackService: FeedbackService,
+    private val studentRepository: com.didimlog.domain.repository.StudentRepository
 ) {
 
     @Operation(
@@ -322,7 +323,14 @@ class AdminController(
     ): ResponseEntity<Page<FeedbackResponse>> {
         val pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
         val feedbacks = feedbackService.getAllFeedbacks(pageable)
-        val response = feedbacks.map { FeedbackResponse.from(it) }
+        val response = feedbacks.map { feedback ->
+            val student = studentRepository.findById(feedback.writerId).orElse(null)
+            if (student != null) {
+                FeedbackResponse.from(feedback, student)
+            } else {
+                FeedbackResponse.from(feedback)
+            }
+        }
         return ResponseEntity.ok(response)
     }
 
@@ -366,7 +374,13 @@ class AdminController(
         request: FeedbackStatusUpdateRequest
     ): ResponseEntity<FeedbackResponse> {
         val feedback = feedbackService.updateFeedbackStatus(feedbackId, request.status)
-        return ResponseEntity.ok(FeedbackResponse.from(feedback))
+        val student = studentRepository.findById(feedback.writerId).orElse(null)
+        val response = if (student != null) {
+            FeedbackResponse.from(feedback, student)
+        } else {
+            FeedbackResponse.from(feedback)
+        }
+        return ResponseEntity.ok(response)
     }
 }
 
