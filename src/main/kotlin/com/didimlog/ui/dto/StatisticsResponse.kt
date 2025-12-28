@@ -8,6 +8,8 @@ import com.didimlog.application.statistics.StatisticsInfo
 data class StatisticsResponse(
     val monthlyHeatmap: List<HeatmapDataResponse>,
     val categoryDistribution: Map<String, Int>,
+    val algorithmCategoryDistribution: Map<String, Int>,
+    val topUsedAlgorithms: List<TopUsedAlgorithmResponse>,
     val totalSolvedCount: Int
 ) {
     companion object {
@@ -15,6 +17,8 @@ data class StatisticsResponse(
             return StatisticsResponse(
                 monthlyHeatmap = statisticsInfo.monthlyHeatmap.map { HeatmapDataResponse.from(it) },
                 categoryDistribution = statisticsInfo.categoryDistribution,
+                algorithmCategoryDistribution = statisticsInfo.algorithmCategoryDistribution,
+                topUsedAlgorithms = statisticsInfo.topUsedAlgorithms.map { TopUsedAlgorithmResponse.from(it) },
                 totalSolvedCount = statisticsInfo.totalSolvedCount
             )
         }
@@ -35,6 +39,23 @@ data class HeatmapDataResponse(
                 date = heatmapData.date,
                 count = heatmapData.count,
                 problemIds = heatmapData.problemIds
+            )
+        }
+    }
+}
+
+/**
+ * 가장 많이 사용한 알고리즘 응답 DTO
+ */
+data class TopUsedAlgorithmResponse(
+    val name: String,
+    val count: Int
+) {
+    companion object {
+        fun from(topUsedAlgorithm: com.didimlog.application.statistics.TopUsedAlgorithm): TopUsedAlgorithmResponse {
+            return TopUsedAlgorithmResponse(
+                name = topUsedAlgorithm.name,
+                count = topUsedAlgorithm.count
             )
         }
     }

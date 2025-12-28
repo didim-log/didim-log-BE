@@ -3,6 +3,7 @@ package com.didimlog.application.statistics
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
@@ -18,7 +19,8 @@ import java.time.LocalDateTime
  */
 @Service
 class StatisticsService(
-    private val studentRepository: StudentRepository
+    private val studentRepository: StudentRepository,
+    private val retrospectiveRepository: RetrospectiveRepository
 ) {
 
     /**
@@ -34,11 +36,15 @@ class StatisticsService(
         val student = findStudentByBojIdOrThrow(bojId)
         val monthlyHeatmap = getMonthlyHeatmap(student)
         val categoryDistribution = getCategoryDistribution()
+        val algorithmCategoryDistribution = getAlgorithmCategoryDistribution(student.id!!)
+        val topUsedAlgorithms = getTopUsedAlgorithms(algorithmCategoryDistribution)
         val totalSolvedCount = student.solutions.getAll().size
 
         return StatisticsInfo(
             monthlyHeatmap = monthlyHeatmap,
             categoryDistribution = categoryDistribution,
+            algorithmCategoryDistribution = algorithmCategoryDistribution,
+            topUsedAlgorithms = topUsedAlgorithms,
             totalSolvedCount = totalSolvedCount
         )
     }
@@ -93,6 +99,41 @@ class StatisticsService(
         // TODO: 향후 Solution에 카테고리 정보 추가 또는 Problem 조회 로직 구현
         return emptyMap()
     }
+
+    /**
+     * 알고리즘 카테고리별 사용 통계를 집계한다.
+     * Retrospective의 solvedCategory 필드를 기준으로 집계한다.
+     *
+     * @param studentId 학생 ID
+     * @return 알고리즘 카테고리별 사용 횟수 맵
+     */
+    private fun getAlgorithmCategoryDistribution(studentId: String): Map<String, Int> {
+        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        val distribution = mutableMapOf<String, Int>()
+
+        retrospectives.forEach { retrospective ->
+            val category = retrospective.solvedCategory
+            if (category != null && category.isNotBlank()) {
+                distribution[category] = distribution.getOrDefault(category, 0) + 1
+            }
+        }
+
+        return distribution
+    }
+
+    /**
+     * 가장 많이 사용한 알고리즘 상위 3개를 반환한다.
+     *
+     * @param algorithmCategoryDistribution 알고리즘 카테고리별 사용 횟수 맵
+     * @return 상위 알고리즘 목록 (이름, 사용 횟수)
+     */
+    private fun getTopUsedAlgorithms(algorithmCategoryDistribution: Map<String, Int>): List<TopUsedAlgorithm> {
+        return algorithmCategoryDistribution
+            .toList()
+            .sortedByDescending { it.second }
+            .take(3)
+            .map { (name, count) -> TopUsedAlgorithm(name, count) }
+    }
 }
 
 /**
@@ -101,6 +142,8 @@ class StatisticsService(
 data class StatisticsInfo(
     val monthlyHeatmap: List<HeatmapData>,
     val categoryDistribution: Map<String, Int>,
+    val algorithmCategoryDistribution: Map<String, Int>,
+    val topUsedAlgorithms: List<TopUsedAlgorithm>,
     val totalSolvedCount: Int
 )
 
@@ -111,4 +154,12 @@ data class HeatmapData(
     val date: String,
     val count: Int,
     val problemIds: List<String>
+)
+
+/**
+ * 가장 많이 사용한 알고리즘 정보
+ */
+data class TopUsedAlgorithm(
+    val name: String,
+    val count: Int
 )
