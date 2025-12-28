@@ -15,6 +15,8 @@ import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.enums.Tier.Companion.fromRating
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.repository.QuoteRepository
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -29,6 +31,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.test.context.TestPropertySource
 import org.springframework.data.domain.PageImpl
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
@@ -67,6 +70,9 @@ class AdminControllerSecurityTest {
     @Autowired
     private lateinit var objectMapper: ObjectMapper
 
+    @Autowired
+    private lateinit var studentRepository: StudentRepository
+
     @TestConfiguration
     class TestConfig {
         @Bean
@@ -80,6 +86,13 @@ class AdminControllerSecurityTest {
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
+
+        // @WebMvcTest는 Repository를 로드하지 않으므로, Security 설정에서 필요할 수 있는 Repository들을 Mock으로 추가
+        @Bean
+        fun studentRepository(): StudentRepository = mockk(relaxed = true)
+
+        @Bean
+        fun quoteRepository(): QuoteRepository = mockk(relaxed = true)
 
         @Bean
         fun methodValidationPostProcessor(): org.springframework.validation.beanvalidation.MethodValidationPostProcessor {
@@ -347,6 +360,7 @@ class AdminControllerSecurityTest {
     @DisplayName("피드백 목록 조회 시 Response JSON 구조 검증")
     fun `피드백 목록 조회 Response 구조 검증`() {
         // given
+        val student = createStudent("student1", "user1", 100)
         val feedbacks = listOf(
             Feedback(
                 writerId = "student1",
@@ -360,6 +374,8 @@ class AdminControllerSecurityTest {
         val page = PageImpl(feedbacks)
 
         every { feedbackService.getAllFeedbacks(any()) } returns page
+        // AdminController가 studentRepository.findById를 호출하여 bojId를 가져옴
+        every { studentRepository.findById("student1") } returns java.util.Optional.of(student)
 
         // when & then
         mockMvc.perform(
@@ -383,6 +399,7 @@ class AdminControllerSecurityTest {
     @DisplayName("피드백 상태 변경 시 Response JSON 구조 검증")
     fun `피드백 상태 변경 Response 구조 검증`() {
         // given
+        val student = createStudent("student1", "user1", 100)
         val feedbackId = "feedback1"
         val request = FeedbackStatusUpdateRequest(status = FeedbackStatus.COMPLETED)
         val updatedFeedback = Feedback(
@@ -395,6 +412,8 @@ class AdminControllerSecurityTest {
         ).copy(id = feedbackId)
 
         every { feedbackService.updateFeedbackStatus(feedbackId, request.status) } returns updatedFeedback
+        // AdminController가 studentRepository.findById를 호출하여 bojId를 가져옴
+        every { studentRepository.findById("student1") } returns java.util.Optional.of(student)
 
         // when & then
         mockMvc.perform(
@@ -452,4 +471,5 @@ class AdminControllerSecurityTest {
         )
     }
 }
+
 

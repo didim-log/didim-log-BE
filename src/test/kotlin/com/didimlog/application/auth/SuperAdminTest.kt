@@ -4,6 +4,7 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -32,13 +33,15 @@ class SuperAdminTest {
     private val jwtTokenProvider: JwtTokenProvider = mockk()
     private val passwordEncoder: PasswordEncoder = mockk()
     private val emailService: EmailService = mockk()
+    private val passwordResetCodeRepository: PasswordResetCodeRepository = mockk()
 
     private val authService = AuthService(
         solvedAcClient,
         studentRepository,
         jwtTokenProvider,
         passwordEncoder,
-        emailService
+        emailService,
+        passwordResetCodeRepository
     )
 
     @Test
@@ -47,6 +50,7 @@ class SuperAdminTest {
         // given
         val bojId = "admin123"
         val password = "password123!"
+        val email = "admin@example.com"
         val adminKey = "valid-admin-key"
         val encodedPassword = "encoded-password"
         val rating = 1500
@@ -61,12 +65,13 @@ class SuperAdminTest {
         every { com.didimlog.global.util.PasswordValidator.validate(password) } returns Unit
         every { solvedAcClient.fetchUser(BojId(bojId)) } returns userResponse
         every { studentRepository.findByBojId(BojId(bojId)) } returns java.util.Optional.empty()
+        every { studentRepository.findByEmail(email) } returns java.util.Optional.empty()
         every { passwordEncoder.encode(password) } returns encodedPassword
         every { studentRepository.save(any<Student>()) } answers { firstArg() }
         every { jwtTokenProvider.createToken(bojId, Role.ADMIN.value) } returns "admin-token"
 
         // when
-        val result = authService.createSuperAdmin(bojId, password, adminKey)
+        val result = authService.createSuperAdmin(bojId, password, email, adminKey)
 
         // then
         assertThat(result.token).isEqualTo("admin-token")
@@ -87,6 +92,7 @@ class SuperAdminTest {
         // given
         val bojId = "existing123"
         val password = "password123!"
+        val email = "existing@example.com"
         val adminKey = "valid-admin-key"
 
         val existingStudent = Student(
@@ -109,7 +115,7 @@ class SuperAdminTest {
 
         // when & then
         assertThatThrownBy {
-            authService.createSuperAdmin(bojId, password, adminKey)
+            authService.createSuperAdmin(bojId, password, email, adminKey)
         }.isInstanceOf(BusinessException::class.java)
             .hasMessageContaining("이미 가입된 BOJ ID입니다")
         

@@ -64,22 +64,49 @@ class ProblemService(
 
     /**
      * 문제 상세 정보를 조회한다.
-     * Read-Through 전략: DB에 상세 정보가 없으면 크롤링하여 가져온 후 저장한다.
+     * Read-Through 전략: DB에 문제가 없으면 Solved.ac API로 메타데이터를 조회하고,
+     * 상세 정보가 없으면 크롤링하여 가져온 후 저장한다.
      *
      * @param problemId 문제 ID
      * @return 문제 상세 정보
-     * @throws BusinessException 문제를 찾을 수 없는 경우
+     * @throws BusinessException Solved.ac에서 문제를 찾을 수 없는 경우
      */
     fun getProblemDetail(problemId: Long): Problem {
         val problemIdVo = ProblemId(problemId.toString())
-        val problem = problemRepository.findById(problemIdVo.value)
-            .orElseThrow {
-                BusinessException(ErrorCode.PROBLEM_NOT_FOUND, "문제를 찾을 수 없습니다. problemId=$problemId")
-            }
+        val existingProblem = problemRepository.findById(problemIdVo.value)
 
-        // Read-Through 전략: 상세 정보가 없으면 크롤링
+        if (existingProblem.isEmpty) {
+            return createProblemFromSolvedAc(problemId.toInt())
+        }
+
+        val problem = existingProblem.get()
+        val problemWithDetails = enrichProblemWithDetails(problem, problemId.toString())
+        return problemWithDetails
+    }
+
+    private fun createProblemFromSolvedAc(problemId: Int): Problem {
+        val response = solvedAcClient.fetchProblem(problemId)
+        val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
+        val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
+        val category = ProblemCategoryMapper.determineCategory(tags)
+
+        val problem = Problem(
+            id = ProblemId(response.problemId.toString()),
+            title = response.titleKo,
+            category = category,
+            difficulty = difficultyTier,
+            level = response.level,
+            url = solvedAcProblemUrl(response.problemId),
+            tags = tags
+        )
+
+        val savedProblem = problemRepository.save(problem)
+        return enrichProblemWithDetails(savedProblem, problemId.toString())
+    }
+
+    private fun enrichProblemWithDetails(problem: Problem, problemId: String): Problem {
         if (problem.descriptionHtml.isNullOrBlank()) {
-            val crawledDetails = bojCrawler.crawlProblemDetails(problemId.toString())
+            val crawledDetails = bojCrawler.crawlProblemDetails(problemId)
             if (crawledDetails != null) {
                 val updatedProblem = problem.copy(
                     descriptionHtml = crawledDetails.descriptionHtml,

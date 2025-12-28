@@ -4,6 +4,7 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.security.crypto.password.PasswordEncoder
+import java.time.LocalDateTime
 import java.util.Optional
 
 @DisplayName("AuthService 아이디/비밀번호 찾기 테스트")
@@ -29,13 +31,15 @@ class AuthServiceFindIdPasswordTest {
     private val jwtTokenProvider = mockk<JwtTokenProvider>(relaxed = true)
     private val passwordEncoder = mockk<PasswordEncoder>(relaxed = true)
     private val emailService = mockk<EmailService>(relaxed = true)
+    private val passwordResetCodeRepository = mockk<PasswordResetCodeRepository>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient = solvedAcClient,
         studentRepository = studentRepository,
         jwtTokenProvider = jwtTokenProvider,
         passwordEncoder = passwordEncoder,
-        emailService = emailService
+        emailService = emailService,
+        passwordResetCodeRepository = passwordResetCodeRepository
     )
 
     @Test
@@ -117,12 +121,14 @@ class AuthServiceFindIdPasswordTest {
     }
 
     @Test
-    @DisplayName("findPassword는 이메일과 BOJ ID가 일치하는 사용자에게 임시 비밀번호를 이메일로 전송한다")
+    @DisplayName("findPassword는 이메일과 BOJ ID가 일치하는 사용자에게 비밀번호 재설정 코드를 이메일로 전송한다")
     fun `비밀번호 찾기 성공`() {
         // given
         val email = "test@example.com"
         val bojId = "testuser"
+        val studentId = "student-id"
         val student = Student(
+            id = studentId,
             nickname = Nickname("testuser"),
             provider = Provider.BOJ,
             providerId = bojId,
@@ -135,26 +141,33 @@ class AuthServiceFindIdPasswordTest {
         )
 
         every { studentRepository.findByEmail(email) } returns Optional.of(student)
-        every { passwordEncoder.encode(any()) } returns "newEncodedPassword"
-        every { studentRepository.save(any()) } returns student.copy(password = "newEncodedPassword")
+        every { passwordResetCodeRepository.save(any()) } answers { firstArg() }
 
         // when
         authService.findPassword(email, bojId)
 
         // then
         verify(exactly = 1) {
-            passwordEncoder.encode(match { it.length == 8 })
+            passwordResetCodeRepository.save(
+                match {
+                    it.resetCode.length == 8 &&
+                    it.studentId == studentId &&
+                    it.expiresAt.isAfter(LocalDateTime.now())
+                }
+            )
         }
-        verify(exactly = 1) {
-            studentRepository.save(match { it.password == "newEncodedPassword" })
-        }
+        verify(exactly = 0) { passwordEncoder.encode(any()) }
+        verify(exactly = 0) { studentRepository.save(any()) }
         verify(exactly = 1) {
             emailService.sendTemplateEmail(
                 to = email,
-                subject = "[디딤로그] 임시 비밀번호 발급",
+                subject = "[디딤로그] 비밀번호 재설정",
                 templateName = "mail/find-password",
                 variables = match {
-                    it["nickname"] == "testuser" && it.containsKey("tempPassword")
+                    it["nickname"] == "testuser" &&
+                    it["email"] == email &&
+                    it["bojId"] == bojId &&
+                    it.containsKey("resetCode")
                 }
             )
         }
@@ -233,4 +246,5 @@ class AuthServiceFindIdPasswordTest {
         verify(exactly = 0) { emailService.sendEmail(any(), any(), any()) }
     }
 }
+
 

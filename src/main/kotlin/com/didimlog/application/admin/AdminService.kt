@@ -16,6 +16,9 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * 관리자 서비스
@@ -31,14 +34,59 @@ class AdminService(
 
     /**
      * 전체 회원 목록을 페이징하여 조회한다.
+     * 검색어와 날짜 범위 필터를 지원한다.
      * Student 엔티티를 AdminUserResponse DTO로 변환하여 반환한다.
      *
      * @param pageable 페이징 정보
+     * @param search 검색어 (닉네임, BOJ ID, 이메일, null 가능)
+     * @param startDate 가입 시작일 (ISO 8601 형식, null 가능)
+     * @param endDate 가입 종료일 (ISO 8601 형식, null 가능)
      * @return 회원 목록 페이지 (AdminUserResponse DTO)
      */
     @Transactional(readOnly = true)
-    fun getAllUsers(pageable: Pageable): Page<AdminUserResponse> {
-        return studentRepository.findAll(pageable).map { AdminUserResponse.from(it) }
+    fun getAllUsers(
+        pageable: Pageable,
+        search: String? = null,
+        startDate: String? = null,
+        endDate: String? = null
+    ): Page<AdminUserResponse> {
+        var students = studentRepository.findAll().toList()
+
+        // 검색어 필터링
+        if (!search.isNullOrBlank()) {
+            val searchLower = search.lowercase()
+            students = students.filter { student ->
+                student.nickname.value.lowercase().contains(searchLower) ||
+                        student.bojId?.value?.lowercase()?.contains(searchLower) == true ||
+                        student.email?.lowercase()?.contains(searchLower) == true
+            }
+        }
+
+        // 날짜 범위 필터링
+        if (!startDate.isNullOrBlank()) {
+            val startDateTime = parseDate(startDate).atStartOfDay()
+            students = students.filter { student ->
+                student.createdAt.isAfter(startDateTime) || student.createdAt.isEqual(startDateTime)
+            }
+        }
+
+        if (!endDate.isNullOrBlank()) {
+            val endDateTime = parseDate(endDate).atTime(23, 59, 59)
+            students = students.filter { student ->
+                student.createdAt.isBefore(endDateTime) || student.createdAt.isEqual(endDateTime)
+            }
+        }
+
+        // 페이징 적용
+        val start = pageable.pageNumber * pageable.pageSize
+        val end = minOf(start + pageable.pageSize, students.size)
+        val pagedStudents = students.subList(start, end)
+
+        return org.springframework.data.domain.PageImpl(
+            pagedStudents.map { AdminUserResponse.from(it) },
+            pageable,
+            students.size.toLong()
+        )
     }
 
     /**
@@ -193,5 +241,20 @@ class AdminService(
     private fun toAuditSnapshot(student: Student): String {
         val bojId = student.bojId?.value
         return "studentId=${student.id}, provider=${student.provider.value}, providerId=${student.providerId}, role=${student.role.value}, nickname=${student.nickname.value}, bojId=$bojId"
+    }
+
+    /**
+     * ISO 8601 형식의 날짜 문자열을 LocalDate로 파싱한다.
+     *
+     * @param dateString ISO 8601 형식의 날짜 문자열 (예: "2024-01-01")
+     * @return LocalDate
+     * @throws BusinessException 날짜 형식이 올바르지 않은 경우
+     */
+    private fun parseDate(dateString: String): LocalDate {
+        return try {
+            LocalDate.parse(dateString, DateTimeFormatter.ISO_LOCAL_DATE)
+        } catch (e: Exception) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 날짜 형식입니다. date=$dateString")
+        }
     }
 }

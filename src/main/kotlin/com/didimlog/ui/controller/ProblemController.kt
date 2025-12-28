@@ -113,4 +113,40 @@ class ProblemController(
         val response = ProblemDetailResponse.from(problem)
         return ResponseEntity.ok(response)
     }
+
+    @Operation(
+        summary = "문제 검색",
+        description = "문제 번호로 문제를 검색합니다. DB에 문제가 없으면 Solved.ac API로 메타데이터를 조회하고 크롤링하여 저장한 후 반환합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 problemId 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/search")
+    fun searchProblem(
+        @Parameter(description = "문제 번호", required = true)
+        @RequestParam
+        @Positive(message = "문제 번호는 1 이상이어야 합니다.")
+        q: Long
+    ): ResponseEntity<ProblemDetailResponse> {
+        val problem = problemService.getProblemDetail(q)
+        val response = ProblemDetailResponse.from(problem)
+        return ResponseEntity.ok(response)
+    }
 }

@@ -4,6 +4,7 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -30,13 +31,15 @@ class AuthServiceLoginSecurityTest {
     private val jwtTokenProvider = mockk<JwtTokenProvider>(relaxed = true)
     private val passwordEncoder = mockk<PasswordEncoder>(relaxed = true)
     private val emailService = mockk<EmailService>(relaxed = true)
+    private val passwordResetCodeRepository = mockk<PasswordResetCodeRepository>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient = solvedAcClient,
         studentRepository = studentRepository,
         jwtTokenProvider = jwtTokenProvider,
         passwordEncoder = passwordEncoder,
-        emailService = emailService
+        emailService = emailService,
+        passwordResetCodeRepository = passwordResetCodeRepository
     )
 
     @Test
@@ -166,7 +169,10 @@ class AuthServiceLoginSecurityTest {
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
-        every { solvedAcClient.fetchUser(any()) } throws IllegalStateException("API 호출 실패")
+        // syncUserTier 내부에서 발생하는 예외는 catch되어 로그만 남음
+        // value class인 BojId는 any() 매처가 제대로 작동하지 않으므로 구체적인 객체 사용
+        every { solvedAcClient.fetchUser(bojIdVo) } throws IllegalStateException("API 호출 실패")
+        every { studentRepository.save(any()) } answers { firstArg() }
         every { jwtTokenProvider.createToken(bojId, student.role.value) } returns "token"
 
         // when
@@ -180,7 +186,8 @@ class AuthServiceLoginSecurityTest {
     private fun createStudent(
         bojId: String = "testuser",
         password: String = "encoded-password",
-        role: Role = Role.USER
+        role: Role = Role.USER,
+        rating: Int = 1000
     ): Student {
         return Student(
             nickname = Nickname("test-user"),
@@ -188,9 +195,11 @@ class AuthServiceLoginSecurityTest {
             providerId = bojId,
             bojId = BojId(bojId),
             password = password,
-            currentTier = Tier.BRONZE,
+            rating = rating,
+            currentTier = Tier.fromRating(rating),
             role = role,
             primaryLanguage = null
         )
     }
 }
+

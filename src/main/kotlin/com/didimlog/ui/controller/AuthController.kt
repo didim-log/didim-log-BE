@@ -15,6 +15,7 @@ import com.didimlog.ui.dto.FindAccountResponse
 import com.didimlog.ui.dto.FindIdPasswordResponse
 import com.didimlog.ui.dto.FindIdRequest
 import com.didimlog.ui.dto.FindPasswordRequest
+import com.didimlog.ui.dto.ResetPasswordRequest
 import com.didimlog.ui.dto.SignupFinalizeRequest
 import com.didimlog.ui.dto.SuperAdminRequest
 import io.swagger.v3.oas.annotations.Operation
@@ -69,7 +70,7 @@ class AuthController(
         @Valid
         request: AuthRequest
     ): ResponseEntity<AuthResponse> {
-        val result = authService.signup(request.bojId, request.password)
+        val result = authService.signup(request.bojId, request.password, request.email)
         val response = AuthResponse.signup(
             token = result.token,
             rating = result.rating,
@@ -129,7 +130,7 @@ class AuthController(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "관리자 키가 일치하지 않습니다.")
         }
 
-        val result = authService.createSuperAdmin(request.bojId, request.password, request.adminKey)
+        val result = authService.createSuperAdmin(request.bojId, request.password, request.email, request.adminKey)
         val response = AuthResponse.signup(
             token = result.token,
             rating = result.rating,
@@ -298,7 +299,7 @@ class AuthController(
 
     @Operation(
         summary = "비밀번호 찾기",
-        description = "이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 임시 비밀번호를 생성하여 DB에 저장하고 이메일로 전송합니다."
+        description = "이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 비밀번호 재설정 코드를 생성하여 Redis에 저장하고 이메일로 전송합니다."
     )
     @ApiResponses(
         value = [
@@ -322,6 +323,30 @@ class AuthController(
         request: FindPasswordRequest
     ): ResponseEntity<FindIdPasswordResponse> {
         authService.findPassword(request.email, request.bojId)
-        return ResponseEntity.ok(FindIdPasswordResponse("이메일로 임시 비밀번호가 전송되었습니다."))
+        return ResponseEntity.ok(FindIdPasswordResponse("이메일로 비밀번호 재설정 코드가 전송되었습니다."))
+    }
+
+    @Operation(
+        summary = "비밀번호 재설정",
+        description = "비밀번호 재설정 코드와 새 비밀번호를 입력받아 비밀번호를 변경합니다. 재설정 코드는 일회성이며 사용 후 삭제됩니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "비밀번호 재설정 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 재설정 코드이거나 비밀번호 정책 위반",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/reset-password")
+    fun resetPassword(
+        @Valid
+        @RequestBody
+        request: ResetPasswordRequest
+    ): ResponseEntity<FindIdPasswordResponse> {
+        authService.resetPassword(request.resetCode, request.newPassword)
+        return ResponseEntity.ok(FindIdPasswordResponse("비밀번호가 성공적으로 변경되었습니다."))
     }
 }

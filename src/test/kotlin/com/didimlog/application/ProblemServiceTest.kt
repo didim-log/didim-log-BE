@@ -12,6 +12,7 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.infra.crawler.BojCrawler
+import com.didimlog.infra.crawler.ProblemDetails
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
 import com.didimlog.infra.solvedac.SolvedAcTag
@@ -194,6 +195,109 @@ class ProblemServiceTest {
 
         // then
         verify(exactly = 0) { studentRepository.save(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("getProblemDetail은 DB에 문제가 있으면 그대로 반환한다")
+    fun `DB에 문제가 있으면 그대로 반환`() {
+        // given
+        val problemId = 1000L
+        val existingProblem = Problem(
+            id = ProblemId(problemId.toString()),
+            title = "기존 문제",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/$problemId",
+            descriptionHtml = "<p>기존 문제 설명</p>"
+        )
+
+        every { problemRepository.findById(problemId.toString()) } returns Optional.of(existingProblem)
+
+        // when
+        val result = problemService.getProblemDetail(problemId)
+
+        // then
+        assertThat(result).isEqualTo(existingProblem)
+        verify(exactly = 0) { solvedAcClient.fetchProblem(any()) }
+        verify(exactly = 0) { bojCrawler.crawlProblemDetails(any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("getProblemDetail은 DB에 문제가 없으면 Solved.ac에서 조회하여 저장하고 반환한다")
+    fun `DB에 문제가 없으면 Solved_ac에서 조회하여 저장`() {
+        // given
+        val problemId = 1000L
+        val solvedAcResponse = SolvedAcProblemResponse(
+            problemId = problemId.toInt(),
+            titleKo = "새로운 문제",
+            level = 5,
+            tags = emptyList()
+        )
+
+        every { problemRepository.findById(problemId.toString()) } returns Optional.empty()
+        every { solvedAcClient.fetchProblem(problemId.toInt()) } returns solvedAcResponse
+
+        val savedProblemSlot: CapturingSlot<Problem> = slot()
+        every { problemRepository.save(capture(savedProblemSlot)) } answers { savedProblemSlot.captured }
+
+        every { bojCrawler.crawlProblemDetails(problemId.toString()) } returns null
+
+        // when
+        val result = problemService.getProblemDetail(problemId)
+
+        // then
+        val savedProblem = savedProblemSlot.captured
+        assertThat(savedProblem.id.value).isEqualTo(problemId.toString())
+        assertThat(savedProblem.title).isEqualTo("새로운 문제")
+        assertThat(result).isEqualTo(savedProblem)
+        verify(exactly = 1) { solvedAcClient.fetchProblem(problemId.toInt()) }
+        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("getProblemDetail은 DB에 문제는 있지만 상세 정보가 없으면 크롤링하여 저장한다")
+    fun `상세 정보 없으면 크롤링하여 저장`() {
+        // given
+        val problemId = 1000L
+        val existingProblem = Problem(
+            id = ProblemId(problemId.toString()),
+            title = "기존 문제",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/$problemId",
+            descriptionHtml = null
+        )
+
+        val crawledDetails = ProblemDetails(
+            descriptionHtml = "<p>크롤링된 설명</p>",
+            inputDescriptionHtml = "<p>입력 설명</p>",
+            outputDescriptionHtml = "<p>출력 설명</p>",
+            sampleInputs = listOf("1 2"),
+            sampleOutputs = listOf("3")
+        )
+
+        every { problemRepository.findById(problemId.toString()) } returns Optional.of(existingProblem)
+        every { bojCrawler.crawlProblemDetails(problemId.toString()) } returns crawledDetails
+
+        val savedProblemSlot: CapturingSlot<Problem> = slot()
+        every { problemRepository.save(capture(savedProblemSlot)) } answers { savedProblemSlot.captured }
+
+        // when
+        val result = problemService.getProblemDetail(problemId)
+
+        // then
+        val savedProblem = savedProblemSlot.captured
+        assertThat(savedProblem.descriptionHtml).isEqualTo(crawledDetails.descriptionHtml)
+        assertThat(savedProblem.inputDescriptionHtml).isEqualTo(crawledDetails.inputDescriptionHtml)
+        assertThat(savedProblem.outputDescriptionHtml).isEqualTo(crawledDetails.outputDescriptionHtml)
+        assertThat(savedProblem.sampleInputs).isEqualTo(crawledDetails.sampleInputs)
+        assertThat(savedProblem.sampleOutputs).isEqualTo(crawledDetails.sampleOutputs)
+        assertThat(result).isEqualTo(savedProblem)
+        verify(exactly = 1) { bojCrawler.crawlProblemDetails(problemId.toString()) }
+        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
     }
 }
 
