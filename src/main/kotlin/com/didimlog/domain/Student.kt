@@ -15,6 +15,7 @@ import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * 알고리즘 학습자의 상태와 풀이 기록을 관리하는 Aggregate Root
@@ -44,7 +45,9 @@ data class Student(
     val solutions: Solutions = Solutions(),
     val consecutiveSolveDays: Int = 0, // 연속 풀이 일수
     val lastSolvedAt: LocalDate? = null, // 마지막으로 문제를 푼 날짜
-    val primaryLanguage: PrimaryLanguage? = null // 주로 사용하는 프로그래밍 언어 (nullable: 기존 사용자 호환성)
+    val primaryLanguage: PrimaryLanguage? = null, // 주로 사용하는 프로그래밍 언어 (nullable: 기존 사용자 호환성)
+    @Indexed
+    val createdAt: LocalDateTime = LocalDateTime.now() // 회원 가입 일시
 ) {
     /**
      * Spring Data MongoDB가 DB에서 데이터를 읽어올 때 사용하는 생성자
@@ -66,6 +69,7 @@ data class Student(
      * @param consecutiveSolveDays 연속 풀이 일수
      * @param lastSolvedAt 마지막으로 문제를 푼 날짜
      * @param primaryLanguage 주로 사용하는 프로그래밍 언어 (nullable)
+     * @param createdAt 회원 가입 일시 (nullable: 기존 사용자 호환성)
      */
     @PersistenceCreator
     constructor(
@@ -84,7 +88,8 @@ data class Student(
         solutions: Solutions?,
         consecutiveSolveDays: Int?,
         lastSolvedAt: LocalDate?,
-        primaryLanguage: PrimaryLanguage?
+        primaryLanguage: PrimaryLanguage?,
+        createdAt: LocalDateTime?
     ) : this(
         id = id,
         nickname = nickname,
@@ -101,7 +106,8 @@ data class Student(
         solutions = solutions ?: Solutions(),
         consecutiveSolveDays = consecutiveSolveDays ?: 0,
         lastSolvedAt = lastSolvedAt,
-        primaryLanguage = primaryLanguage
+        primaryLanguage = primaryLanguage,
+        createdAt = createdAt ?: LocalDateTime.now()
     )
 
     /**
