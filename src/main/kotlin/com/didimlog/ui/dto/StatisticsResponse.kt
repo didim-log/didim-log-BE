@@ -26,13 +26,15 @@ data class StatisticsResponse(
  */
 data class HeatmapDataResponse(
     val date: String,
-    val count: Int
+    val count: Int,
+    val problemIds: List<String>
 ) {
     companion object {
         fun from(heatmapData: com.didimlog.application.statistics.HeatmapData): HeatmapDataResponse {
             return HeatmapDataResponse(
                 date = heatmapData.date,
-                count = heatmapData.count
+                count = heatmapData.count,
+                problemIds = heatmapData.problemIds
             )
         }
     }

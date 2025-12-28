@@ -53,24 +53,29 @@ class StatisticsService(
 
     /**
      * 최근 12개월간의 월별 잔디 데이터를 생성한다.
-     * 각 날짜별 풀이 수를 집계한다.
+     * 각 날짜별 풀이 수와 풀이한 문제 ID 목록을 집계한다.
      */
     private fun getMonthlyHeatmap(student: Student): List<HeatmapData> {
         val solutions = student.solutions.getAll()
         val today = LocalDate.now()
         val startDate = today.minusMonths(12)
 
-        val heatmapMap = mutableMapOf<LocalDate, Int>()
+        val heatmapMap = mutableMapOf<LocalDate, MutableList<String>>()
 
         solutions.forEach { solution ->
             val solutionDate = solution.solvedAt.toLocalDate()
             if (solutionDate.isAfter(startDate.minusDays(1)) && !solutionDate.isAfter(today)) {
-                heatmapMap[solutionDate] = heatmapMap.getOrDefault(solutionDate, 0) + 1
+                val problemIds = heatmapMap.getOrPut(solutionDate) { mutableListOf() }
+                problemIds.add(solution.problemId.value)
             }
         }
 
-        return heatmapMap.map { (date, count) ->
-            HeatmapData(date = date.toString(), count = count)
+        return heatmapMap.map { (date, problemIds) ->
+            HeatmapData(
+                date = date.toString(),
+                count = problemIds.size,
+                problemIds = problemIds.distinct()
+            )
         }.sortedBy { it.date }
     }
 
@@ -104,5 +109,6 @@ data class StatisticsInfo(
  */
 data class HeatmapData(
     val date: String,
-    val count: Int
+    val count: Int,
+    val problemIds: List<String>
 )

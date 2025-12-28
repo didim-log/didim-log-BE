@@ -941,7 +941,7 @@ GET /api/v1/quotes/random
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/statistics` | 학생의 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 12개월간의 월별 잔디 데이터<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `totalSolvedCount` (Int): 누적 풀이 수<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수 | JWT Token |
+| GET | `/api/v1/statistics` | 학생의 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 12개월간의 월별 잔디 데이터<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `totalSolvedCount` (Int): 누적 풀이 수<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수<br>- `problemIds` (List<String>): 해당 날짜에 풀이한 문제 ID 목록 (중복 제거됨) | JWT Token |
 
 **예시 요청:**
 ```http
@@ -955,15 +955,18 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "monthlyHeatmap": [
     {
       "date": "2024-01-15",
-      "count": 3
+      "count": 3,
+      "problemIds": ["1000", "1001", "1002"]
     },
     {
       "date": "2024-01-16",
-      "count": 2
+      "count": 2,
+      "problemIds": ["1003", "1004"]
     },
     {
       "date": "2024-01-17",
-      "count": 1
+      "count": 1,
+      "problemIds": ["1005"]
     }
   ],
   "categoryDistribution": {},
