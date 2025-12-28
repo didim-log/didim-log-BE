@@ -5,8 +5,9 @@ import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
-import com.didimlog.ui.dto.AuthRequest
 import com.didimlog.ui.dto.AuthResponse
+import com.didimlog.ui.dto.LoginRequest
+import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.BojCodeIssueResponse
 import com.didimlog.ui.dto.BojVerifyRequest
 import com.didimlog.ui.dto.BojVerifyResponse
@@ -68,7 +69,7 @@ class AuthController(
     fun signup(
         @RequestBody
         @Valid
-        request: AuthRequest
+        request: SignupRequest
     ): ResponseEntity<AuthResponse> {
         val result = authService.signup(request.bojId, request.password, request.email)
         val response = AuthResponse.signup(
@@ -88,7 +89,7 @@ class AuthController(
     fun login(
         @RequestBody
         @Valid
-        request: AuthRequest
+        request: LoginRequest
     ): ResponseEntity<AuthResponse> {
         val result = authService.login(request.bojId, request.password)
         val response = AuthResponse.login(

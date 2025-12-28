@@ -6,7 +6,8 @@ import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.domain.enums.Tier
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
-import com.didimlog.ui.dto.AuthRequest
+import com.didimlog.ui.dto.LoginRequest
+import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.AuthResponse
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -82,7 +83,7 @@ class AuthControllerTest {
     @DisplayName("회원가입 요청 시 200 OK와 토큰을 반환한다")
     fun `회원가입 성공`() {
         // given
-        val request = AuthRequest(bojId = "testuser", password = "ValidPassword123!", email = "test@example.com")
+        val request = SignupRequest(bojId = "testuser", password = "ValidPassword123!", email = "test@example.com")
         val authResult = AuthService.AuthResult(
             token = "jwt-token",
             rating = 100,
@@ -110,7 +111,7 @@ class AuthControllerTest {
     @DisplayName("회원가입 요청 시 BOJ ID가 비어있으면 400 Bad Request를 반환한다")
     fun `회원가입 요청 유효성 검증 실패 - BOJ ID 누락`() {
         // given
-        val request = AuthRequest(bojId = "", password = "ValidPassword123!", email = "test@example.com")
+        val request = SignupRequest(bojId = "", password = "ValidPassword123!", email = "test@example.com")
 
         // when & then
         mockMvc.perform(
@@ -127,7 +128,7 @@ class AuthControllerTest {
     @DisplayName("회원가입 요청 시 비밀번호가 8자 미만이면 400 Bad Request를 반환한다")
     fun `회원가입 요청 유효성 검증 실패 - 비밀번호 길이 부족`() {
         // given
-        val request = AuthRequest(bojId = "testuser", password = "short", email = "test@example.com")
+        val request = SignupRequest(bojId = "testuser", password = "short", email = "test@example.com")
 
         // when & then
         mockMvc.perform(
@@ -144,7 +145,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 200 OK와 토큰을 반환한다")
     fun `로그인 성공`() {
         // given
-        val request = AuthRequest(bojId = "testuser", password = "ValidPassword123!", email = "test@example.com")
+        val request = LoginRequest(bojId = "testuser", password = "ValidPassword123!")
         val authResult = AuthService.AuthResult(
             token = "jwt-token",
             rating = 100,
@@ -172,7 +173,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 BOJ ID가 비어있으면 400 Bad Request를 반환한다")
     fun `로그인 요청 유효성 검증 실패 - BOJ ID 누락`() {
         // given
-        val request = AuthRequest(bojId = "", password = "ValidPassword123!", email = "test@example.com")
+        val request = LoginRequest(bojId = "", password = "ValidPassword123!")
 
         // when & then
         val result = mockMvc.perform(
@@ -192,7 +193,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 비밀번호가 일치하지 않으면 400 Bad Request를 반환한다")
     fun `로그인 실패 - 비밀번호 불일치`() {
         // given
-        val request = AuthRequest(bojId = "testuser", password = "WrongPassword123!", email = "test@example.com")
+        val request = LoginRequest(bojId = "testuser", password = "WrongPassword123!")
 
         every {
             authService.login(request.bojId, request.password)
@@ -213,7 +214,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 존재하지 않는 BOJ ID면 404 Not Found를 반환한다")
     fun `로그인 실패 - 존재하지 않는 BOJ ID`() {
         // given
-        val request = AuthRequest(bojId = "nonexistent", password = "ValidPassword123!", email = "test@example.com")
+        val request = LoginRequest(bojId = "nonexistent", password = "ValidPassword123!")
 
         every {
             authService.login(request.bojId, request.password)
@@ -278,7 +279,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 비밀번호가 비어있으면 400 Bad Request를 반환한다")
     fun `로그인 요청 유효성 검증 실패 - 비밀번호 누락`() {
         // given
-        val request = AuthRequest(bojId = "testuser", password = "", email = "test@example.com")
+        val request = LoginRequest(bojId = "testuser", password = "")
 
         // when & then
         val result = mockMvc.perform(
@@ -296,7 +297,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 비밀번호가 8자 미만이면 400 Bad Request를 반환한다")
     fun `로그인 요청 유효성 검증 실패 - 비밀번호 길이 부족`() {
         // given
-        val request = AuthRequest(bojId = "testuser", password = "short", email = "test@example.com")
+        val request = LoginRequest(bojId = "testuser", password = "short")
 
         // when & then
         val result = mockMvc.perform(

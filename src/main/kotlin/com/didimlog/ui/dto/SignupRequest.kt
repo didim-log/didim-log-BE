@@ -5,9 +5,10 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 
 /**
- * 인증 요청 DTO
+ * 회원가입 요청 DTO
+ * BOJ ID, 비밀번호, 이메일이 모두 필요합니다.
  */
-data class AuthRequest(
+data class SignupRequest(
     @field:NotBlank(message = "BOJ ID는 필수입니다.")
     val bojId: String,
 
@@ -19,3 +20,4 @@ data class AuthRequest(
     @field:Email(message = "유효한 이메일 형식이 아닙니다.")
     val email: String
 )
+
