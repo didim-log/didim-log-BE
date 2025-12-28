@@ -82,10 +82,19 @@ class AdminController(
         @Parameter(description = "페이지 크기 (기본값: 20)", required = false)
         @RequestParam(defaultValue = "20")
         @Positive(message = "페이지 크기는 1 이상이어야 합니다.")
-        size: Int
+        size: Int,
+        @Parameter(description = "검색어 (닉네임, BOJ ID, 이메일)", required = false)
+        @RequestParam(required = false)
+        search: String?,
+        @Parameter(description = "가입 시작일 (ISO 8601 형식, 예: 2024-01-01)", required = false)
+        @RequestParam(required = false)
+        startDate: String?,
+        @Parameter(description = "가입 종료일 (ISO 8601 형식, 예: 2024-12-31)", required = false)
+        @RequestParam(required = false)
+        endDate: String?
     ): ResponseEntity<Page<AdminUserResponse>> {
         val pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "rating"))
-        val users = adminService.getAllUsers(pageable)
+        val users = adminService.getAllUsers(pageable, search, startDate, endDate)
         return ResponseEntity.ok(users)
     }
 
