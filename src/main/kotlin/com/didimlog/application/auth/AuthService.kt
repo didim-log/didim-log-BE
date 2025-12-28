@@ -1,9 +1,11 @@
 package com.didimlog.application.auth
 
+import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import com.mongodb.MongoWriteException
 import kotlin.random.Random
+import java.time.LocalDateTime
 
 /**
  * 인증 서비스
@@ -32,7 +35,8 @@ class AuthService(
     private val studentRepository: StudentRepository,
     private val jwtTokenProvider: JwtTokenProvider,
     private val passwordEncoder: PasswordEncoder,
-    private val emailService: EmailService
+    private val emailService: EmailService,
+    private val passwordResetCodeRepository: PasswordResetCodeRepository
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -461,13 +465,13 @@ class AuthService(
     }
 
     /**
-     * 이메일과 BOJ ID를 입력받아 일치하는 사용자가 있으면 임시 비밀번호를 생성하여 DB에 저장하고 이메일로 발송한다.
+     * 이메일과 BOJ ID를 입력받아 일치하는 사용자가 있으면 비밀번호 재설정 코드를 생성하여 저장하고 이메일로 발송한다.
      *
      * @param email 사용자 이메일
      * @param bojId BOJ ID
      * @throws BusinessException 해당 이메일과 BOJ ID로 가입된 사용자가 없는 경우
      */
-    @Transactional
+    @Transactional(readOnly = true)
     fun findPassword(email: String, bojId: String) {
         val bojIdVo = BojId(bojId)
         val student = studentRepository.findByEmail(email)
@@ -483,29 +487,72 @@ class AuthService(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 설정되지 않은 계정입니다. 소셜 로그인 계정은 비밀번호 찾기를 사용할 수 없습니다. email=$email")
         }
 
-        val temporaryPassword = generateTemporaryPassword()
-        val encodedPassword = passwordEncoder.encode(temporaryPassword)
+        val studentId = student.id
+            ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다. email=$email")
+
+        val resetCode = generateResetCode()
+        val expiresAt = LocalDateTime.now().plusMinutes(30)
+
+        val passwordResetCode = PasswordResetCode(
+            resetCode = resetCode,
+            studentId = studentId,
+            expiresAt = expiresAt
+        )
+        passwordResetCodeRepository.save(passwordResetCode)
+
+        val subject = "[디딤로그] 비밀번호 재설정"
+        val variables = mapOf(
+            "nickname" to student.nickname.value,
+            "email" to email,
+            "bojId" to bojId,
+            "resetCode" to resetCode
+        )
+
+        emailService.sendTemplateEmail(email, subject, "mail/find-password", variables)
+        log.info("비밀번호 재설정 코드 이메일 발송 완료: email=$email, bojId=$bojId")
+    }
+
+    /**
+     * 비밀번호 재설정 코드와 새 비밀번호를 입력받아 비밀번호를 변경한다.
+     *
+     * @param resetCode 재설정 코드
+     * @param newPassword 새 비밀번호
+     * @throws BusinessException 재설정 코드가 유효하지 않거나 만료된 경우, 비밀번호 정책 위반 시
+     */
+    @Transactional
+    fun resetPassword(resetCode: String, newPassword: String) {
+        val passwordResetCode = passwordResetCodeRepository.findByResetCode(resetCode)
+            .orElseThrow {
+                BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 재설정 코드입니다.")
+            }
+
+        if (passwordResetCode.isExpired()) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "만료된 재설정 코드입니다.")
+        }
+
+        val student = studentRepository.findById(passwordResetCode.studentId)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=${passwordResetCode.studentId}")
+            }
+
+        PasswordValidator.validate(newPassword)
+        val encodedPassword = passwordEncoder.encode(newPassword)
 
         val updatedStudent = student.copy(password = encodedPassword)
         studentRepository.save(updatedStudent)
 
-        val subject = "[디딤로그] 임시 비밀번호 발급"
-        val variables = mapOf(
-            "nickname" to student.nickname.value,
-            "tempPassword" to temporaryPassword
-        )
+        passwordResetCodeRepository.deleteByResetCode(resetCode)
 
-        emailService.sendTemplateEmail(email, subject, "mail/find-password", variables)
-        log.info("임시 비밀번호 이메일 발송 완료: email=$email, bojId=$bojId")
+        log.info("비밀번호 재설정 완료: studentId=${passwordResetCode.studentId}")
     }
 
     /**
-     * 영문+숫자 조합의 8자리 임시 비밀번호를 생성한다.
+     * 영문+숫자 조합의 8자리 비밀번호 재설정 코드를 생성한다.
      *
-     * @return 임시 비밀번호 문자열
+     * @return 재설정 코드 문자열
      */
-    private fun generateTemporaryPassword(): String {
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    private fun generateResetCode(): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         return (1..8)
             .map { chars[Random.nextInt(chars.length)] }
             .joinToString("")
