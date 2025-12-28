@@ -5,17 +5,20 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
-import java.security.SecureRandom
-import java.util.UUID
+import org.jsoup.Jsoup
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.SecureRandom
+import java.util.UUID
 
 @Service
 class BojOwnershipVerificationService(
     private val codeStore: BojVerificationCodeStore,
-    private val statusMessageClient: BojProfileStatusMessageClient,
     private val studentRepository: StudentRepository
 ) {
+
+    private val log = LoggerFactory.getLogger(BojOwnershipVerificationService::class.java)
 
     companion object {
         private const val CODE_PREFIX = "DIDIM-LOG-"
@@ -59,19 +62,12 @@ class BojOwnershipVerificationService(
             ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "인증 코드가 만료되었거나 존재하지 않습니다.")
 
         val bojIdVo = BojId(bojId)
-        val statusMessage = statusMessageClient.fetchStatusMessage(bojIdVo.value)
-        
-        if (statusMessage.isNullOrBlank()) {
-            throw BusinessException(
-                ErrorCode.COMMON_INVALID_INPUT,
-                "백준 프로필 상태 메시지를 가져올 수 없습니다. BOJ ID가 올바른지 확인하고, 프로필 페이지가 공개되어 있는지 확인해주세요. bojId=$bojId"
-            )
-        }
+        val profileBodyText = fetchBojProfileBodyText(bojIdVo.value)
 
-        if (!isCodePresentInMessage(statusMessage, storedCode)) {
+        if (!isCodePresentInMessage(profileBodyText, storedCode)) {
             throw BusinessException(
                 ErrorCode.COMMON_INVALID_INPUT,
-                "상태 메시지에서 코드를 찾을 수 없습니다. 상태 메시지에 인증 코드($storedCode)를 정확히 입력하고 저장한 후, 몇 초 대기한 뒤 다시 시도해주세요."
+                "프로필 페이지에서 코드를 찾을 수 없습니다. 프로필 상태 메시지에 인증 코드($storedCode)를 정확히 입력하고 저장한 후, 몇 초 대기한 뒤 다시 시도해주세요."
             )
         }
 
@@ -82,6 +78,92 @@ class BojOwnershipVerificationService(
         studentRepository.save(verifiedStudent)
 
         codeStore.delete(sessionId)
+    }
+
+    /**
+     * Jsoup을 사용하여 백준 프로필 페이지를 직접 크롤링하고 본문(Body) 전체 텍스트를 가져온다.
+     *
+     * @param bojId BOJ ID
+     * @return 프로필 페이지 본문 전체 텍스트
+     * @throws BusinessException 크롤링 실패 시 (네트워크 오류, 404 등)
+     */
+    private fun fetchBojProfileBodyText(bojId: String): String {
+        val url = "https://www.acmicpc.net/user/$bojId"
+        return try {
+            val document = connectToBojProfile(url)
+            document.body().text()
+        } catch (e: org.jsoup.HttpStatusException) {
+            handleHttpStatusException(e, bojId)
+        } catch (e: java.net.SocketTimeoutException) {
+            handleTimeoutException(e, bojId)
+        } catch (e: java.net.UnknownHostException) {
+            handleNetworkException(e, bojId)
+        } catch (e: Exception) {
+            handleGenericException(e, bojId)
+        }
+    }
+
+    private fun connectToBojProfile(url: String): org.jsoup.nodes.Document {
+        return Jsoup.connect(url)
+            .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .timeout(10000)
+            .get()
+    }
+
+    private fun handleHttpStatusException(e: org.jsoup.HttpStatusException, bojId: String): Nothing {
+        when (e.statusCode) {
+            404 -> throwNotFoundException(bojId)
+            403 -> throwAccessDeniedException(bojId)
+            else -> throwInternalErrorException(bojId, e.statusCode, e.message)
+        }
+    }
+
+    private fun throwNotFoundException(bojId: String): Nothing {
+        log.warn("BOJ 프로필을 찾을 수 없음: bojId=$bojId, status=404")
+        throw BusinessException(
+            ErrorCode.COMMON_RESOURCE_NOT_FOUND,
+            "백준 프로필을 찾을 수 없습니다. BOJ ID가 올바른지 확인해주세요. bojId=$bojId"
+        )
+    }
+
+    private fun throwAccessDeniedException(bojId: String): Nothing {
+        log.warn("BOJ 프로필 접근 거부: bojId=$bojId, status=403")
+        throw BusinessException(
+            ErrorCode.COMMON_INVALID_INPUT,
+            "백준 프로필 페이지에 접근할 수 없습니다. 프로필이 공개되어 있는지 확인해주세요. bojId=$bojId"
+        )
+    }
+
+    private fun throwInternalErrorException(bojId: String, statusCode: Int, message: String?): Nothing {
+        log.error("BOJ 프로필 크롤링 실패: bojId=$bojId, status=$statusCode, message=$message")
+        throw BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "백준 프로필 페이지를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. bojId=$bojId"
+        )
+    }
+
+    private fun handleTimeoutException(e: java.net.SocketTimeoutException, bojId: String): Nothing {
+        log.error("BOJ 프로필 크롤링 타임아웃: bojId=$bojId, message=${e.message}", e)
+        throw BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "백준 프로필 페이지를 가져오는 중 시간이 초과되었습니다. 잠시 후 다시 시도해주세요. bojId=$bojId"
+        )
+    }
+
+    private fun handleNetworkException(e: java.net.UnknownHostException, bojId: String): Nothing {
+        log.error("BOJ 프로필 크롤링 네트워크 오류: bojId=$bojId, message=${e.message}", e)
+        throw BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요. bojId=$bojId"
+        )
+    }
+
+    private fun handleGenericException(e: Exception, bojId: String): Nothing {
+        log.error("BOJ 프로필 크롤링 실패: bojId=$bojId, exceptionType=${e.javaClass.simpleName}, message=${e.message}", e)
+        throw BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "백준 프로필 페이지를 가져오는 중 오류가 발생했습니다. bojId=$bojId, error=${e.message}"
+        )
     }
 
     /**
