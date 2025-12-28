@@ -3,10 +3,12 @@ package com.didimlog.application.dashboard
 import com.didimlog.application.quote.QuoteService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Quote
+import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.SolvedAcTierStep
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -24,6 +26,7 @@ import java.time.LocalDateTime
 @Service
 class DashboardService(
     private val studentRepository: StudentRepository,
+    private val retrospectiveRepository: RetrospectiveRepository,
     private val quoteService: QuoteService
 ) {
 
@@ -38,7 +41,7 @@ class DashboardService(
     @Transactional(readOnly = true)
     fun getDashboard(bojId: String): DashboardInfo {
         val student = findStudentByBojIdOrThrow(bojId)
-        val todaySolutions = getTodaySolutions(student)
+        val todayRetrospectives = getTodayRetrospectives(student)
         val quote = quoteService.getRandomQuote()
 
         // 소셜 로그인 사용자의 경우 bojId가 null일 수 있으므로 처리
@@ -57,8 +60,8 @@ class DashboardService(
                 currentTier = student.tier(),
                 consecutiveSolveDays = student.consecutiveSolveDays
             ),
-            todaySolvedCount = todaySolutions.size,
-            todaySolvedProblems = todaySolutions.map { TodaySolvedProblem.from(it) },
+            todaySolvedCount = todayRetrospectives.size,
+            todaySolvedProblems = todayRetrospectives.map { TodaySolvedProblem.from(it) },
             quote = quote?.let { QuoteInfo.from(it) },
             currentTierTitle = tierProgress.currentTierTitle,
             nextTierTitle = tierProgress.nextTierTitle,
@@ -76,15 +79,19 @@ class DashboardService(
             }
     }
 
-    private fun getTodaySolutions(student: Student): List<Solution> {
+    private fun getTodayRetrospectives(student: Student): List<Retrospective> {
         val today = LocalDate.now()
-        return student.solutions
-            .getAll()
-            .filter { solution ->
-                val solutionDate = solution.solvedAt.toLocalDate()
-                solutionDate == today
-            }
-            .sortedByDescending { it.solvedAt }
+        val startOfDay = today.atStartOfDay()
+        val endOfDay = today.atTime(23, 59, 59)
+
+        val studentId = student.id
+            ?: return emptyList()
+
+        return retrospectiveRepository.findByStudentIdAndCreatedAtBetween(
+            studentId = studentId,
+            startDate = startOfDay,
+            endDate = endOfDay
+        ).sortedByDescending { it.createdAt }
     }
 }
 
@@ -122,11 +129,11 @@ data class TodaySolvedProblem(
     val solvedAt: LocalDateTime
 ) {
     companion object {
-        fun from(solution: Solution): TodaySolvedProblem {
+        fun from(retrospective: Retrospective): TodaySolvedProblem {
             return TodaySolvedProblem(
-                problemId = solution.problemId.value,
-                result = solution.result.name,
-                solvedAt = solution.solvedAt
+                problemId = retrospective.problemId,
+                result = retrospective.solutionResult?.name ?: "UNKNOWN",
+                solvedAt = retrospective.createdAt
             )
         }
     }
