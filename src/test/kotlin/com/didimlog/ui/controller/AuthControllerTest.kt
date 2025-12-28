@@ -145,7 +145,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 200 OK와 토큰을 반환한다")
     fun `로그인 성공`() {
         // given
-        val request = SignupRequest(bojId = "testuser", password = "ValidPassword123!", email = "test@example.com")
+        val request = LoginRequest(bojId = "testuser", password = "ValidPassword123!")
         val authResult = AuthService.AuthResult(
             token = "jwt-token",
             rating = 100,
@@ -297,7 +297,7 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 비밀번호가 8자 미만이면 400 Bad Request를 반환한다")
     fun `로그인 요청 유효성 검증 실패 - 비밀번호 길이 부족`() {
         // given
-        val request = SignupRequest(bojId = "testuser", password = "short", email = "test@example.com")
+        val request = LoginRequest(bojId = "testuser", password = "short")
 
         // when & then
         val result = mockMvc.perform(
