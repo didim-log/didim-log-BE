@@ -126,6 +126,71 @@ class FeedbackServiceTest {
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_RESOURCE_NOT_FOUND)
         assertThat(exception.message).contains("피드백을 찾을 수 없습니다")
     }
+
+    @Test
+    @DisplayName("완료된 피드백을 삭제할 수 있다")
+    fun `완료된 피드백 삭제 성공`() {
+        // given
+        val feedbackId = "feedback1"
+        val completedFeedback = Feedback(
+            writerId = "student1",
+            content = "버그 리포트입니다. 매우 긴 내용을 작성합니다.",
+            type = FeedbackType.BUG,
+            status = FeedbackStatus.COMPLETED
+        ).copy(id = feedbackId)
+
+        every { feedbackRepository.findById(feedbackId) } returns Optional.of(completedFeedback)
+        every { feedbackRepository.delete(completedFeedback) } returns Unit
+
+        // when
+        feedbackService.deleteFeedback(feedbackId)
+
+        // then
+        verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
+        verify(exactly = 1) { feedbackRepository.delete(completedFeedback) }
+    }
+
+    @Test
+    @DisplayName("완료되지 않은 피드백 삭제 시 예외가 발생한다")
+    fun `완료되지 않은 피드백 삭제 시 예외 발생`() {
+        // given
+        val feedbackId = "feedback1"
+        val pendingFeedback = Feedback(
+            writerId = "student1",
+            content = "버그 리포트입니다. 매우 긴 내용을 작성합니다.",
+            type = FeedbackType.BUG,
+            status = FeedbackStatus.PENDING
+        ).copy(id = feedbackId)
+
+        every { feedbackRepository.findById(feedbackId) } returns Optional.of(pendingFeedback)
+
+        // when & then
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            feedbackService.deleteFeedback(feedbackId)
+        }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        assertThat(exception.message).contains("완료된 피드백만 삭제할 수 있습니다")
+        verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
+        verify(exactly = 0) { feedbackRepository.delete(any()) }
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 피드백 삭제 시 예외가 발생한다")
+    fun `존재하지 않는 피드백 삭제 시 예외 발생`() {
+        // given
+        val feedbackId = "non-existent"
+
+        every { feedbackRepository.findById(feedbackId) } returns Optional.empty()
+
+        // when & then
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            feedbackService.deleteFeedback(feedbackId)
+        }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_RESOURCE_NOT_FOUND)
+        assertThat(exception.message).contains("피드백을 찾을 수 없습니다")
+        verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
+        verify(exactly = 0) { feedbackRepository.delete(any()) }
+    }
 }
 
 

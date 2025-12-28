@@ -382,6 +382,46 @@ class AdminController(
         }
         return ResponseEntity.ok(response)
     }
+
+    @Operation(
+        summary = "피드백 삭제",
+        description = "완료된 피드백을 삭제합니다. 완료되지 않은 피드백은 삭제할 수 없습니다. ADMIN 권한이 필요합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "삭제 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "완료되지 않은 피드백은 삭제할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "피드백을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @DeleteMapping("/feedbacks/{feedbackId}")
+    fun deleteFeedback(
+        @Parameter(description = "피드백 ID")
+        @PathVariable
+        feedbackId: String
+    ): ResponseEntity<Unit> {
+        feedbackService.deleteFeedback(feedbackId)
+        return ResponseEntity.noContent().build()
+    }
 }
 
 /**

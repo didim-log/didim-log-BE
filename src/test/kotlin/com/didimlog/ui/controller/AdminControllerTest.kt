@@ -354,4 +354,22 @@ class AdminControllerTest {
         verify(exactly = 1) { feedbackService.updateFeedbackStatus(feedbackId, request.status) }
         verify(atLeast = 1) { studentRepository.findById("student1") }
     }
+
+    @Test
+    @DisplayName("완료된 피드백 삭제 성공")
+    fun `완료된 피드백 삭제 성공`() {
+        // given
+        val feedbackId = "feedback1"
+
+        every { feedbackService.deleteFeedback(feedbackId) } returns Unit
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/admin/feedbacks/$feedbackId")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) { feedbackService.deleteFeedback(feedbackId) }
+    }
 }

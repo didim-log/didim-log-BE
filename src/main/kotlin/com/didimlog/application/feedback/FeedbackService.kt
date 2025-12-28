@@ -67,4 +67,27 @@ class FeedbackService(
         val updatedFeedback = feedback.updateStatus(newStatus)
         return feedbackRepository.save(updatedFeedback)
     }
+
+    /**
+     * 완료된 피드백을 삭제한다.
+     *
+     * @param feedbackId 피드백 ID
+     * @throws BusinessException 피드백을 찾을 수 없거나, 완료되지 않은 피드백인 경우
+     */
+    @Transactional
+    fun deleteFeedback(feedbackId: String) {
+        val feedback = feedbackRepository.findById(feedbackId)
+            .orElseThrow {
+                BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "피드백을 찾을 수 없습니다. feedbackId=$feedbackId")
+            }
+
+        if (feedback.status != FeedbackStatus.COMPLETED) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "완료된 피드백만 삭제할 수 있습니다. 현재 상태: ${feedback.status.value}"
+            )
+        }
+
+        feedbackRepository.delete(feedback)
+    }
 }

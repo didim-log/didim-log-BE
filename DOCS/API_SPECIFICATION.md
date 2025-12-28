@@ -1192,6 +1192,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     {
       "id": "feedback-123",
       "writerId": "student-123",
+      "bojId": "testuser",
       "content": "로그인 시 에러가 발생합니다.",
       "type": "BUG",
       "status": "PENDING",
@@ -1224,6 +1225,7 @@ Content-Type: application/json
 {
   "id": "feedback-123",
   "writerId": "student-123",
+  "bojId": "testuser",
   "content": "로그인 시 에러가 발생합니다.",
   "type": "BUG",
   "status": "COMPLETED",
@@ -1343,6 +1345,7 @@ Content-Type: application/json
 {
   "id": "feedback-123",
   "writerId": "student-123",
+  "bojId": "testuser",
   "content": "로그인 시 에러가 발생합니다. 자세한 내용은...",
   "type": "BUG",
   "status": "PENDING",
