@@ -201,11 +201,11 @@ data class Student(
     }
 
     /**
-     * @deprecated Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateTier를 사용하세요.
+     * @deprecated Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateInfo를 사용하세요.
      */
-    @Deprecated("Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateTier를 사용하세요.")
+    @Deprecated("Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateInfo를 사용하세요.")
     fun syncTier(targetTier: Tier): Student {
-        return updateTier(targetTier)
+        return copy(currentTier = targetTier)
     }
 
     /**
