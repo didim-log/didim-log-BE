@@ -64,8 +64,7 @@ graph TD
 | :--- | :--- | :--- |
 | **Language** | **Kotlin** | Null Safety와 간결한 문법을 통한 생산성 향상 |
 | **Framework** | **Spring Boot 3.x** | 엔터프라이즈급 애플리케이션 구축을 위한 프레임워크 |
-| **Database** | **MySQL** | 사용자, 문제, 회고 데이터 등 핵심 정형 데이터 저장 |
-| **ORM** | **JPA (Hibernate)** | 객체 지향적인 데이터 접근 및 관리 |
+| **Database** | **MongoDB** | 사용자, 문제, 회고 데이터 등 핵심 도메인 데이터 저장 |
 | **Cache** | **Redis** | 세션 스토리지 및 자주 조회되는 랭킹/문제 데이터 캐싱 |
 | **Infra** | **AWS EC2** | 클라우드 컴퓨팅 환경 |
 | **DevOps** | **Docker & Actions** | 컨테이너 기반 배포 및 CI/CD 파이프라인 구축 |
@@ -78,9 +77,9 @@ graph TD
 
 ### Prerequisites
 
-* JDK 21 이상
+* JDK 17 이상
 * Docker & Docker Compose (권장)
-* MySQL 8.0+ / Redis (로컬 설치 시)
+* MongoDB / Redis (로컬 설치 시)
 
 ### 1\. Repository Clone
 
@@ -94,10 +93,8 @@ cd didim-log-be
 프로젝트 루트 경로에 `.env` 파일을 생성하고 아래 환경 변수를 설정해야 합니다.
 
 ```properties
-# Database
-MYSQL_URL=jdbc:mysql://localhost:3306/didimlog
-MYSQL_USER=root
-MYSQL_PASSWORD=your_password
+# MongoDB
+SPRING_DATA_MONGODB_URI=mongodb://localhost:27017/didimlog
 
 # Redis
 REDIS_HOST=localhost
@@ -105,6 +102,33 @@ REDIS_PORT=6379
 
 # JWT & Security
 JWT_SECRET=your_secret_key_should_be_long_enough
+
+# Admin
+ADMIN_SECRET_KEY=your_admin_secret_key
+
+# CORS
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# OAuth2
+OAUTH_GOOGLE_ID=...
+OAUTH_GOOGLE_SECRET=...
+OAUTH_GITHUB_ID=...
+OAUTH_GITHUB_SECRET=...
+OAUTH_NAVER_ID=...
+OAUTH_NAVER_SECRET=...
+OAUTH_REDIRECT_URI=http://localhost:5173/oauth/callback
+
+# Mail (SMTP)
+MAIL_USERNAME=didimlognoreply@gmail.com
+MAIL_PASSWORD=your_app_password
+
+# AI (optional)
+AI_ENABLED=false
+GEMINI_API_KEY=
+GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent
+
+# App (optional)
+SERVER_URL=http://localhost:8080
 ```
 
 ### 3\. Run Application
@@ -114,6 +138,12 @@ JWT_SECRET=your_secret_key_should_be_long_enough
 ```bash
 ./gradlew bootRun
 ```
+
+<br>
+
+## ✅ Deployment Checklist (배포 체크리스트)
+
+배포 전 점검 항목은 `DOCS/DEPLOYMENT_CHECKLIST.md`를 참고하세요.
 
 <br>
 
