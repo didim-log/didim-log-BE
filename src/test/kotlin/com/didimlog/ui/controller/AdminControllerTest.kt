@@ -2,6 +2,7 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminService
 import com.didimlog.application.feedback.FeedbackService
+import com.didimlog.application.notice.NoticeService
 import com.didimlog.domain.Feedback
 import com.didimlog.domain.Quote
 import com.didimlog.domain.Student
@@ -15,6 +16,8 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.ui.dto.NoticeCreateRequest
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -70,6 +73,12 @@ class AdminControllerTest {
     @Autowired
     private lateinit var studentRepository: com.didimlog.domain.repository.StudentRepository
 
+    @Autowired
+    private lateinit var noticeService: NoticeService
+
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+
     @TestConfiguration
     class TestConfig {
         @Bean
@@ -80,6 +89,9 @@ class AdminControllerTest {
 
         @Bean
         fun studentRepository(): com.didimlog.domain.repository.StudentRepository = mockk(relaxed = true)
+
+        @Bean
+        fun noticeService(): NoticeService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -256,6 +268,48 @@ class AdminControllerTest {
             .andExpect(status().isCreated)
 
         verify(exactly = 1) { adminService.createQuote(request.content, request.author) }
+    }
+
+    @Test
+    @DisplayName("공지사항 작성 시 제목이 비어있으면 400 Bad Request 반환")
+    fun `공지사항 작성 실패 - 제목 누락`() {
+        // given
+        val request = NoticeCreateRequest(
+            title = "",
+            content = "충분히 긴 공지사항 내용입니다. 최소 10자 이상이어야 합니다.",
+            isPinned = false
+        )
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/admin/notices")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { noticeService.createNotice(any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("공지사항 작성 시 내용이 비어있으면 400 Bad Request 반환")
+    fun `공지사항 작성 실패 - 내용 누락`() {
+        // given
+        val request = NoticeCreateRequest(
+            title = "공지사항 제목",
+            content = "",
+            isPinned = false
+        )
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/admin/notices")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { noticeService.createNotice(any(), any(), any()) }
     }
 
     @Test
