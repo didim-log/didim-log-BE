@@ -342,7 +342,6 @@ class RetrospectiveControllerTest {
     fun `회고 수정 실패 - 소유자가 아님`() {
         // given
         val retrospectiveId = "retro1"
-        val ownerId = "owner-123"
         val attackerId = "attacker-456"
         val attackerBojId = "attacker"
         val bojIdVo = BojId(attackerBojId)

@@ -229,7 +229,6 @@ class RetrospectiveServiceTest {
         val retrospectiveId = "retrospective-id"
         val ownerId = "owner-123"
         val attackerId = "attacker-456"
-        val ownerStudent = createStudent(id = ownerId)
         val attackerStudent = createStudent(id = attackerId)
         val existingRetrospective = Retrospective(
             id = retrospectiveId,
@@ -261,10 +260,8 @@ class RetrospectiveServiceTest {
     fun `기존 회고 수정 시 소유권 검증`() {
         // given
         val ownerId = "owner-123"
-        val attackerId = "attacker-456"
         val problemId = "problem-1"
         val ownerStudent = createStudent(id = ownerId)
-        val attackerStudent = createStudent(id = attackerId)
         val existingRetrospective = Retrospective(
             id = "retro-1",
             studentId = ownerId,
@@ -305,7 +302,6 @@ class RetrospectiveServiceTest {
         // given
         val ownerId = "owner-123"
         val attackerId = "attacker-456"
-        val ownerStudent = createStudent(id = ownerId)
         val attackerStudent = createStudent(id = attackerId)
         val retrospective = Retrospective(
             id = "retro-1",
