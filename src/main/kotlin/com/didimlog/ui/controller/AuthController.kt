@@ -6,21 +6,16 @@ import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AuthResponse
-import com.didimlog.ui.dto.LoginRequest
-import com.didimlog.ui.dto.SignupRequest
+import com.didimlog.ui.dto.BojIdDuplicateCheckResponse
 import com.didimlog.ui.dto.BojCodeIssueResponse
 import com.didimlog.ui.dto.BojVerifyRequest
 import com.didimlog.ui.dto.BojVerifyResponse
-import com.didimlog.ui.dto.BojIdDuplicateCheckResponse
 import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.FindAccountResponse
-import com.didimlog.ui.dto.FindIdPasswordResponse
-import com.didimlog.ui.dto.FindIdRequest
-import com.didimlog.ui.dto.FindPasswordRequest
-import com.didimlog.ui.dto.ResetPasswordRequest
+import com.didimlog.ui.dto.LoginRequest
+import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.SignupFinalizeRequest
 import com.didimlog.ui.dto.SuperAdminRequest
-import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -28,7 +23,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
-import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.constraints.NotBlank
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -39,12 +34,11 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import jakarta.validation.constraints.NotBlank
 
 @Tag(name = "Auth", description = "인증 관련 API")
 @RestController
-@Validated
 @RequestMapping("/api/v1/auth")
+@Validated
 class AuthController(
     private val authService: AuthService,
     private val findAccountService: FindAccountService,
@@ -106,6 +100,24 @@ class AuthController(
             tierLevel = result.tier.value
         )
         return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "BOJ ID 중복 체크",
+        description = "회원가입 전 BOJ ID가 이미 가입된 계정인지 확인합니다."
+    )
+    @GetMapping("/check-duplicate")
+    fun checkDuplicateBojId(
+        @RequestParam
+        @NotBlank(message = "bojId는 필수입니다.")
+        bojId: String
+    ): ResponseEntity<BojIdDuplicateCheckResponse> {
+        val isDuplicate = authService.checkBojIdDuplicate(bojId)
+        val message = when (isDuplicate) {
+            true -> "이미 가입된 BOJ ID입니다."
+            false -> "사용 가능한 BOJ ID입니다."
+        }
+        return ResponseEntity.ok(BojIdDuplicateCheckResponse(isDuplicate = isDuplicate, message = message))
     }
 
     @Operation(
@@ -226,14 +238,12 @@ class AuthController(
 
     @Operation(
         summary = "BOJ 소유권 인증 코드 발급",
-        description = "백준 프로필 상태 메시지 인증에 사용할 코드를 발급하고, sessionId와 함께 일정 시간 저장합니다. Rate Limiting: 1분당 최대 5회 요청 가능합니다."
+        description = "백준 프로필 상태 메시지 인증에 사용할 코드를 발급하고, sessionId와 함께 일정 시간 저장합니다."
     )
     @PostMapping("/boj/code")
-    fun issueBojVerificationCode(
-        request: HttpServletRequest
-    ): ResponseEntity<BojCodeIssueResponse> {
-        val clientIdentifier = getClientIdentifier(request)
-        val issued = bojOwnershipVerificationService.issueVerificationCode(clientIdentifier)
+    fun issueBojVerificationCode(authentication: Authentication?): ResponseEntity<BojCodeIssueResponse> {
+        val identifier = authentication?.name
+        val issued = bojOwnershipVerificationService.issueVerificationCode(identifier)
         return ResponseEntity.ok(
             BojCodeIssueResponse(
                 sessionId = issued.sessionId,
@@ -241,22 +251,6 @@ class AuthController(
                 expiresInSeconds = issued.expiresInSeconds
             )
         )
-    }
-
-    /**
-     * 클라이언트 식별자를 가져온다.
-     * X-Forwarded-For 헤더(프록시 환경) 또는 직접 IP 주소를 사용한다.
-     *
-     * @param request HTTP 요청
-     * @return 클라이언트 식별자 (IP 주소)
-     */
-    private fun getClientIdentifier(request: HttpServletRequest): String {
-        val xForwardedFor = request.getHeader("X-Forwarded-For")
-        if (!xForwardedFor.isNullOrBlank()) {
-            // X-Forwarded-For는 쉼표로 구분된 여러 IP를 가질 수 있음 (첫 번째가 실제 클라이언트)
-            return xForwardedFor.split(",").firstOrNull()?.trim() ?: request.remoteAddr
-        }
-        return request.remoteAddr ?: "unknown"
     }
 
     @Operation(
@@ -274,116 +268,5 @@ class AuthController(
             bojId = request.bojId
         )
         return ResponseEntity.ok(BojVerifyResponse())
-    }
-
-    @Operation(
-        summary = "아이디 찾기",
-        description = "이메일을 입력받아 해당 이메일로 가입된 계정의 BOJ ID를 이메일로 전송합니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "아이디 찾기 성공"),
-            ApiResponse(
-                responseCode = "400",
-                description = "유효하지 않은 이메일 형식",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            ),
-            ApiResponse(
-                responseCode = "404",
-                description = "해당 이메일로 가입된 계정 없음",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
-    @PostMapping("/find-id")
-    fun findId(
-        @RequestBody
-        @Valid
-        request: FindIdRequest
-    ): ResponseEntity<FindIdPasswordResponse> {
-        authService.findId(request.email)
-        return ResponseEntity.ok(FindIdPasswordResponse("이메일로 아이디가 전송되었습니다."))
-    }
-
-    @Operation(
-        summary = "비밀번호 찾기",
-        description = "이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 비밀번호 재설정 코드를 생성하여 Redis에 저장하고 이메일로 전송합니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "비밀번호 찾기 성공"),
-            ApiResponse(
-                responseCode = "400",
-                description = "유효하지 않은 이메일 형식 또는 이메일과 BOJ ID 불일치",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            ),
-            ApiResponse(
-                responseCode = "404",
-                description = "해당 이메일로 가입된 계정 없음",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
-    @PostMapping("/find-password")
-    fun findPassword(
-        @RequestBody
-        @Valid
-        request: FindPasswordRequest
-    ): ResponseEntity<FindIdPasswordResponse> {
-        authService.findPassword(request.email, request.bojId)
-        return ResponseEntity.ok(FindIdPasswordResponse("이메일로 비밀번호 재설정 코드가 전송되었습니다."))
-    }
-
-    @Operation(
-        summary = "비밀번호 재설정",
-        description = "비밀번호 재설정 코드와 새 비밀번호를 입력받아 비밀번호를 변경합니다. 재설정 코드는 일회성이며 사용 후 삭제됩니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "비밀번호 재설정 성공"),
-            ApiResponse(
-                responseCode = "400",
-                description = "유효하지 않은 재설정 코드이거나 비밀번호 정책 위반",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
-    @PostMapping("/reset-password")
-    fun resetPassword(
-        @Valid
-        @RequestBody
-        request: ResetPasswordRequest
-    ): ResponseEntity<FindIdPasswordResponse> {
-        authService.resetPassword(request.resetCode, request.newPassword)
-        return ResponseEntity.ok(FindIdPasswordResponse("비밀번호가 성공적으로 변경되었습니다."))
-    }
-
-    @Operation(
-        summary = "BOJ ID 중복 체크",
-        description = "회원가입 2단계(인증) 전, 입력한 BOJ ID가 이미 가입된 계정인지 확인합니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "중복 체크 성공"),
-            ApiResponse(
-                responseCode = "400",
-                description = "유효하지 않은 BOJ ID 형식",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
-    @GetMapping("/check-duplicate")
-    fun checkDuplicateBojId(
-        @Parameter(description = "BOJ ID", required = true)
-        @RequestParam
-        @NotBlank(message = "BOJ ID는 필수입니다.")
-        bojId: String
-    ): ResponseEntity<BojIdDuplicateCheckResponse> {
-        val isDuplicate = authService.checkBojIdDuplicate(bojId)
-        val message = when (isDuplicate) {
-            true -> "이미 가입된 BOJ ID입니다."
-            false -> "사용 가능한 BOJ ID입니다."
-        }
-        return ResponseEntity.ok(BojIdDuplicateCheckResponse(isDuplicate, message))
     }
 }
