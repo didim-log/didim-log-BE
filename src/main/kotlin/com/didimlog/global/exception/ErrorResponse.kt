@@ -30,16 +30,19 @@ data class ErrorResponse(
         }
 
         private fun getHttpStatusName(status: Int): String {
-            return when (status) {
-                400 -> "Bad Request"
-                401 -> "Unauthorized"
-                403 -> "Forbidden"
-                404 -> "Not Found"
-                409 -> "Conflict"
-                500 -> "Internal Server Error"
-                else -> "Error"
-            }
+            return HTTP_STATUS_NAMES[status] ?: DEFAULT_HTTP_STATUS_NAME
         }
+
+        private const val DEFAULT_HTTP_STATUS_NAME = "Error"
+
+        private val HTTP_STATUS_NAMES = mapOf(
+            400 to "Bad Request",
+            401 to "Unauthorized",
+            403 to "Forbidden",
+            404 to "Not Found",
+            409 to "Conflict",
+            500 to "Internal Server Error"
+        )
     }
 }
 

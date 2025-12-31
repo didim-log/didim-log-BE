@@ -18,13 +18,8 @@ class GithubOAuth2UserInfo(
 
     override fun getProviderId(): String {
         // GitHub은 id (숫자)를 우선 사용하고, 없으면 login (아이디) 사용
-        val id = attributes["id"]?.let {
-            when (it) {
-                is Number -> it.toString()
-                is String -> it
-                else -> null
-            }
-        }
+        val id = (attributes["id"] as? Number)?.toString()
+            ?: (attributes["id"] as? String)
         val login = attributes["login"] as? String
         
         return id ?: login ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "GitHub 사용자 ID를 찾을 수 없습니다.")
