@@ -38,12 +38,13 @@ class StatisticsService(
     @Transactional(readOnly = true)
     fun getStatistics(bojId: String): StatisticsInfo {
         val student = findStudentByBojIdOrThrow(bojId)
+        val studentId = student.id ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID가 없습니다. bojId=$bojId")
         val monthlyHeatmap = getMonthlyHeatmap(student)
         val categoryDistribution = getCategoryDistribution()
-        val algorithmCategoryDistribution = getAlgorithmCategoryDistribution(student.id!!)
+        val algorithmCategoryDistribution = getAlgorithmCategoryDistribution(studentId)
         val topUsedAlgorithms = getTopUsedAlgorithms(algorithmCategoryDistribution)
         val totalSolvedCount = student.solutions.getAll().size
-        val totalRetrospectives = getTotalRetrospectives(student.id!!)
+        val totalRetrospectives = getTotalRetrospectives(studentId)
         val averageSolveTime = getAverageSolveTime(student)
         val successRate = getSuccessRate(student)
         val tagRadarData = getTagRadarData(student)
