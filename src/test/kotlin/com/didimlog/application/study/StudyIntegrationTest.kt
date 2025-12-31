@@ -45,7 +45,7 @@ class StudyIntegrationTest {
         testId = UUID.randomUUID().toString().substring(0, 8)
         
         student = Student(
-            nickname = Nickname("test-user-$testId"),
+            nickname = Nickname("tu$testId"),
             provider = Provider.BOJ,
             providerId = "test$testId",
             bojId = BojId("test$testId"),
