@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.core.AuthenticationException
+import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -42,6 +43,19 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(e.errorCode.status).body(errorResponse)
     }
 
+    @ExceptionHandler(DuplicateNicknameException::class)
+    fun handleDuplicateNicknameException(e: DuplicateNicknameException): ResponseEntity<ErrorResponse> {
+        val errorResponse = ErrorResponse.of(ErrorCode.DUPLICATE_NICKNAME, e.message ?: ErrorCode.DUPLICATE_NICKNAME.message)
+        return ResponseEntity.status(ErrorCode.DUPLICATE_NICKNAME.status).body(errorResponse)
+    }
+
+    @ExceptionHandler(AiGenerationFailedException::class)
+    fun handleAiGenerationFailedException(e: AiGenerationFailedException): ResponseEntity<ErrorResponse> {
+        log.warn("AiGenerationFailedException: {}", e.message)
+        val errorResponse = ErrorResponse.of(ErrorCode.AI_GENERATION_FAILED, e.message ?: ErrorCode.AI_GENERATION_FAILED.message)
+        return ResponseEntity.status(ErrorCode.AI_GENERATION_FAILED.status).body(errorResponse)
+    }
+
     /**
      * 유효성 검사 실패 예외 처리 (DTO 검증)
      */
@@ -53,6 +67,17 @@ class GlobalExceptionHandler {
             ErrorCode.COMMON_VALIDATION_FAILED,
             errorMessage
         )
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse)
+    }
+
+    /**
+     * 필수 쿼리 파라미터 누락 예외 처리
+     * - 예: @RequestParam(required = true) 누락
+     */
+    @ExceptionHandler(MissingServletRequestParameterException::class)
+    fun handleMissingServletRequestParameterException(e: MissingServletRequestParameterException): ResponseEntity<ErrorResponse> {
+        val message = "${e.parameterName}: 필수 요청 파라미터입니다."
+        val errorResponse = ErrorResponse.of(ErrorCode.COMMON_VALIDATION_FAILED, message)
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse)
     }
 
@@ -170,38 +195,37 @@ class GlobalExceptionHandler {
             e
         )
 
-        return when (e.statusCode) {
-            HttpStatus.BAD_REQUEST -> {
-                // 400 에러는 이미 GeminiLlmClient에서 AI_CONTEXT_TOO_LARGE로 변환되어 처리됨
-                // 여기서는 다른 400 에러를 처리
-                val errorResponse = ErrorResponse.of(
-                    ErrorCode.COMMON_INVALID_INPUT,
-                    "요청 형식이 올바르지 않습니다. status=${e.statusCode}"
-                )
-                ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse)
-            }
-            HttpStatus.TOO_MANY_REQUESTS -> {
-                val errorResponse = ErrorResponse.of(
-                    ErrorCode.AI_SERVICE_BUSY,
-                    "AI 서비스 사용량이 많아 잠시 후 다시 시도해주세요."
-                )
-                ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(errorResponse)
-            }
-            HttpStatus.SERVICE_UNAVAILABLE -> {
-                val errorResponse = ErrorResponse.of(
-                    ErrorCode.AI_SERVICE_BUSY,
-                    "AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
-                )
-                ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(errorResponse)
-            }
-            else -> {
-                val errorResponse = ErrorResponse.of(
-                    ErrorCode.COMMON_INTERNAL_ERROR,
-                    "외부 서비스 호출에 실패했습니다. status=${e.statusCode}"
-                )
-                ResponseEntity.status(e.statusCode).body(errorResponse)
-            }
+        if (e.statusCode == HttpStatus.BAD_REQUEST) {
+            // 400 에러는 이미 GeminiLlmClient에서 AI_CONTEXT_TOO_LARGE로 변환되어 처리됨
+            // 여기서는 다른 400 에러를 처리
+            val errorResponse = ErrorResponse.of(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "요청 형식이 올바르지 않습니다. status=${e.statusCode}"
+            )
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse)
         }
+
+        if (e.statusCode == HttpStatus.TOO_MANY_REQUESTS) {
+            val errorResponse = ErrorResponse.of(
+                ErrorCode.AI_SERVICE_BUSY,
+                "AI 서비스 사용량이 많아 잠시 후 다시 시도해주세요."
+            )
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(errorResponse)
+        }
+
+        if (e.statusCode == HttpStatus.SERVICE_UNAVAILABLE) {
+            val errorResponse = ErrorResponse.of(
+                ErrorCode.AI_SERVICE_BUSY,
+                "AI 서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
+            )
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(errorResponse)
+        }
+
+        val errorResponse = ErrorResponse.of(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "외부 서비스 호출에 실패했습니다. status=${e.statusCode}"
+        )
+        return ResponseEntity.status(e.statusCode).body(errorResponse)
     }
 
     /**

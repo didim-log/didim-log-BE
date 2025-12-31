@@ -49,28 +49,27 @@ class ProblemCollectorService(
                 val category = ProblemCategoryMapper.determineCategory(tags)
 
                 val existingProblem = problemRepository.findById(response.problemId.toString())
-                val problem = if (existingProblem.isPresent) {
-                    // 기존 문제가 있으면 메타데이터만 업데이트 (상세 정보는 유지)
-                    val existing = existingProblem.get()
-                    existing.copy(
-                        title = response.titleKo,
-                        difficulty = difficultyTier,
-                        level = response.level,
-                        category = category,
-                        tags = tags
-                    )
-                } else {
-                    // 새 문제 생성
-                    Problem(
-                        id = ProblemId(response.problemId.toString()),
-                        title = response.titleKo,
-                        category = category,
-                        difficulty = difficultyTier,
-                        level = response.level,
-                        url = solvedAcProblemUrl(response.problemId),
-                        tags = tags
-                    )
-                }
+                val problem = existingProblem
+                    .map { existing ->
+                        existing.copy(
+                            title = response.titleKo,
+                            difficulty = difficultyTier,
+                            level = response.level,
+                            category = category,
+                            tags = tags
+                        )
+                    }
+                    .orElseGet {
+                        Problem(
+                            id = ProblemId(response.problemId.toString()),
+                            title = response.titleKo,
+                            category = category,
+                            difficulty = difficultyTier,
+                            level = response.level,
+                            url = solvedAcProblemUrl(response.problemId),
+                            tags = tags
+                        )
+                    }
 
                 problemRepository.save(problem)
                 successCount++

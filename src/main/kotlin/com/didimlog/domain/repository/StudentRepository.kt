@@ -21,6 +21,8 @@ interface StudentRepository : MongoRepository<Student, String> {
 
     fun existsByNickname(nickname: Nickname): Boolean
 
+    fun findByNickname(nickname: Nickname): Optional<Student>
+
     /**
      * 소셜 로그인 제공자와 제공자 ID로 사용자를 조회한다.
      * OAuth2 소셜 로그인 시 사용자를 찾기 위해 사용된다.

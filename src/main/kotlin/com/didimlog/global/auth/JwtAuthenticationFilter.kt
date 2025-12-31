@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.http.HttpHeaders
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -17,7 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter
  */
 @Component
 class JwtAuthenticationFilter(
-    private val jwtTokenProvider: JwtTokenProvider
+    private val jwtTokenProviderProvider: ObjectProvider<JwtTokenProvider>
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(JwtAuthenticationFilter::class.java)
@@ -31,6 +32,12 @@ class JwtAuthenticationFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        val jwtTokenProvider = jwtTokenProviderProvider.getIfAvailable()
+        if (jwtTokenProvider == null) {
+            filterChain.doFilter(request, response)
+            return
+        }
+
         val token = extractToken(request)
 
         if (token != null && jwtTokenProvider.validateToken(token)) {

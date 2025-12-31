@@ -11,6 +11,7 @@ import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.AuthResponse
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -112,6 +113,7 @@ class AuthControllerTest {
     fun `회원가입 요청 유효성 검증 실패 - BOJ ID 누락`() {
         // given
         val request = SignupRequest(bojId = "", password = "ValidPassword123!", email = "test@example.com")
+        clearMocks(authService)
 
         // when & then
         mockMvc.perform(
@@ -129,6 +131,7 @@ class AuthControllerTest {
     fun `회원가입 요청 유효성 검증 실패 - 비밀번호 길이 부족`() {
         // given
         val request = SignupRequest(bojId = "testuser", password = "short", email = "test@example.com")
+        clearMocks(authService)
 
         // when & then
         mockMvc.perform(
@@ -309,6 +312,78 @@ class AuthControllerTest {
 
         val status = result.response.status
         assertThat(status).isIn(400, 200)
+    }
+
+    @Test
+    @DisplayName("BOJ ID 중복 체크 시 이미 존재하는 BOJ ID면 isDuplicate: true 반환")
+    fun `BOJ ID 중복 체크 - 중복`() {
+        // given
+        val bojId = "existinguser"
+        every { authService.checkBojIdDuplicate(bojId) } returns true
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/auth/check-duplicate")
+                .param("bojId", bojId)
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.isDuplicate").value(true))
+            .andExpect(jsonPath("$.message").value("이미 가입된 BOJ ID입니다."))
+
+        verify(exactly = 1) { authService.checkBojIdDuplicate(bojId) }
+    }
+
+    @Test
+    @DisplayName("BOJ ID 중복 체크 시 존재하지 않는 BOJ ID면 isDuplicate: false 반환")
+    fun `BOJ ID 중복 체크 - 사용 가능`() {
+        // given
+        val bojId = "newuser"
+        every { authService.checkBojIdDuplicate(bojId) } returns false
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/auth/check-duplicate")
+                .param("bojId", bojId)
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.isDuplicate").value(false))
+            .andExpect(jsonPath("$.message").value("사용 가능한 BOJ ID입니다."))
+
+        verify(exactly = 1) { authService.checkBojIdDuplicate(bojId) }
+    }
+
+    @Test
+    @DisplayName("BOJ ID 중복 체크 시 bojId 파라미터가 비어있으면 400 Bad Request 반환")
+    fun `BOJ ID 중복 체크 - 파라미터 누락`() {
+        // when & then
+        clearMocks(authService)
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/auth/check-duplicate")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { authService.checkBojIdDuplicate(any()) }
+    }
+
+    @Test
+    @DisplayName("BOJ ID 중복 체크 시 예상치 못한 예외가 발생하면 500 Internal Server Error 반환")
+    fun `BOJ ID 중복 체크 - 500`() {
+        // given
+        val bojId = "anyuser"
+        clearMocks(authService)
+        every { authService.checkBojIdDuplicate(bojId) } throws RuntimeException("unexpected")
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/auth/check-duplicate")
+                .param("bojId", bojId)
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
     }
 }
 

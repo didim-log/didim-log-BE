@@ -1,28 +1,33 @@
 package com.didimlog.global.config
 
-import org.springframework.beans.factory.annotation.Value
+import com.didimlog.global.interceptor.MaintenanceModeInterceptor
+import com.didimlog.global.interceptor.PerformanceMonitoringInterceptor
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Configuration
-import org.springframework.web.servlet.config.annotation.CorsRegistry
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
 /**
- * 웹 관련 설정 클래스
- * CORS 설정을 포함한다.
+ * Web MVC 설정
+ * 인터셉터를 등록한다.
  */
 @Configuration
-class WebConfig : WebMvcConfigurer {
+class WebConfig(
+    private val performanceMonitoringInterceptorProvider: ObjectProvider<PerformanceMonitoringInterceptor>,
+    private val maintenanceModeInterceptorProvider: ObjectProvider<MaintenanceModeInterceptor>
+) : WebMvcConfigurer {
 
-    @Value("\${app.cors.allowed-origins}")
-    private lateinit var allowedOriginsString: String
+    override fun addInterceptors(registry: InterceptorRegistry) {
+        // 유지보수 모드 인터셉터 (가장 먼저 실행)
+        maintenanceModeInterceptorProvider.ifAvailable { interceptor ->
+            registry.addInterceptor(interceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/v1/admin/system/**") // 유지보수 모드 제어 API는 제외
+        }
 
-    override fun addCorsMappings(registry: CorsRegistry) {
-        val allowedOrigins = allowedOriginsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        
-        registry.addMapping("/api/**")
-            .allowedOriginPatterns(*allowedOrigins.toTypedArray())
-            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
-            .allowedHeaders("*")
-            .allowCredentials(true)
-            .maxAge(3600)
+        performanceMonitoringInterceptorProvider.ifAvailable { interceptor ->
+            registry.addInterceptor(interceptor)
+                .addPathPatterns("/api/**")
+        }
     }
 }

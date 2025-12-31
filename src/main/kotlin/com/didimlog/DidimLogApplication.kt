@@ -6,8 +6,13 @@ import org.springframework.boot.runApplication
 
 @SpringBootApplication
 @ConfigurationPropertiesScan
-class DidimLogApplication
+class DidimLogApplication {
 
-fun main(args: Array<String>) {
-	runApplication<DidimLogApplication>(*args)
+    companion object {
+
+        @JvmStatic
+        fun main(args: Array<String>) {
+            runApplication<DidimLogApplication>(*args)
+        }
+    }
 }

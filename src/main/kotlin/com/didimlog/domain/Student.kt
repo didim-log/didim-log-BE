@@ -161,11 +161,13 @@ data class Student(
         
         val daysBetween = java.time.temporal.ChronoUnit.DAYS.between(lastSolvedAt, today)
         
-        return when {
-            daysBetween == 0L -> consecutiveSolveDays // 오늘 이미 풀었으면 유지
-            daysBetween == 1L -> consecutiveSolveDays + 1 // 어제 풀었으면 증가
-            else -> 1 // 그 이전이면 초기화
+        if (daysBetween == 0L) {
+            return consecutiveSolveDays
         }
+        if (daysBetween == 1L) {
+            return consecutiveSolveDays + 1
+        }
+        return 1
     }
 
     /**
@@ -199,11 +201,11 @@ data class Student(
     }
 
     /**
-     * @deprecated Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateTier를 사용하세요.
+     * @deprecated Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateInfo를 사용하세요.
      */
-    @Deprecated("Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateTier를 사용하세요.")
+    @Deprecated("Solved.ac 동기화 방식으로 변경되어 사용하지 않음. updateInfo를 사용하세요.")
     fun syncTier(targetTier: Tier): Student {
-        return updateTier(targetTier)
+        return copy(currentTier = targetTier)
     }
 
     /**
@@ -284,6 +286,16 @@ data class Student(
      */
     fun updatePrimaryLanguage(language: PrimaryLanguage): Student {
         return copy(primaryLanguage = language)
+    }
+
+    fun updateNickname(nickname: String): Student {
+        val nicknameVo = Nickname(nickname)
+        return copy(nickname = nicknameVo)
+    }
+
+    fun updatePassword(encodedPassword: String): Student {
+        require(encodedPassword.isNotBlank()) { "비밀번호는 필수입니다." }
+        return copy(password = encodedPassword)
     }
 
     private fun toProblemResult(isSuccess: Boolean): ProblemResult {

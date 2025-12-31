@@ -132,3 +132,5 @@ class StudentControllerTest {
         verify(exactly = 1) { studentService.withdraw("bojId") }
     }
 }
+
+

@@ -26,5 +26,11 @@ data class RetrospectiveRequest(
      * 예: "BruteForce", "Greedy" 등
      */
     @field:Size(max = 50, message = "풀이 전략 태그는 50자 이하여야 합니다.")
-    val solvedCategory: String? = null
+    val solvedCategory: String? = null,
+    
+    /**
+     * 풀이 소요 시간 (예: "15m 30s" 또는 초 단위 문자열)
+     */
+    @field:Size(max = 50, message = "풀이 시간은 50자 이하여야 합니다.")
+    val solveTime: String? = null
 )

@@ -86,7 +86,10 @@ class AiKeywordService(
         code: String,
         isSuccess: Boolean
     ): String {
-        val resultText = if (isSuccess) "성공" else "실패"
+        val resultText = when (isSuccess) {
+            true -> "성공"
+            false -> "실패"
+        }
         return """
         문제: $problemTitle
         풀이 결과: $resultText
@@ -98,3 +101,5 @@ class AiKeywordService(
         """.trimIndent()
     }
 }
+
+

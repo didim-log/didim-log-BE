@@ -13,6 +13,8 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ui.dto.RetrospectiveRequest
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -34,6 +36,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -166,7 +169,8 @@ class RetrospectiveControllerTest {
             content = "이 문제는 DFS를 사용해서 풀었습니다.",
             summary = "DFS 활용",
             resultType = ProblemResult.SUCCESS,
-            solvedCategory = "DFS"
+            solvedCategory = "DFS",
+            solveTime = "15m 30s"
         )
         val studentId = "student1"
         val bojId = "testuser"
@@ -182,7 +186,8 @@ class RetrospectiveControllerTest {
                 content = request.content,
                 summary = request.summary,
                 solutionResult = request.resultType,
-                solvedCategory = request.solvedCategory
+                solvedCategory = request.solvedCategory,
+                solveTime = request.solveTime
             )
         } returns savedRetrospective
 
@@ -199,6 +204,7 @@ class RetrospectiveControllerTest {
             .andExpect(jsonPath("$.content").value(request.content))
             .andExpect(jsonPath("$.studentId").value(studentId))
             .andExpect(jsonPath("$.problemId").value("1000"))
+            .andExpect(jsonPath("$.solveTime").value("15m 30s"))
     }
 
     @Test
@@ -267,6 +273,121 @@ class RetrospectiveControllerTest {
     }
 
     @Test
+    @DisplayName("회고 수정 시 200 OK 및 Response JSON 구조 검증 (solveTime 포함)")
+    fun `회고 수정 성공`() {
+        // given
+        val retrospectiveId = "retro1"
+        val studentId = "student1"
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val student = createStudent(id = studentId, bojId = bojId)
+        val request = RetrospectiveRequest(
+            content = "수정된 회고 내용입니다. 더 자세한 분석을 추가했습니다.",
+            summary = "수정된 한 줄 요약",
+            resultType = ProblemResult.SUCCESS,
+            solvedCategory = "DFS",
+            solveTime = "20m 15s"
+        )
+        val updatedRetrospective = createRetrospective("retro1", studentId, "1000", request.content)
+            .copy(
+                summary = request.summary,
+                solutionResult = request.resultType,
+                solvedCategory = request.solvedCategory,
+                solveTime = request.solveTime
+            )
+
+        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
+        every {
+            retrospectiveService.updateRetrospective(
+                retrospectiveId = retrospectiveId,
+                studentId = studentId,
+                content = request.content,
+                summary = request.summary,
+                solutionResult = request.resultType,
+                solvedCategory = request.solvedCategory,
+                solveTime = request.solveTime
+            )
+        } returns updatedRetrospective
+
+        // when & then
+        mockMvc.perform(
+            patch("/api/v1/retrospectives/$retrospectiveId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id").value(retrospectiveId))
+            .andExpect(jsonPath("$.content").value(request.content))
+            .andExpect(jsonPath("$.summary").value(request.summary))
+            .andExpect(jsonPath("$.solutionResult").value("SUCCESS"))
+            .andExpect(jsonPath("$.solvedCategory").value("DFS"))
+            .andExpect(jsonPath("$.solveTime").value("20m 15s"))
+
+        verify(exactly = 1) {
+            retrospectiveService.updateRetrospective(
+                retrospectiveId = retrospectiveId,
+                studentId = studentId,
+                content = request.content,
+                summary = request.summary,
+                solutionResult = request.resultType,
+                solvedCategory = request.solvedCategory,
+                solveTime = request.solveTime
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("회고 수정 시 작성자가 아닌 유저가 수정을 시도하면 403 Forbidden 반환")
+    fun `회고 수정 실패 - 소유자가 아님`() {
+        // given
+        val retrospectiveId = "retro1"
+        val attackerId = "attacker-456"
+        val attackerBojId = "attacker"
+        val bojIdVo = BojId(attackerBojId)
+        val attackerStudent = createStudent(id = attackerId, bojId = attackerBojId)
+        val request = RetrospectiveRequest(
+            content = "수정된 회고 내용입니다.",
+            summary = "수정된 요약"
+        )
+
+        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(attackerStudent)
+        every {
+            retrospectiveService.updateRetrospective(
+                retrospectiveId = retrospectiveId,
+                studentId = attackerId,
+                content = request.content,
+                summary = request.summary,
+                solutionResult = null,
+                solvedCategory = null,
+                solveTime = null
+            )
+        } throws BusinessException(ErrorCode.ACCESS_DENIED, "회고 소유자가 아닙니다.")
+
+        // when & then
+        mockMvc.perform(
+            patch("/api/v1/retrospectives/$retrospectiveId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(attackerBojId, null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+
+        verify(exactly = 1) {
+            retrospectiveService.updateRetrospective(
+                retrospectiveId = retrospectiveId,
+                studentId = attackerId,
+                content = request.content,
+                summary = request.summary,
+                solutionResult = null,
+                solvedCategory = null,
+                solveTime = null
+            )
+        }
+    }
+
+    @Test
     @DisplayName("템플릿 생성 시 200 OK 및 Response JSON 구조 검증")
     fun `템플릿 생성 성공`() {
         // given
@@ -306,6 +427,7 @@ class RetrospectiveControllerTest {
             summary = "요약",
             solutionResult = ProblemResult.SUCCESS,
             solvedCategory = "DFS",
+            solveTime = "15m 30s",
             createdAt = LocalDateTime.now()
         )
     }

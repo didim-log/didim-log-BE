@@ -62,73 +62,73 @@ class GeminiLlmClient(
                         }
                 )
                 .onErrorResume { throwable ->
-                    when {
-                        Exceptions.isRetryExhausted(throwable) -> {
-                            val cause = throwable.cause
-                            if (cause is WebClientResponseException.TooManyRequests) {
-                                log.error("Gemini API 429 에러: 재시도 한도 초과", cause)
-                                return@onErrorResume Mono.error(throwable)
-                            }
-                            log.error("재시도 한도 초과: 원인={}", cause?.javaClass?.simpleName, throwable)
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.COMMON_INTERNAL_ERROR,
-                                    "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
-                                )
-                            )
+                    if (Exceptions.isRetryExhausted(throwable)) {
+                        val cause = throwable.cause
+                        if (cause is WebClientResponseException.TooManyRequests) {
+                            log.error("Gemini API 429 에러: 재시도 한도 초과", cause)
+                            return@onErrorResume Mono.error(throwable)
                         }
-                        throwable is WebClientResponseException.TooManyRequests -> {
-                            log.error("Gemini API 429 에러: 재시도 전 실패", throwable)
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.AI_SERVICE_BUSY,
-                                    "서버 사용량이 많아 잠시 후 다시 시도해주세요."
-                                )
+                        log.error("재시도 한도 초과: 원인={}", cause?.javaClass?.simpleName, throwable)
+                        return@onErrorResume Mono.error(
+                            BusinessException(
+                                ErrorCode.COMMON_INTERNAL_ERROR,
+                                "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
                             )
-                        }
-                        throwable is WebClientResponseException -> {
-                            if (throwable.statusCode == HttpStatus.BAD_REQUEST) {
-                                val responseBody = throwable.responseBodyAsString
-                                if (responseBody.contains("INVALID_ARGUMENT") ||
-                                    responseBody.contains("context_length_exceeded") ||
-                                    responseBody.contains("token") && responseBody.contains("limit")) {
-                                    log.error(
-                                        "Gemini API 토큰 제한 초과: status={}, message={}",
-                                        throwable.statusCode,
-                                        throwable.message,
-                                        throwable
-                                    )
-                                    return@onErrorResume Mono.error(
-                                        BusinessException(
-                                            ErrorCode.AI_CONTEXT_TOO_LARGE,
-                                            "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."
-                                        )
-                                    )
-                                }
-                            }
-                            log.error(
-                                "Gemini API 호출 실패: status={}, message={}",
-                                throwable.statusCode,
-                                throwable.message,
-                                throwable
-                            )
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.COMMON_INTERNAL_ERROR,
-                                    "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
-                                )
-                            )
-                        }
-                        else -> {
-                            log.error("Gemini API 호출 중 예상치 못한 오류 발생", throwable)
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.COMMON_INTERNAL_ERROR,
-                                    "AI 서비스 호출 중 오류가 발생했습니다."
-                                )
-                            )
-                        }
+                        )
                     }
+
+                    if (throwable is WebClientResponseException.TooManyRequests) {
+                        log.error("Gemini API 429 에러: 재시도 전 실패", throwable)
+                        return@onErrorResume Mono.error(
+                            BusinessException(
+                                ErrorCode.AI_SERVICE_BUSY,
+                                "서버 사용량이 많아 잠시 후 다시 시도해주세요."
+                            )
+                        )
+                    }
+
+                    if (throwable is WebClientResponseException) {
+                        if (throwable.statusCode == HttpStatus.BAD_REQUEST) {
+                            val responseBody = throwable.responseBodyAsString
+                            if (responseBody.contains("INVALID_ARGUMENT") ||
+                                responseBody.contains("context_length_exceeded") ||
+                                (responseBody.contains("token") && responseBody.contains("limit"))
+                            ) {
+                                log.error(
+                                    "Gemini API 토큰 제한 초과: status={}, message={}",
+                                    throwable.statusCode,
+                                    throwable.message,
+                                    throwable
+                                )
+                                return@onErrorResume Mono.error(
+                                    BusinessException(
+                                        ErrorCode.AI_CONTEXT_TOO_LARGE,
+                                        "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."
+                                    )
+                                )
+                            }
+                        }
+                        log.error(
+                            "Gemini API 호출 실패: status={}, message={}",
+                            throwable.statusCode,
+                            throwable.message,
+                            throwable
+                        )
+                        return@onErrorResume Mono.error(
+                            BusinessException(
+                                ErrorCode.COMMON_INTERNAL_ERROR,
+                                "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
+                            )
+                        )
+                    }
+
+                    log.error("Gemini API 호출 중 예상치 못한 오류 발생", throwable)
+                    return@onErrorResume Mono.error(
+                        BusinessException(
+                            ErrorCode.COMMON_INTERNAL_ERROR,
+                            "AI 서비스 호출 중 오류가 발생했습니다."
+                        )
+                    )
                 }
                 .block()
                 ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Gemini 응답이 비어있습니다.")
@@ -209,82 +209,82 @@ class GeminiLlmClient(
                         }
                 )
                 .onErrorResume { throwable ->
-                    when {
-                        Exceptions.isRetryExhausted(throwable) -> {
-                            // 재시도 한도 초과 예외인 경우, 원인 예외 확인
-                            val cause = throwable.cause
-                            if (cause is WebClientResponseException.TooManyRequests) {
-                                log.error(
-                                    "Gemini API 429 에러: 재시도 한도 초과 (재시도 후 실패)",
-                                    cause
-                                )
-                                // RetryExhaustedException을 그대로 전파하여 GlobalExceptionHandler에서 503으로 처리
-                                return@onErrorResume Mono.error(throwable)
-                            }
-                            // 다른 원인인 경우 기존 로직 유지
-                            log.error("재시도 한도 초과: 원인={}", cause?.javaClass?.simpleName, throwable)
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.COMMON_INTERNAL_ERROR,
-                                    "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
-                                )
-                            )
-                        }
-                        throwable is WebClientResponseException.TooManyRequests -> {
-                            // 재시도 전에 바로 429가 발생한 경우 (필터를 통과하지 못한 경우)
-                            log.error("Gemini API 429 에러: 재시도 전 실패", throwable)
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.AI_SERVICE_BUSY,
-                                    "서버 사용량이 많아 잠시 후 다시 시도해주세요."
-                                )
-                            )
-                        }
-                        throwable is WebClientResponseException -> {
-                            // 400 Bad Request: 토큰 제한 초과 (1M 토큰) 또는 잘못된 요청
-                            if (throwable.statusCode == HttpStatus.BAD_REQUEST) {
-                                val responseBody = throwable.responseBodyAsString
-                                if (responseBody.contains("INVALID_ARGUMENT") || 
-                                    responseBody.contains("context_length_exceeded") ||
-                                    responseBody.contains("token") && responseBody.contains("limit")) {
-                                    log.error(
-                                        "Gemini API 토큰 제한 초과: status={}, message={}",
-                                        throwable.statusCode,
-                                        throwable.message,
-                                        throwable
-                                    )
-                                    return@onErrorResume Mono.error(
-                                        BusinessException(
-                                            ErrorCode.AI_CONTEXT_TOO_LARGE,
-                                            "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."
-                                        )
-                                    )
-                                }
-                            }
-                            
+                    if (Exceptions.isRetryExhausted(throwable)) {
+                        // 재시도 한도 초과 예외인 경우, 원인 예외 확인
+                        val cause = throwable.cause
+                        if (cause is WebClientResponseException.TooManyRequests) {
                             log.error(
-                                "Gemini API 호출 실패: status={}, message={}",
-                                throwable.statusCode,
-                                throwable.message,
-                                throwable
+                                "Gemini API 429 에러: 재시도 한도 초과 (재시도 후 실패)",
+                                cause
                             )
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.COMMON_INTERNAL_ERROR,
-                                    "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
-                                )
-                            )
+                            // RetryExhaustedException을 그대로 전파하여 GlobalExceptionHandler에서 503으로 처리
+                            return@onErrorResume Mono.error(throwable)
                         }
-                        else -> {
-                            log.error("Gemini API 호출 중 예상치 못한 오류 발생", throwable)
-                            Mono.error(
-                                BusinessException(
-                                    ErrorCode.COMMON_INTERNAL_ERROR,
-                                    "AI 서비스 호출 중 오류가 발생했습니다."
-                                )
+                        // 다른 원인인 경우 기존 로직 유지
+                        log.error("재시도 한도 초과: 원인={}", cause?.javaClass?.simpleName, throwable)
+                        return@onErrorResume Mono.error(
+                            BusinessException(
+                                ErrorCode.COMMON_INTERNAL_ERROR,
+                                "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
                             )
-                        }
+                        )
                     }
+
+                    if (throwable is WebClientResponseException.TooManyRequests) {
+                        // 재시도 전에 바로 429가 발생한 경우 (필터를 통과하지 못한 경우)
+                        log.error("Gemini API 429 에러: 재시도 전 실패", throwable)
+                        return@onErrorResume Mono.error(
+                            BusinessException(
+                                ErrorCode.AI_SERVICE_BUSY,
+                                "서버 사용량이 많아 잠시 후 다시 시도해주세요."
+                            )
+                        )
+                    }
+
+                    if (throwable is WebClientResponseException) {
+                        // 400 Bad Request: 토큰 제한 초과 (1M 토큰) 또는 잘못된 요청
+                        if (throwable.statusCode == HttpStatus.BAD_REQUEST) {
+                            val responseBody = throwable.responseBodyAsString
+                            if (responseBody.contains("INVALID_ARGUMENT") ||
+                                responseBody.contains("context_length_exceeded") ||
+                                (responseBody.contains("token") && responseBody.contains("limit"))
+                            ) {
+                                log.error(
+                                    "Gemini API 토큰 제한 초과: status={}, message={}",
+                                    throwable.statusCode,
+                                    throwable.message,
+                                    throwable
+                                )
+                                return@onErrorResume Mono.error(
+                                    BusinessException(
+                                        ErrorCode.AI_CONTEXT_TOO_LARGE,
+                                        "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."
+                                    )
+                                )
+                            }
+                        }
+
+                        log.error(
+                            "Gemini API 호출 실패: status={}, message={}",
+                            throwable.statusCode,
+                            throwable.message,
+                            throwable
+                        )
+                        return@onErrorResume Mono.error(
+                            BusinessException(
+                                ErrorCode.COMMON_INTERNAL_ERROR,
+                                "AI 서비스 호출에 실패했습니다. 잠시 후 다시 시도해주세요."
+                            )
+                        )
+                    }
+
+                    log.error("Gemini API 호출 중 예상치 못한 오류 발생", throwable)
+                    return@onErrorResume Mono.error(
+                        BusinessException(
+                            ErrorCode.COMMON_INTERNAL_ERROR,
+                            "AI 서비스 호출 중 오류가 발생했습니다."
+                        )
+                    )
                 }
                 .block()
                 ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Gemini 응답이 비어있습니다.")

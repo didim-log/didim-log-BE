@@ -43,46 +43,74 @@ class CustomOAuth2UserService(
         
         val attributes = oauth2User.attributes.toMutableMap()
         
-        if (existingStudent.isPresent) {
-            // 기존 유저: DB에서 조회한 정보 사용
-            val student = existingStudent.get()
-            val updatedStudent = if (student.email != email) {
-                studentRepository.save(student.copy(email = email))
-            } else {
-                student
-            }
-            
-            val authorities = listOf(SimpleGrantedAuthority("ROLE_${updatedStudent.role.value}"))
-            attributes["studentId"] = updatedStudent.id
-            attributes["provider"] = provider.value
-            attributes["providerId"] = providerId
-            attributes["isNewUser"] = false
-            attributes["role"] = updatedStudent.role.value
-            
-            return DefaultOAuth2User(
-                authorities,
-                attributes,
-                getProviderIdAttributeName(provider)
-            )
-        } else {
-            // 신규 유저: DB에 저장하지 않고 정보만 attributes에 저장
-            // SuccessHandler에서 쿼리 파라미터로 전달할 정보
-            attributes["provider"] = provider.value
-            attributes["providerId"] = providerId
-            attributes["email"] = email ?: "" // GitHub 비공개 이메일 등 null인 경우 빈 문자열로 처리
-            attributes["nickname"] = nickname
-            attributes["isNewUser"] = true
-            attributes["role"] = "GUEST"
-            
-            // 신규 유저는 GUEST 권한으로 처리
-            val authorities = listOf(SimpleGrantedAuthority("ROLE_GUEST"))
-            
-            return DefaultOAuth2User(
-                authorities,
-                attributes,
-                getProviderIdAttributeName(provider)
-            )
+        if (existingStudent.isEmpty) {
+            return toGuestUser(attributes, provider, providerId, email, nickname)
         }
+
+        val student = existingStudent.get()
+        val updatedStudent = updateEmailIfChanged(student, email)
+        return toRegisteredUser(attributes, updatedStudent, provider, providerId)
+    }
+
+    private fun updateEmailIfChanged(student: Student, email: String?): Student {
+        if (student.email == email) {
+            return student
+        }
+        return studentRepository.save(student.copy(email = email))
+    }
+
+    private fun toRegisteredUser(
+        attributes: MutableMap<String, Any>,
+        student: Student,
+        provider: Provider,
+        providerId: String
+    ): OAuth2User {
+        val authorities = listOf(SimpleGrantedAuthority("ROLE_${student.role.value}"))
+        attributes["studentId"] = requireStudentId(student)
+        attributes["provider"] = provider.value
+        attributes["providerId"] = providerId
+        attributes["isNewUser"] = false
+        attributes["role"] = student.role.value
+
+        return DefaultOAuth2User(
+            authorities,
+            attributes,
+            getProviderIdAttributeName(provider)
+        )
+    }
+
+    private fun requireStudentId(student: Student): String {
+        val studentId = student.id
+        if (studentId != null) {
+            return studentId
+        }
+        throw OAuth2AuthenticationException("OAuth2 로그인 사용자 정보에 studentId가 없습니다.")
+    }
+
+    private fun toGuestUser(
+        attributes: MutableMap<String, Any>,
+        provider: Provider,
+        providerId: String,
+        email: String?,
+        nickname: String
+    ): OAuth2User {
+        // 신규 유저: DB에 저장하지 않고 정보만 attributes에 저장
+        // SuccessHandler에서 쿼리 파라미터로 전달할 정보
+        attributes["provider"] = provider.value
+        attributes["providerId"] = providerId
+        attributes["email"] = email ?: "" // GitHub 비공개 이메일 등 null인 경우 빈 문자열로 처리
+        attributes["nickname"] = nickname
+        attributes["isNewUser"] = true
+        attributes["role"] = Role.GUEST.value
+
+        // 신규 유저는 GUEST 권한으로 처리
+        val authorities = listOf(SimpleGrantedAuthority("ROLE_${Role.GUEST.value}"))
+
+        return DefaultOAuth2User(
+            authorities,
+            attributes,
+            getProviderIdAttributeName(provider)
+        )
     }
 
 

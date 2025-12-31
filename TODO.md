@@ -76,15 +76,23 @@
   - **Endpoint**: `PATCH /api/v1/admin/users/{studentId}`
   - **대상**: Role 변경, BOJ ID 변경(중복 검사 포함), 닉네임 변경(중복 검사 포함)
 
+- [x] **[API]** Member Management API 구현 (닉네임 정책 강화 + 사용자/관리자 닉네임 관리)
+  - **User**: `GET /api/v1/members/check-nickname`, `PATCH /api/v1/members/me/nickname`
+  - **Admin**: `PUT /api/v1/admin/members/{memberId}` (nickname/password 변경, password 인코딩)
+  - **Policy**: 길이 2~12, 정규식/예약어/한글 자모 금지
+
 ## Phase 5: Code Quality & Documentation
 > **Goal:** 코드 품질 향상, 문서화, 및 프로젝트 정리
 
-- [x] **[Docs]** API 명세서 최신화 (DELETE 엔드포인트 추가, 페이지네이션 1-based로 수정)
+- [x] **[Docs]** API 명세서 최신화 (BOJ 중복 체크, 공지/유지보수/대시보드, 에러 응답, 페이지네이션 등 코드 기준 동기화)
 - [x] **[Docs]** Swagger(SpringDoc) 명세 및 `DOCS/API_SPECIFICATION.md` 전면 최신화
 - [x] **[Fix]** GlobalExceptionHandler 예외 처리 강화 및 ErrorResponse 표준화(401/403/enum 파싱/타입 변환 등)
 - [x] **[Refactor]** 클린코드 리팩토링 (else 키워드를 Early Return 패턴으로 변경)
 - [x] **[Cleanup]** 불필요한 공백 및 코드 정리 (파일 끝 공백 라인 제거, 라인 끝 공백 제거)
-- [x] **[Docs]** FE TODO.md에 백엔드 완료 작업 반영
+- [x] **[Docs]** 프로젝트 루트 문서 정리 (리포트 문서 DOCS/REPORTS로 이관, README/Env 최신화, Deployment Checklist 추가)
+- [x] **[API]** 로그 템플릿/AI 리뷰 API 구현 및 명세 반영
+  - `GET /api/v1/logs/{logId}/template`
+  - `POST /api/v1/logs/{logId}/ai-review` (캐시 우선 + 2000자 절단)
 
 ## Phase 6: Service Enhancement (v1.2)
 > **Goal:** 회고 중심의 랭킹 개편, 대시보드 시각화 강화, 그리고 소셜 로그인 및 본인 인증 도입

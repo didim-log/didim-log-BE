@@ -12,6 +12,15 @@ interface RetrospectiveRepository : MongoRepository<Retrospective, String>, Retr
 
     fun deleteAllByStudentId(studentId: String)
 
+    /**
+     * 학생의 총 회고 수를 반환한다.
+     * DB 쿼리에서 직접 COUNT를 수행하여 성능을 최적화한다.
+     *
+     * @param studentId 학생 ID
+     * @return 총 회고 수
+     */
+    fun countByStudentId(studentId: String): Long
+
     fun findByStudentIdAndCreatedAtBetween(
         studentId: String,
         startDate: LocalDateTime,

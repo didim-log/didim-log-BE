@@ -11,6 +11,7 @@ class NaverOAuth2UserInfo(
     private val attributes: Map<String, Any>
 ) : OAuth2UserInfo {
 
+    @Suppress("UNCHECKED_CAST")
     private val response: Map<String, Any> by lazy {
         attributes["response"] as? Map<String, Any>
             ?: throw IllegalStateException("Naver 응답(response)을 찾을 수 없습니다.")

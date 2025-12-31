@@ -29,7 +29,11 @@ data class Retrospective(
      * 사용자가 직접 선택한 풀이 전략(알고리즘) 태그
      * 예: "BruteForce", "Greedy" 등
      */
-    val solvedCategory: String? = null
+    val solvedCategory: String? = null,
+    /**
+     * 풀이 소요 시간 (예: "15m 30s" 또는 초 단위 문자열)
+     */
+    val solveTime: String? = null
 ) {
 
     init {
@@ -43,9 +47,10 @@ data class Retrospective(
 
     fun updateSolutionInfo(
         solutionResult: com.didimlog.domain.enums.ProblemResult?,
-        solvedCategory: String?
+        solvedCategory: String?,
+        solveTime: String? = null
     ): Retrospective {
-        return copy(solutionResult = solutionResult, solvedCategory = solvedCategory)
+        return copy(solutionResult = solutionResult, solvedCategory = solvedCategory, solveTime = solveTime)
     }
 
     /**

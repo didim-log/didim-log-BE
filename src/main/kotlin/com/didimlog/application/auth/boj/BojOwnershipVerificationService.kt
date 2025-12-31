@@ -111,11 +111,13 @@ class BojOwnershipVerificationService(
     }
 
     private fun handleHttpStatusException(e: org.jsoup.HttpStatusException, bojId: String): Nothing {
-        when (e.statusCode) {
-            404 -> throwNotFoundException(bojId)
-            403 -> throwAccessDeniedException(bojId)
-            else -> throwInternalErrorException(bojId, e.statusCode, e.message)
+        if (e.statusCode == 404) {
+            throwNotFoundException(bojId)
         }
+        if (e.statusCode == 403) {
+            throwAccessDeniedException(bojId)
+        }
+        throwInternalErrorException(bojId, e.statusCode, e.message)
     }
 
     private fun throwNotFoundException(bojId: String): Nothing {

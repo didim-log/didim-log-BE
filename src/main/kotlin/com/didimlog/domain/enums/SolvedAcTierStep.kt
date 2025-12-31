@@ -90,11 +90,7 @@ enum class SolvedAcTierStep(
         val nextMin = next.minRating
         val clampedRating = rating.coerceAtLeast(currentMin).coerceAtMost(nextMin)
 
-        val ratio = if (nextMin == currentMin) {
-            1.0
-        } else {
-            (clampedRating - currentMin).toDouble() / (nextMin - currentMin).toDouble()
-        }
+        val ratio = calculateProgressRatio(currentMin, nextMin, clampedRating)
 
         return TierProgress(
             currentTierTitle = current.title,
@@ -103,6 +99,13 @@ enum class SolvedAcTierStep(
             requiredRatingForNextTier = nextMin,
             progressPercentage = (ratio * 100.0).roundToInt().coerceIn(0, 100)
         )
+    }
+
+    private fun calculateProgressRatio(currentMin: Int, nextMin: Int, clampedRating: Int): Double {
+        if (nextMin == currentMin) {
+            return 1.0
+        }
+        return (clampedRating - currentMin).toDouble() / (nextMin - currentMin).toDouble()
     }
 }
 
@@ -113,3 +116,5 @@ data class TierProgress(
     val requiredRatingForNextTier: Int,
     val progressPercentage: Int
 )
+
+

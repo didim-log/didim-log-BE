@@ -22,6 +22,10 @@ enum class ErrorCode(
     // 403 Forbidden
     ACCESS_DENIED(403, "ACCESS_DENIED", "접근 권한이 없습니다."),
 
+    // 503 Service Unavailable
+    MAINTENANCE_MODE(503, "MAINTENANCE_MODE", "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."),
+    AI_GENERATION_FAILED(503, "AI_GENERATION_FAILED", "AI 리뷰 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
+
     // 404 Not Found
     COMMON_RESOURCE_NOT_FOUND(404, "COMMON_RESOURCE_NOT_FOUND", "요청한 자원을 찾을 수 없습니다."),
     STUDENT_NOT_FOUND(404, "STUDENT_NOT_FOUND", "학생을 찾을 수 없습니다."),

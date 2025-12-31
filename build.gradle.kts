@@ -9,6 +9,10 @@ group = "com.didimlog"
 version = "0.0.1-SNAPSHOT"
 description = "Step by step algorithm log"
 
+springBoot {
+    mainClass.set("com.didimlog.DidimLogApplication")
+}
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(17)

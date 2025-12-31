@@ -35,10 +35,10 @@ class NicknameTest {
     }
 
     @Test
-    @DisplayName("최대 길이(20자) 닉네임을 생성할 수 있다")
+    @DisplayName("최대 길이(12자) 닉네임을 생성할 수 있다")
     fun `최대 길이 닉네임 생성`() {
         // given
-        val maxLengthNickname = "a".repeat(20)
+        val maxLengthNickname = "a".repeat(12)
 
         // when
         val nickname = Nickname(maxLengthNickname)
@@ -80,18 +80,34 @@ class NicknameTest {
         // when & then
         assertThatThrownBy { Nickname(oneCharNickname) }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessage("닉네임은 2자 이상 20자 이하여야 합니다.")
+            .hasMessage("닉네임은 2자 이상 12자 이하여야 합니다.")
     }
 
     @Test
-    @DisplayName("21자 닉네임을 생성하면 예외가 발생한다")
-    fun `21자 닉네임 예외 발생`() {
+    @DisplayName("13자 닉네임을 생성하면 예외가 발생한다")
+    fun `13자 닉네임 예외 발생`() {
         // given
-        val tooLongNickname = "a".repeat(21)
+        val tooLongNickname = "a".repeat(13)
 
         // when & then
         assertThatThrownBy { Nickname(tooLongNickname) }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessage("닉네임은 2자 이상 20자 이하여야 합니다.")
+            .hasMessage("닉네임은 2자 이상 12자 이하여야 합니다.")
+    }
+
+    @Test
+    @DisplayName("예약어(admin)로 닉네임을 생성하면 예외가 발생한다")
+    fun `예약어 닉네임 예외 발생`() {
+        assertThatThrownBy { Nickname("admin") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("사용할 수 없는 닉네임입니다.")
+    }
+
+    @Test
+    @DisplayName("한글 자모(ㄱ)로 닉네임을 생성하면 예외가 발생한다")
+    fun `한글 자모 닉네임 예외 발생`() {
+        assertThatThrownBy { Nickname("ㄱㄱ") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("닉네임 형식이 올바르지 않습니다.")
     }
 }

@@ -60,7 +60,7 @@ class SecurityIntegrationTest {
 
         // 관리자 생성
         val adminStudent = Student(
-            nickname = Nickname("admin"),
+            nickname = Nickname("adminuser"),
             provider = Provider.BOJ,
             providerId = "admin",
             bojId = BojId("admin"),

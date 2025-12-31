@@ -4,6 +4,7 @@ import com.didimlog.application.admin.AdminDashboardService
 import com.didimlog.application.admin.AdminDashboardStats
 import com.didimlog.application.admin.AdminService
 import com.didimlog.application.feedback.FeedbackService
+import com.didimlog.application.notice.NoticeService
 import com.didimlog.domain.Feedback
 import com.didimlog.domain.Quote
 import com.didimlog.domain.Student
@@ -51,7 +52,7 @@ import java.time.LocalDateTime
         org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration::class
     ]
 )
-@Import(GlobalExceptionHandler::class)
+@Import(GlobalExceptionHandler::class, AdminControllerSecurityTest.TestConfig::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
 class AdminControllerSecurityTest {
 
@@ -83,6 +84,9 @@ class AdminControllerSecurityTest {
 
         @Bean
         fun adminDashboardService(): AdminDashboardService = mockk(relaxed = true)
+
+        @Bean
+        fun noticeService(): NoticeService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)

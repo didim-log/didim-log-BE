@@ -8,6 +8,9 @@ import com.didimlog.ui.dto.AdminUserResponse
 import com.didimlog.ui.dto.AdminUserUpdateDto
 import com.didimlog.ui.dto.FeedbackResponse
 import com.didimlog.ui.dto.QuoteResponse
+import com.didimlog.ui.dto.NoticeCreateRequest
+import com.didimlog.ui.dto.NoticeResponse
+import com.didimlog.application.notice.NoticeService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -45,7 +48,8 @@ import org.springframework.web.bind.annotation.RestController
 class AdminController(
     private val adminService: AdminService,
     private val feedbackService: FeedbackService,
-    private val studentRepository: com.didimlog.domain.repository.StudentRepository
+    private val studentRepository: com.didimlog.domain.repository.StudentRepository,
+    private val noticeService: NoticeService
 ) {
 
     @Operation(
@@ -334,11 +338,10 @@ class AdminController(
         val feedbacks = feedbackService.getAllFeedbacks(pageable)
         val response = feedbacks.map { feedback ->
             val student = studentRepository.findById(feedback.writerId).orElse(null)
-            if (student != null) {
-                FeedbackResponse.from(feedback, student)
-            } else {
-                FeedbackResponse.from(feedback)
+            if (student == null) {
+                return@map FeedbackResponse.from(feedback)
             }
+            FeedbackResponse.from(feedback, student)
         }
         return ResponseEntity.ok(response)
     }
@@ -384,11 +387,10 @@ class AdminController(
     ): ResponseEntity<FeedbackResponse> {
         val feedback = feedbackService.updateFeedbackStatus(feedbackId, request.status)
         val student = studentRepository.findById(feedback.writerId).orElse(null)
-        val response = if (student != null) {
-            FeedbackResponse.from(feedback, student)
-        } else {
-            FeedbackResponse.from(feedback)
+        if (student == null) {
+            return ResponseEntity.ok(FeedbackResponse.from(feedback))
         }
+        val response = FeedbackResponse.from(feedback, student)
         return ResponseEntity.ok(response)
     }
 
@@ -430,6 +432,46 @@ class AdminController(
     ): ResponseEntity<Unit> {
         feedbackService.deleteFeedback(feedbackId)
         return ResponseEntity.noContent().build()
+    }
+
+    @Operation(
+        summary = "공지사항 작성",
+        description = "관리자가 공지사항을 작성합니다. ADMIN 권한이 필요합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "201", description = "작성 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/notices")
+    fun createNotice(
+        @RequestBody
+        @Valid
+        request: NoticeCreateRequest
+    ): ResponseEntity<NoticeResponse> {
+        val notice = noticeService.createNotice(
+            title = request.title,
+            content = request.content,
+            isPinned = request.isPinned
+        )
+        val response = NoticeResponse.from(notice)
+        return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 }
 

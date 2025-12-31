@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
         org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration::class
     ]
 )
-@Import(GlobalExceptionHandler::class)
+@Import(GlobalExceptionHandler::class, AiAnalysisControllerTest.TestConfig::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
 class AiAnalysisControllerTest {
 

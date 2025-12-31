@@ -116,7 +116,7 @@ class StudentServiceTest {
         // given
         val bojId = "testuser"
         val oldNickname = Nickname("oldNickname")
-        val duplicateNickname = "duplicateNickname"
+        val duplicateNickname = "dupNick12"
         val student = Student(
             id = "student-id",
             nickname = oldNickname,
