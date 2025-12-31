@@ -1,39 +1,40 @@
 package com.didimlog.application.template
 
 import com.didimlog.application.ProblemService
-import com.didimlog.application.ai.AiKeywordService
+import com.didimlog.domain.Problem
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 
 /**
  * 정적 템플릿 생성 서비스
- * AI 서비스가 비활성화되었을 때 사용하는 기본 템플릿을 생성한다.
- * RETROSPECTIVE_STANDARDS.md의 표준 양식을 준수하며, 사용자 작성 영역만 포함한다.
- * AI가 활성화된 경우 키워드를 주입하여 템플릿을 완성한다.
+ * 회고 작성에 필요한 정적 마크다운 템플릿을 생성한다.
+ *
+ * 정책:
+ * - DidimLog의 AI는 "로그(Log) 한 줄 평가" 용도로만 사용한다.
+ * - 회고(Retrospective) 템플릿은 사용자가 작성할 목차와 본인 코드를 포함한 마크다운만 제공한다.
+ * - `DOCS/RETROSPECTIVE_STANDARDS.md`의 표준 목차(성공/실패 1~5)를 따른다.
  */
 @Service
 class StaticTemplateService(
-    private val problemService: ProblemService,
-    @Autowired(required = false) private val aiKeywordService: AiKeywordService?,
-    @Value("\${app.ai.enabled:false}") private val aiEnabled: Boolean
+    private val problemService: ProblemService
 ) {
     companion object {
         private const val DEFAULT_ERROR_MESSAGE = "에러 로그를 확인할 수 없습니다."
         private const val DEFAULT_CODE_LANGUAGE = "text"
+        private const val MAX_KEYWORDS = 5
     }
 
     /**
      * 정적 회고 템플릿을 생성한다.
-     * RETROSPECTIVE_STANDARDS.md에 정의된 구조를 준수하며, AI가 활성화된 경우 키워드를 주입한다.
+     * RETROSPECTIVE_STANDARDS.md에 정의된 구조를 준수한다.
      *
      * @param problemId 문제 ID
      * @param code 사용자 코드
      * @param isSuccess 풀이 성공 여부
      * @param errorMessage 에러 메시지 (실패 시, nullable)
-     * @return 생성된 마크다운 문자열 (AI 키워드가 주입된 상태)
+     * @return 생성된 마크다운 문자열
      */
     fun generateRetrospectiveTemplate(
         problemId: String,
@@ -51,103 +52,37 @@ class StaticTemplateService(
         val problem = problemService.getProblemDetail(problemId.toLong())
         val codeLanguage = detectCodeLanguage(code).uppercase()
 
-        val template = createTemplate(problem.id.value, problem.title, codeLanguage, code, isSuccess, errorMessage)
-
-        return injectAiKeywords(template, problemId, code, isSuccess)
+        return createTemplate(problem, codeLanguage, code, isSuccess, errorMessage)
     }
 
     private fun createTemplate(
-        problemId: String,
-        problemTitle: String,
+        problem: Problem,
         codeLanguage: String,
         code: String,
         isSuccess: Boolean,
         errorMessage: String?
     ): String {
         if (isSuccess) {
-            return generateSuccessTemplate(problemId, problemTitle, codeLanguage, code)
+            return generateSuccessTemplate(problem, codeLanguage, code)
         }
         val message = errorMessage ?: DEFAULT_ERROR_MESSAGE
-        return generateFailureTemplate(problemId, problemTitle, codeLanguage, code, message)
-    }
-
-    /**
-     * 템플릿에 AI 키워드를 주입한다.
-     * AI가 활성화되어 있고 호출에 성공한 경우 키워드를 주입하고, 그렇지 않으면 기본 문구로 대체한다.
-     *
-     * @param template 기본 템플릿 (플레이스홀더 포함)
-     * @param problemId 문제 ID
-     * @param code 사용자 코드
-     * @param isSuccess 풀이 성공 여부
-     * @return 키워드가 주입된 템플릿
-     */
-    private fun injectAiKeywords(
-        template: String,
-        problemId: String,
-        code: String,
-        isSuccess: Boolean
-    ): String {
-        if (!aiEnabled || aiKeywordService == null) {
-            val defaultPlaceholder = getDefaultKeywordsPlaceholder()
-            return template.replace("{AI_KEYWORDS_PLACEHOLDER}", defaultPlaceholder)
-        }
-
-        val keywordsSection = try {
-            val keywords = aiKeywordService.extractKeywords(problemId, code, isSuccess)
-            formatKeywords(keywords)
-        } catch (e: Exception) {
-            // AI 호출 실패 시 기본 문구로 대체 (에러를 터뜨리지 않음)
-            getDefaultKeywordsPlaceholder()
-        }
-
-        return template.replace("{AI_KEYWORDS_PLACEHOLDER}", keywordsSection)
-    }
-
-    /**
-     * AI가 추출한 키워드를 마크다운 형식으로 포맷팅한다.
-     *
-     * @param keywords 쉼표로 구분된 키워드 문자열 (예: "DFS, 백트래킹, 재귀")
-     * @return 마크다운 형식의 키워드 리스트
-     */
-    private fun formatKeywords(keywords: String): String {
-        if (keywords.isBlank()) {
-            return getDefaultKeywordsPlaceholder()
-        }
-
-        val keywordList = keywords.split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .take(3) // 최대 3개만 사용
-
-        if (keywordList.isEmpty()) {
-            return getDefaultKeywordsPlaceholder()
-        }
-
-        return keywordList.joinToString("\n") { "- $it" }
-    }
-
-    /**
-     * AI가 비활성화되었거나 호출에 실패한 경우 사용할 기본 문구를 반환한다.
-     *
-     * @return 기본 키워드 플레이스홀더
-     */
-    private fun getDefaultKeywordsPlaceholder(): String {
-        return "*(AI 서비스가 비활성화되어 직접 키워드를 입력해보세요)*"
+        return generateFailureTemplate(problem, codeLanguage, code, message)
     }
 
     /**
      * 성공 회고 정적 템플릿을 생성한다.
      * RETROSPECTIVE_STANDARDS.md의 "성공 회고" 구조를 준수한다.
-     * [User 작성 영역]만 포함: 1. 접근 방법, 2. 복잡도 분석, 제출한 코드
-     * AI 키워드는 플레이스홀더로 포함되며, 이후 주입된다.
+     * - 1~5 모두 사용자가 작성하는 목차를 제공한다.
      */
-    private fun generateSuccessTemplate(problemId: String, problemTitle: String, codeLanguage: String, code: String): String {
-        val title = "[백준/BOJ] ${problemId}번 $problemTitle ($codeLanguage)"
+    private fun generateSuccessTemplate(problem: Problem, codeLanguage: String, code: String): String {
+        val title = "[백준/BOJ] ${problem.id.value}번 ${problem.title} ($codeLanguage)"
+        val keywords = buildProblemKeywords(problem)
         return """
             # 🏆 $title 해결 회고
 
-            ## 🔑 추천 학습 키워드 (AI Generated)
-            {AI_KEYWORDS_PLACEHOLDER}
+            ## 🔑 학습 키워드
+
+            ${formatKeywords(keywords)}
 
             ## 1. 접근 방법 (Approach)
 
@@ -158,6 +93,18 @@ class StaticTemplateService(
 
             - 시간 복잡도: O(?)
             - 공간 복잡도: O(?)
+
+            ## 3. 리팩토링 포인트 (Refactoring)
+
+            - 개선할 수 있는 변수/함수명, 중복 제거, 로직 단순화 포인트를 적어보세요.
+
+            ## 4. 다른 풀이와 비교 (Comparison)
+
+            - 다른 사람의 풀이(또는 표준 풀이)와 비교해서 내 풀이의 장단점을 정리해보세요.
+
+            ## 5. 다음 액션 (Next)
+
+            - 다음에 같은 유형을 만나면 어떤 점을 더 잘할지 한 줄로 적어보세요.
 
             ## 제출한 코드
 
@@ -170,16 +117,17 @@ class StaticTemplateService(
     /**
      * 실패 회고 정적 템플릿을 생성한다.
      * RETROSPECTIVE_STANDARDS.md의 "실패 회고" 구조를 준수한다.
-     * [User 작성 영역]만 포함: 1. 실패 현상, 2. 나의 접근, 제출한 코드, 에러 로그
-     * AI 키워드는 플레이스홀더로 포함되며, 이후 주입된다.
+     * - 1~5 모두 사용자가 작성하는 목차를 제공한다.
      */
-    private fun generateFailureTemplate(problemId: String, problemTitle: String, codeLanguage: String, code: String, errorMessage: String): String {
-        val title = "[백준/BOJ] ${problemId}번 $problemTitle ($codeLanguage)"
+    private fun generateFailureTemplate(problem: Problem, codeLanguage: String, code: String, errorMessage: String): String {
+        val title = "[백준/BOJ] ${problem.id.value}번 ${problem.title} ($codeLanguage)"
+        val keywords = buildProblemKeywords(problem)
         return """
             # 💥 $title 오답 노트
 
-            ## 🔑 추천 학습 키워드 (AI Generated)
-            {AI_KEYWORDS_PLACEHOLDER}
+            ## 🔑 학습 키워드
+
+            ${formatKeywords(keywords)}
 
             ## 1. 실패 현상 (Symptom)
 
@@ -189,6 +137,18 @@ class StaticTemplateService(
             ## 2. 나의 접근 (My Attempt)
 
             - 어떤 로직으로 풀려고 시도했나요?
+
+            ## 3. 원인 추정 (Root Cause)
+
+            - 왜 실패했다고 생각하나요? (논리/구현/복잡도/입출력 등)
+
+            ## 4. 반례/재현 케이스 (Counter Example)
+
+            - 내 코드를 깨뜨리는 입력을 적어보세요.
+
+            ## 5. 다음 시도 계획 (Next)
+
+            - 다음 시도에서 바꿀 점을 체크리스트로 적어보세요.
 
             ## 제출한 코드
 
@@ -202,6 +162,38 @@ class StaticTemplateService(
             $errorMessage
             ```
             """.trimIndent()
+    }
+
+    private fun buildProblemKeywords(problem: Problem): List<String> {
+        val keywords = mutableListOf<String>()
+
+        keywords.add(problem.category.koreanName)
+        keywords.add("${problem.difficulty.name} ${problem.level}")
+
+        keywords.addAll(problem.tags.map { mapTagToKeyword(it) })
+
+        return keywords
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(MAX_KEYWORDS)
+    }
+
+    private fun mapTagToKeyword(tag: String): String {
+        val normalized = tag.trim()
+        if (normalized.isBlank()) {
+            return normalized
+        }
+        val matched = ProblemCategory.entries.find { it.englishName.equals(normalized, ignoreCase = true) }
+        return matched?.koreanName ?: normalized
+    }
+
+    private fun formatKeywords(keywords: List<String>): String {
+        if (keywords.isEmpty()) {
+            return "- (키워드를 추가로 적어보세요)"
+        }
+
+        return keywords.joinToString("\n") { "- $it" }
     }
 
     /**
