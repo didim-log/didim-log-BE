@@ -66,7 +66,8 @@ class RetrospectiveServiceTest {
             content = content,
             summary = "한 줄 요약 테스트",
             solutionResult = com.didimlog.domain.enums.ProblemResult.SUCCESS,
-            solvedCategory = "DFS"
+            solvedCategory = "DFS",
+            solveTime = "15m 30s"
         )
         every { retrospectiveRepository.save(any<Retrospective>()) } returns savedRetrospective
 
@@ -77,7 +78,8 @@ class RetrospectiveServiceTest {
             content = content,
             summary = "한 줄 요약 테스트",
             solutionResult = com.didimlog.domain.enums.ProblemResult.SUCCESS,
-            solvedCategory = "DFS"
+            solvedCategory = "DFS",
+            solveTime = "15m 30s"
         )
 
         // then
@@ -88,6 +90,7 @@ class RetrospectiveServiceTest {
         assertThat(result.summary).isEqualTo("한 줄 요약 테스트")
         assertThat(result.solutionResult).isEqualTo(com.didimlog.domain.enums.ProblemResult.SUCCESS)
         assertThat(result.solvedCategory).isEqualTo("DFS")
+        assertThat(result.solveTime).isEqualTo("15m 30s")
         verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
     }
 
@@ -124,7 +127,7 @@ class RetrospectiveServiceTest {
 
         val updatedRetrospective = existingRetrospective
             .updateContent(newContent, "수정된 한 줄 요약")
-            .updateSolutionInfo(com.didimlog.domain.enums.ProblemResult.FAIL, "Greedy")
+            .updateSolutionInfo(com.didimlog.domain.enums.ProblemResult.FAIL, "Greedy", "20m 15s")
         every { retrospectiveRepository.save(any<Retrospective>()) } returns updatedRetrospective
 
         // when
@@ -134,7 +137,8 @@ class RetrospectiveServiceTest {
             content = newContent,
             summary = "수정된 한 줄 요약",
             solutionResult = com.didimlog.domain.enums.ProblemResult.FAIL,
-            solvedCategory = "Greedy"
+            solvedCategory = "Greedy",
+            solveTime = "20m 15s"
         )
 
         // then
@@ -142,6 +146,7 @@ class RetrospectiveServiceTest {
         assertThat(result.summary).isEqualTo("수정된 한 줄 요약")
         assertThat(result.solutionResult).isEqualTo(com.didimlog.domain.enums.ProblemResult.FAIL)
         assertThat(result.solvedCategory).isEqualTo("Greedy")
+        assertThat(result.solveTime).isEqualTo("20m 15s")
         verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
     }
 
@@ -171,6 +176,84 @@ class RetrospectiveServiceTest {
             retrospectiveService.writeRetrospective("student-id", "missing", "content", null)
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.PROBLEM_NOT_FOUND)
+    }
+
+    @Test
+    @DisplayName("updateRetrospective는 회고를 수정한다")
+    fun `회고 수정 성공`() {
+        // given
+        val retrospectiveId = "retrospective-id"
+        val studentId = "student-id"
+        val newContent = "수정된 회고 내용입니다."
+        val newSummary = "수정된 한 줄 요약"
+        val newSolveTime = "25m 30s"
+
+        val student = createStudent(id = studentId)
+        val existingRetrospective = Retrospective(
+            id = retrospectiveId,
+            studentId = studentId,
+            problemId = "1000",
+            content = "기존 회고 내용입니다."
+        )
+
+        every { retrospectiveRepository.findById(retrospectiveId) } returns Optional.of(existingRetrospective)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+
+        val updatedRetrospective = existingRetrospective
+            .updateContent(newContent, newSummary)
+            .updateSolutionInfo(com.didimlog.domain.enums.ProblemResult.SUCCESS, "DFS", newSolveTime)
+        every { retrospectiveRepository.save(any<Retrospective>()) } returns updatedRetrospective
+
+        // when
+        val result = retrospectiveService.updateRetrospective(
+            retrospectiveId = retrospectiveId,
+            studentId = studentId,
+            content = newContent,
+            summary = newSummary,
+            solutionResult = com.didimlog.domain.enums.ProblemResult.SUCCESS,
+            solvedCategory = "DFS",
+            solveTime = newSolveTime
+        )
+
+        // then
+        assertThat(result.content).isEqualTo(newContent)
+        assertThat(result.summary).isEqualTo(newSummary)
+        assertThat(result.solveTime).isEqualTo(newSolveTime)
+        verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
+    }
+
+    @Test
+    @DisplayName("updateRetrospective는 소유자가 아니면 예외를 발생시킨다")
+    fun `회고 수정 실패 - 소유자가 아님`() {
+        // given
+        val retrospectiveId = "retrospective-id"
+        val ownerId = "owner-123"
+        val attackerId = "attacker-456"
+        val ownerStudent = createStudent(id = ownerId)
+        val attackerStudent = createStudent(id = attackerId)
+        val existingRetrospective = Retrospective(
+            id = retrospectiveId,
+            studentId = ownerId,
+            problemId = "1000",
+            content = "기존 회고 내용입니다."
+        )
+
+        every { retrospectiveRepository.findById(retrospectiveId) } returns Optional.of(existingRetrospective)
+        every { studentRepository.findById(attackerId) } returns Optional.of(attackerStudent)
+
+        // when & then
+        val exception = assertThrows<BusinessException> {
+            retrospectiveService.updateRetrospective(
+                retrospectiveId = retrospectiveId,
+                studentId = attackerId,
+                content = "수정된 내용입니다.",
+                summary = null,
+                solutionResult = null,
+                solvedCategory = null,
+                solveTime = null
+            )
+        }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.ACCESS_DENIED)
     }
 
     @Test
@@ -235,10 +318,10 @@ class RetrospectiveServiceTest {
         every { studentRepository.findById(attackerId) } returns Optional.of(attackerStudent)
 
         // when & then
-        val exception = assertThrows<IllegalArgumentException> {
+        val exception = assertThrows<BusinessException> {
             retrospectiveService.deleteRetrospective("retro-1", attackerId)
         }
-        assertThat(exception.message).contains("회고 소유자가 아닙니다")
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.ACCESS_DENIED)
     }
 
     @Test

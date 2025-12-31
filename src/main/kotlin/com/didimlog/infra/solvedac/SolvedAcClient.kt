@@ -45,7 +45,7 @@ data class SolvedAcUserResponse(
      * rating 값을 tier로 변환 (0이면 1로 처리하여 BRONZE로 매핑)
      */
     val tier: Int
-        get() = if (rating <= 0) 1 else rating
+        get() = rating.coerceAtLeast(1)
 }
 
 object SolvedAcTierMapper {

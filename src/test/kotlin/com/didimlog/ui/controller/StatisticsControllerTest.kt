@@ -60,7 +60,11 @@ class StatisticsControllerTest {
             categoryDistribution = emptyMap(),
             algorithmCategoryDistribution = emptyMap(),
             topUsedAlgorithms = emptyList(),
-            totalSolvedCount = 10
+            totalSolvedCount = 10,
+            totalRetrospectives = 0L,
+            averageSolveTime = 0.0,
+            successRate = 0.0,
+            tagRadarData = emptyList()
         )
 
         every { statisticsService.getStatistics("bojId") } returns statisticsInfo

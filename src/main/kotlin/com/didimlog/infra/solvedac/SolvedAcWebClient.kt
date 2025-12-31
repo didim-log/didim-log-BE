@@ -86,16 +86,16 @@ class SolvedAcWebClient(
                 )
         } catch (e: WebClientResponseException) {
             log.error("Solved.ac API 호출 실패 (사용자 조회): bojId=${bojId.value}, status=${e.statusCode}, message=${e.message}", e)
-            when (e.statusCode) {
-                HttpStatus.NOT_FOUND -> throw BusinessException(
+            if (e.statusCode == HttpStatus.NOT_FOUND) {
+                throw BusinessException(
                     ErrorCode.COMMON_RESOURCE_NOT_FOUND,
                     "Solved.ac에서 사용자를 찾을 수 없습니다. bojId=${bojId.value}"
                 )
-                else -> throw BusinessException(
-                    ErrorCode.COMMON_INTERNAL_ERROR,
-                    "Solved.ac API 호출에 실패했습니다. bojId=${bojId.value}, status=${e.statusCode}"
-                )
             }
+            throw BusinessException(
+                ErrorCode.COMMON_INTERNAL_ERROR,
+                "Solved.ac API 호출에 실패했습니다. bojId=${bojId.value}, status=${e.statusCode}"
+            )
         } catch (e: BusinessException) {
             throw e
         } catch (e: Exception) {

@@ -33,6 +33,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -106,7 +107,8 @@ class RetrospectiveController(
             content = request.content,
             summary = request.summary,
             solutionResult = request.resultType,
-            solvedCategory = request.solvedCategory
+            solvedCategory = request.solvedCategory,
+            solveTime = request.solveTime
         )
         val response = RetrospectiveResponse.from(retrospective)
         return ResponseEntity.ok(response)
@@ -165,26 +167,35 @@ class RetrospectiveController(
         sort: String?
     ): ResponseEntity<RetrospectivePageResponse> {
         // 인증된 사용자의 경우, 자신의 studentId만 조회 가능하도록 제한
-        val effectiveStudentId = if (authentication != null) {
-            val bojId = authentication.name
-            val currentStudent = getStudentByBojId(bojId)
-            currentStudent.id
-        } else {
-            // 인증되지 않은 경우, studentId 파라미터 사용 (공개 조회)
-            studentId
+        if (authentication == null) {
+            val response = searchRetrospectives(keyword, category, isBookmarked, studentId, page, size, sort)
+            return ResponseEntity.ok(response)
         }
 
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val response = searchRetrospectives(keyword, category, isBookmarked, currentStudent.id, page, size, sort)
+        return ResponseEntity.ok(response)
+    }
+
+    private fun searchRetrospectives(
+        keyword: String?,
+        category: String?,
+        isBookmarked: Boolean?,
+        studentId: String?,
+        page: Int,
+        size: Int,
+        sort: String?
+    ): RetrospectivePageResponse {
         val pageable = createPageable(page, size, sort)
         val condition = RetrospectiveSearchCondition(
             keyword = keyword,
             category = category?.let { parseProblemCategory(it) },
             isBookmarked = isBookmarked,
-            studentId = effectiveStudentId
+            studentId = studentId
         )
-
         val pageResult = retrospectiveService.searchRetrospectives(condition, pageable)
-        val response = RetrospectivePageResponse.from(pageResult)
-        return ResponseEntity.ok(response)
+        return RetrospectivePageResponse.from(pageResult)
     }
 
     @Operation(
@@ -245,9 +256,16 @@ class RetrospectiveController(
             return PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
         }
 
-        val direction = if (parts[1].lowercase() == "asc") Sort.Direction.ASC else Sort.Direction.DESC
+        val direction = resolveSortDirection(parts[1])
         val sortObj = Sort.by(direction, parts[0])
         return PageRequest.of(page - 1, size, sortObj)
+    }
+
+    private fun resolveSortDirection(raw: String): Sort.Direction {
+        if (raw.lowercase() == "asc") {
+            return Sort.Direction.ASC
+        }
+        return Sort.Direction.DESC
     }
 
     private fun parseProblemCategory(raw: String): ProblemCategory {
@@ -374,6 +392,63 @@ class RetrospectiveController(
             errorMessage = request.errorMessage
         )
         val response = TemplateResponse(template = template)
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "회고 수정",
+        description = "작성된 회고를 수정합니다. 제목, 내용, 풀이 시간, 결과 등을 수정할 수 있습니다. JWT 토큰에서 사용자 정보를 자동으로 추출하여 소유권을 검증합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "수정 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패 또는 잘못된 입력",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PatchMapping("/{retrospectiveId}")
+    fun updateRetrospective(
+        authentication: Authentication,
+        @Parameter(description = "회고 ID", required = true)
+        @PathVariable retrospectiveId: String,
+        @RequestBody
+        @Valid
+        request: RetrospectiveRequest
+    ): ResponseEntity<RetrospectiveResponse> {
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        val retrospective = retrospectiveService.updateRetrospective(
+            retrospectiveId = retrospectiveId,
+            studentId = studentId,
+            content = request.content,
+            summary = request.summary,
+            solutionResult = request.resultType,
+            solvedCategory = request.solvedCategory,
+            solveTime = request.solveTime
+        )
+        val response = RetrospectiveResponse.from(retrospective)
         return ResponseEntity.ok(response)
     }
 }

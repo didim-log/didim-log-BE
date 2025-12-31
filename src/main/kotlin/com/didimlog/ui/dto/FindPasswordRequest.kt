@@ -10,3 +10,5 @@ data class FindPasswordRequest(
     @field:NotBlank(message = "BOJ ID는 필수입니다.")
     val bojId: String
 )
+
+

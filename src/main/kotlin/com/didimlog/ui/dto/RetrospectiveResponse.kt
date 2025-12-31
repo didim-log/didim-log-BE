@@ -16,7 +16,8 @@ data class RetrospectiveResponse(
     val isBookmarked: Boolean,
     val mainCategory: String?,
     val solutionResult: String?, // 풀이 결과 (SUCCESS/FAIL)
-    val solvedCategory: String? // 사용자가 선택한 풀이 전략 태그
+    val solvedCategory: String?, // 사용자가 선택한 풀이 전략 태그
+    val solveTime: String? // 풀이 소요 시간
 ) {
     companion object {
         fun from(retrospective: Retrospective): RetrospectiveResponse {
@@ -30,7 +31,8 @@ data class RetrospectiveResponse(
                 isBookmarked = retrospective.isBookmarked,
                 mainCategory = retrospective.mainCategory?.name,
                 solutionResult = retrospective.solutionResult?.name,
-                solvedCategory = retrospective.solvedCategory
+                solvedCategory = retrospective.solvedCategory,
+                solveTime = retrospective.solveTime
             )
         }
     }

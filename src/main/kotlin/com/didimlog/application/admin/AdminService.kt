@@ -9,6 +9,7 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.global.util.SensitiveDataMasker
 import com.didimlog.ui.dto.AdminUserResponse
 import com.didimlog.ui.dto.AdminUserUpdateDto
 import org.slf4j.LoggerFactory
@@ -222,11 +223,7 @@ class AdminService(
         }
 
         val normalized = role.trim().uppercase()
-        val value = if (normalized.startsWith("ROLE_")) {
-            normalized.removePrefix("ROLE_")
-        } else {
-            normalized
-        }
+        val value = normalized.removePrefix("ROLE_")
 
         val parsed = Role.from(value)
             ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 권한입니다. role=$role")
@@ -239,8 +236,9 @@ class AdminService(
     }
 
     private fun toAuditSnapshot(student: Student): String {
-        val bojId = student.bojId?.value
-        return "studentId=${student.id}, provider=${student.provider.value}, providerId=${student.providerId}, role=${student.role.value}, nickname=${student.nickname.value}, bojId=$bojId"
+        val maskedProviderId = SensitiveDataMasker.maskId(student.providerId)
+        val maskedBojId = student.bojId?.value?.let { SensitiveDataMasker.maskId(it) }
+        return "studentId=${student.id}, provider=${student.provider.value}, providerId=$maskedProviderId, role=${student.role.value}, nickname=${student.nickname.value}, bojId=$maskedBojId"
     }
 
     /**

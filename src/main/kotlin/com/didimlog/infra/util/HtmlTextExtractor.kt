@@ -22,10 +22,13 @@ object HtmlTextExtractor {
         return try {
             val doc = Jsoup.parse(html)
             val text = doc.text()
-            if (text.isBlank()) null else text
+            text.takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             // 파싱 실패 시 원본 HTML 반환 (최소한의 대응)
             html
         }
     }
 }
+
+
+

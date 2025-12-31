@@ -45,7 +45,8 @@ class RetrospectiveService(
         content: String,
         summary: String? = null,
         solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
-        solvedCategory: String? = null
+        solvedCategory: String? = null,
+        solveTime: String? = null
     ): Retrospective {
         val student = getStudent(studentId)
         validateProblemExists(problemId)
@@ -53,10 +54,10 @@ class RetrospectiveService(
         val existingRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
 
         if (existingRetrospective != null) {
-            existingRetrospective.validateOwner(student)
+            validateOwnerOrThrow(existingRetrospective, student)
             val updatedRetrospective = existingRetrospective
                 .updateContent(content, summary)
-                .updateSolutionInfo(solutionResult, solvedCategory)
+                .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
             return retrospectiveRepository.save(updatedRetrospective)
         }
 
@@ -66,7 +67,8 @@ class RetrospectiveService(
             content = content,
             summary = summary,
             solutionResult = solutionResult,
-            solvedCategory = solvedCategory
+            solvedCategory = solvedCategory,
+            solveTime = solveTime
         )
         return retrospectiveRepository.save(newRetrospective)
     }
@@ -85,6 +87,42 @@ class RetrospectiveService(
     }
 
     /**
+     * 회고를 수정한다.
+     * 소유권 검증을 수행한다.
+     *
+     * @param retrospectiveId 회고 ID
+     * @param studentId 수정을 시도하는 학생 ID (보안 검증용)
+     * @param content 회고 내용
+     * @param summary 한 줄 요약 (선택사항)
+     * @param solutionResult 풀이 결과 (선택사항)
+     * @param solvedCategory 사용자가 선택한 풀이 전략 태그 (선택사항)
+     * @param solveTime 풀이 소요 시간 (선택사항)
+     * @return 수정된 회고
+     * @throws BusinessException 회고를 찾을 수 없거나 소유자가 아닌 경우
+     */
+    @Transactional
+    fun updateRetrospective(
+        retrospectiveId: String,
+        studentId: String,
+        content: String,
+        summary: String? = null,
+        solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
+        solvedCategory: String? = null,
+        solveTime: String? = null
+    ): Retrospective {
+        val retrospective = getRetrospective(retrospectiveId)
+        val student = getStudent(studentId)
+
+        validateOwnerOrThrow(retrospective, student)
+
+        val updatedRetrospective = retrospective
+            .updateContent(content, summary)
+            .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
+
+        return retrospectiveRepository.save(updatedRetrospective)
+    }
+
+    /**
      * 회고를 삭제한다.
      * 소유권 검증을 수행한다.
      *
@@ -97,10 +135,18 @@ class RetrospectiveService(
         val retrospective = getRetrospective(retrospectiveId)
         val student = getStudent(studentId)
 
-        retrospective.validateOwner(student)
+        validateOwnerOrThrow(retrospective, student)
 
         retrospectiveRepository.delete(retrospective)
         return retrospective
+    }
+
+    private fun validateOwnerOrThrow(retrospective: Retrospective, student: Student) {
+        try {
+            retrospective.validateOwner(student)
+        } catch (e: IllegalArgumentException) {
+            throw BusinessException(ErrorCode.ACCESS_DENIED, e.message ?: ErrorCode.ACCESS_DENIED.message)
+        }
     }
 
     /**

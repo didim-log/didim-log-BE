@@ -10,7 +10,11 @@ data class StatisticsResponse(
     val categoryDistribution: Map<String, Int>,
     val algorithmCategoryDistribution: Map<String, Int>,
     val topUsedAlgorithms: List<TopUsedAlgorithmResponse>,
-    val totalSolvedCount: Int
+    val totalSolvedCount: Int,
+    val totalRetrospectives: Long,
+    val averageSolveTime: Double,
+    val successRate: Double,
+    val tagRadarData: List<TagStatResponse>
 ) {
     companion object {
         fun from(statisticsInfo: StatisticsInfo): StatisticsResponse {
@@ -19,7 +23,11 @@ data class StatisticsResponse(
                 categoryDistribution = statisticsInfo.categoryDistribution,
                 algorithmCategoryDistribution = statisticsInfo.algorithmCategoryDistribution,
                 topUsedAlgorithms = statisticsInfo.topUsedAlgorithms.map { TopUsedAlgorithmResponse.from(it) },
-                totalSolvedCount = statisticsInfo.totalSolvedCount
+                totalSolvedCount = statisticsInfo.totalSolvedCount,
+                totalRetrospectives = statisticsInfo.totalRetrospectives,
+                averageSolveTime = statisticsInfo.averageSolveTime,
+                successRate = statisticsInfo.successRate,
+                tagRadarData = statisticsInfo.tagRadarData.map { TagStatResponse.from(it) }
             )
         }
     }
@@ -56,6 +64,25 @@ data class TopUsedAlgorithmResponse(
             return TopUsedAlgorithmResponse(
                 name = topUsedAlgorithm.name,
                 count = topUsedAlgorithm.count
+            )
+        }
+    }
+}
+
+/**
+ * 태그별 통계 응답 DTO (레이더 차트용)
+ */
+data class TagStatResponse(
+    val tag: String,
+    val count: Int,
+    val fullMark: Int
+) {
+    companion object {
+        fun from(tagStat: com.didimlog.application.statistics.TagStat): TagStatResponse {
+            return TagStatResponse(
+                tag = tagStat.tag,
+                count = tagStat.count,
+                fullMark = tagStat.fullMark
             )
         }
     }

@@ -133,3 +133,5 @@ class AiPromptFactoryTemplateTest {
         assertThat(result).contains("CS 지식이나 프레임워크 동작 원리와 관련된 키워드")
     }
 }
+
+

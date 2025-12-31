@@ -11,6 +11,8 @@ object PasswordValidator {
     private val LETTER_PATTERN = Regex("[a-zA-Z]")
     private val DIGIT_PATTERN = Regex("[0-9]")
     private val SPECIAL_PATTERN = Regex("[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]")
+    private const val MIN_LENGTH_FOR_THREE_TYPES = 8
+    private const val MIN_LENGTH_FOR_TWO_TYPES = 10
 
     /**
      * 비밀번호 복잡도를 검증한다.
@@ -39,26 +41,20 @@ object PasswordValidator {
 
         val typeCount = listOf(hasLetter, hasDigit, hasSpecial).count { it }
 
-        when {
-            typeCount >= 3 -> {
-                if (password.length < 8) {
-                    throw InvalidPasswordException(
-                        "영문, 숫자, 특수문자 3종류 이상 조합 시 최소 8자리 이상이어야 합니다."
-                    )
-                }
-            }
-            typeCount >= 2 -> {
-                if (password.length < 10) {
-                    throw InvalidPasswordException(
-                        "영문, 숫자, 특수문자 중 2종류 이상 조합 시 최소 10자리 이상이어야 합니다."
-                    )
-                }
-            }
-            else -> {
-                throw InvalidPasswordException(
-                    "영문, 숫자, 특수문자 중 최소 2종류 이상을 조합해야 합니다."
-                )
-            }
+        if (typeCount < 2) {
+            throw InvalidPasswordException("영문, 숫자, 특수문자 중 최소 2종류 이상을 조합해야 합니다.")
+        }
+
+        if (typeCount == 2 && password.length < MIN_LENGTH_FOR_TWO_TYPES) {
+            throw InvalidPasswordException(
+                "영문, 숫자, 특수문자 중 2종류 이상 조합 시 최소 10자리 이상이어야 합니다."
+            )
+        }
+
+        if (typeCount >= 3 && password.length < MIN_LENGTH_FOR_THREE_TYPES) {
+            throw InvalidPasswordException(
+                "영문, 숫자, 특수문자 3종류 이상 조합 시 최소 8자리 이상이어야 합니다."
+            )
         }
     }
 

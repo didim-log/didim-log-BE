@@ -20,6 +20,10 @@ class StaticTemplateService(
     @Autowired(required = false) private val aiKeywordService: AiKeywordService?,
     @Value("\${app.ai.enabled:false}") private val aiEnabled: Boolean
 ) {
+    companion object {
+        private const val DEFAULT_ERROR_MESSAGE = "에러 로그를 확인할 수 없습니다."
+        private const val DEFAULT_CODE_LANGUAGE = "text"
+    }
 
     /**
      * 정적 회고 템플릿을 생성한다.
@@ -47,12 +51,24 @@ class StaticTemplateService(
         val problem = problemService.getProblemDetail(problemId.toLong())
         val codeLanguage = detectCodeLanguage(code).uppercase()
 
-        val template = when {
-            isSuccess -> generateSuccessTemplate(problem.id.value, problem.title, codeLanguage, code)
-            else -> generateFailureTemplate(problem.id.value, problem.title, codeLanguage, code, errorMessage ?: "에러 로그를 확인할 수 없습니다.")
-        }
+        val template = createTemplate(problem.id.value, problem.title, codeLanguage, code, isSuccess, errorMessage)
 
         return injectAiKeywords(template, problemId, code, isSuccess)
+    }
+
+    private fun createTemplate(
+        problemId: String,
+        problemTitle: String,
+        codeLanguage: String,
+        code: String,
+        isSuccess: Boolean,
+        errorMessage: String?
+    ): String {
+        if (isSuccess) {
+            return generateSuccessTemplate(problemId, problemTitle, codeLanguage, code)
+        }
+        val message = errorMessage ?: DEFAULT_ERROR_MESSAGE
+        return generateFailureTemplate(problemId, problemTitle, codeLanguage, code, message)
     }
 
     /**
@@ -198,20 +214,37 @@ class StaticTemplateService(
     private fun detectCodeLanguage(code: String): String {
         val normalizedCode = code.trim()
         if (normalizedCode.isEmpty()) {
-            return "text"
+            return DEFAULT_CODE_LANGUAGE
         }
 
-        when {
-            normalizedCode.contains("def ") || normalizedCode.contains("import ") && normalizedCode.contains("print(") -> return "python"
-            normalizedCode.contains("fun ") || normalizedCode.contains("val ") || normalizedCode.contains("class ") && normalizedCode.contains(":") -> return "kotlin"
-            normalizedCode.contains("public class") || normalizedCode.contains("public static") || normalizedCode.contains("System.out.println") -> return "java"
-            normalizedCode.contains("#include") || normalizedCode.contains("int main") -> return "cpp"
-            normalizedCode.contains("function ") || normalizedCode.contains("const ") || normalizedCode.contains("let ") -> return "javascript"
-            normalizedCode.contains("package ") && normalizedCode.contains("func ") -> return "go"
-            normalizedCode.contains("fn ") && normalizedCode.contains("let ") -> return "rust"
-            normalizedCode.contains("using ") && normalizedCode.contains("namespace ") -> return "csharp"
-            else -> return "text"
+        if (normalizedCode.contains("def ") || (normalizedCode.contains("import ") && normalizedCode.contains("print("))) {
+            return "python"
         }
+        if (normalizedCode.contains("fun ") || normalizedCode.contains("val ") || (normalizedCode.contains("class ") && normalizedCode.contains(":"))) {
+            return "kotlin"
+        }
+        if (normalizedCode.contains("public class") ||
+            normalizedCode.contains("public static") ||
+            normalizedCode.contains("System.out.println")
+        ) {
+            return "java"
+        }
+        if (normalizedCode.contains("#include") || normalizedCode.contains("int main")) {
+            return "cpp"
+        }
+        if (normalizedCode.contains("function ") || normalizedCode.contains("const ") || normalizedCode.contains("let ")) {
+            return "javascript"
+        }
+        if (normalizedCode.contains("package ") && normalizedCode.contains("func ")) {
+            return "go"
+        }
+        if (normalizedCode.contains("fn ") && normalizedCode.contains("let ")) {
+            return "rust"
+        }
+        if (normalizedCode.contains("using ") && normalizedCode.contains("namespace ")) {
+            return "csharp"
+        }
+        return DEFAULT_CODE_LANGUAGE
     }
 
 }
