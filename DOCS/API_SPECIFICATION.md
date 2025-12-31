@@ -11,13 +11,18 @@
 - [StudyController](#studycontroller)
 - [RetrospectiveController](#retrospectivecontroller)
 - [DashboardController](#dashboardcontroller)
+- [LogController](#logcontroller)
+- [MemberController](#membercontroller)
 - [StudentController](#studentcontroller)
 - [QuoteController](#quotecontroller)
 - [StatisticsController](#statisticscontroller)
 - [RankingController](#rankingcontroller)
 - [AdminController](#admincontroller)
+- [AdminMemberController](#adminmembercontroller)
 - [AdminDashboardController](#admindashboardcontroller)
+- [SystemController](#systemcontroller)
 - [ProblemCollectorController](#problemcollectorcontroller)
+- [NoticeController](#noticecontroller)
 - [FeedbackController](#feedbackcontroller)
 
 ---
@@ -30,8 +35,9 @@
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/auth/signup` | BOJ ID, 비밀번호, 이메일을 입력받아 Solved.ac API로 검증 후 회원가입을 진행하고 JWT 토큰을 발급합니다. 비밀번호는 BCrypt로 암호화되어 저장됩니다. Solved.ac의 Rating(점수)을 기반으로 티어를 자동 계산합니다. 이메일은 아이디/비밀번호 찾기에 사용됩니다. | **Request Body:**<br>`SignupRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - **비밀번호 정책:**<br>    - 영문, 숫자, 특수문자 중 **3종류 이상 조합**: 최소 **8자리** 이상<br>    - 영문, 숫자, 특수문자 중 **2종류 이상 조합**: 최소 **10자리** 이상<br>    - 공백 포함 불가<br>- `email` (String, required): 이메일 주소<br>  - 유효성: `@NotBlank`, `@Email`<br>  - **중복 불가** (이미 사용 중인 이메일이면 400 발생)<br>  - 아이디/비밀번호 찾기에 사용됨 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/login` | BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 시 Solved.ac API를 통해 Rating 및 Tier 정보를 동기화합니다. | **Request Body:**<br>`LoginRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상) | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token<br>- `message` (String): 응답 메시지 ("로그인에 성공했습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
+| GET | `/api/v1/auth/check-duplicate` | 회원가입 2단계(인증) 전, 입력한 BOJ ID가 이미 가입된 계정인지 확인합니다. | **Query Parameters:**<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank` | `BojIdDuplicateCheckResponse`<br><br>**BojIdDuplicateCheckResponse 구조:**<br>- `isDuplicate` (Boolean): 중복 여부<br>- `message` (String): 안내 메시지 | None |
 | POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `email` (String, required): 이메일 주소<br>  - 유효성: `@NotBlank`, `@Email`<br>  - **중복 불가** (이미 사용 중인 이메일이면 400 발생)<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
-| POST | `/api/v1/auth/signup/finalize` | 소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되며 정식 Access Token이 발급됩니다. | **Request Body:**<br>`SignupFinalizeRequest`<br>- `email` (String, required): 사용자 이메일<br>  - 유효성: `@NotBlank` (null/공백 불가)<br>  - **GitHub 비공개 이메일 등 제공자에서 이메일을 내려주지 않는 경우**: 프론트엔드에서 사용자가 직접 입력한 값을 전달해야 함<br>- `provider` (String, required): 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)<br>  - 유효성: `@NotBlank`<br>- `providerId` (String, required): 제공자별 사용자 ID<br>  - 유효성: `@NotBlank`<br>- `nickname` (String, required): 설정할 닉네임<br>  - 유효성: `@NotBlank`<br>- `bojId` (String, optional): BOJ ID (선택)<br>  - 제공된 경우 Solved.ac API로 검증 및 Rating 조회<br>  - **중복 불가** (이미 존재하는 BOJ ID면 409 발생)<br>- `isAgreedToTerms` (Boolean, required): 약관 동의 여부<br>  - 유효성: `@NotNull`<br>  - 반드시 `true`여야 함 (약관 동의는 필수)<br><br>※ 서버는 호환성을 위해 `termsAgreed`도 함께 지원합니다. | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (USER role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수, BOJ ID가 제공된 경우)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER", "BRONZE")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
+| POST | `/api/v1/auth/signup/finalize` | 소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되며 정식 Access Token이 발급됩니다. | **Request Body:**<br>`SignupFinalizeRequest`<br>- `email` (String, required): 사용자 이메일<br>  - 유효성: `@NotBlank` (null/공백 불가)<br>  - **GitHub 비공개 이메일 등 제공자에서 이메일을 내려주지 않는 경우**: 프론트엔드에서 사용자가 직접 입력한 값을 전달해야 함<br>- `provider` (String, required): 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)<br>  - 유효성: `@NotBlank`<br>- `providerId` (String, required): 제공자별 사용자 ID<br>  - 유효성: `@NotBlank`<br>- `nickname` (String, required): 설정할 닉네임<br>  - 유효성: `@NotBlank`<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$`<br>- `bojId` (String, optional): BOJ ID (선택)<br>  - 제공된 경우 Solved.ac API로 검증 및 Rating 조회<br>  - **중복 불가** (이미 존재하는 BOJ ID면 409 발생)<br>- `isAgreedToTerms` (Boolean, required): 약관 동의 여부<br>  - 유효성: `@NotNull`<br>  - 반드시 `true`여야 함 (약관 동의는 필수)<br><br>※ 서버는 호환성을 위해 `termsAgreed`도 함께 지원합니다. | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (USER role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수, BOJ ID가 제공된 경우)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER", "BRONZE")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/find-account` | 이메일을 입력받아 가입된 소셜 제공자(Provider)를 반환합니다. | **Request Body:**<br>`FindAccountRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindAccountResponse`<br>- `provider` (String)<br>- `message` (String) | None |
 | POST | `/api/v1/auth/find-id` | 이메일을 입력받아 해당 이메일로 가입된 계정의 BOJ ID를 이메일로 전송합니다. | **Request Body:**<br>`FindIdRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindIdPasswordResponse`<br>- `message` (String): "이메일로 아이디가 전송되었습니다." | None |
 | POST | `/api/v1/auth/find-password` | 이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 비밀번호 재설정 코드(8자리 영문+숫자 조합)를 생성하여 Redis에 저장하고 이메일로 전송합니다. 코드는 30분간 유효합니다. | **Request Body:**<br>`FindPasswordRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank` | `FindIdPasswordResponse`<br>- `message` (String): "이메일로 비밀번호 재설정 코드가 전송되었습니다." | None |
@@ -81,6 +87,37 @@ Content-Type: application/json
   "rating": 1223,
   "tier": "GOLD",
   "tierLevel": 13
+}
+```
+
+**예시 요청 (BOJ ID 중복 체크):**
+```http
+GET /api/v1/auth/check-duplicate?bojId=user123
+```
+
+**예시 응답 (BOJ ID 중복 체크 - 중복):**
+```json
+{
+  "isDuplicate": true,
+  "message": "이미 가입된 BOJ ID입니다."
+}
+```
+
+**예시 응답 (BOJ ID 중복 체크 - 사용 가능):**
+```json
+{
+  "isDuplicate": false,
+  "message": "사용 가능한 BOJ ID입니다."
+}
+```
+
+**에러 응답 예시 (BOJ ID 중복 체크 - 필수 파라미터 누락):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_VALIDATION_FAILED",
+  "message": "bojId: 필수 요청 파라미터입니다."
 }
 ```
 
@@ -507,7 +544,7 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. **보안:** 쿼리 파라미터의 `studentId`와 JWT 토큰의 사용자 정보가 일치해야 합니다. 일치하지 않으면 403 Forbidden이 반환됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그 | JWT Token |
+| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. **보안:** 쿼리 파라미터의 `studentId`와 JWT 토큰의 사용자 정보가 일치해야 합니다. 일치하지 않으면 403 Forbidden이 반환됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "15m 30s" 또는 초 단위 문자열<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
 | GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
@@ -559,6 +596,20 @@ Content-Type: application/json
 
 {
   "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다."
+}
+```
+
+**예시 요청 (회고 작성 - 풀이 시간 포함):**
+```http
+POST /api/v1/retrospectives?studentId=student-123&problemId=1000
+Content-Type: application/json
+
+{
+  "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다.",
+  "summary": "두 수의 합을 구하는 기본 구현 문제",
+  "resultType": "SUCCESS",
+  "solvedCategory": "Implementation",
+  "solveTime": "15m 30s"
 }
 ```
 
@@ -641,20 +692,52 @@ POST /api/v1/retrospectives/retrospective-123/bookmark
 }
 ```
 
-**예시 요청 (회고 삭제):**
+**예시 요청 (회고 수정):**
 ```http
-DELETE /api/v1/retrospectives/retrospective-123
+PATCH /api/v1/retrospectives/retrospective-123
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "content": "수정된 회고 내용입니다. 더 자세한 분석을 추가했습니다.",
+  "summary": "수정된 한 줄 요약",
+  "resultType": "SUCCESS",
+  "solvedCategory": "DFS",
+  "solveTime": "20m 15s"
+}
+```
+
+**예시 응답 (회고 수정):**
+```json
+{
+  "id": "retrospective-123",
+  "studentId": "student-123",
+  "problemId": "1000",
+  "content": "수정된 회고 내용입니다. 더 자세한 분석을 추가했습니다.",
+  "summary": "수정된 한 줄 요약",
+  "createdAt": "2024-01-15T10:30:00",
+  "isBookmarked": false,
+  "mainCategory": null,
+  "solutionResult": "SUCCESS",
+  "solvedCategory": "DFS",
+  "solveTime": "20m 15s"
+}
 ```
 
 **에러 응답 예시 (소유자가 아닌 경우):**
 ```json
 {
-  "status": 400,
-  "error": "Bad Request",
-  "code": "COMMON_INVALID_INPUT",
+  "status": 403,
+  "error": "Forbidden",
+  "code": "ACCESS_DENIED",
   "message": "회고 소유자가 아닙니다. studentId=attacker-456"
 }
+```
+
+**예시 요청 (회고 삭제):**
+```http
+DELETE /api/v1/retrospectives/retrospective-123
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 **예시 응답 (회고 삭제):**
@@ -793,13 +876,107 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ---
 
+## LogController
+
+코딩 로그(Log) 관련 API를 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/logs/{logId}/template` | 로그 데이터를 기반으로 **정적 Markdown 템플릿**을 생성하여 반환합니다. 문자열 마지막에는 반드시 아래 footer가 붙습니다.<br><br>```<br>---<br>Generated by DidimLog<br>``` | **Path Variables:**<br>- `logId` (String, required): 로그 ID | `LogTemplateResponse`<br>- `markdown` (String): 생성된 Markdown | None |
+| POST | `/api/v1/logs/{logId}/ai-review` | 로그의 코드에 대한 **AI 한 줄 리뷰**를 생성/조회합니다.<br><br>**비용 절감 로직:**<br>- DB의 `aiReview`가 이미 존재하면 **외부 AI 호출 없이** 즉시 반환합니다.<br>- 코드가 2000자를 초과하면 프롬프트 입력을 2000자까지만 잘라서 사용합니다.<br><br>**중복 호출 방지(멀티 인스턴스):**<br>- 동일 `logId`에 대해 동시에 요청이 들어오면, MongoDB의 원자적 락으로 **외부 AI 호출은 1회만** 수행됩니다.<br>- 락이 잡혀 있고 아직 결과가 없으면 아래 메시지를 반환할 수 있습니다: `AI review is being generated. Please retry shortly.` | **Path Variables:**<br>- `logId` (String, required): 로그 ID | `AiReviewResponse`<br>- `review` (String): 한 줄 리뷰 또는 안내 메시지<br>- `cached` (Boolean): 캐시 히트 여부 | None |
+
+**예시 응답 (정적 템플릿 생성):**
+```json
+{
+  "markdown": "# 제목\n\n- Date: 2025-12-31T12:00\n\n내용\n\n---\nGenerated by DidimLog\n"
+}
+```
+
+**예시 응답 (AI 한 줄 리뷰 - 캐시됨):**
+```json
+{
+  "review": "cached review",
+  "cached": true
+}
+```
+
+**예시 응답 (AI 한 줄 리뷰 - 새로 생성):**
+```json
+{
+  "review": "한 줄 리뷰: 핵심 로직은 좋지만 함수 분리를 고려해보세요.",
+  "cached": false
+}
+```
+
+**예시 응답 (AI 한 줄 리뷰 - 생성 중):**
+```json
+{
+  "review": "AI review is being generated. Please retry shortly.",
+  "cached": false
+}
+```
+
+**에러 응답 예시 (AI 생성 실패):**
+```json
+{
+  "status": 503,
+  "error": "Service Unavailable",
+  "code": "AI_GENERATION_FAILED",
+  "message": "AI 리뷰 생성에 실패했습니다. 잠시 후 다시 시도해주세요."
+}
+```
+
+---
+
+## MemberController
+
+회원 닉네임 관리 관련 API를 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/members/check-nickname` | 닉네임이 **유효하고** 중복이 아니면 `true`, 그렇지 않으면 `false`를 반환합니다. (유효성 검증 + 중복 체크) | **Query Parameters:**<br>- `nickname` (String, required): 닉네임<br>  - 유효성: `@NotBlank`<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$` | `Boolean` | None |
+| PATCH | `/api/v1/members/me/nickname` | 로그인한 사용자의 닉네임을 변경합니다. 변경 시 **유효성 + 중복 검사**를 수행합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateMyNicknameRequest`<br>- `nickname` (String, required)<br>  - 유효성: `@NotBlank`<br>  - 닉네임 정책은 위와 동일 | `204 No Content` | JWT Token |
+
+**예시 요청 (닉네임 사용 가능 여부):**
+```http
+GET /api/v1/members/check-nickname?nickname=user_01
+```
+
+**예시 응답 (사용 가능):**
+```json
+true
+```
+
+**예시 응답 (사용 불가):**
+```json
+false
+```
+
+**예시 요청 (내 닉네임 변경):**
+```http
+PATCH /api/v1/members/me/nickname
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "nickname": "user_01"
+}
+```
+
+**예시 응답 (성공):**
+```http
+204 No Content
+```
+
+---
+
 ## StudentController
 
 학생 프로필 관리 관련 API를 제공합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| PATCH | `/api/v1/students/me` | 학생의 닉네임, 비밀번호, 주 언어를 수정합니다. 각 필드는 선택적으로 변경할 수 있으며, 비밀번호 변경 시 현재 비밀번호 검증이 필요합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - 유효성: `@Size(min=2, max=20)` (2자 이상 20자 이하)<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음<br>- `primaryLanguage` (PrimaryLanguage, optional): 주로 사용하는 프로그래밍 언어<br>  - 가능한 값: `JAVA`, `PYTHON`, `KOTLIN`, `JAVASCRIPT`, `CPP`, `GO`, `RUST`, `SWIFT`, `TEXT`<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
+| PATCH | `/api/v1/students/me` | 학생의 닉네임, 비밀번호, 주 언어를 수정합니다. 각 필드는 선택적으로 변경할 수 있으며, 비밀번호 변경 시 현재 비밀번호 검증이 필요합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$`<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음<br>- `primaryLanguage` (PrimaryLanguage, optional): 주로 사용하는 프로그래밍 언어<br>  - 가능한 값: `JAVA`, `PYTHON`, `KOTLIN`, `JAVASCRIPT`, `CPP`, `GO`, `RUST`, `SWIFT`, `TEXT`<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
 | DELETE | `/api/v1/students/me` | 로그인한 사용자의 계정 및 연관 데이터(회고/피드백)를 완전히 삭제합니다. (Hard Delete, 복구 불가) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `204 No Content` (성공 시) | JWT Token |
 
 **예시 요청 (닉네임만 변경):**
@@ -943,7 +1120,7 @@ GET /api/v1/quotes/random
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/statistics` | 학생의 월별 잔디(Heatmap), 카테고리별 분포, 알고리즘 카테고리 통계, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 12개월간의 월별 잔디 데이터<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `algorithmCategoryDistribution` (Map<String, Int>): 알고리즘 카테고리별 사용 통계 (Retrospective의 solvedCategory 기준)<br>- `topUsedAlgorithms` (List<TopUsedAlgorithmResponse>): 가장 많이 사용한 알고리즘 상위 3개<br>- `totalSolvedCount` (Int): 누적 풀이 수<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수<br>- `problemIds` (List<String>): 해당 날짜에 풀이한 문제 ID 목록 (중복 제거됨)<br><br>**TopUsedAlgorithmResponse 구조:**<br>- `name` (String): 알고리즘 이름 (예: "DFS", "DP", "Greedy")<br>- `count` (Int): 사용 횟수 | JWT Token |
+| GET | `/api/v1/statistics` | 학생의 활동 히트맵(Heatmap), 카테고리별 분포, 알고리즘 카테고리 통계, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 365일간의 활동 히트맵 데이터 (오늘 포함하여 정확히 365일)<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `algorithmCategoryDistribution` (Map<String, Int>): 알고리즘 카테고리별 사용 통계 (Retrospective의 solvedCategory 기준)<br>- `topUsedAlgorithms` (List<TopUsedAlgorithmResponse>): 가장 많이 사용한 알고리즘 상위 3개<br>- `totalSolvedCount` (Int): 누적 풀이 수<br>- `totalRetrospectives` (Long): 총 회고 수<br>- `averageSolveTime` (Double): 평균 풀이 시간 (초 단위)<br>- `successRate` (Double): 성공률 (0.0 ~ 100.0, 소수점 첫째 자리까지 반올림)<br>- `tagRadarData` (List<TagStatResponse>): 레이더 차트용 태그별 통계 (상위 5개)<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수<br>- `problemIds` (List<String>): 해당 날짜에 풀이한 문제 ID 목록 (중복 제거됨)<br><br>**TopUsedAlgorithmResponse 구조:**<br>- `name` (String): 알고리즘 이름 (예: "DFS", "DP", "Greedy")<br>- `count` (Int): 사용 횟수<br><br>**TagStatResponse 구조:**<br>- `tag` (String): 태그명<br>- `count` (Int): 해당 태그로 풀이한 문제 수<br>- `fullMark` (Int): 그래프 스케일링용 최대 카운트 값 | JWT Token |
 
 **예시 요청:**
 ```http
@@ -992,7 +1169,37 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
       "count": 8
     }
   ],
-  "totalSolvedCount": 150
+  "totalSolvedCount": 150,
+  "totalRetrospectives": 42,
+  "averageSolveTime": 1800.5,
+  "successRate": 72.5,
+  "tagRadarData": [
+    {
+      "tag": "DFS",
+      "count": 15,
+      "fullMark": 15
+    },
+    {
+      "tag": "DP",
+      "count": 12,
+      "fullMark": 15
+    },
+    {
+      "tag": "Greedy",
+      "count": 8,
+      "fullMark": 15
+    },
+    {
+      "tag": "BFS",
+      "count": 5,
+      "fullMark": 15
+    },
+    {
+      "tag": "Hash",
+      "count": 3,
+      "fullMark": 15
+    }
+  ]
 }
 ```
 
@@ -1131,7 +1338,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "status": 403,
   "error": "Forbidden",
   "code": "ACCESS_DENIED",
-  "message": "Access Denied"
+  "message": "접근 권한이 없습니다."
 }
 ```
 
@@ -1146,6 +1353,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 | GET | `/api/v1/admin/quotes` | 페이징을 적용하여 명언 목록을 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<QuoteResponse>`<br><br>**QuoteResponse 구조:**<br>- `id` (String): 명언 ID<br>- `content` (String): 명언 내용<br>- `author` (String): 저자명<br><br>**Page 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/notices` | 관리자가 공지사항을 작성합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`NoticeCreateRequest`<br>- `title` (String, required): 제목<br>  - 유효성: `@NotBlank`, `@Size(max=200)` (200자 이하)<br>- `content` (String, required): 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10, max=10000)` (10자 이상 10000자 이하)<br>- `isPinned` (Boolean, optional): 상단 고정 여부<br>  - 기본값: false | `NoticeResponse`<br><br>**NoticeResponse 구조:**<br>- `id` (String): 공지사항 ID<br>- `title` (String): 제목<br>- `content` (String): 내용<br>- `isPinned` (Boolean): 상단 고정 여부<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `updatedAt` (LocalDateTime): 수정 일시 (ISO 8601 형식) | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/quotes` | 새로운 명언을 추가합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`QuoteCreateRequest`<br>- `content` (String, required): 명언 내용<br>  - 유효성: `@NotBlank`<br>- `author` (String, required): 저자명<br>  - 유효성: `@NotBlank` | `QuoteResponse`<br><br>**QuoteResponse 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
 | DELETE | `/api/v1/admin/quotes/{quoteId}` | 특정 명언을 삭제합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `quoteId` (String, required): 명언 ID | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): 응답 메시지 ("명언이 성공적으로 삭제되었습니다.") | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/feedbacks` | 페이징을 적용하여 피드백 목록을 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<FeedbackResponse>`<br><br>**FeedbackResponse 구조:**<br>- `id` (String): 피드백 ID<br>- `writerId` (String): 작성자 ID (Student ID)<br>- `bojId` (String, nullable): 작성자 BOJ ID (Student를 찾을 수 없는 경우 null)<br>- `content` (String): 피드백 내용<br>- `type` (String): 피드백 유형 ("BUG", "SUGGESTION")<br>- `status` (String): 처리 상태 ("PENDING", "COMPLETED")<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시<br><br>**Page 구조:**<br>(위와 동일) | JWT Token (ADMIN) |
@@ -1195,6 +1403,41 @@ Content-Type: application/json
   "id": "quote-456",
   "content": "새로운 명언 내용",
   "author": "작가명"
+}
+```
+
+**예시 요청 (공지사항 작성):**
+```http
+POST /api/v1/admin/notices
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "title": "시스템 점검 안내",
+  "content": "2024년 1월 20일 00:00 ~ 02:00 시스템 점검이 예정되어 있습니다.",
+  "isPinned": true
+}
+```
+
+**예시 응답 (공지사항 작성):**
+```json
+{
+  "id": "notice-123",
+  "title": "시스템 점검 안내",
+  "content": "2024년 1월 20일 00:00 ~ 02:00 시스템 점검이 예정되어 있습니다.",
+  "isPinned": true,
+  "createdAt": "2024-01-15T10:30:00",
+  "updatedAt": "2024-01-15T10:30:00"
+}
+```
+
+**에러 응답 예시 (제목이 200자 초과):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_VALIDATION_FAILED",
+  "message": "title: 제목은 200자 이하여야 합니다."
 }
 ```
 
@@ -1268,6 +1511,33 @@ Content-Type: application/json
 
 ---
 
+## AdminMemberController
+
+관리자 전용 회원 관리 API를 제공합니다. ADMIN 권한이 필요합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| PUT | `/api/v1/admin/members/{memberId}` | 관리자가 특정 회원의 닉네임/비밀번호를 수정합니다. `password`가 제공되면 `PasswordEncoder`로 암호화 후 저장합니다. `nickname` 변경 시 유효성 및 중복 검사를 수행합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `memberId` (String, required): 회원 ID<br><br>**Request Body:**<br>`AdminMemberUpdateRequest`<br>- `nickname` (String, optional)<br>  - 닉네임 정책은 MemberController와 동일<br>- `password` (String, optional)<br>  - 제공된 경우 암호화 후 저장 | `204 No Content` | JWT Token (ADMIN) |
+
+**예시 요청 (닉네임/비밀번호 변경):**
+```http
+PUT /api/v1/admin/members/member-1
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "nickname": "user_01",
+  "password": "pw1234!"
+}
+```
+
+**예시 응답 (성공):**
+```http
+204 No Content
+```
+
+---
+
 ## AdminDashboardController
 
 관리자 대시보드 통계 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다.
@@ -1275,6 +1545,7 @@ Content-Type: application/json
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/admin/dashboard/stats` | 총 회원 수, 오늘 가입한 회원 수, 총 해결된 문제 수, 오늘 작성된 회고 수를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AdminDashboardStatsResponse`<br><br>**AdminDashboardStatsResponse 구조:**<br>- `totalUsers` (Long): 총 회원 수<br>- `todaySignups` (Long): 오늘 가입한 회원 수<br>- `totalSolvedProblems` (Long): 총 해결된 문제 수 (SUCCESS인 Solution 개수)<br>- `todayRetrospectives` (Long): 오늘 작성된 회고 수 | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/dashboard/metrics` | 최근 30분~1시간 동안의 분당 요청 수(RPM)와 평균 응답 속도를 조회합니다. HandlerInterceptor를 활용하여 요청 시간을 측정하고 메모리에 시계열 데이터를 저장합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `minutes` (Int, optional, default: 30): 조회할 시간 범위 (분)<br>  - 유효성: `@Positive` (1 이상)<br>  - 권장값: 30~60분 | `PerformanceMetricsResponse`<br><br>**PerformanceMetricsResponse 구조:**<br>- `rpm` (Double): 분당 요청 수 (Requests Per Minute)<br>- `averageResponseTime` (Double): 평균 응답 시간 (밀리초)<br>- `timeRangeMinutes` (Int): 조회한 시간 범위 (분) | JWT Token (ADMIN) |
 
 **예시 요청:**
 ```http
@@ -1289,6 +1560,79 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "todaySignups": 5,
   "totalSolvedProblems": 1250,
   "todayRetrospectives": 12
+}
+```
+
+**예시 요청 (성능 메트릭 조회):**
+```http
+GET /api/v1/admin/dashboard/metrics?minutes=30
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (성능 메트릭 조회):**
+```json
+{
+  "rpm": 45.5,
+  "averageResponseTime": 125.3,
+  "timeRangeMinutes": 30
+}
+```
+
+---
+
+## SystemController
+
+시스템 제어 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| POST | `/api/v1/admin/system/maintenance` | 서버를 끄지 않고 일반 사용자의 접근만 차단하는 유지보수 모드를 활성화/비활성화합니다. 전역 필터/인터셉터에서 이 플래그가 `true`일 때, ADMIN 권한이 없는 요청은 `503 Service Unavailable` 예외를 발생시킵니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`MaintenanceModeRequest`<br>- `enabled` (Boolean, required): 유지보수 모드 활성화 여부 | `MaintenanceModeResponse`<br><br>**MaintenanceModeResponse 구조:**<br>- `enabled` (Boolean): 현재 유지보수 모드 상태<br>- `message` (String): 응답 메시지 ("유지보수 모드가 활성화되었습니다." 또는 "유지보수 모드가 비활성화되었습니다.") | JWT Token (ADMIN) |
+
+**예시 요청 (유지보수 모드 활성화):**
+```http
+POST /api/v1/admin/system/maintenance
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "enabled": true
+}
+```
+
+**예시 응답 (유지보수 모드 활성화):**
+```json
+{
+  "enabled": true,
+  "message": "유지보수 모드가 활성화되었습니다."
+}
+```
+
+**예시 요청 (유지보수 모드 비활성화):**
+```http
+POST /api/v1/admin/system/maintenance
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "enabled": false
+}
+```
+
+**예시 응답 (유지보수 모드 비활성화):**
+```json
+{
+  "enabled": false,
+  "message": "유지보수 모드가 비활성화되었습니다."
+}
+```
+
+**에러 응답 예시 (유지보수 모드 활성화 시 일반 사용자 접근):**
+```json
+{
+  "status": 503,
+  "error": "Service Unavailable",
+  "code": "MAINTENANCE_MODE",
+  "message": "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."
 }
 ```
 
@@ -1347,6 +1691,82 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "error": "Forbidden",
   "code": "ACCESS_DENIED",
   "message": "접근 권한이 없습니다."
+}
+```
+
+---
+
+## NoticeController
+
+공지사항 관련 API를 제공합니다.
+
+- **작성**: `AdminController`의 `POST /api/v1/admin/notices`
+- **조회/수정/삭제**: `NoticeController`의 `/api/v1/notices` 하위 API
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/notices` | 공지사항 목록을 조회합니다. 상단 고정 공지(`isPinned=true`)가 먼저 오고, 그 다음 최신순으로 정렬됩니다. 페이징을 지원합니다. | **Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<NoticeResponse>`<br><br>**NoticeResponse 구조:**<br>- `id` (String): 공지사항 ID<br>- `title` (String): 제목<br>- `content` (String): 내용<br>- `isPinned` (Boolean): 상단 고정 여부<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `updatedAt` (LocalDateTime): 수정 일시 (ISO 8601 형식)<br><br>**Page 구조 (Spring Data Page 직렬화):**<br>- `content` (List<NoticeResponse>)<br>- `totalElements` (Long)<br>- `totalPages` (Int)<br>- `size` (Int)<br>- `number` (Int): 0부터 시작하는 현재 페이지 인덱스 | None |
+| GET | `/api/v1/notices/{noticeId}` | 공지사항 ID로 공지사항을 조회합니다. | **Path Variables:**<br>- `noticeId` (String, required): 공지사항 ID | `NoticeResponse` | None |
+| PATCH | `/api/v1/notices/{noticeId}` | 공지사항을 수정합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `noticeId` (String, required): 공지사항 ID<br><br>**Request Body:**<br>`NoticeUpdateRequest`<br>- `title` (String, optional): 제목<br>  - 유효성: `@Size(max=200)`<br>- `content` (String, optional): 내용<br>  - 유효성: `@Size(max=10000)`<br>- `isPinned` (Boolean, optional): 상단 고정 여부 | `NoticeResponse` | JWT Token (ADMIN) |
+| DELETE | `/api/v1/notices/{noticeId}` | 공지사항을 삭제합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `noticeId` (String, required): 공지사항 ID | `204 No Content` | JWT Token (ADMIN) |
+
+**예시 요청 (공지사항 목록 조회):**
+```http
+GET /api/v1/notices?page=1&size=10
+```
+
+**예시 응답 (공지사항 목록 조회):**
+```json
+{
+  "content": [
+    {
+      "id": "notice-123",
+      "title": "시스템 점검 안내",
+      "content": "2024년 1월 20일 00:00 ~ 02:00 시스템 점검이 예정되어 있습니다.",
+      "isPinned": true,
+      "createdAt": "2024-01-15T10:30:00",
+      "updatedAt": "2024-01-15T10:30:00"
+    },
+    {
+      "id": "notice-456",
+      "title": "새로운 기능 업데이트",
+      "content": "회고 기능이 업데이트되었습니다.",
+      "isPinned": false,
+      "createdAt": "2024-01-14T09:00:00",
+      "updatedAt": "2024-01-14T09:00:00"
+    }
+  ],
+  "totalElements": 2,
+  "totalPages": 1,
+  "size": 10,
+  "number": 0
+}
+```
+
+**예시 요청 (공지사항 상세 조회):**
+```http
+GET /api/v1/notices/notice-123
+```
+
+**예시 응답 (공지사항 상세 조회):**
+```json
+{
+  "id": "notice-123",
+  "title": "시스템 점검 안내",
+  "content": "2024년 1월 20일 00:00 ~ 02:00 시스템 점검이 예정되어 있습니다.",
+  "isPinned": true,
+  "createdAt": "2024-01-15T10:30:00",
+  "updatedAt": "2024-01-15T10:30:00"
+}
+```
+
+**에러 응답 예시 (공지사항을 찾을 수 없음):**
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "code": "COMMON_RESOURCE_NOT_FOUND",
+  "message": "공지사항을 찾을 수 없습니다. id=non-existent"
 }
 ```
 
@@ -1457,6 +1877,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `INVALID_PASSWORD` (400): 비밀번호 정책 위반 (복잡도 검증 실패)
 - `UNAUTHORIZED` (401): 인증 필요
 - `ACCESS_DENIED` (403): 권한 부족
+- `DUPLICATE_NICKNAME` (400): 이미 사용 중인 닉네임
 - `DUPLICATE_BOJ_ID` (409): 이미 가입된 BOJ ID
 - `COMMON_RESOURCE_NOT_FOUND` (404): 요청한 자원을 찾을 수 없음
 - `STUDENT_NOT_FOUND` (404): 학생을 찾을 수 없음
@@ -1464,6 +1885,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `RETROSPECTIVE_NOT_FOUND` (404): 회고를 찾을 수 없음
 - `QUOTE_NOT_FOUND` (404): 명언을 찾을 수 없음
 - `FEEDBACK_NOT_FOUND` (404): 피드백을 찾을 수 없음
+- `AI_GENERATION_FAILED` (503): AI 리뷰 생성 실패
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
 
 **예시 에러 응답:**
