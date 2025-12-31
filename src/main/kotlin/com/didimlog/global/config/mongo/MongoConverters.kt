@@ -2,7 +2,11 @@ package com.didimlog.global.config.mongo
 
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.valueobject.AiReview
 import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.LogCode
+import com.didimlog.domain.valueobject.LogContent
+import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.valueobject.Nickname
 import org.springframework.core.convert.converter.Converter
 import org.springframework.data.convert.ReadingConverter
@@ -31,6 +35,34 @@ class NicknameWriteConverter : Converter<Nickname, String> {
 @WritingConverter
 class BojIdWriteConverter : Converter<BojId, String> {
     override fun convert(source: BojId): String {
+        return source.value
+    }
+}
+
+@WritingConverter
+class LogTitleWriteConverter : Converter<LogTitle, String> {
+    override fun convert(source: LogTitle): String {
+        return source.value
+    }
+}
+
+@WritingConverter
+class LogContentWriteConverter : Converter<LogContent, String> {
+    override fun convert(source: LogContent): String {
+        return source.value
+    }
+}
+
+@WritingConverter
+class LogCodeWriteConverter : Converter<LogCode, String> {
+    override fun convert(source: LogCode): String {
+        return source.value
+    }
+}
+
+@WritingConverter
+class AiReviewWriteConverter : Converter<AiReview, String> {
+    override fun convert(source: AiReview): String {
         return source.value
     }
 }
@@ -74,6 +106,34 @@ class NicknameReadConverter : Converter<String, Nickname> {
 class BojIdReadConverter : Converter<String, BojId> {
     override fun convert(source: String): BojId {
         return BojId(source)
+    }
+}
+
+@ReadingConverter
+class LogTitleReadConverter : Converter<String, LogTitle> {
+    override fun convert(source: String): LogTitle {
+        return LogTitle(source)
+    }
+}
+
+@ReadingConverter
+class LogContentReadConverter : Converter<String, LogContent> {
+    override fun convert(source: String): LogContent {
+        return LogContent(source)
+    }
+}
+
+@ReadingConverter
+class LogCodeReadConverter : Converter<String, LogCode> {
+    override fun convert(source: String): LogCode {
+        return LogCode(source)
+    }
+}
+
+@ReadingConverter
+class AiReviewReadConverter : Converter<String, AiReview> {
+    override fun convert(source: String): AiReview {
+        return AiReview(source)
     }
 }
 

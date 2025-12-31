@@ -2,6 +2,14 @@ package com.didimlog.global.config
 
 import com.didimlog.global.config.mongo.BojIdReadConverter
 import com.didimlog.global.config.mongo.BojIdWriteConverter
+import com.didimlog.global.config.mongo.AiReviewReadConverter
+import com.didimlog.global.config.mongo.AiReviewWriteConverter
+import com.didimlog.global.config.mongo.LogCodeReadConverter
+import com.didimlog.global.config.mongo.LogCodeWriteConverter
+import com.didimlog.global.config.mongo.LogContentReadConverter
+import com.didimlog.global.config.mongo.LogContentWriteConverter
+import com.didimlog.global.config.mongo.LogTitleReadConverter
+import com.didimlog.global.config.mongo.LogTitleWriteConverter
 import com.didimlog.global.config.mongo.NicknameReadConverter
 import com.didimlog.global.config.mongo.NicknameWriteConverter
 import com.didimlog.global.config.mongo.ProblemCategoryReadConverter
@@ -35,12 +43,20 @@ class MongoConfig {
         // Writing Converters (객체 -> DB)
         converters.add(NicknameWriteConverter())
         converters.add(BojIdWriteConverter())
+        converters.add(LogTitleWriteConverter())
+        converters.add(LogContentWriteConverter())
+        converters.add(LogCodeWriteConverter())
+        converters.add(AiReviewWriteConverter())
         converters.add(TierWriteConverter())
         converters.add(ProblemCategoryWriteConverter())
 
         // Reading Converters (DB -> 객체)
         converters.add(NicknameReadConverter())
         converters.add(BojIdReadConverter())
+        converters.add(LogTitleReadConverter())
+        converters.add(LogContentReadConverter())
+        converters.add(LogCodeReadConverter())
+        converters.add(AiReviewReadConverter())
         converters.add(TierStringReadConverter())
         converters.add(TierIntegerReadConverter())
         converters.add(ProblemCategoryReadConverter())
