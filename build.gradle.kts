@@ -87,6 +87,7 @@ tasks.register<Test>("integrationTest") {
 	include("**/StudyIntegrationTest.class")
 	include("**/RetrospectiveSearchIntegrationTest.class")
 	include("**/JwtTokenProviderIntegrationTest.class")
+	include("**/AiReviewIntegrationTest.class")
 	
 	// 통합 테스트는 단위 테스트가 완료된 후 실행
 	mustRunAfter("test")

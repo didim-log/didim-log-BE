@@ -4,6 +4,7 @@ import com.didimlog.domain.Quote
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.repository.QuoteRepository
+import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -28,7 +29,8 @@ import java.time.format.DateTimeFormatter
 @Service
 class AdminService(
     private val studentRepository: StudentRepository,
-    private val quoteRepository: QuoteRepository
+    private val quoteRepository: QuoteRepository,
+    private val retrospectiveRepository: RetrospectiveRepository
 ) {
 
     private val log = LoggerFactory.getLogger(AdminService::class.java)
@@ -84,10 +86,36 @@ class AdminService(
         val pagedStudents = students.subList(start, end)
 
         return org.springframework.data.domain.PageImpl(
-            pagedStudents.map { AdminUserResponse.from(it) },
+            pagedStudents.map { student ->
+                val solvedCount = calculateSolvedCount(student)
+                val retrospectiveCount = calculateRetrospectiveCount(student)
+                AdminUserResponse.from(student, solvedCount, retrospectiveCount)
+            },
             pageable,
             students.size.toLong()
         )
+    }
+
+    /**
+     * 학생이 해결한 문제 수를 계산한다.
+     * SUCCESS인 Solution 개수를 반환한다.
+     *
+     * @param student 학생
+     * @return 해결한 문제 수
+     */
+    private fun calculateSolvedCount(student: Student): Long {
+        return student.solutions.getAll().count { it.isSuccess() }.toLong()
+    }
+
+    /**
+     * 학생이 작성한 회고 수를 계산한다.
+     *
+     * @param student 학생
+     * @return 작성한 회고 수
+     */
+    private fun calculateRetrospectiveCount(student: Student): Long {
+        val studentId = student.id ?: return 0L
+        return retrospectiveRepository.findAllByStudentId(studentId).size.toLong()
     }
 
     /**

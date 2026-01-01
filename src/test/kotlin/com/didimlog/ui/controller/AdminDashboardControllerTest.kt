@@ -67,7 +67,12 @@ class AdminDashboardControllerTest {
             totalUsers = 150L,
             todaySignups = 5L,
             totalSolvedProblems = 1250L,
-            todayRetrospectives = 12L
+            todayRetrospectives = 12L,
+            aiMetrics = com.didimlog.application.admin.AiMetrics(
+                averageDurationMillis = 1500L,
+                totalGeneratedCount = 100L,
+                timeoutCount = 2L
+            )
         )
 
         every { adminDashboardService.getDashboardStats() } returns stats

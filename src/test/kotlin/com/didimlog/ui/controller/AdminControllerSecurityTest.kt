@@ -116,7 +116,7 @@ class AdminControllerSecurityTest {
             createStudent("student1", "user1", 100),
             createStudent("student2", "user2", 500)
         )
-        val page = PageImpl(students.map { com.didimlog.ui.dto.AdminUserResponse.from(it) })
+        val page = PageImpl(students.map { com.didimlog.ui.dto.AdminUserResponse.from(it, 0L, 0L) })
 
         every { adminService.getAllUsers(any()) } returns page
 
@@ -290,7 +290,7 @@ class AdminControllerSecurityTest {
             createStudent("student1", "user1", 100),
             createStudent("student2", "user2", 500)
         )
-        val page = PageImpl(students.map { com.didimlog.ui.dto.AdminUserResponse.from(it) })
+        val page = PageImpl(students.map { com.didimlog.ui.dto.AdminUserResponse.from(it, 0L, 0L) })
 
         every { adminService.getAllUsers(any()) } returns page
 

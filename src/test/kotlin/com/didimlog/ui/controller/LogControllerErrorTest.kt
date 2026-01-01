@@ -40,6 +40,9 @@ class LogControllerErrorTest {
     class TestConfig {
         @Bean
         fun aiReviewService(): AiReviewService = mockk(relaxed = true)
+
+        @Bean
+        fun logService(): com.didimlog.application.log.LogService = mockk(relaxed = true)
     }
 
     @Test

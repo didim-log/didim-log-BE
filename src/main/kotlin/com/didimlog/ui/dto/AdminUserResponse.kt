@@ -17,10 +17,16 @@ data class AdminUserResponse(
     val currentTier: String,
     val consecutiveSolveDays: Int,
     val termsAgreed: Boolean,
+    val solvedCount: Long, // 해결한 문제 수 (SUCCESS인 Solution 개수)
+    val retrospectiveCount: Long, // 작성한 회고 수
     val createdAt: LocalDateTime? = null // MongoDB _id에서 추출 가능하지만 명시적으로 포함
 ) {
     companion object {
-        fun from(student: Student): AdminUserResponse {
+        fun from(
+            student: Student,
+            solvedCount: Long,
+            retrospectiveCount: Long
+        ): AdminUserResponse {
             return AdminUserResponse(
                 id = student.id ?: "",
                 nickname = student.nickname.value,
@@ -31,7 +37,9 @@ data class AdminUserResponse(
                 rating = student.rating,
                 currentTier = student.currentTier.name,
                 consecutiveSolveDays = student.consecutiveSolveDays,
-                termsAgreed = student.termsAgreed // 기본값 false로 처리됨
+                termsAgreed = student.termsAgreed, // 기본값 false로 처리됨
+                solvedCount = solvedCount,
+                retrospectiveCount = retrospectiveCount
             )
         }
     }

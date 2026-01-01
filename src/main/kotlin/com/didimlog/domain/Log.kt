@@ -1,10 +1,12 @@
 package com.didimlog.domain
 
 import com.didimlog.domain.valueobject.AiReview
+import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.enums.AiReviewStatus
+import com.didimlog.domain.enums.ProblemResult
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
@@ -17,11 +19,14 @@ data class Log(
     val title: LogTitle,
     val content: LogContent,
     val code: LogCode,
+    val bojId: BojId? = null,
+    val isSuccess: Boolean? = null, // 풀이 성공 여부 (null: 미제출, true: 성공, false: 실패)
     @CreatedDate
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val aiReview: AiReview? = null,
     val aiReviewStatus: AiReviewStatus? = null,
-    val aiReviewLockExpiresAt: LocalDateTime? = null
+    val aiReviewLockExpiresAt: LocalDateTime? = null,
+    val aiReviewDurationMillis: Long? = null
 ) {
     fun hasAiReview(): Boolean = aiReview != null
 

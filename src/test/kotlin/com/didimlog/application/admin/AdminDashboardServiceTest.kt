@@ -30,7 +30,8 @@ class AdminDashboardServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
     private val retrospectiveRepository: RetrospectiveRepository = mockk()
-    private val adminDashboardService = AdminDashboardService(studentRepository, retrospectiveRepository)
+    private val logRepository: com.didimlog.domain.repository.LogRepository = mockk()
+    private val adminDashboardService = AdminDashboardService(studentRepository, retrospectiveRepository, logRepository)
 
     @Test
     @DisplayName("대시보드 통계 정보를 조회할 수 있다")
@@ -62,6 +63,7 @@ class AdminDashboardServiceTest {
         every { studentRepository.count() } returns students.size.toLong()
         every { studentRepository.findAll() } returns students
         every { retrospectiveRepository.findAll() } returns retrospectives
+        every { logRepository.findAll() } returns emptyList()
 
         // when
         val result = adminDashboardService.getDashboardStats()
@@ -90,6 +92,7 @@ class AdminDashboardServiceTest {
         every { studentRepository.count() } returns students.size.toLong()
         every { studentRepository.findAll() } returns students
         every { retrospectiveRepository.findAll() } returns emptyList()
+        every { logRepository.findAll() } returns emptyList()
 
         // when
         val result = adminDashboardService.getDashboardStats()

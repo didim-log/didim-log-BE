@@ -1,5 +1,6 @@
 package com.didimlog.application.admin
 
+import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import org.springframework.stereotype.Service
@@ -15,7 +16,8 @@ import java.time.LocalTime
 @Service
 class AdminDashboardService(
     private val studentRepository: StudentRepository,
-    private val retrospectiveRepository: RetrospectiveRepository
+    private val retrospectiveRepository: RetrospectiveRepository,
+    private val logRepository: LogRepository
 ) {
 
     /**
@@ -46,11 +48,48 @@ class AdminDashboardService(
                 retrospective.createdAt.isAfter(todayStart) && retrospective.createdAt.isBefore(todayEnd)
             }
         
+        // AI 생성 통계 계산
+        val aiMetrics = calculateAiMetrics()
+
         return AdminDashboardStats(
             totalUsers = totalUsers,
             todaySignups = todaySignups,
             totalSolvedProblems = totalSolvedProblems.toLong(),
-            todayRetrospectives = todayRetrospectives.toLong()
+            todayRetrospectives = todayRetrospectives.toLong(),
+            aiMetrics = aiMetrics
+        )
+    }
+
+    /**
+     * AI 생성 시간 통계를 계산한다.
+     *
+     * @return AI 생성 통계 (평균 소요 시간, 총 생성 수, 타임아웃 수)
+     */
+    private fun calculateAiMetrics(): AiMetrics {
+        val logs = logRepository.findAll()
+        val completedLogs = logs.filter { it.aiReviewDurationMillis != null }
+        
+        val totalCount = completedLogs.size
+        if (totalCount == 0) {
+            return AiMetrics(
+                averageDurationMillis = null,
+                totalGeneratedCount = 0L,
+                timeoutCount = 0L
+            )
+        }
+
+        val averageDuration = completedLogs.mapNotNull { it.aiReviewDurationMillis }.average().toLong()
+        
+        // 타임아웃된 로그는 aiReviewStatus가 FAILED이고 aiReviewDurationMillis가 30초(30000ms) 이상인 경우로 판단
+        val timeoutCount = logs.count { 
+            it.aiReviewStatus == com.didimlog.domain.enums.AiReviewStatus.FAILED && 
+            (it.aiReviewDurationMillis == null || it.aiReviewDurationMillis >= 30_000)
+        }
+
+        return AiMetrics(
+            averageDurationMillis = averageDuration,
+            totalGeneratedCount = totalCount.toLong(),
+            timeoutCount = timeoutCount.toLong()
         )
     }
 }
@@ -62,5 +101,15 @@ data class AdminDashboardStats(
     val totalUsers: Long,
     val todaySignups: Long,
     val totalSolvedProblems: Long,
-    val todayRetrospectives: Long
+    val todayRetrospectives: Long,
+    val aiMetrics: AiMetrics
+)
+
+/**
+ * AI 생성 통계 정보
+ */
+data class AiMetrics(
+    val averageDurationMillis: Long?, // 평균 AI 생성 시간 (밀리초), null이면 아직 생성된 리뷰가 없음
+    val totalGeneratedCount: Long, // 총 생성된 AI 리뷰 수
+    val timeoutCount: Long // 타임아웃된 리뷰 수
 )

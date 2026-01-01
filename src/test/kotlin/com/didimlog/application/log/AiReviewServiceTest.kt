@@ -60,7 +60,7 @@ class AiReviewServiceTest {
         )
         every { logRepository.findById(logId) } returns Optional.of(log)
         every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
-        every { lockRepository.markCompleted(any(), any()) } returns true
+        every { lockRepository.markCompleted(any(), any(), any()) } returns true
         every { lockRepository.markFailed(any()) } returns true
         every { aiApiClient.requestOneLineReview(any()) } answers {
             val prompt = firstArg<String>()
@@ -74,7 +74,7 @@ class AiReviewServiceTest {
         assertThat(result.review).isEqualTo("ok")
         assertThat(result.cached).isFalse()
         verify(exactly = 1) { aiApiClient.requestOneLineReview(any()) }
-        verify(exactly = 1) { lockRepository.markCompleted(logId, "ok") }
+        verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
     }
 
     @Test
@@ -92,7 +92,7 @@ class AiReviewServiceTest {
 
         val result = aiReviewService.requestOneLineReview(logId)
 
-        assertThat(result.review).isEqualTo("Code is too short to analyze")
+        assertThat(result.review).isEqualTo("코드가 너무 짧아 분석할 수 없습니다")
         assertThat(result.cached).isFalse()
         verify { aiApiClient wasNot Called }
         verify(exactly = 0) { logRepository.save(any()) }
@@ -115,10 +115,10 @@ class AiReviewServiceTest {
 
         val result = aiReviewService.requestOneLineReview(logId)
 
-        assertThat(result.review).contains("AI review is being generated")
+        assertThat(result.review).isEqualTo("AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요.")
         assertThat(result.cached).isFalse()
         verify { aiApiClient wasNot Called }
-        verify(exactly = 0) { lockRepository.markCompleted(any(), any()) }
+        verify(exactly = 0) { lockRepository.markCompleted(any(), any(), any()) }
         verify(exactly = 0) { lockRepository.markFailed(any()) }
     }
 }

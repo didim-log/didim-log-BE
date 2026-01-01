@@ -40,7 +40,7 @@ class MongoLogAiReviewLockRepository(
         return mongoTemplate.exists(query, Log::class.java)
     }
 
-    override fun markCompleted(logId: String, review: String): Boolean {
+    override fun markCompleted(logId: String, review: String, durationMillis: Long): Boolean {
         val query = Query()
         query.addCriteria(Criteria.where(ID_FIELD).`is`(logId))
         query.addCriteria(Criteria.where(AI_REVIEW_FIELD).`is`(null))
@@ -48,6 +48,7 @@ class MongoLogAiReviewLockRepository(
         val update = Update()
             .set(AI_REVIEW_FIELD, AiReview(review))
             .set(AI_REVIEW_STATUS_FIELD, AiReviewStatus.COMPLETED)
+            .set(AI_REVIEW_DURATION_MILLIS_FIELD, durationMillis)
             .unset(AI_REVIEW_LOCK_EXPIRES_AT_FIELD)
 
         val result = mongoTemplate.updateFirst(query, update, Log::class.java)
@@ -81,6 +82,7 @@ class MongoLogAiReviewLockRepository(
         private const val AI_REVIEW_FIELD = "aiReview"
         private const val AI_REVIEW_STATUS_FIELD = "aiReviewStatus"
         private const val AI_REVIEW_LOCK_EXPIRES_AT_FIELD = "aiReviewLockExpiresAt"
+        private const val AI_REVIEW_DURATION_MILLIS_FIELD = "aiReviewDurationMillis"
     }
 }
 
