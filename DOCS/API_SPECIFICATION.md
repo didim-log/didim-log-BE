@@ -869,7 +869,38 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
+| POST | `/api/v1/logs` | 새로운 코딩 로그를 생성합니다. 생성된 로그 ID를 반환하며, 이후 AI 리뷰 생성에 사용할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`LogCreateRequest`<br>- `title` (String, required): 로그 제목<br>  - 유효성: `@NotBlank`<br>- `content` (String, required): 로그 내용<br>  - 유효성: `@NotBlank` (빈 문자열인 경우 서버에서 공백 문자로 기본값 처리)<br>- `code` (String, required): 사용자 코드<br>  - 유효성: `@NotBlank` | `LogResponse`<br><br>**LogResponse 구조:**<br>- `id` (String): 생성된 로그 ID | JWT Token |
 | POST | `/api/v1/logs/{logId}/ai-review` | 로그 엔티티에서 **코드와 언어를 자동으로 추출**하여 AI 한 줄 리뷰를 생성하거나 조회합니다. 언어는 코드 내용을 분석하여 자동 감지됩니다.<br><br>**지원 언어:** C, CPP, CSHARP, GO, JAVA, JAVASCRIPT, KOTLIN, PYTHON, R, RUBY, SCALA, SWIFT, TEXT (백준 온라인 저지 지원 언어와 동기화)<br><br>**프롬프트:** "Analyze this {language} code and provide a helpful one-line review focusing on time complexity or clean code."<br><br>**비용 절감 로직:**<br>- DB의 `aiReview`가 이미 존재하면 **외부 AI 호출 없이** 즉시 반환합니다.<br>- 코드가 2000자를 초과하면 프롬프트 입력을 2000자까지만 잘라서 사용합니다.<br>- 코드가 10자 미만이면 AI 호출 없이 기본 메시지를 반환합니다.<br><br>**중복 호출 방지(멀티 인스턴스):**<br>- 동일 `logId`에 대해 동시에 요청이 들어오면, MongoDB의 원자적 락으로 **외부 AI 호출은 1회만** 수행됩니다.<br>- 락이 잡혀 있고 아직 결과가 없으면 아래 메시지를 반환할 수 있습니다: `AI review is being generated. Please retry shortly.` | **Path Variables:**<br>- `logId` (String, required): 로그 ID | `AiReviewResponse`<br>- `review` (String): 한 줄 리뷰 또는 안내 메시지<br>- `cached` (Boolean): 캐시 히트 여부 | None |
+
+**예시 요청 (로그 생성):**
+```http
+POST /api/v1/logs
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "title": "Problem 1000 Solution",
+  "content": "",
+  "code": "public class Solution {\n    public static void main(String[] args) {\n        System.out.println(\"Hello, World!\");\n    }\n}"
+}
+```
+
+**예시 응답 (로그 생성):**
+```json
+{
+  "id": "log-123"
+}
+```
+
+**에러 응답 예시 (로그 생성 - 필수 필드 누락):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_VALIDATION_FAILED",
+  "message": "title: 제목은 필수입니다."
+}
+```
 
 **예시 응답 (AI 한 줄 리뷰 - 캐시됨):**
 ```json
