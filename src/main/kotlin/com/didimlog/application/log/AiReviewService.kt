@@ -2,6 +2,7 @@ package com.didimlog.application.log
 
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.global.exception.AiGenerationFailedException
+import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.infra.ai.AiApiClient
 import java.time.LocalDateTime
 import org.springframework.stereotype.Service
@@ -72,39 +73,7 @@ class AiReviewService(
     private fun truncateCode(code: String): String = code.take(MAX_CODE_LENGTH)
 
     private fun detectCodeLanguage(code: String): String {
-        val normalizedCode = code.trim()
-        if (normalizedCode.isEmpty()) {
-            return "TEXT"
-        }
-
-        if (normalizedCode.contains("def ") || (normalizedCode.contains("import ") && normalizedCode.contains("print("))) {
-            return "PYTHON"
-        }
-        if (normalizedCode.contains("fun ") || normalizedCode.contains("val ") || (normalizedCode.contains("class ") && normalizedCode.contains(":"))) {
-            return "KOTLIN"
-        }
-        if (normalizedCode.contains("public class") ||
-            normalizedCode.contains("public static") ||
-            normalizedCode.contains("System.out.println")
-        ) {
-            return "JAVA"
-        }
-        if (normalizedCode.contains("#include") || normalizedCode.contains("int main")) {
-            return "CPP"
-        }
-        if (normalizedCode.contains("function ") || normalizedCode.contains("const ") || normalizedCode.contains("let ")) {
-            return "JAVASCRIPT"
-        }
-        if (normalizedCode.contains("package ") && normalizedCode.contains("func ")) {
-            return "GO"
-        }
-        if (normalizedCode.contains("fn ") && normalizedCode.contains("let ")) {
-            return "RUST"
-        }
-        if (normalizedCode.contains("using ") && normalizedCode.contains("namespace ")) {
-            return "CSHARP"
-        }
-        return "TEXT"
+        return CodeLanguageDetector.detect(code)
     }
 
     private fun buildPrompt(language: String, code: String): String {

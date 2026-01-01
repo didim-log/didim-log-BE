@@ -5,6 +5,7 @@ import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.global.util.CodeLanguageDetector
 import org.springframework.stereotype.Service
 
 /**
@@ -50,23 +51,33 @@ class StaticTemplateService(
         }
 
         val problem = problemService.getProblemDetail(problemId.toLong())
-        val codeLanguage = detectCodeLanguage(code).uppercase()
+        val codeLanguage = CodeLanguageDetector.detect(code) // 대문자: "PYTHON", "JAVA", etc.
+        val markdownLanguage = toMarkdownLanguage(codeLanguage) // 소문자: "python", "java", etc.
 
-        return createTemplate(problem, codeLanguage, code, isSuccess, errorMessage)
+        return createTemplate(problem, codeLanguage, markdownLanguage, code, isSuccess, errorMessage)
+    }
+
+    /**
+     * 언어 코드를 마크다운 코드 블록 형식으로 변환한다.
+     * 예: "CSHARP" -> "csharp", "JAVA" -> "java"
+     */
+    private fun toMarkdownLanguage(language: String): String {
+        return language.lowercase().replace("CSHARP", "csharp")
     }
 
     private fun createTemplate(
         problem: Problem,
-        codeLanguage: String,
+        codeLanguage: String, // 대문자: "PYTHON", "JAVA", etc. (제목용)
+        markdownLanguage: String, // 소문자: "python", "java", etc. (코드 블록용)
         code: String,
         isSuccess: Boolean,
         errorMessage: String?
     ): String {
         if (isSuccess) {
-            return generateSuccessTemplate(problem, codeLanguage, code)
+            return generateSuccessTemplate(problem, codeLanguage, markdownLanguage, code)
         }
         val message = errorMessage ?: DEFAULT_ERROR_MESSAGE
-        return generateFailureTemplate(problem, codeLanguage, code, message)
+        return generateFailureTemplate(problem, codeLanguage, markdownLanguage, code, message)
     }
 
     /**
@@ -74,7 +85,7 @@ class StaticTemplateService(
      * RETROSPECTIVE_STANDARDS.md의 "성공 회고" 구조를 준수한다.
      * - 1~5 모두 사용자가 작성하는 목차를 제공한다.
      */
-    private fun generateSuccessTemplate(problem: Problem, codeLanguage: String, code: String): String {
+    private fun generateSuccessTemplate(problem: Problem, codeLanguage: String, markdownLanguage: String, code: String): String {
         val title = "[백준/BOJ] ${problem.id.value}번 ${problem.title} ($codeLanguage)"
         val keywords = buildProblemKeywords(problem)
         return """
@@ -108,7 +119,7 @@ class StaticTemplateService(
 
             ## 제출한 코드
 
-            ```${codeLanguage.lowercase()}
+            ```$markdownLanguage
             $code
             ```
 
@@ -122,7 +133,7 @@ class StaticTemplateService(
      * RETROSPECTIVE_STANDARDS.md의 "실패 회고" 구조를 준수한다.
      * - 1~5 모두 사용자가 작성하는 목차를 제공한다.
      */
-    private fun generateFailureTemplate(problem: Problem, codeLanguage: String, code: String, errorMessage: String): String {
+    private fun generateFailureTemplate(problem: Problem, codeLanguage: String, markdownLanguage: String, code: String, errorMessage: String): String {
         val title = "[백준/BOJ] ${problem.id.value}번 ${problem.title} ($codeLanguage)"
         val keywords = buildProblemKeywords(problem)
         return """
@@ -155,7 +166,7 @@ class StaticTemplateService(
 
             ## 제출한 코드
 
-            ```${codeLanguage.lowercase()}
+            ```$markdownLanguage
             $code
             ```
 
@@ -202,48 +213,6 @@ class StaticTemplateService(
         return keywords.joinToString("\n") { "- $it" }
     }
 
-    /**
-     * 코드에서 프로그래밍 언어를 감지한다.
-     * 간단한 휴리스틱을 사용하여 언어를 추론한다.
-     *
-     * @param code 사용자 코드
-     * @return 감지된 언어 (기본값: "text")
-     */
-    private fun detectCodeLanguage(code: String): String {
-        val normalizedCode = code.trim()
-        if (normalizedCode.isEmpty()) {
-            return DEFAULT_CODE_LANGUAGE
-        }
-
-        if (normalizedCode.contains("def ") || (normalizedCode.contains("import ") && normalizedCode.contains("print("))) {
-            return "python"
-        }
-        if (normalizedCode.contains("fun ") || normalizedCode.contains("val ") || (normalizedCode.contains("class ") && normalizedCode.contains(":"))) {
-            return "kotlin"
-        }
-        if (normalizedCode.contains("public class") ||
-            normalizedCode.contains("public static") ||
-            normalizedCode.contains("System.out.println")
-        ) {
-            return "java"
-        }
-        if (normalizedCode.contains("#include") || normalizedCode.contains("int main")) {
-            return "cpp"
-        }
-        if (normalizedCode.contains("function ") || normalizedCode.contains("const ") || normalizedCode.contains("let ")) {
-            return "javascript"
-        }
-        if (normalizedCode.contains("package ") && normalizedCode.contains("func ")) {
-            return "go"
-        }
-        if (normalizedCode.contains("fn ") && normalizedCode.contains("let ")) {
-            return "rust"
-        }
-        if (normalizedCode.contains("using ") && normalizedCode.contains("namespace ")) {
-            return "csharp"
-        }
-        return DEFAULT_CODE_LANGUAGE
-    }
 
 }
 

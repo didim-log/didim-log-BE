@@ -3,6 +3,9 @@ package com.didimlog.domain.enums
 /**
  * 사용자가 주로 사용하는 프로그래밍 언어
  * 회고 작성 시 코드 블록의 기본 언어를 결정하는 데 사용된다.
+ *
+ * 지원 언어 목록 (프론트엔드와 동기화):
+ * - JAVA, PYTHON, KOTLIN, JAVASCRIPT, CPP, GO, RUST, SWIFT, CSHARP, TEXT
  */
 enum class PrimaryLanguage(val value: String) {
     JAVA("java"),
@@ -13,6 +16,7 @@ enum class PrimaryLanguage(val value: String) {
     GO("go"),
     RUST("rust"),
     SWIFT("swift"),
+    CSHARP("csharp"),
     TEXT("text"); // 언어를 특정할 수 없는 경우
 
     companion object {
@@ -30,5 +34,6 @@ enum class PrimaryLanguage(val value: String) {
         }
     }
 }
+
 
 
