@@ -92,7 +92,7 @@ class AiReviewServiceTest {
 
         val result = aiReviewService.requestOneLineReview(logId)
 
-        assertThat(result.review).isEqualTo("Code is too short to analyze")
+        assertThat(result.review).isEqualTo("코드가 너무 짧아 분석할 수 없습니다")
         assertThat(result.cached).isFalse()
         verify { aiApiClient wasNot Called }
         verify(exactly = 0) { logRepository.save(any()) }
@@ -115,7 +115,7 @@ class AiReviewServiceTest {
 
         val result = aiReviewService.requestOneLineReview(logId)
 
-        assertThat(result.review).contains("AI review is being generated")
+        assertThat(result.review).isEqualTo("AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요.")
         assertThat(result.cached).isFalse()
         verify { aiApiClient wasNot Called }
         verify(exactly = 0) { lockRepository.markCompleted(any(), any(), any()) }

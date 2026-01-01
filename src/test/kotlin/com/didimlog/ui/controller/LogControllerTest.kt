@@ -50,7 +50,10 @@ class LogControllerTest {
     @TestConfiguration
     class TestConfig {
         @Bean
-        fun logService(): LogService = mockk(relaxed = true)
+        fun logService(): LogService {
+            val mock = mockk<LogService>(relaxed = true)
+            return mock
+        }
 
         @Bean
         fun aiReviewService(): com.didimlog.application.log.AiReviewService = mockk(relaxed = true)
@@ -72,7 +75,9 @@ class LogControllerTest {
             code = LogCode("public class Solution { }")
         )
 
-        every { logService.createLog(any(), any(), any()) } returns savedLog
+        every {
+            logService.createLog(any(), any(), any(), any(), any())
+        } returns savedLog
 
         val authentication = UsernamePasswordAuthenticationToken(
             "user123",
@@ -91,9 +96,11 @@ class LogControllerTest {
 
         verify(exactly = 1) {
             logService.createLog(
-                title = "Problem 1000 Solution",
-                content = "문제 풀이 회고",
-                code = "public class Solution { }"
+                "Problem 1000 Solution",
+                "문제 풀이 회고",
+                "public class Solution { }",
+                "user123",
+                null
             )
         }
     }

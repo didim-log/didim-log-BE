@@ -63,6 +63,7 @@ class AdminDashboardServiceTest {
         every { studentRepository.count() } returns students.size.toLong()
         every { studentRepository.findAll() } returns students
         every { retrospectiveRepository.findAll() } returns retrospectives
+        every { logRepository.findAll() } returns emptyList()
 
         // when
         val result = adminDashboardService.getDashboardStats()
@@ -91,6 +92,7 @@ class AdminDashboardServiceTest {
         every { studentRepository.count() } returns students.size.toLong()
         every { studentRepository.findAll() } returns students
         every { retrospectiveRepository.findAll() } returns emptyList()
+        every { logRepository.findAll() } returns emptyList()
 
         // when
         val result = adminDashboardService.getDashboardStats()

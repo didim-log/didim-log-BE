@@ -126,6 +126,7 @@ class AdminServiceTest {
         val pageable = PageRequest.of(0, 20)
 
         every { studentRepository.findAll() } returns students
+        every { retrospectiveRepository.findAllByStudentId(any()) } returns emptyList()
 
         // when
         val result = adminService.getAllUsers(pageable)
