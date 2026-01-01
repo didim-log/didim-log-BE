@@ -24,10 +24,17 @@ class LogService(
      * @param content 로그 내용 (빈 문자열 허용)
      * @param code 사용자 코드
      * @param bojId BOJ ID (선택, null 가능)
+     * @param isSuccess 풀이 성공 여부 (선택, null 가능)
      * @return 생성된 Log 엔티티
      */
     @Transactional
-    fun createLog(title: String, content: String, code: String, bojId: String? = null): Log {
+    fun createLog(
+        title: String,
+        content: String,
+        code: String,
+        bojId: String? = null,
+        isSuccess: Boolean? = null
+    ): Log {
         // LogContent는 notBlank를 요구하므로, 빈 문자열인 경우 기본값 제공
         val logContent = if (content.isBlank()) " " else content
         val bojIdVo = bojId?.let { BojId(it) }
@@ -35,7 +42,8 @@ class LogService(
             title = LogTitle(title),
             content = LogContent(logContent),
             code = LogCode(code),
-            bojId = bojIdVo
+            bojId = bojIdVo,
+            isSuccess = isSuccess
         )
         return logRepository.save(log)
     }

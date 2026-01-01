@@ -19,7 +19,9 @@ data class LogCreateRequest(
     val content: String,
 
     @field:NotBlank(message = "코드는 필수입니다.")
-    val code: String
+    val code: String,
+
+    val isSuccess: Boolean? = null // 풀이 성공 여부 (선택, null 가능)
 )
 
 /**

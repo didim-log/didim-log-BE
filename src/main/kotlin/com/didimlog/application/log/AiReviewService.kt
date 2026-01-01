@@ -38,7 +38,7 @@ class AiReviewService(
             return handleLockNotAcquired(logId, now)
         }
 
-        return generateAiReview(logId, code)
+        return generateAiReview(logId, code, log.isSuccess)
     }
 
     private fun findLogOrThrow(logId: String): com.didimlog.domain.Log {
@@ -60,9 +60,9 @@ class AiReviewService(
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false)
     }
 
-    private fun generateAiReview(logId: String, code: String): AiReviewResult {
+    private fun generateAiReview(logId: String, code: String, isSuccess: Boolean?): AiReviewResult {
         val language = detectCodeLanguage(code)
-        val prompt = buildPrompt(language, truncateCode(code))
+        val prompt = buildPrompt(language, truncateCode(code), isSuccess)
 
         val startTime = System.currentTimeMillis()
         val response = requestAiApiWithErrorHandling(logId, prompt, startTime)
@@ -116,9 +116,27 @@ class AiReviewService(
         return CodeLanguageDetector.detect(code)
     }
 
-    private fun buildPrompt(language: String, code: String): String {
+    private fun buildPrompt(language: String, code: String, isSuccess: Boolean?): String {
         return buildString {
-            appendLine("이 $language 코드를 분석하고 시간 복잡도나 클린 코드에 초점을 맞춘 도움이 되는 한 줄 리뷰를 제공하세요. 반드시 한국어로 응답하세요.")
+            val resultContext = when (isSuccess) {
+                true -> "이 코드는 성공적으로 실행되었습니다. "
+                false -> "이 코드는 실행에 실패했습니다. "
+                null -> ""
+            }
+            
+            val reviewFocus = when (isSuccess) {
+                true -> "시간 복잡도 개선이나 코드 품질 향상을 위한 제안에 초점을 맞춰주세요."
+                false -> "실패 원인 분석이나 버그 수정을 위한 구체적인 피드백을 제공해주세요."
+                null -> "시간 복잡도나 클린 코드 원칙에 초점을 맞춰주세요."
+            }
+            
+            val promptText = if (resultContext.isNotBlank()) {
+                "${resultContext}이 $language 코드를 분석하고 $reviewFocus 반드시 한국어로 응답하세요."
+            } else {
+                "이 $language 코드를 분석하고 $reviewFocus 반드시 한국어로 응답하세요."
+            }
+            
+            appendLine(promptText)
             appendLine()
             appendLine("코드:")
             appendLine(code)
