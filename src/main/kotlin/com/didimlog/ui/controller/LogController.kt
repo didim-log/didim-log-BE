@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -52,15 +53,18 @@ class LogController(
     )
     @PostMapping
     fun createLog(
+        authentication: Authentication,
         @Parameter(description = "로그 생성 정보", required = true)
         @RequestBody
         @Valid
         request: LogCreateRequest
     ): ResponseEntity<LogResponse> {
+        val bojId = authentication.name // JWT 토큰의 subject(bojId), null일 수 있음
         val log = logService.createLog(
             title = request.title,
             content = request.content,
-            code = request.code
+            code = request.code,
+            bojId = bojId.takeIf { it.isNotBlank() }
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(LogResponse.from(log))
     }
@@ -76,6 +80,11 @@ class LogController(
             ApiResponse(
                 responseCode = "400",
                 description = "요청 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "AI 생성 실패 또는 타임아웃",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]

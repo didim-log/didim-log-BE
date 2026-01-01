@@ -1,6 +1,7 @@
 package com.didimlog.domain
 
 import com.didimlog.domain.valueobject.AiReview
+import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
@@ -17,11 +18,13 @@ data class Log(
     val title: LogTitle,
     val content: LogContent,
     val code: LogCode,
+    val bojId: BojId? = null,
     @CreatedDate
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val aiReview: AiReview? = null,
     val aiReviewStatus: AiReviewStatus? = null,
-    val aiReviewLockExpiresAt: LocalDateTime? = null
+    val aiReviewLockExpiresAt: LocalDateTime? = null,
+    val aiReviewDurationMillis: Long? = null
 ) {
     fun hasAiReview(): Boolean = aiReview != null
 

@@ -56,6 +56,13 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(ErrorCode.AI_GENERATION_FAILED.status).body(errorResponse)
     }
 
+    @ExceptionHandler(AiGenerationTimeoutException::class)
+    fun handleAiGenerationTimeoutException(e: AiGenerationTimeoutException): ResponseEntity<ErrorResponse> {
+        log.warn("AiGenerationTimeoutException: duration={}ms", e.durationMillis)
+        val errorResponse = ErrorResponse.of(ErrorCode.AI_GENERATION_TIMEOUT, e.message ?: ErrorCode.AI_GENERATION_TIMEOUT.message)
+        return ResponseEntity.status(ErrorCode.AI_GENERATION_TIMEOUT.status).body(errorResponse)
+    }
+
     /**
      * 유효성 검사 실패 예외 처리 (DTO 검증)
      */
