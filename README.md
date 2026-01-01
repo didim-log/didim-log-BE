@@ -125,7 +125,7 @@ MAIL_PASSWORD=your_app_password
 # AI (optional)
 AI_ENABLED=false
 GEMINI_API_KEY=
-GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent
+GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
 
 # App (optional)
 SERVER_URL=http://localhost:8080

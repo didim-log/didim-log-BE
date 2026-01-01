@@ -870,7 +870,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/logs` | 새로운 코딩 로그를 생성합니다. 생성된 로그 ID를 반환하며, 이후 AI 리뷰 생성에 사용할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`LogCreateRequest`<br>- `title` (String, required): 로그 제목<br>  - 유효성: `@NotBlank`<br>- `content` (String, required): 로그 내용<br>  - 유효성: `@NotBlank` (빈 문자열인 경우 서버에서 공백 문자로 기본값 처리)<br>- `code` (String, required): 사용자 코드<br>  - 유효성: `@NotBlank` | `LogResponse`<br><br>**LogResponse 구조:**<br>- `id` (String): 생성된 로그 ID | JWT Token |
-| POST | `/api/v1/logs/{logId}/ai-review` | 로그 엔티티에서 **코드와 언어를 자동으로 추출**하여 AI 한 줄 리뷰를 생성하거나 조회합니다. 언어는 코드 내용을 분석하여 자동 감지됩니다.<br><br>**지원 언어:** C, CPP, CSHARP, GO, JAVA, JAVASCRIPT, KOTLIN, PYTHON, R, RUBY, SCALA, SWIFT, TEXT (백준 온라인 저지 지원 언어와 동기화)<br><br>**프롬프트:** "Analyze this {language} code and provide a helpful one-line review focusing on time complexity or clean code."<br><br>**비용 절감 로직:**<br>- DB의 `aiReview`가 이미 존재하면 **외부 AI 호출 없이** 즉시 반환합니다.<br>- 코드가 2000자를 초과하면 프롬프트 입력을 2000자까지만 잘라서 사용합니다.<br>- 코드가 10자 미만이면 AI 호출 없이 기본 메시지를 반환합니다.<br><br>**중복 호출 방지(멀티 인스턴스):**<br>- 동일 `logId`에 대해 동시에 요청이 들어오면, MongoDB의 원자적 락으로 **외부 AI 호출은 1회만** 수행됩니다.<br>- 락이 잡혀 있고 아직 결과가 없으면 아래 메시지를 반환할 수 있습니다: `AI review is being generated. Please retry shortly.` | **Path Variables:**<br>- `logId` (String, required): 로그 ID | `AiReviewResponse`<br>- `review` (String): 한 줄 리뷰 또는 안내 메시지<br>- `cached` (Boolean): 캐시 히트 여부 | None |
+| POST | `/api/v1/logs/{logId}/ai-review` | 로그 엔티티에서 **코드와 언어를 자동으로 추출**하여 AI 한 줄 리뷰를 생성하거나 조회합니다. 언어는 코드 내용을 분석하여 자동 감지됩니다.<br><br>**지원 언어:** C, CPP, CSHARP, GO, JAVA, JAVASCRIPT, KOTLIN, PYTHON, R, RUBY, SCALA, SWIFT, TEXT (백준 온라인 저지 지원 언어와 동기화)<br><br>**AI 모델:** Gemini 2.5 Flash<br><br>**응답 언어:** 한국어 (모든 리뷰는 한국어로 제공)<br><br>**프롬프트:** "이 {language} 코드를 분석하고 시간 복잡도나 클린 코드에 초점을 맞춘 도움이 되는 한 줄 리뷰를 제공하세요. 반드시 한국어로 응답하세요."<br><br>**비용 절감 로직:**<br>- DB의 `aiReview`가 이미 존재하면 **외부 AI 호출 없이** 즉시 반환합니다.<br>- 코드가 2000자를 초과하면 프롬프트 입력을 2000자까지만 잘라서 사용합니다.<br>- 코드가 10자 미만이면 AI 호출 없이 기본 메시지를 반환합니다. (응답: "코드가 너무 짧아 분석할 수 없습니다")<br><br>**타임아웃 및 에러 처리:**<br>- AI 생성 타임아웃: 30초 (30초 초과 시 `AI_GENERATION_TIMEOUT` 에러 반환)<br>- AI 생성 실패 시 `AI_GENERATION_FAILED` 에러 반환<br><br>**중복 호출 방지(멀티 인스턴스):**<br>- 동일 `logId`에 대해 동시에 요청이 들어오면, MongoDB의 원자적 락으로 **외부 AI 호출은 1회만** 수행됩니다.<br>- 락이 잡혀 있고 아직 결과가 없으면 아래 메시지를 반환할 수 있습니다: `AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요.` | **Path Variables:**<br>- `logId` (String, required): 로그 ID | `AiReviewResponse`<br>- `review` (String): 한 줄 리뷰 (한국어) 또는 안내 메시지<br>- `cached` (Boolean): 캐시 히트 여부 | None |
 
 **예시 요청 (로그 생성):**
 ```http
@@ -1277,7 +1277,7 @@ GET /api/v1/ranks
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/admin/users` | 페이징을 적용하여 전체 회원 목록을 조회합니다. 검색어와 날짜 범위 필터를 지원합니다. Rating 기준 내림차순으로 정렬됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `search` (String, optional): 검색어 (닉네임, BOJ ID, 이메일)<br>  - 대소문자 구분 없이 부분 일치 검색<br>- `startDate` (String, optional): 가입 시작일 (ISO 8601 형식, 예: "2024-01-01")<br>  - 해당 날짜 00:00:00 이후 가입한 회원만 조회<br>- `endDate` (String, optional): 가입 종료일 (ISO 8601 형식, 예: "2024-12-31")<br>  - 해당 날짜 23:59:59 이전 가입한 회원만 조회 | `Page<AdminUserResponse>`<br><br>**AdminUserResponse 구조:**<br>- `id` (String): 학생 ID<br>- `nickname` (String): 닉네임<br>- `bojId` (String, nullable): BOJ ID (소셜 로그인 사용자는 null)<br>- `email` (String, nullable): 이메일 (소셜 로그인 사용자만 존재)<br>- `provider` (String): 인증 제공자 (BOJ, GOOGLE, GITHUB, NAVER)<br>- `role` (String): 사용자 권한 (GUEST, USER, ADMIN)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `currentTier` (String): 현재 티어명 (예: "GOLD")<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br><br>**Page 구조:**<br>- `content` (List<AdminUserResponse>): 회원 목록<br>- `totalElements` (Long): 전체 회원 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/users` | 페이징을 적용하여 전체 회원 목록을 조회합니다. 검색어와 날짜 범위 필터를 지원합니다. Rating 기준 내림차순으로 정렬됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `search` (String, optional): 검색어 (닉네임, BOJ ID, 이메일)<br>  - 대소문자 구분 없이 부분 일치 검색<br>- `startDate` (String, optional): 가입 시작일 (ISO 8601 형식, 예: "2024-01-01")<br>  - 해당 날짜 00:00:00 이후 가입한 회원만 조회<br>- `endDate` (String, optional): 가입 종료일 (ISO 8601 형식, 예: "2024-12-31")<br>  - 해당 날짜 23:59:59 이전 가입한 회원만 조회 | `Page<AdminUserResponse>`<br><br>**AdminUserResponse 구조:**<br>- `id` (String): 학생 ID<br>- `nickname` (String): 닉네임<br>- `bojId` (String, nullable): BOJ ID (소셜 로그인 사용자는 null)<br>- `email` (String, nullable): 이메일 (소셜 로그인 사용자만 존재)<br>- `provider` (String): 인증 제공자 (BOJ, GOOGLE, GITHUB, NAVER)<br>- `role` (String): 사용자 권한 (GUEST, USER, ADMIN)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `currentTier` (String): 현재 티어명 (예: "GOLD")<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br>- `solvedCount` (Long): 해결한 문제 수 (SUCCESS인 Solution 개수)<br>- `retrospectiveCount` (Long): 작성한 회고 수<br><br>**Page 구조:**<br>- `content` (List<AdminUserResponse>): 회원 목록<br>- `totalElements` (Long): 전체 회원 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | JWT Token (ADMIN) |
 | DELETE | `/api/v1/admin/users/{studentId}` | 특정 회원을 강제로 탈퇴시킵니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `studentId` (String, required): 학생 ID | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): 응답 메시지 ("회원이 성공적으로 탈퇴되었습니다.") | JWT Token (ADMIN) |
 | PATCH | `/api/v1/admin/users/{studentId}` | 사용자 권한(Role), 닉네임, BOJ ID를 선택적으로 수정합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AdminUserUpdateDto` (optional fields)<br>- `role` (String, optional): ROLE_USER/ROLE_ADMIN<br>- `nickname` (String, optional)<br>- `bojId` (String, optional) | `204 No Content` (응답 본문 없음) | JWT Token (ADMIN) |
 
@@ -1548,13 +1548,61 @@ Content-Type: application/json
 
 ---
 
+## AdminLogController
+
+관리자용 AI 리뷰 로그 조회 API를 제공합니다. ADMIN 권한이 필요합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/admin/logs` | AI 리뷰 생성 로그를 페이징하여 조회합니다. BOJ ID로 필터링할 수 있습니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `bojId` (String, optional): 필터링할 BOJ ID | `Page<AdminLogResponse>`<br><br>**AdminLogResponse 구조:**<br>- `id` (String): 로그 ID<br>- `bojId` (String, nullable): AI 리뷰를 요청한 사용자의 BOJ ID<br>- `title` (String): 로그 제목<br>- `content` (String): 로그 내용<br>- `code` (String): 제출된 코드<br>- `aiReview` (String, nullable): AI가 생성한 한 줄 리뷰<br>- `aiReviewStatus` (String, nullable): AI 리뷰 상태 (COMPLETED, FAILED, IN_PROGRESS)<br>- `aiReviewDurationMillis` (Long, nullable): AI 리뷰 생성에 걸린 시간 (밀리초)<br>- `createdAt` (LocalDateTime): 로그 생성 일시<br><br>**Page 구조:**<br>- `content` (List<AdminLogResponse>): 로그 목록<br>- `totalElements` (Long): 전체 로그 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/logs/{logId}` | 특정 AI 리뷰 생성 로그의 상세 정보를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `logId` (String, required): 로그 ID | `AdminLogResponse`<br><br>**AdminLogResponse 구조:** (위와 동일) | JWT Token (ADMIN) |
+
+**예시 요청 (로그 목록 조회):**
+```http
+GET /api/v1/admin/logs?page=1&size=20
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (BOJ ID 필터링):**
+```http
+GET /api/v1/admin/logs?bojId=user123&page=1&size=20
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (로그 목록 조회):**
+```json
+{
+  "content": [
+    {
+      "id": "log-123",
+      "bojId": "user123",
+      "title": "Problem 1000 Solution",
+      "content": "회고 내용",
+      "code": "public class Solution { ... }",
+      "aiReview": "코드가 명확하고 시간 복잡도 O(N)으로 최적입니다.",
+      "aiReviewStatus": "COMPLETED",
+      "aiReviewDurationMillis": 2706,
+      "createdAt": "2024-01-15T10:30:00"
+    }
+  ],
+  "totalElements": 100,
+  "totalPages": 5,
+  "number": 0,
+  "size": 20,
+  "hasNext": true,
+  "hasPrevious": false
+}
+```
+
+---
+
 ## AdminDashboardController
 
 관리자 대시보드 통계 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/admin/dashboard/stats` | 총 회원 수, 오늘 가입한 회원 수, 총 해결된 문제 수, 오늘 작성된 회고 수를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AdminDashboardStatsResponse`<br><br>**AdminDashboardStatsResponse 구조:**<br>- `totalUsers` (Long): 총 회원 수<br>- `todaySignups` (Long): 오늘 가입한 회원 수<br>- `totalSolvedProblems` (Long): 총 해결된 문제 수 (SUCCESS인 Solution 개수)<br>- `todayRetrospectives` (Long): 오늘 작성된 회고 수 | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/dashboard/stats` | 총 회원 수, 오늘 가입한 회원 수, 총 해결된 문제 수, 오늘 작성된 회고 수를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AdminDashboardStatsResponse`<br><br>**AdminDashboardStatsResponse 구조:**<br>- `totalUsers` (Long): 총 회원 수<br>- `todaySignups` (Long): 오늘 가입한 회원 수<br>- `totalSolvedProblems` (Long): 총 해결된 문제 수 (SUCCESS인 Solution 개수)<br>- `todayRetrospectives` (Long): 오늘 작성된 회고 수<br>- `aiMetrics` (AiMetricsResponse): AI 리뷰 생성 통계<br><br>**AiMetricsResponse 구조:**<br>- `averageDurationMillis` (Long, nullable): 평균 AI 생성 시간 (밀리초, null이면 아직 생성된 리뷰가 없음)<br>- `averageDurationSeconds` (Double, nullable): 평균 AI 생성 시간 (초, 소수점 2자리, null이면 아직 생성된 리뷰가 없음)<br>- `totalGeneratedCount` (Long): 총 생성된 AI 리뷰 수<br>- `timeoutCount` (Long): 타임아웃된 AI 리뷰 수<br>- `timeoutRate` (Double): 타임아웃 비율 (0.0 ~ 1.0) | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/dashboard/metrics` | 최근 30분~1시간 동안의 분당 요청 수(RPM)와 평균 응답 속도를 조회합니다. HandlerInterceptor를 활용하여 요청 시간을 측정하고 메모리에 시계열 데이터를 저장합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `minutes` (Int, optional, default: 30): 조회할 시간 범위 (분)<br>  - 유효성: `@Positive` (1 이상)<br>  - 권장값: 30~60분 | `PerformanceMetricsResponse`<br><br>**PerformanceMetricsResponse 구조:**<br>- `rpm` (Double): 분당 요청 수 (Requests Per Minute)<br>- `averageResponseTime` (Double): 평균 응답 시간 (밀리초)<br>- `timeRangeMinutes` (Int): 조회한 시간 범위 (분) | JWT Token (ADMIN) |
 
 **예시 요청:**
