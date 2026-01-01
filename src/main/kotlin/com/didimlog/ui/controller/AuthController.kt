@@ -2,7 +2,11 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.auth.AuthService
 import com.didimlog.application.auth.FindAccountService
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AuthResponse
@@ -14,6 +18,7 @@ import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.FindAccountResponse
 import com.didimlog.ui.dto.LoginRequest
 import com.didimlog.ui.dto.SignupRequest
+import com.didimlog.ui.dto.RefreshTokenRequest
 import com.didimlog.ui.dto.SignupFinalizeRequest
 import com.didimlog.ui.dto.SuperAdminRequest
 import io.swagger.v3.oas.annotations.Operation
@@ -25,12 +30,14 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -43,6 +50,9 @@ class AuthController(
     private val authService: AuthService,
     private val findAccountService: FindAccountService,
     private val bojOwnershipVerificationService: BojOwnershipVerificationService,
+    private val refreshTokenService: RefreshTokenService,
+    private val jwtTokenProvider: JwtTokenProvider,
+    private val studentRepository: StudentRepository,
     @Value("\${app.admin.secret-key}")
     private val adminSecretKey: String
 ) {
@@ -75,6 +85,7 @@ class AuthController(
         val result = authService.signup(request.bojId, request.password, request.email)
         val response = AuthResponse.signup(
             token = result.token,
+            refreshToken = result.refreshToken,
             rating = result.rating,
             tier = result.tier.name,
             tierLevel = result.tier.value
@@ -95,6 +106,7 @@ class AuthController(
         val result = authService.login(request.bojId, request.password)
         val response = AuthResponse.login(
             token = result.token,
+            refreshToken = result.refreshToken,
             rating = result.rating,
             tier = result.tier.name,
             tierLevel = result.tier.value
@@ -153,6 +165,7 @@ class AuthController(
         val result = authService.createSuperAdmin(request.bojId, request.password, request.email, request.adminKey)
         val response = AuthResponse.signup(
             token = result.token,
+            refreshToken = result.refreshToken,
             rating = result.rating,
             tier = result.tier.name,
             tierLevel = result.tier.value
@@ -195,6 +208,7 @@ class AuthController(
         )
         val response = AuthResponse.signup(
             token = result.token,
+            refreshToken = result.refreshToken,
             rating = result.rating,
             tier = result.tier.name,
             tierLevel = result.tier.value
@@ -268,5 +282,65 @@ class AuthController(
             bojId = request.bojId
         )
         return ResponseEntity.ok(BojVerifyResponse())
+    }
+
+    @Operation(
+        summary = "토큰 갱신",
+        description = "Refresh Token을 사용하여 새로운 Access Token과 Refresh Token을 발급합니다. 기존 Refresh Token은 무효화됩니다 (Token Rotation)."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "토큰 갱신 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 Refresh Token",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "Refresh Token이 만료되었거나 존재하지 않음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/refresh")
+    fun refresh(
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) authHeader: String?,
+        @RequestBody(required = false) requestBody: RefreshTokenRequest?
+    ): ResponseEntity<AuthResponse> {
+        // 1. Body에서 Refresh Token 추출
+        var refreshToken: String? = null
+        if (requestBody != null && !requestBody.refreshToken.isNullOrBlank()) {
+            refreshToken = requestBody.refreshToken.trim()
+        }
+
+        // 2. Body에 없으면 Header에서 추출 (Bearer 제거)
+        if (refreshToken.isNullOrBlank()) {
+            if (!authHeader.isNullOrBlank() && authHeader.startsWith("Bearer ")) {
+                refreshToken = authHeader.substring(7).trim()
+            }
+        }
+
+        // 3. 둘 다 없으면 명시적 예외 발생 (수동 검증)
+        if (refreshToken.isNullOrBlank()) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 필요합니다.")
+        }
+
+        val (newAccessToken, newRefreshToken) = refreshTokenService.refresh(refreshToken)
+
+        val bojId = jwtTokenProvider.getSubject(newAccessToken)
+        val student = studentRepository.findByBojId(BojId(bojId))
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. bojId=$bojId")
+            }
+
+        val response = AuthResponse.login(
+            token = newAccessToken,
+            refreshToken = newRefreshToken,
+            rating = student.rating,
+            tier = student.tier().name,
+            tierLevel = student.tier().value
+        )
+        return ResponseEntity.ok(response)
     }
 }

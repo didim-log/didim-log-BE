@@ -15,9 +15,10 @@ class JwtTokenProviderTest {
 
     private val secret = "test-secret-key-for-jwt-token-provider-test-12345678901234567890"
     private val expiration = 3600000L // 1시간
+    private val refreshTokenExpiration = 604800000L // 7일
     
     private fun createJwtTokenProvider(): JwtTokenProvider {
-        return JwtTokenProvider(secret, expiration)
+        return JwtTokenProvider(secret, expiration, refreshTokenExpiration)
     }
 
     @Test
@@ -214,5 +215,6 @@ class JwtTokenProviderTest {
         }
     }
 }
+
 
 

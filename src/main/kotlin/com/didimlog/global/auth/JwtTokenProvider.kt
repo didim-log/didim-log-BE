@@ -17,7 +17,9 @@ class JwtTokenProvider(
     @Value("\${app.jwt.secret}")
     private val secret: String,
     @Value("\${app.jwt.expiration}")
-    private val expiration: Long
+    private val expiration: Long,
+    @Value("\${app.jwt.refresh-token-expiration}")
+    private val refreshTokenExpiration: Long
 ) {
 
     private val secretKey: SecretKey by lazy {
@@ -86,6 +88,26 @@ class JwtTokenProvider(
     }
 
     /**
+     * Refresh Token을 생성한다.
+     * Refresh Token은 Access Token보다 긴 만료 시간을 가진다.
+     *
+     * @param subject 토큰의 주체 (보통 사용자 ID 또는 BOJ ID)
+     * @return 생성된 Refresh Token
+     */
+    fun createRefreshToken(subject: String): String {
+        val now = Date()
+        val expiryDate = Date(now.time + refreshTokenExpiration)
+
+        return Jwts.builder()
+            .subject(subject)
+            .claim("type", "refresh")
+            .issuedAt(now)
+            .expiration(expiryDate)
+            .signWith(secretKey)
+            .compact()
+    }
+
+    /**
      * JWT 토큰의 유효성을 검증한다.
      *
      * @param token JWT 토큰
@@ -95,6 +117,21 @@ class JwtTokenProvider(
         return try {
             val claims = getClaims(token)
             !claims.expiration.before(Date())
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Refresh Token인지 확인한다.
+     *
+     * @param token JWT 토큰
+     * @return Refresh Token이면 true, 그렇지 않으면 false
+     */
+    fun isRefreshToken(token: String): Boolean {
+        return try {
+            val claims = getClaims(token)
+            claims["type"] == "refresh"
         } catch (e: Exception) {
             false
         }

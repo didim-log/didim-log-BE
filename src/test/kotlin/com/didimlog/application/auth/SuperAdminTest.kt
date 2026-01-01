@@ -8,6 +8,7 @@ import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -34,6 +35,7 @@ class SuperAdminTest {
     private val passwordEncoder: PasswordEncoder = mockk()
     private val emailService: EmailService = mockk()
     private val passwordResetCodeRepository: PasswordResetCodeRepository = mockk()
+    private val refreshTokenService: RefreshTokenService = mockk()
 
     private val authService = AuthService(
         solvedAcClient,
@@ -41,7 +43,8 @@ class SuperAdminTest {
         jwtTokenProvider,
         passwordEncoder,
         emailService,
-        passwordResetCodeRepository
+        passwordResetCodeRepository,
+        refreshTokenService
     )
 
     @Test
@@ -69,6 +72,7 @@ class SuperAdminTest {
         every { passwordEncoder.encode(password) } returns encodedPassword
         every { studentRepository.save(any<Student>()) } answers { firstArg() }
         every { jwtTokenProvider.createToken(bojId, Role.ADMIN.value) } returns "admin-token"
+        every { refreshTokenService.generateAndSave(bojId) } returns "refresh-token"
 
         // when
         val result = authService.createSuperAdmin(bojId, password, email, adminKey)
