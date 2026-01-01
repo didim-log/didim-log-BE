@@ -158,7 +158,7 @@ class RetrospectiveServiceTest {
 
         // expect
         val exception = assertThrows<BusinessException> {
-            retrospectiveService.writeRetrospective("missing", "1000", "content", null)
+            retrospectiveService.writeRetrospective("missing", "1000", "content", "summary")
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
     }
@@ -173,7 +173,7 @@ class RetrospectiveServiceTest {
 
         // expect
         val exception = assertThrows<BusinessException> {
-            retrospectiveService.writeRetrospective("student-id", "missing", "content", null)
+            retrospectiveService.writeRetrospective("student-id", "missing", "content", "summary")
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.PROBLEM_NOT_FOUND)
     }
@@ -246,7 +246,7 @@ class RetrospectiveServiceTest {
                 retrospectiveId = retrospectiveId,
                 studentId = attackerId,
                 content = "수정된 내용입니다.",
-                summary = null,
+                summary = "수정된 요약",
                 solutionResult = null,
                 solvedCategory = null,
                 solveTime = null
@@ -281,12 +281,13 @@ class RetrospectiveServiceTest {
         every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(ownerId, problemId) } returns existingRetrospective
-        every { retrospectiveRepository.save(any<Retrospective>()) } returns existingRetrospective.updateContent("수정된 내용입니다.")
+        every { retrospectiveRepository.save(any<Retrospective>()) } returns existingRetrospective.updateContent("수정된 내용입니다.", "수정된 요약")
 
         val result = retrospectiveService.writeRetrospective(
             studentId = ownerId,
             problemId = problemId,
-            content = "수정된 내용입니다."
+            content = "수정된 내용입니다.",
+            summary = "수정된 요약"
         )
         assertThat(result.content).isEqualTo("수정된 내용입니다.")
 
@@ -335,6 +336,7 @@ class RetrospectiveServiceTest {
 
         every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
         every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
         every { retrospectiveRepository.delete(any<Retrospective>()) } returns Unit
 
         // when

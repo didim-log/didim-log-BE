@@ -145,6 +145,10 @@ class RetrospectiveController(
         @RequestParam(required = false)
         category: String?,
 
+        @Parameter(description = "풀이 전략 태그 필터 (부분 일치 검색, 예: DFS, DP)", required = false)
+        @RequestParam(required = false)
+        solvedCategory: String?,
+
         @Parameter(description = "북마크 여부 (true인 경우만 필터링)", required = false)
         @RequestParam(required = false)
         isBookmarked: Boolean?,
@@ -168,19 +172,20 @@ class RetrospectiveController(
     ): ResponseEntity<RetrospectivePageResponse> {
         // 인증된 사용자의 경우, 자신의 studentId만 조회 가능하도록 제한
         if (authentication == null) {
-            val response = searchRetrospectives(keyword, category, isBookmarked, studentId, page, size, sort)
+            val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
             return ResponseEntity.ok(response)
         }
 
         val bojId = authentication.name
         val currentStudent = getStudentByBojId(bojId)
-        val response = searchRetrospectives(keyword, category, isBookmarked, currentStudent.id, page, size, sort)
+        val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, currentStudent.id, page, size, sort)
         return ResponseEntity.ok(response)
     }
 
     private fun searchRetrospectives(
         keyword: String?,
         category: String?,
+        solvedCategory: String?,
         isBookmarked: Boolean?,
         studentId: String?,
         page: Int,
@@ -191,6 +196,7 @@ class RetrospectiveController(
         val condition = RetrospectiveSearchCondition(
             keyword = keyword,
             category = category?.let { parseProblemCategory(it) },
+            solvedCategory = solvedCategory?.trim()?.takeIf { it.isNotBlank() },
             isBookmarked = isBookmarked,
             studentId = studentId
         )
@@ -389,7 +395,8 @@ class RetrospectiveController(
             problemId = request.problemId,
             code = request.code,
             isSuccess = request.isSuccess,
-            errorMessage = request.errorMessage
+            errorMessage = request.errorMessage,
+            solveTime = request.solveTime
         )
         val response = TemplateResponse(template = template)
         return ResponseEntity.ok(response)

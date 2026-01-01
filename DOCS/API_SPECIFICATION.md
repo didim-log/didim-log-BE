@@ -544,11 +544,11 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. **보안:** 쿼리 파라미터의 `studentId`와 JWT 토큰의 사용자 정보가 일치해야 합니다. 일치하지 않으면 403 Forbidden이 반환됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "15m 30s" 또는 초 단위 문자열<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
+| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. **보안:** 쿼리 파라미터의 `studentId`와 JWT 토큰의 사용자 정보가 일치해야 합니다. 일치하지 않으면 403 Forbidden이 반환됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, required): 한 줄 요약<br>  - 유효성: `@NotBlank`, `@Size(max=200)` (200자 이하)<br>  - 필수 항목<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "15m 30s" 또는 초 단위 문자열<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
 | GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
-| PATCH | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 수정합니다. **보안:** JWT 토큰의 사용자가 회고의 소유자인지 검증합니다. 소유자가 아니면 403 Forbidden이 반환됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | JWT Token |
+| PATCH | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 수정합니다. **보안:** JWT 토큰의 사용자가 회고의 소유자인지 검증합니다. 소유자가 아니면 403 Forbidden이 반환됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, required): 한 줄 요약<br>  - 유효성: `@NotBlank`, `@Size(max=200)` (200자 이하)<br>  - 필수 항목<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | JWT Token |
 | DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. **보안:** JWT 토큰의 사용자가 회고의 소유자인지 검증합니다. 소유자가 아니면 403 Forbidden이 반환됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `204 No Content` (응답 본문 없음) | JWT Token |
 | GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br>- `resultType` (ProblemResult, required): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - SUCCESS: 성공 템플릿 (핵심 접근, 시간/공간 복잡도, 개선할 점)<br>  - FAIL/TIME_OVER: 실패 템플릿 (실패 원인, 부족했던 개념, 다음 시도 계획) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
 | POST | `/api/v1/retrospectives/template/static` | 정적 템플릿을 반환합니다. `RETROSPECTIVE_STANDARDS.md`의 **불변 목차(1~5)** 구조를 포함한 순수 정적 마크다운을 제공합니다. **회고 템플릿은 AI가 생성하지 않으며**, 사용자가 목차를 보면서 내용을 채워넣을 수 있도록 설계됩니다. 문자열 마지막에는 반드시 아래 footer가 붙습니다:<br><br>```<br>---<br>Generated by DidimLog<br>``` | **Request Body:**<br>`StaticTemplateRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `isSuccess` (Boolean, required): 풀이 성공 여부<br>- `errorMessage` (String, optional): 에러 메시지 (실패 시) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 (footer 포함) | None |
@@ -987,7 +987,7 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| PATCH | `/api/v1/students/me` | 학생의 닉네임, 비밀번호, 주 언어를 수정합니다. 각 필드는 선택적으로 변경할 수 있으며, 비밀번호 변경 시 현재 비밀번호 검증이 필요합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$`<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음<br>- `primaryLanguage` (PrimaryLanguage, optional): 주로 사용하는 프로그래밍 언어<br>  - 가능한 값: `JAVA`, `PYTHON`, `KOTLIN`, `JAVASCRIPT`, `CPP`, `GO`, `RUST`, `SWIFT`, `TEXT`<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
+| PATCH | `/api/v1/students/me` | 학생의 닉네임, 비밀번호, 주 언어를 수정합니다. 각 필드는 선택적으로 변경할 수 있으며, 비밀번호 변경 시 현재 비밀번호 검증이 필요합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$`<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음<br>- `primaryLanguage` (PrimaryLanguage, optional): 주로 사용하는 프로그래밍 언어<br>  - 가능한 값: `C`, `CPP`, `CSHARP`, `GO`, `JAVA`, `JAVASCRIPT`, `KOTLIN`, `PYTHON`, `R`, `RUBY`, `SCALA`, `SWIFT`, `TEXT`<br>  - 백준 온라인 저지 지원 언어와 동기화 (총 13개 언어)<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
 | DELETE | `/api/v1/students/me` | 로그인한 사용자의 계정 및 연관 데이터(회고/피드백)를 완전히 삭제합니다. (Hard Delete, 복구 불가) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `204 No Content` (성공 시) | JWT Token |
 
 **예시 요청 (닉네임만 변경):**
@@ -1131,7 +1131,7 @@ GET /api/v1/quotes/random
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/statistics` | 학생의 활동 히트맵(Heatmap), 카테고리별 분포, 알고리즘 카테고리 통계, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 365일간의 활동 히트맵 데이터 (오늘 포함하여 정확히 365일)<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `algorithmCategoryDistribution` (Map<String, Int>): 알고리즘 카테고리별 사용 통계 (Retrospective의 solvedCategory 기준)<br>- `topUsedAlgorithms` (List<TopUsedAlgorithmResponse>): 가장 많이 사용한 알고리즘 상위 3개<br>- `totalSolvedCount` (Int): 누적 풀이 수<br>- `totalRetrospectives` (Long): 총 회고 수<br>- `averageSolveTime` (Double): 평균 풀이 시간 (초 단위)<br>- `successRate` (Double): 성공률 (0.0 ~ 100.0, 소수점 첫째 자리까지 반올림)<br>- `tagRadarData` (List<TagStatResponse>): 레이더 차트용 태그별 통계 (상위 5개)<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수<br>- `problemIds` (List<String>): 해당 날짜에 풀이한 문제 ID 목록 (중복 제거됨)<br><br>**TopUsedAlgorithmResponse 구조:**<br>- `name` (String): 알고리즘 이름 (예: "DFS", "DP", "Greedy")<br>- `count` (Int): 사용 횟수<br><br>**TagStatResponse 구조:**<br>- `tag` (String): 태그명<br>- `count` (Int): 해당 태그로 풀이한 문제 수<br>- `fullMark` (Int): 그래프 스케일링용 최대 카운트 값 | JWT Token |
+| GET | `/api/v1/statistics` | 학생의 활동 히트맵(Heatmap), 카테고리별 분포, 알고리즘 카테고리 통계, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 365일간의 활동 히트맵 데이터 (오늘 포함하여 정확히 365일)<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `algorithmCategoryDistribution` (Map<String, Int>): 알고리즘 카테고리별 사용 통계 (Retrospective의 solvedCategory 기준)<br>- `topUsedAlgorithms` (List<TopUsedAlgorithmResponse>): 가장 많이 사용한 알고리즘 상위 3개<br>- `totalSolvedCount` (Int): 누적 풀이 수<br>- `totalRetrospectives` (Long): 총 회고 수<br>- `averageSolveTime` (Double): 평균 풀이 시간 (초 단위)<br>- `successRate` (Double): 성공률 (0.0 ~ 100.0, 소수점 첫째 자리까지 반올림)<br>- `tagRadarData` (List<TagStatResponse>): 레이더 차트용 태그별 통계 (상위 5개)<br>- `weaknessAnalysis` (WeaknessAnalysisResponse, nullable): 취약점 분석 데이터 (실패한 회고가 없으면 null)<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수<br>- `problemIds` (List<String>): 해당 날짜에 풀이한 문제 ID 목록 (중복 제거됨)<br><br>**TopUsedAlgorithmResponse 구조:**<br>- `name` (String): 알고리즘 이름 (예: "DFS", "DP", "Greedy")<br>- `count` (Int): 사용 횟수<br><br>**TagStatResponse 구조:**<br>- `tag` (String): 태그명<br>- `count` (Int): 해당 태그로 풀이한 문제 수<br>- `fullMark` (Int): 그래프 스케일링용 최대 카운트 값<br><br>**WeaknessAnalysisResponse 구조:**<br>- `totalFailures` (Int): 총 실패 횟수<br>- `topCategory` (String, nullable): 가장 빈번한 실패 카테고리<br>- `topCategoryCount` (Int): 가장 빈번한 실패 카테고리의 실패 횟수<br>- `topReason` (String, nullable): 가장 빈번한 실패 원인 (FAIL 또는 TIME_OVER)<br>- `categoryFailures` (List<CategoryFailureResponse>): 카테고리별 실패 분포 (상위 8개)<br><br>**CategoryFailureResponse 구조:**<br>- `category` (String): 카테고리명<br>- `count` (Int): 해당 카테고리의 실패 횟수 | JWT Token |
 
 **예시 요청:**
 ```http
@@ -1210,7 +1210,27 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
       "count": 3,
       "fullMark": 15
     }
-  ]
+  ],
+  "weaknessAnalysis": {
+    "totalFailures": 10,
+    "topCategory": "GRAPH",
+    "topCategoryCount": 5,
+    "topReason": "FAIL",
+    "categoryFailures": [
+      {
+        "category": "GRAPH",
+        "count": 5
+      },
+      {
+        "category": "DP",
+        "count": 3
+      },
+      {
+        "category": "GREEDY",
+        "count": 2
+      }
+    ]
+  }
 }
 ```
 
@@ -1604,7 +1624,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/admin/dashboard/stats` | 총 회원 수, 오늘 가입한 회원 수, 총 해결된 문제 수, 오늘 작성된 회고 수를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AdminDashboardStatsResponse`<br><br>**AdminDashboardStatsResponse 구조:**<br>- `totalUsers` (Long): 총 회원 수<br>- `todaySignups` (Long): 오늘 가입한 회원 수<br>- `totalSolvedProblems` (Long): 총 해결된 문제 수 (SUCCESS인 Solution 개수)<br>- `todayRetrospectives` (Long): 오늘 작성된 회고 수<br>- `aiMetrics` (AiMetricsResponse): AI 리뷰 생성 통계<br><br>**AiMetricsResponse 구조:**<br>- `averageDurationMillis` (Long, nullable): 평균 AI 생성 시간 (밀리초, null이면 아직 생성된 리뷰가 없음)<br>- `averageDurationSeconds` (Double, nullable): 평균 AI 생성 시간 (초, 소수점 2자리, null이면 아직 생성된 리뷰가 없음)<br>- `totalGeneratedCount` (Long): 총 생성된 AI 리뷰 수<br>- `timeoutCount` (Long): 타임아웃된 AI 리뷰 수<br>- `timeoutRate` (Double): 타임아웃 비율 (0.0 ~ 1.0) | JWT Token (ADMIN) |
-| GET | `/api/v1/admin/dashboard/metrics` | 최근 30분~1시간 동안의 분당 요청 수(RPM)와 평균 응답 속도를 조회합니다. HandlerInterceptor를 활용하여 요청 시간을 측정하고 메모리에 시계열 데이터를 저장합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `minutes` (Int, optional, default: 30): 조회할 시간 범위 (분)<br>  - 유효성: `@Positive` (1 이상)<br>  - 권장값: 30~60분 | `PerformanceMetricsResponse`<br><br>**PerformanceMetricsResponse 구조:**<br>- `rpm` (Double): 분당 요청 수 (Requests Per Minute)<br>- `averageResponseTime` (Double): 평균 응답 시간 (밀리초)<br>- `timeRangeMinutes` (Int): 조회한 시간 범위 (분) | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/dashboard/metrics` | 최근 30분~1시간 동안의 분당 요청 수(RPM)와 평균 응답 속도를 조회합니다. HandlerInterceptor를 활용하여 요청 시간을 측정하고 메모리에 시계열 데이터를 저장합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `minutes` (Int, optional, default: 30): 조회할 시간 범위 (분)<br>  - 유효성: `@Positive` (1 이상)<br>  - 권장값: 30~60분 | `PerformanceMetricsResponse`<br><br>**PerformanceMetricsResponse 구조:**<br>- `rpm` (Double): 분당 요청 수 (Requests Per Minute)<br>- `averageResponseTime` (Double): 평균 응답 시간 (밀리초)<br>- `timeRangeMinutes` (Int): 조회한 시간 범위 (분)<br>- `rpmTimeSeries` (List<TimeSeriesPointResponse>): RPM 시계열 데이터 (최대 30개 포인트)<br>- `latencyTimeSeries` (List<TimeSeriesPointResponse>): 응답 시간 시계열 데이터 (최대 30개 포인트)<br><br>**TimeSeriesPointResponse 구조:**<br>- `timestamp` (Long): Unix timestamp (초)<br>- `value` (Double): 값 | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/dashboard/chart` | 통계 카드 클릭 시 표시할 트렌드 차트 데이터를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `dataType` (String, required): 데이터 타입 (USER, SOLUTION, RETROSPECTIVE)<br>- `period` (String, required): 기간 (DAILY, WEEKLY, MONTHLY) | `ChartDataResponse`<br><br>**ChartDataResponse 구조:**<br>- `data` (List<ChartDataItem>): 차트 데이터 리스트<br><br>**ChartDataItem 구조:**<br>- `date` (String): 날짜 문자열 (형식은 period에 따라 다름)<br>- `value` (Long): 값 (누적 합계) | JWT Token (ADMIN) |
 
 **예시 요청:**
 ```http
@@ -1633,7 +1654,53 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 {
   "rpm": 45.5,
   "averageResponseTime": 125.3,
-  "timeRangeMinutes": 30
+  "timeRangeMinutes": 30,
+  "rpmTimeSeries": [
+    {
+      "timestamp": 1704067200,
+      "value": 10.0
+    },
+    {
+      "timestamp": 1704067260,
+      "value": 15.0
+    }
+  ],
+  "latencyTimeSeries": [
+    {
+      "timestamp": 1704067200,
+      "value": 120.5
+    },
+    {
+      "timestamp": 1704067260,
+      "value": 130.2
+    }
+  ]
+}
+```
+
+**예시 요청 (차트 데이터 조회):**
+```http
+GET /api/v1/admin/dashboard/chart?dataType=USER&period=DAILY
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (차트 데이터 조회):**
+```json
+{
+  "data": [
+    {
+      "date": "2024-01-01",
+      "value": 10
+    },
+    {
+      "date": "2024-01-02",
+      "value": 25
+    },
+    {
+      "date": "2024-01-03",
+      "value": 40
+    }
+  ]
 }
 ```
 

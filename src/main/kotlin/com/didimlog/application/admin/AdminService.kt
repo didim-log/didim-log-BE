@@ -98,13 +98,18 @@ class AdminService(
 
     /**
      * 학생이 해결한 문제 수를 계산한다.
-     * SUCCESS인 Solution 개수를 반환한다.
+     * SUCCESS인 Solution 중 고유한 problemId의 개수를 반환한다.
      *
      * @param student 학생
-     * @return 해결한 문제 수
+     * @return 해결한 고유한 문제 수
      */
     private fun calculateSolvedCount(student: Student): Long {
-        return student.solutions.getAll().count { it.isSuccess() }.toLong()
+        return student.solutions.getAll()
+            .filter { it.isSuccess() }
+            .map { it.problemId.value }
+            .distinct()
+            .size
+            .toLong()
     }
 
     /**

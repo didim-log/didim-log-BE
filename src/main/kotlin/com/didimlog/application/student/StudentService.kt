@@ -88,6 +88,14 @@ class StudentService(
                 )
             }
 
+            // 새 비밀번호가 현재 비밀번호와 같은지 검증
+            if (student.matchPassword(newPassword, passwordEncoder)) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "새 비밀번호는 현재 비밀번호와 다르게 설정해야 합니다."
+                )
+            }
+
             // 새 비밀번호 복잡도 검증
             PasswordValidator.validate(newPassword)
 

@@ -94,6 +94,7 @@ class StudentServiceTest {
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
         every { passwordEncoder.matches(currentPassword, encodedCurrentPassword) } returns true
+        every { passwordEncoder.matches(newPassword, encodedCurrentPassword) } returns false
         every { passwordEncoder.encode(newPassword) } returns encodedNewPassword
         every { studentRepository.save(any<Student>()) } answers { firstArg() }
 

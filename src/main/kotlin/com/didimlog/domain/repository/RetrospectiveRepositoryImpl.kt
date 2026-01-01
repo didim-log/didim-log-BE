@@ -132,6 +132,12 @@ class RetrospectiveRepositoryImpl(
             criteriaList.add(Criteria("mainCategory").`is`(condition.category))
         }
 
+        // 풀이 전략 태그 필터 (부분 일치 검색)
+        if (!condition.solvedCategory.isNullOrBlank()) {
+            // solvedCategory 필드에 검색어가 포함되어 있는지 확인 (대소문자 구분 없음)
+            criteriaList.add(Criteria("solvedCategory").regex(condition.solvedCategory, "i"))
+        }
+
         // 북마크 필터
         if (condition.isBookmarked == true) {
             criteriaList.add(Criteria("isBookmarked").`is`(true))

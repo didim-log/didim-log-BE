@@ -14,7 +14,8 @@ data class StatisticsResponse(
     val totalRetrospectives: Long,
     val averageSolveTime: Double,
     val successRate: Double,
-    val tagRadarData: List<TagStatResponse>
+    val tagRadarData: List<TagStatResponse>,
+    val weaknessAnalysis: WeaknessAnalysisResponse?
 ) {
     companion object {
         fun from(statisticsInfo: StatisticsInfo): StatisticsResponse {
@@ -27,7 +28,8 @@ data class StatisticsResponse(
                 totalRetrospectives = statisticsInfo.totalRetrospectives,
                 averageSolveTime = statisticsInfo.averageSolveTime,
                 successRate = statisticsInfo.successRate,
-                tagRadarData = statisticsInfo.tagRadarData.map { TagStatResponse.from(it) }
+                tagRadarData = statisticsInfo.tagRadarData.map { TagStatResponse.from(it) },
+                weaknessAnalysis = statisticsInfo.weaknessAnalysis?.let { WeaknessAnalysisResponse.from(it) }
             )
         }
     }
@@ -83,6 +85,46 @@ data class TagStatResponse(
                 tag = tagStat.tag,
                 count = tagStat.count,
                 fullMark = tagStat.fullMark
+            )
+        }
+    }
+}
+
+/**
+ * 취약점 분석 응답 DTO
+ */
+data class WeaknessAnalysisResponse(
+    val totalFailures: Int,
+    val topCategory: String?,
+    val topCategoryCount: Int,
+    val topReason: String?,
+    val categoryFailures: List<CategoryFailureResponse>
+) {
+    companion object {
+        fun from(weaknessAnalysis: com.didimlog.application.statistics.WeaknessAnalysis): WeaknessAnalysisResponse {
+            return WeaknessAnalysisResponse(
+                totalFailures = weaknessAnalysis.totalFailures,
+                topCategory = weaknessAnalysis.topCategory,
+                topCategoryCount = weaknessAnalysis.topCategoryCount,
+                topReason = weaknessAnalysis.topReason?.name,
+                categoryFailures = weaknessAnalysis.categoryFailures.map { CategoryFailureResponse.from(it) }
+            )
+        }
+    }
+}
+
+/**
+ * 카테고리별 실패 응답 DTO
+ */
+data class CategoryFailureResponse(
+    val category: String,
+    val count: Int
+) {
+    companion object {
+        fun from(categoryFailure: com.didimlog.application.statistics.CategoryFailure): CategoryFailureResponse {
+            return CategoryFailureResponse(
+                category = categoryFailure.category,
+                count = categoryFailure.count
             )
         }
     }

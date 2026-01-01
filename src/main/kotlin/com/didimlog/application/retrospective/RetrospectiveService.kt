@@ -32,7 +32,7 @@ class RetrospectiveService(
      * @param studentId Student 엔티티의 DB ID (@Id 필드)
      * @param problemId 문제 ID
      * @param content 회고 내용
-     * @param summary 한 줄 요약 (선택사항)
+     * @param summary 한 줄 요약 (필수)
      * @param solutionResult 풀이 결과 (SUCCESS/FAIL, 선택사항)
      * @param solvedCategory 사용자가 선택한 풀이 전략 태그 (선택사항)
      * @return 저장된 회고
@@ -43,7 +43,7 @@ class RetrospectiveService(
         studentId: String,
         problemId: String,
         content: String,
-        summary: String? = null,
+        summary: String,
         solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
         solvedCategory: String? = null,
         solveTime: String? = null
@@ -93,7 +93,7 @@ class RetrospectiveService(
      * @param retrospectiveId 회고 ID
      * @param studentId 수정을 시도하는 학생 ID (보안 검증용)
      * @param content 회고 내용
-     * @param summary 한 줄 요약 (선택사항)
+     * @param summary 한 줄 요약 (필수)
      * @param solutionResult 풀이 결과 (선택사항)
      * @param solvedCategory 사용자가 선택한 풀이 전략 태그 (선택사항)
      * @param solveTime 풀이 소요 시간 (선택사항)
@@ -105,7 +105,7 @@ class RetrospectiveService(
         retrospectiveId: String,
         studentId: String,
         content: String,
-        summary: String? = null,
+        summary: String,
         solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
         solvedCategory: String? = null,
         solveTime: String? = null
@@ -124,7 +124,7 @@ class RetrospectiveService(
 
     /**
      * 회고를 삭제한다.
-     * 소유권 검증을 수행한다.
+     * 소유권 검증을 수행하고, 회고 삭제 시 해당 문제의 풀이 기록(Solution)도 함께 삭제한다.
      *
      * @param retrospectiveId 회고 ID
      * @param studentId 삭제를 시도하는 학생 ID (보안 검증용)
@@ -137,6 +137,12 @@ class RetrospectiveService(
 
         validateOwnerOrThrow(retrospective, student)
 
+        // 회고 삭제 시 해당 문제의 풀이 기록(Solution)도 함께 삭제
+        val problemId = ProblemId(retrospective.problemId)
+        val updatedStudent = student.removeSolutionByProblemId(problemId)
+        studentRepository.save(updatedStudent)
+
+        // 회고 삭제
         retrospectiveRepository.delete(retrospective)
         return retrospective
     }
