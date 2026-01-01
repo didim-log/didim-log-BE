@@ -53,13 +53,14 @@ class LogController(
     )
     @PostMapping
     fun createLog(
-        authentication: Authentication,
+        @Parameter(hidden = true)
+        authentication: Authentication?,
         @Parameter(description = "로그 생성 정보", required = true)
         @RequestBody
         @Valid
         request: LogCreateRequest
     ): ResponseEntity<LogResponse> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId), null일 수 있음
+        val bojId = authentication?.name // JWT 토큰의 subject(bojId), null일 수 있음
         val log = logService.createLog(
             title = request.title,
             content = request.content,
