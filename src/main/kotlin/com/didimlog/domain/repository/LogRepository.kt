@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.mongodb.repository.MongoRepository
 import org.springframework.data.mongodb.repository.Query
+import java.time.LocalDateTime
 
 interface LogRepository : MongoRepository<Log, String> {
     /**
@@ -17,6 +18,22 @@ interface LogRepository : MongoRepository<Log, String> {
      */
     @Query("{ 'bojId.value': ?0 }")
     fun findByBojIdValue(bojIdValue: String, pageable: Pageable): Page<Log>
+
+    /**
+     * 특정 날짜 이전에 생성된 로그를 삭제한다.
+     *
+     * @param dateTime 기준 날짜/시간
+     */
+    fun deleteByCreatedAtBefore(dateTime: LocalDateTime)
+
+    /**
+     * 특정 날짜 이전에 생성된 로그의 개수를 조회한다.
+     *
+     * @param dateTime 기준 날짜/시간
+     * @return 로그 개수
+     */
+    @Query("{ 'createdAt': { \$lt: ?0 } }")
+    fun countByCreatedAtBefore(dateTime: LocalDateTime): Long
 }
 
 

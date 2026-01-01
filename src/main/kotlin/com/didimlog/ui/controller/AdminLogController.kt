@@ -1,7 +1,9 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminLogService
+import com.didimlog.application.admin.LogCleanupService
 import com.didimlog.ui.dto.AdminLogResponse
+import com.didimlog.ui.dto.LogCleanupResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -17,6 +19,7 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -28,7 +31,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/admin/logs")
 @Validated
 class AdminLogController(
-    private val adminLogService: AdminLogService
+    private val adminLogService: AdminLogService,
+    private val logCleanupService: LogCleanupService
 ) {
 
     @Operation(
@@ -108,6 +112,46 @@ class AdminLogController(
     ): ResponseEntity<AdminLogResponse> {
         val log = adminLogService.getLog(logId)
         return ResponseEntity.ok(AdminLogResponse.from(log))
+    }
+
+    @Operation(
+        summary = "오래된 로그 정리",
+        description = "지정된 일수 이상 된 로그를 삭제합니다. ADMIN 권한이 필요합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "정리 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 olderThanDays 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @DeleteMapping("/cleanup")
+    fun cleanupLogs(
+        @Parameter(description = "기준일 (이보다 오래된 로그 삭제)", required = true)
+        @RequestParam
+        @Positive(message = "olderThanDays는 1 이상이어야 합니다.")
+        olderThanDays: Int
+    ): ResponseEntity<LogCleanupResponse> {
+        val deletedCount = logCleanupService.cleanupLogs(olderThanDays)
+        val response = LogCleanupResponse(
+            message = "${deletedCount}개의 로그가 삭제되었습니다.",
+            deletedCount = deletedCount
+        )
+        return ResponseEntity.ok(response)
     }
 }
 

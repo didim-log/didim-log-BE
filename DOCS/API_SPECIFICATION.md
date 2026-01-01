@@ -1577,6 +1577,7 @@ Content-Type: application/json
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/admin/logs` | AI 리뷰 생성 로그를 페이징하여 조회합니다. BOJ ID로 필터링할 수 있습니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `bojId` (String, optional): 필터링할 BOJ ID | `Page<AdminLogResponse>`<br><br>**AdminLogResponse 구조:**<br>- `id` (String): 로그 ID<br>- `bojId` (String, nullable): AI 리뷰를 요청한 사용자의 BOJ ID<br>- `title` (String): 로그 제목<br>- `content` (String): 로그 내용<br>- `code` (String): 제출된 코드<br>- `aiReview` (String, nullable): AI가 생성한 한 줄 리뷰<br>- `aiReviewStatus` (String, nullable): AI 리뷰 상태 (COMPLETED, FAILED, IN_PROGRESS)<br>- `aiReviewDurationMillis` (Long, nullable): AI 리뷰 생성에 걸린 시간 (밀리초)<br>- `createdAt` (LocalDateTime): 로그 생성 일시<br><br>**Page 구조:**<br>- `content` (List<AdminLogResponse>): 로그 목록<br>- `totalElements` (Long): 전체 로그 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/logs/{logId}` | 특정 AI 리뷰 생성 로그의 상세 정보를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `logId` (String, required): 로그 ID | `AdminLogResponse`<br><br>**AdminLogResponse 구조:** (위와 동일) | JWT Token (ADMIN) |
+| DELETE | `/api/v1/admin/logs/cleanup` | 지정된 일수 이상 된 로그를 삭제합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `olderThanDays` (Int, required): 기준일 (이보다 오래된 로그 삭제)<br>  - 유효성: `@Positive` (1 이상) | `LogCleanupResponse`<br><br>**LogCleanupResponse 구조:**<br>- `message` (String): 응답 메시지 (예: "100개의 로그가 삭제되었습니다.")<br>- `deletedCount` (Long): 삭제된 로그 수 | JWT Token (ADMIN) |
 
 **예시 요청 (로그 목록 조회):**
 ```http
@@ -1588,6 +1589,20 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```http
 GET /api/v1/admin/logs?bojId=user123&page=1&size=20
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (로그 정리):**
+```http
+DELETE /api/v1/admin/logs/cleanup?olderThanDays=30
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (로그 정리):**
+```json
+{
+  "message": "100개의 로그가 삭제되었습니다.",
+  "deletedCount": 100
+}
 ```
 
 **예시 응답 (로그 목록 조회):**
