@@ -59,10 +59,15 @@ class StaticTemplateService(
 
     /**
      * 언어 코드를 마크다운 코드 블록 형식으로 변환한다.
-     * 예: "CSHARP" -> "csharp", "JAVA" -> "java"
+     * 예: "CSHARP" -> "csharp", "JAVA" -> "java", "CPP" -> "cpp"
      */
     private fun toMarkdownLanguage(language: String): String {
-        return language.lowercase().replace("CSHARP", "csharp")
+        return when (language) {
+            "CSHARP" -> "csharp"
+            "JAVASCRIPT" -> "javascript"
+            "CPP" -> "cpp"
+            else -> language.lowercase()
+        }
     }
 
     private fun createTemplate(
