@@ -99,6 +99,10 @@ class StaticTemplateService(
         return buildString {
             appendLine("# 🏆 $title 해결 회고")
             appendLine()
+            if (solveTime != null && solveTime.isNotBlank()) {
+                appendLine("⏱️ **풀이 소요 시간:** $solveTime")
+                appendLine()
+            }
             appendLine("## 🔑 학습 키워드")
             appendLine()
             appendLine(formatKeywords(keywords))
@@ -112,9 +116,6 @@ class StaticTemplateService(
             appendLine()
             appendLine("- 시간 복잡도: O(?)")
             appendLine("- 공간 복잡도: O(?)")
-            if (solveTime != null && solveTime.isNotBlank()) {
-                appendLine("- 풀이 소요 시간: $solveTime")
-            }
             appendLine()
             appendLine("## 3. 리팩토링 포인트 (Refactoring)")
             appendLine()
@@ -131,7 +132,8 @@ class StaticTemplateService(
             appendLine("## 제출한 코드")
             appendLine()
             appendLine("```$markdownLanguage")
-            appendLine(code)
+            append(code)
+            appendLine()
             appendLine("```")
             appendLine()
             appendLine("---")
@@ -150,6 +152,10 @@ class StaticTemplateService(
         return buildString {
             appendLine("# 💥 $title 오답 노트")
             appendLine()
+            if (solveTime != null && solveTime.isNotBlank()) {
+                appendLine("⏱️ **풀이 소요 시간:** $solveTime")
+                appendLine()
+            }
             appendLine("## 🔑 학습 키워드")
             appendLine()
             appendLine(formatKeywords(keywords))
@@ -166,9 +172,6 @@ class StaticTemplateService(
             appendLine("## 3. 원인 추정 (Root Cause)")
             appendLine()
             appendLine("- 왜 실패했다고 생각하나요? (논리/구현/복잡도/입출력 등)")
-            if (solveTime != null && solveTime.isNotBlank()) {
-                appendLine("- 풀이 소요 시간: $solveTime")
-            }
             appendLine()
             appendLine("## 4. 반례/재현 케이스 (Counter Example)")
             appendLine()
@@ -181,7 +184,8 @@ class StaticTemplateService(
             appendLine("## 제출한 코드")
             appendLine()
             appendLine("```$markdownLanguage")
-            appendLine(code)
+            append(code)
+            appendLine()
             appendLine("```")
             appendLine()
             appendLine("## 에러 로그")
