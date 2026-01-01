@@ -1,7 +1,6 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.log.AiReviewService
-import com.didimlog.application.log.TemplateService
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
@@ -39,9 +38,6 @@ class LogControllerErrorTest {
 
     @TestConfiguration
     class TestConfig {
-        @Bean
-        fun templateService(): TemplateService = mockk(relaxed = true)
-
         @Bean
         fun aiReviewService(): AiReviewService = mockk(relaxed = true)
     }

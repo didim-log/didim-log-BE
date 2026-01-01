@@ -2,6 +2,7 @@ package com.didimlog.application.log
 
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.global.exception.AiGenerationFailedException
+import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.infra.ai.AiApiClient
 import java.time.LocalDateTime
 import org.springframework.stereotype.Service
@@ -46,7 +47,8 @@ class AiReviewService(
             return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false)
         }
 
-        val prompt = buildPrompt(log.title.value, truncateCode(code))
+        val language = detectCodeLanguage(code)
+        val prompt = buildPrompt(language, truncateCode(code))
 
         val response = try {
             aiApiClient.requestOneLineReview(prompt)
@@ -70,13 +72,15 @@ class AiReviewService(
 
     private fun truncateCode(code: String): String = code.take(MAX_CODE_LENGTH)
 
-    private fun buildPrompt(title: String, code: String): String {
+    private fun detectCodeLanguage(code: String): String {
+        return CodeLanguageDetector.detect(code)
+    }
+
+    private fun buildPrompt(language: String, code: String): String {
         return buildString {
-            appendLine("다음 코드를 한 줄로 리뷰해주세요.")
+            appendLine("Analyze this $language code and provide a helpful one-line review focusing on time complexity or clean code.")
             appendLine()
-            appendLine("제목: $title")
-            appendLine()
-            appendLine("코드:")
+            appendLine("Code:")
             appendLine(code)
         }
     }
