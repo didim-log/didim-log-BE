@@ -132,7 +132,6 @@ class RefreshTokenServiceTest {
     fun `존재하지 않는 Refresh Token으로 갱신 실패`() {
         // given
         val refreshToken = "refresh-token"
-        val bojId = "test123"
 
         every { jwtTokenProvider.validateToken(refreshToken) } returns true
         every { jwtTokenProvider.isRefreshToken(refreshToken) } returns true

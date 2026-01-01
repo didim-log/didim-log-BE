@@ -126,7 +126,7 @@ class AuthControllerRefreshTest {
 
         verify(exactly = 1) { refreshTokenService.refresh(refreshToken) }
         verify(exactly = 1) { jwtTokenProvider.getSubject(newAccessToken) }
-        verify(exactly = 1) { studentRepository.findByBojId(any()) }
+        verify(exactly = 1) { studentRepository.findByBojId(com.didimlog.domain.valueobject.BojId(bojId)) }
     }
 
     @Test
