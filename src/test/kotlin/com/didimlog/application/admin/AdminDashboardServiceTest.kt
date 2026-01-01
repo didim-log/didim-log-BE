@@ -30,7 +30,8 @@ class AdminDashboardServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
     private val retrospectiveRepository: RetrospectiveRepository = mockk()
-    private val adminDashboardService = AdminDashboardService(studentRepository, retrospectiveRepository)
+    private val logRepository: com.didimlog.domain.repository.LogRepository = mockk()
+    private val adminDashboardService = AdminDashboardService(studentRepository, retrospectiveRepository, logRepository)
 
     @Test
     @DisplayName("대시보드 통계 정보를 조회할 수 있다")

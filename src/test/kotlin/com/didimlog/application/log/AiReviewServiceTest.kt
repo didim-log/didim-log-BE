@@ -60,7 +60,7 @@ class AiReviewServiceTest {
         )
         every { logRepository.findById(logId) } returns Optional.of(log)
         every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
-        every { lockRepository.markCompleted(any(), any()) } returns true
+        every { lockRepository.markCompleted(any(), any(), any()) } returns true
         every { lockRepository.markFailed(any()) } returns true
         every { aiApiClient.requestOneLineReview(any()) } answers {
             val prompt = firstArg<String>()
@@ -74,7 +74,7 @@ class AiReviewServiceTest {
         assertThat(result.review).isEqualTo("ok")
         assertThat(result.cached).isFalse()
         verify(exactly = 1) { aiApiClient.requestOneLineReview(any()) }
-        verify(exactly = 1) { lockRepository.markCompleted(logId, "ok") }
+        verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
     }
 
     @Test
@@ -118,7 +118,7 @@ class AiReviewServiceTest {
         assertThat(result.review).contains("AI review is being generated")
         assertThat(result.cached).isFalse()
         verify { aiApiClient wasNot Called }
-        verify(exactly = 0) { lockRepository.markCompleted(any(), any()) }
+        verify(exactly = 0) { lockRepository.markCompleted(any(), any(), any()) }
         verify(exactly = 0) { lockRepository.markFailed(any()) }
     }
 }

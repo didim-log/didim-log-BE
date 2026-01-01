@@ -6,6 +6,7 @@ import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.QuoteRepository
+import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -29,7 +30,8 @@ class AdminServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
     private val quoteRepository: QuoteRepository = mockk()
-    private val adminService = AdminService(studentRepository, quoteRepository)
+    private val retrospectiveRepository: RetrospectiveRepository = mockk()
+    private val adminService = AdminService(studentRepository, quoteRepository, retrospectiveRepository)
 
     @Test
     @DisplayName("명언 목록을 페이징하여 조회할 수 있다")

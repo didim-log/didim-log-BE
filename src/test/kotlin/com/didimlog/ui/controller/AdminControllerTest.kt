@@ -132,7 +132,7 @@ class AdminControllerTest {
         )
         val pageableSlot = slot<PageRequest>()
         val studentPage = PageImpl(students, PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "rating")), students.size.toLong())
-        val adminUserResponsePage = studentPage.map { com.didimlog.ui.dto.AdminUserResponse.from(it) }
+        val adminUserResponsePage = studentPage.map { com.didimlog.ui.dto.AdminUserResponse.from(it, 0L, 0L) }
 
         every { adminService.getAllUsers(capture(pageableSlot)) } returns adminUserResponsePage
 
