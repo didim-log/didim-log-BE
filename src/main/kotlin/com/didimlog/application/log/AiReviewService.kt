@@ -46,7 +46,8 @@ class AiReviewService(
             return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false)
         }
 
-        val prompt = buildPrompt(log.title.value, truncateCode(code))
+        val language = detectCodeLanguage(code)
+        val prompt = buildPrompt(language, truncateCode(code))
 
         val response = try {
             aiApiClient.requestOneLineReview(prompt)
@@ -70,13 +71,47 @@ class AiReviewService(
 
     private fun truncateCode(code: String): String = code.take(MAX_CODE_LENGTH)
 
-    private fun buildPrompt(title: String, code: String): String {
+    private fun detectCodeLanguage(code: String): String {
+        val normalizedCode = code.trim()
+        if (normalizedCode.isEmpty()) {
+            return "TEXT"
+        }
+
+        if (normalizedCode.contains("def ") || (normalizedCode.contains("import ") && normalizedCode.contains("print("))) {
+            return "PYTHON"
+        }
+        if (normalizedCode.contains("fun ") || normalizedCode.contains("val ") || (normalizedCode.contains("class ") && normalizedCode.contains(":"))) {
+            return "KOTLIN"
+        }
+        if (normalizedCode.contains("public class") ||
+            normalizedCode.contains("public static") ||
+            normalizedCode.contains("System.out.println")
+        ) {
+            return "JAVA"
+        }
+        if (normalizedCode.contains("#include") || normalizedCode.contains("int main")) {
+            return "CPP"
+        }
+        if (normalizedCode.contains("function ") || normalizedCode.contains("const ") || normalizedCode.contains("let ")) {
+            return "JAVASCRIPT"
+        }
+        if (normalizedCode.contains("package ") && normalizedCode.contains("func ")) {
+            return "GO"
+        }
+        if (normalizedCode.contains("fn ") && normalizedCode.contains("let ")) {
+            return "RUST"
+        }
+        if (normalizedCode.contains("using ") && normalizedCode.contains("namespace ")) {
+            return "CSHARP"
+        }
+        return "TEXT"
+    }
+
+    private fun buildPrompt(language: String, code: String): String {
         return buildString {
-            appendLine("다음 코드를 한 줄로 리뷰해주세요.")
+            appendLine("Analyze this $language code and provide a helpful one-line review focusing on time complexity or clean code.")
             appendLine()
-            appendLine("제목: $title")
-            appendLine()
-            appendLine("코드:")
+            appendLine("Code:")
             appendLine(code)
         }
     }
