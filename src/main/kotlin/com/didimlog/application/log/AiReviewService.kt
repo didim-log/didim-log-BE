@@ -116,6 +116,13 @@ class AiReviewService(
         return CodeLanguageDetector.detect(code)
     }
 
+    private fun buildPromptText(resultContext: String, language: String, reviewFocus: String): String {
+        if (resultContext.isNotBlank()) {
+            return "${resultContext}이 $language 코드를 분석하고 $reviewFocus 반드시 한국어로 응답하세요."
+        }
+        return "이 $language 코드를 분석하고 $reviewFocus 반드시 한국어로 응답하세요."
+    }
+
     private fun buildPrompt(language: String, code: String, isSuccess: Boolean?): String {
         return buildString {
             val resultContext = when (isSuccess) {
@@ -130,12 +137,7 @@ class AiReviewService(
                 null -> "시간 복잡도나 클린 코드 원칙에 초점을 맞춰주세요."
             }
             
-            val promptText = if (resultContext.isNotBlank()) {
-                "${resultContext}이 $language 코드를 분석하고 $reviewFocus 반드시 한국어로 응답하세요."
-            } else {
-                "이 $language 코드를 분석하고 $reviewFocus 반드시 한국어로 응답하세요."
-            }
-            
+            val promptText = buildPromptText(resultContext, language, reviewFocus)
             appendLine(promptText)
             appendLine()
             appendLine("코드:")

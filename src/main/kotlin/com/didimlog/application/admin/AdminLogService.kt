@@ -25,11 +25,10 @@ class AdminLogService(
      */
     @Transactional(readOnly = true)
     fun getLogs(bojId: String?, pageable: Pageable): Page<Log> {
-        return if (bojId != null) {
-            logRepository.findByBojIdValue(bojId, pageable)
-        } else {
-            logRepository.findAll(pageable)
+        if (bojId != null) {
+            return logRepository.findByBojIdValue(bojId, pageable)
         }
+        return logRepository.findAll(pageable)
     }
 
     /**

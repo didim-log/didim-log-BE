@@ -40,11 +40,7 @@ data class AiMetricsResponse(
             val avgSeconds = metrics.averageDurationMillis?.div(1000.0)?.let { 
                 String.format("%.2f", it).toDouble() 
             }
-            val timeoutRate = if (metrics.totalGeneratedCount > 0) {
-                metrics.timeoutCount.toDouble() / metrics.totalGeneratedCount.toDouble()
-            } else {
-                0.0
-            }
+            val timeoutRate = calculateTimeoutRate(metrics.totalGeneratedCount, metrics.timeoutCount)
             
             return AiMetricsResponse(
                 averageDurationMillis = metrics.averageDurationMillis,
@@ -53,6 +49,13 @@ data class AiMetricsResponse(
                 timeoutCount = metrics.timeoutCount,
                 timeoutRate = timeoutRate
             )
+        }
+
+        private fun calculateTimeoutRate(totalGeneratedCount: Long, timeoutCount: Long): Double {
+            if (totalGeneratedCount > 0) {
+                return timeoutCount.toDouble() / totalGeneratedCount.toDouble()
+            }
+            return 0.0
         }
     }
 }
