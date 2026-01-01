@@ -37,8 +37,8 @@ class AiReviewIntegrationTest {
     @DisplayName("실제 Gemini API를 호출하여 한 줄 리뷰를 생성할 수 있다")
     @EnabledIfEnvironmentVariable(named = "GEMINI_API_KEY", matches = ".+")
     fun `실제 Gemini API 호출 테스트`() {
-        // Rate Limiter 대기 시간 (테스트 환경에서는 1초)
-        Thread.sleep(1500)
+        // Rate Limiter 대기 시간 (최소 4초 간격 필요, 여유를 두고 5초 대기)
+        Thread.sleep(5000)
         // given: 실제 코드를 포함한 Log 생성
         val testCode = """
             public class Solution {
@@ -92,8 +92,8 @@ class AiReviewIntegrationTest {
     @DisplayName("같은 로그에 대해 두 번 요청하면 캐시된 결과를 반환한다 (비용 0원 테스트)")
     @EnabledIfEnvironmentVariable(named = "GEMINI_API_KEY", matches = ".+")
     fun `캐시 동작 테스트_비용절감`() {
-        // Rate Limiter 대기 시간 (테스트 환경에서는 1초)
-        Thread.sleep(1500)
+        // Rate Limiter 대기 시간 (최소 4초 간격 필요, 여유를 두고 5초 대기)
+        Thread.sleep(5000)
         // given: Log 생성 및 첫 번째 AI 리뷰 생성
         val testCode = """
             def solution(nums):
@@ -135,8 +135,8 @@ class AiReviewIntegrationTest {
     @DisplayName("성공한 코드에 대한 AI 리뷰 생성 (개선 제안 중심)")
     @EnabledIfEnvironmentVariable(named = "GEMINI_API_KEY", matches = ".+")
     fun `성공한_코드_리뷰_테스트`() {
-        // Rate Limiter 대기 시간 (테스트 환경에서는 1초)
-        Thread.sleep(1500)
+        // Rate Limiter 대기 시간 (최소 4초 간격 필요, 여유를 두고 5초 대기)
+        Thread.sleep(5000)
         // given: 성공한 코드를 포함한 Log 생성
         val successCode = """
             public class Solution {
@@ -176,8 +176,8 @@ class AiReviewIntegrationTest {
     @DisplayName("실패한 코드에 대한 AI 리뷰 생성 (버그 분석 중심)")
     @EnabledIfEnvironmentVariable(named = "GEMINI_API_KEY", matches = ".+")
     fun `실패한_코드_리뷰_테스트`() {
-        // Rate Limiter 대기 시간 (테스트 환경에서는 1초)
-        Thread.sleep(1500)
+        // Rate Limiter 대기 시간 (최소 4초 간격 필요, 여유를 두고 5초 대기)
+        Thread.sleep(5000)
         // given: 실패한 코드를 포함한 Log 생성
         val failCode = """
             public class Solution {
@@ -211,14 +211,17 @@ class AiReviewIntegrationTest {
         println("✅ 실패한 코드 리뷰 생성!")
         println("📝 리뷰: ${result.review}")
         println("💡 리뷰 특징: 실패한 코드이므로 버그 분석에 초점을 맞춤")
+        
+        // 다음 테스트를 위한 Rate Limit 대기
+        Thread.sleep(5000)
     }
 
     @Test
     @DisplayName("성공/실패 케이스 비교 테스트")
     @EnabledIfEnvironmentVariable(named = "GEMINI_API_KEY", matches = ".+")
     fun `성공_실패_리뷰_비교_테스트`() {
-        // Rate Limiter 대기 시간 (테스트 환경에서는 1초)
-        Thread.sleep(1500)
+        // Rate Limiter 대기 시간 (최소 4초 간격 필요, 여유를 두고 5초 대기)
+        Thread.sleep(5000)
         // given: 같은 코드지만 성공/실패 정보만 다른 Log 생성
         val testCode = """
             public class Solution {
@@ -246,8 +249,9 @@ class AiReviewIntegrationTest {
         val savedFailLog = logRepository.save(failLog)
         val failLogId = savedFailLog.id ?: throw IllegalStateException("로그 ID가 없습니다.")
 
-        // when: 각각 AI 리뷰 생성
+        // when: 각각 AI 리뷰 생성 (Rate Limit을 고려하여 순차 실행)
         val successResult = aiReviewService.requestOneLineReview(successLogId)
+        Thread.sleep(5000) // Rate Limit 대기 (4초 + 여유)
         val failResult = aiReviewService.requestOneLineReview(failLogId)
 
         // then: 성공/실패에 따라 다른 리뷰가 생성됨
