@@ -65,7 +65,7 @@ class LogController(
             title = request.title,
             content = request.content,
             code = request.code,
-            bojId = bojId.takeIf { it.isNotBlank() },
+            bojId = bojId?.takeIf { it.isNotBlank() },
             isSuccess = request.isSuccess
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(LogResponse.from(log))
