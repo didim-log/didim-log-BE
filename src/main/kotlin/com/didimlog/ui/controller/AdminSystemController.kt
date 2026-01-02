@@ -1,7 +1,10 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.ai.AiUsageService
 import com.didimlog.application.storage.StorageManagementService
+import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.ui.dto.AiLimitsUpdateRequest
 import com.didimlog.ui.dto.AiStatusResponse
 import com.didimlog.ui.dto.AiStatusUpdateRequest
@@ -15,9 +18,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -33,7 +38,8 @@ import org.springframework.web.bind.annotation.RestController
 @Validated
 class AdminSystemController(
     private val aiUsageService: AiUsageService,
-    private val storageManagementService: StorageManagementService
+    private val storageManagementService: StorageManagementService,
+    private val adminAuditService: AdminAuditService
 ) {
 
     @Operation(
@@ -84,10 +90,19 @@ class AdminSystemController(
     )
     @PostMapping("/ai-status")
     fun updateAiStatus(
-        @Valid @RequestBody request: AiStatusUpdateRequest
+        @Valid @RequestBody request: AiStatusUpdateRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest
     ): ResponseEntity<AiStatusResponse> {
         aiUsageService.setServiceEnabled(request.enabled)
         val status = aiUsageService.getStatus()
+        
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.AI_SERVICE_TOGGLE
+        val details = "AI 서비스 ${if (request.enabled) "활성화" else "비활성화"}"
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+        
         return ResponseEntity.ok(createAiStatusResponse(status))
     }
 
@@ -118,10 +133,19 @@ class AdminSystemController(
     )
     @PostMapping("/ai-limits")
     fun updateAiLimits(
-        @Valid @RequestBody request: AiLimitsUpdateRequest
+        @Valid @RequestBody request: AiLimitsUpdateRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest
     ): ResponseEntity<AiStatusResponse> {
         aiUsageService.updateLimits(request.globalLimit, request.userLimit)
         val status = aiUsageService.getStatus()
+        
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.AI_LIMITS_UPDATE
+        val details = "AI 제한 업데이트: 전역 제한=${request.globalLimit}, 사용자 제한=${request.userLimit}"
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+        
         return ResponseEntity.ok(createAiStatusResponse(status))
     }
 
@@ -186,13 +210,22 @@ class AdminSystemController(
         @Parameter(description = "기준일 (이보다 오래된 데이터 삭제, 최소 30일)", required = true)
         @RequestParam
         @Min(value = 30, message = "최소 30일 이상의 데이터만 삭제할 수 있습니다.")
-        olderThanDays: Int
+        olderThanDays: Int,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest
     ): ResponseEntity<StorageCleanupResponse> {
         val deletedCount = storageManagementService.deleteOldRetrospectives(olderThanDays)
         val response = StorageCleanupResponse(
             message = "${deletedCount}개의 회고가 삭제되었습니다.",
             deletedCount = deletedCount
         )
+        
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.STORAGE_CLEANUP
+        val details = "Deleted ${deletedCount} records older than ${olderThanDays} days."
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+        
         return ResponseEntity.ok(response)
     }
 

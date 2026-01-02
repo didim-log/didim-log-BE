@@ -19,6 +19,7 @@
 - [AdminController](#admincontroller)
 - [AdminMemberController](#adminmembercontroller)
 - [AdminDashboardController](#admindashboardcontroller)
+- [AdminAuditController](#adminauditcontroller)
 - [SystemController](#systemcontroller)
 - [PublicSystemController](#publicsystemcontroller)
 - [ProblemCollectorController](#problemcollectorcontroller)
@@ -1884,6 +1885,85 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "error": "Bad Request",
   "code": "COMMON_VALIDATION_FAILED",
   "message": "최소 30일 이상의 데이터만 삭제할 수 있습니다."
+}
+```
+
+---
+
+## AdminAuditController
+
+관리자 작업 감사 로그 API를 제공합니다. ADMIN 권한이 필요하며, 중요한 관리자 작업을 추적할 수 있습니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/admin/audit-logs` | 관리자 작업 감사 로그를 조회합니다. 관리자 ID, 작업 타입, 날짜 범위로 필터링할 수 있습니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `page` (Int, optional, 기본값: 1): 페이지 번호<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, 기본값: 20): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `adminId` (String, optional): 관리자 ID로 필터링<br>- `action` (AdminActionType, optional): 작업 타입으로 필터링<br>- `startDate` (LocalDateTime, optional, ISO 8601): 시작 날짜<br>- `endDate` (LocalDateTime, optional, ISO 8601): 종료 날짜 | `Page<AdminAuditLogResponse>`<br><br>**AdminAuditLogResponse 구조:**<br>- `id` (String): 로그 ID<br>- `adminId` (String): 관리자 ID<br>- `action` (AdminActionType): 작업 타입<br>- `details` (String): 작업 상세 정보<br>- `ipAddress` (String): 클라이언트 IP 주소<br>- `createdAt` (LocalDateTime): 생성 시각 | JWT Token (ADMIN) |
+
+**AdminActionType Enum 값:**
+- `STORAGE_CLEANUP`: 저장 공간 정리
+- `NOTICE_CREATE`: 공지사항 생성
+- `NOTICE_UPDATE`: 공지사항 수정
+- `NOTICE_DELETE`: 공지사항 삭제
+- `AI_SERVICE_TOGGLE`: AI 서비스 활성화/비활성화
+- `AI_LIMITS_UPDATE`: AI 사용량 제한 업데이트
+- `USER_DELETE`: 사용자 삭제
+- `USER_UPDATE`: 사용자 수정
+- `QUOTE_CREATE`: 명언 생성
+- `QUOTE_DELETE`: 명언 삭제
+- `FEEDBACK_STATUS_UPDATE`: 피드백 상태 변경
+- `FEEDBACK_DELETE`: 피드백 삭제
+- `MAINTENANCE_MODE_TOGGLE`: 유지보수 모드 토글
+
+**예시 요청 (전체 로그 조회):**
+```http
+GET /api/v1/admin/audit-logs?page=1&size=20
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (관리자 ID로 필터링):**
+```http
+GET /api/v1/admin/audit-logs?adminId=admin123&page=1&size=20
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (작업 타입으로 필터링):**
+```http
+GET /api/v1/admin/audit-logs?action=STORAGE_CLEANUP&page=1&size=20
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (날짜 범위로 필터링):**
+```http
+GET /api/v1/admin/audit-logs?startDate=2024-01-01T00:00:00&endDate=2024-01-31T23:59:59&page=1&size=20
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답:**
+```json
+{
+  "content": [
+    {
+      "id": "audit-log-1",
+      "adminId": "admin123",
+      "action": "STORAGE_CLEANUP",
+      "details": "Deleted 50 records older than 365 days.",
+      "ipAddress": "192.168.1.100",
+      "createdAt": "2024-01-15T10:30:00"
+    },
+    {
+      "id": "audit-log-2",
+      "adminId": "admin123",
+      "action": "NOTICE_CREATE",
+      "details": "공지사항 생성: 제목='서버 점검 안내'",
+      "ipAddress": "192.168.1.100",
+      "createdAt": "2024-01-15T09:15:00"
+    }
+  ],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 20
+  },
+  "totalElements": 2,
+  "totalPages": 1
 }
 ```
 

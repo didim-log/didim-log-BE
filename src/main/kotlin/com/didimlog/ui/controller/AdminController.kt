@@ -1,7 +1,10 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.admin.AdminService
 import com.didimlog.application.feedback.FeedbackService
+import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.domain.Quote
 import com.didimlog.domain.enums.FeedbackStatus
 import com.didimlog.ui.dto.AdminUserResponse
@@ -48,6 +51,7 @@ import org.springframework.web.bind.annotation.RestController
 class AdminController(
     private val adminService: AdminService,
     private val feedbackService: FeedbackService,
+    private val adminAuditService: AdminAuditService,
     private val studentRepository: com.didimlog.domain.repository.StudentRepository,
     private val noticeService: NoticeService
 ) {
@@ -463,7 +467,9 @@ class AdminController(
     fun createNotice(
         @RequestBody
         @Valid
-        request: NoticeCreateRequest
+        request: NoticeCreateRequest,
+        authentication: org.springframework.security.core.Authentication,
+        httpServletRequest: jakarta.servlet.http.HttpServletRequest
     ): ResponseEntity<NoticeResponse> {
         val notice = noticeService.createNotice(
             title = request.title,
@@ -471,6 +477,13 @@ class AdminController(
             isPinned = request.isPinned
         )
         val response = NoticeResponse.from(notice)
+        
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.NOTICE_CREATE
+        val details = "공지사항 생성: 제목='${request.title}'"
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+        
         return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 }
