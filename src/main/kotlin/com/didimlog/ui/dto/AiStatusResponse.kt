@@ -10,3 +10,4 @@ data class AiStatusResponse(
     val userLimit: Int
 )
 
+

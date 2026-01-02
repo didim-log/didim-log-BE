@@ -19,6 +19,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.constraints.Positive
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -60,6 +61,7 @@ class AdminDashboardController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/stats")
     fun getDashboardStats(): ResponseEntity<AdminDashboardStatsResponse> {
         val stats = adminDashboardService.getDashboardStats()
@@ -86,6 +88,7 @@ class AdminDashboardController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/chart")
     fun getChartData(
         @org.springframework.web.bind.annotation.RequestParam
@@ -135,6 +138,7 @@ class AdminDashboardController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/metrics")
     fun getPerformanceMetrics(
         @org.springframework.web.bind.annotation.RequestParam(defaultValue = "30")
@@ -165,6 +169,7 @@ class AdminDashboardController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/ai-quality")
     fun getAiQualityStats(): ResponseEntity<AiQualityStatsResponse> {
         val stats = aiQualityService.getAiQualityStats()

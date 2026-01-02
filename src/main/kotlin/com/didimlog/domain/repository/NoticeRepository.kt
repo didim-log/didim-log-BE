@@ -9,3 +9,4 @@ interface NoticeRepository : MongoRepository<Notice, String> {
     fun findAllByOrderByIsPinnedDescCreatedAtDesc(pageable: Pageable): Page<Notice>
 }
 
+

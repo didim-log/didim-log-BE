@@ -6,6 +6,7 @@ import com.didimlog.domain.enums.RankingPeriod
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Positive
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
@@ -31,13 +32,13 @@ class RankingController(
         @Parameter(description = "조회할 상위 랭킹 수 (기본값: 100, 최대: 1000)", required = false)
         @RequestParam(defaultValue = "100")
         @Positive(message = "limit은 1 이상이어야 합니다.")
+        @Max(value = 1000, message = "limit은 1000 이하여야 합니다.")
         limit: Int,
         @Parameter(description = "집계 기간 (DAILY, WEEKLY, MONTHLY, TOTAL)", required = false)
         @RequestParam(defaultValue = "TOTAL")
         period: RankingPeriod
     ): ResponseEntity<List<LeaderboardResponse>> {
-        val validLimit = limit.coerceAtMost(1000) // 최대 1000명으로 제한
-        val rankers = rankingService.getTopRankers(validLimit, period)
+        val rankers = rankingService.getTopRankers(limit, period)
         val response = rankers.map { LeaderboardResponse.from(it.student, it.rank, it.retrospectiveCount) }
         return ResponseEntity.ok(response)
     }

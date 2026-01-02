@@ -38,3 +38,4 @@ data class RecentNegativeLogResponse(
     val codeSnippet: String
 )
 
+

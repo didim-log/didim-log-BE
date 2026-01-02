@@ -6,3 +6,4 @@ class AiGenerationFailedException(
 ) : RuntimeException(message, cause)
 
 
+

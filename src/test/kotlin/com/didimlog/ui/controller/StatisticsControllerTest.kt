@@ -57,15 +57,12 @@ class StatisticsControllerTest {
         // given
         val statisticsInfo = StatisticsInfo(
             monthlyHeatmap = emptyList(),
-            categoryDistribution = emptyMap(),
-            algorithmCategoryDistribution = emptyMap(),
-            topUsedAlgorithms = emptyList(),
             totalSolvedCount = 10,
             totalRetrospectives = 0L,
             averageSolveTime = 0.0,
             successRate = 0.0,
-            tagRadarData = emptyList(),
-            weaknessAnalysis = null
+            categoryStats = emptyList(),
+            weaknessStats = emptyList()
         )
 
         every { statisticsService.getStatistics("bojId") } returns statisticsInfo
@@ -78,10 +75,10 @@ class StatisticsControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.monthlyHeatmap").exists())
-            .andExpect(jsonPath("$.categoryDistribution").exists())
-            .andExpect(jsonPath("$.algorithmCategoryDistribution").exists())
-            .andExpect(jsonPath("$.topUsedAlgorithms").exists())
-            .andExpect(jsonPath("$.totalSolvedCount").value(10))
+            .andExpect(jsonPath("$.totalSolved").value(10))
+            .andExpect(jsonPath("$.totalRetrospectives").value(0))
+            .andExpect(jsonPath("$.categoryStats").exists())
+            .andExpect(jsonPath("$.weaknessStats").exists())
     }
 }
 

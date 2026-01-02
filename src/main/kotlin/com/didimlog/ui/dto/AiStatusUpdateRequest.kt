@@ -10,3 +10,4 @@ data class AiStatusUpdateRequest(
     val enabled: Boolean
 )
 
+

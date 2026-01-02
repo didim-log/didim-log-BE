@@ -2,10 +2,11 @@ package com.didimlog.application.admin
 
 import com.didimlog.global.interceptor.PerformanceMonitoringInterceptor
 import org.springframework.stereotype.Service
+import java.time.Instant
 
 /**
  * 성능 메트릭 서비스
- * 관리자 대시보드에서 사용할 성능 데이터를 제공한다.
+ * PerformanceMonitoringInterceptor에서 수집한 데이터를 기반으로 성능 통계를 제공한다.
  */
 @Service
 class PerformanceMetricsService(
@@ -13,20 +14,19 @@ class PerformanceMetricsService(
 ) {
 
     /**
-     * 성능 메트릭을 조회한다.
+     * 최근 지정된 시간(분) 동안의 성능 메트릭을 조회한다.
      *
-     * @param minutes 조회할 시간 범위 (분, 기본값: 30)
-     * @return 성능 메트릭 정보 (Time Series 포함)
+     * @param minutes 조회할 시간 범위 (분)
+     * @return 성능 메트릭
      */
-    fun getPerformanceMetrics(minutes: Int = 30): PerformanceMetrics {
+    fun getPerformanceMetrics(minutes: Int): PerformanceMetrics {
         val recentMetrics = performanceMonitoringInterceptor.getRecentMetrics(minutes)
-        
-        val rpm = calculateRPM(recentMetrics, minutes)
-        val averageResponseTime = calculateAverageResponseTime(recentMetrics)
+        val rpm = performanceMonitoringInterceptor.calculateRPM(minutes)
+        val averageResponseTime = performanceMonitoringInterceptor.calculateAverageResponseTime(minutes)
 
-        // Time Series 데이터 생성 (최근 30개 데이터 포인트)
-        val rpmTimeSeries = generateRPMTimeSeries(recentMetrics)
-        val latencyTimeSeries = generateLatencyTimeSeries(recentMetrics)
+        // 시계열 데이터 생성 (최대 30개 포인트)
+        val rpmTimeSeries = generateTimeSeries(recentMetrics, minutes) { 1.0 }
+        val latencyTimeSeries = generateTimeSeries(recentMetrics, minutes) { it.responseTime.toDouble() }
 
         return PerformanceMetrics(
             rpm = rpm,
@@ -37,97 +37,66 @@ class PerformanceMetricsService(
         )
     }
 
-    private fun calculateRPM(recentMetrics: List<com.didimlog.global.interceptor.RequestMetric>, minutes: Int): Double {
-        if (recentMetrics.isEmpty()) {
-            return 0.0
-        }
-        return recentMetrics.size.toDouble() / minutes
-    }
-
-    private fun calculateAverageResponseTime(recentMetrics: List<com.didimlog.global.interceptor.RequestMetric>): Double {
-        if (recentMetrics.isEmpty()) {
-            return 0.0
-        }
-        return recentMetrics.map { it.responseTime }.average()
-    }
-
     /**
-     * RPM Time Series 데이터를 생성한다.
+     * 시계열 데이터를 생성한다.
+     * 메트릭을 시간 구간별로 집계하여 최대 30개 포인트를 생성한다.
+     *
+     * @param metrics 원본 메트릭 리스트
+     * @param minutes 시간 범위 (분)
+     * @param valueExtractor 각 메트릭에서 값을 추출하는 함수
+     * @return 시계열 포인트 리스트 (최대 30개)
      */
-    private fun generateRPMTimeSeries(metrics: List<com.didimlog.global.interceptor.RequestMetric>): List<TimeSeriesPoint> {
+    private fun generateTimeSeries(
+        metrics: List<com.didimlog.global.interceptor.RequestMetric>,
+        minutes: Int,
+        valueExtractor: (com.didimlog.global.interceptor.RequestMetric) -> Double
+    ): List<TimeSeriesPoint> {
         if (metrics.isEmpty()) {
             return emptyList()
         }
 
-        // 1분 단위로 그룹화
-        val grouped = metrics.groupBy { metric ->
-            metric.timestamp.epochSecond / 60 // 분 단위로 그룹화
+        val maxPoints = 30
+        val intervalSeconds = (minutes * 60) / maxPoints
+        val now = Instant.now()
+        val cutoffTime = now.minusSeconds(minutes * 60L)
+
+        val timeSeriesMap = mutableMapOf<Long, MutableList<Double>>()
+
+        metrics.forEach { metric ->
+            val secondsSinceCutoff = java.time.Duration.between(cutoffTime, metric.timestamp).seconds
+            val bucketIndex = secondsSinceCutoff / intervalSeconds
+            val bucketTime = cutoffTime.epochSecond + (bucketIndex * intervalSeconds)
+
+            timeSeriesMap.getOrPut(bucketTime) { mutableListOf() }.add(valueExtractor(metric))
         }
 
-        val sortedKeys = grouped.keys.sorted()
-        val maxPoints = 30 // 최대 30개 포인트
-        val step = maxOf(1, sortedKeys.size / maxPoints)
-
-        return sortedKeys.filterIndexed { index, _ -> index % step == 0 }
+        return timeSeriesMap.entries
+            .sortedBy { it.key }
             .take(maxPoints)
-            .map { minuteKey ->
-                val minuteMetrics = grouped[minuteKey]!!
-                val rpm = minuteMetrics.size.toDouble() // 해당 분의 요청 수
-                val timestamp = minuteKey * 60L // 초 단위로 변환
+            .map { (timestamp, values) ->
                 TimeSeriesPoint(
                     timestamp = timestamp,
-                    value = rpm
-                )
-            }
-    }
-
-    /**
-     * Latency Time Series 데이터를 생성한다.
-     */
-    private fun generateLatencyTimeSeries(metrics: List<com.didimlog.global.interceptor.RequestMetric>): List<TimeSeriesPoint> {
-        if (metrics.isEmpty()) {
-            return emptyList()
-        }
-
-        // 1분 단위로 그룹화하여 평균 응답 시간 계산
-        val grouped = metrics.groupBy { metric ->
-            metric.timestamp.epochSecond / 60 // 분 단위로 그룹화
-        }
-
-        val sortedKeys = grouped.keys.sorted()
-        val maxPoints = 30 // 최대 30개 포인트
-        val step = maxOf(1, sortedKeys.size / maxPoints)
-
-        return sortedKeys.filterIndexed { index, _ -> index % step == 0 }
-            .take(maxPoints)
-            .map { minuteKey ->
-                val minuteMetrics = grouped[minuteKey]!!
-                val avgLatency = minuteMetrics.map { it.responseTime }.average()
-                val timestamp = minuteKey * 60L // 초 단위로 변환
-                TimeSeriesPoint(
-                    timestamp = timestamp,
-                    value = avgLatency
+                    value = values.average()
                 )
             }
     }
 }
 
 /**
- * 성능 메트릭 정보
+ * 성능 메트릭 데이터 클래스
  */
 data class PerformanceMetrics(
-    val rpm: Double, // 분당 요청 수
-    val averageResponseTime: Double, // 평균 응답 시간 (밀리초)
-    val timeRangeMinutes: Int, // 조회한 시간 범위 (분)
-    val rpmTimeSeries: List<TimeSeriesPoint>, // RPM Time Series 데이터
-    val latencyTimeSeries: List<TimeSeriesPoint> // Latency Time Series 데이터
+    val rpm: Double,
+    val averageResponseTime: Double,
+    val timeRangeMinutes: Int,
+    val rpmTimeSeries: List<TimeSeriesPoint>,
+    val latencyTimeSeries: List<TimeSeriesPoint>
 )
 
 /**
- * Time Series 데이터 포인트
+ * 시계열 포인트 데이터 클래스
  */
 data class TimeSeriesPoint(
-    val timestamp: Long, // Unix timestamp (초)
-    val value: Double    // 값
+    val timestamp: Long,
+    val value: Double
 )
-

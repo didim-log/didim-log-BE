@@ -16,3 +16,4 @@ data class AiLimitsUpdateRequest(
     val userLimit: Int
 )
 
+

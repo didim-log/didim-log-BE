@@ -1167,7 +1167,8 @@ GET /api/v1/quotes/random
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/statistics` | 학생의 활동 히트맵(Heatmap), 카테고리별 분포, 알고리즘 카테고리 통계, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 365일간의 활동 히트맵 데이터 (오늘 포함하여 정확히 365일)<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `algorithmCategoryDistribution` (Map<String, Int>): 알고리즘 카테고리별 사용 통계 (Retrospective의 solvedCategory 기준)<br>- `topUsedAlgorithms` (List<TopUsedAlgorithmResponse>): 가장 많이 사용한 알고리즘 상위 3개<br>- `totalSolvedCount` (Int): 누적 풀이 수<br>- `totalRetrospectives` (Long): 총 회고 수<br>- `averageSolveTime` (Double): 평균 풀이 시간 (초 단위)<br>- `successRate` (Double): 성공률 (0.0 ~ 100.0, 소수점 첫째 자리까지 반올림)<br>- `tagRadarData` (List<TagStatResponse>): 레이더 차트용 태그별 통계 (상위 5개)<br>- `weaknessAnalysis` (WeaknessAnalysisResponse, nullable): 취약점 분석 데이터 (실패한 회고가 없으면 null)<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수<br>- `problemIds` (List<String>): 해당 날짜에 풀이한 문제 ID 목록 (중복 제거됨)<br><br>**TopUsedAlgorithmResponse 구조:**<br>- `name` (String): 알고리즘 이름 (예: "DFS", "DP", "Greedy")<br>- `count` (Int): 사용 횟수<br><br>**TagStatResponse 구조:**<br>- `tag` (String): 태그명<br>- `count` (Int): 해당 태그로 풀이한 문제 수<br>- `fullMark` (Int): 그래프 스케일링용 최대 카운트 값<br><br>**WeaknessAnalysisResponse 구조:**<br>- `totalFailures` (Int): 총 실패 횟수<br>- `topCategory` (String, nullable): 가장 빈번한 실패 카테고리<br>- `topCategoryCount` (Int): 가장 빈번한 실패 카테고리의 실패 횟수<br>- `topReason` (String, nullable): 가장 빈번한 실패 원인 (FAIL 또는 TIME_OVER)<br>- `categoryFailures` (List<CategoryFailureResponse>): 카테고리별 실패 분포 (상위 8개)<br><br>**CategoryFailureResponse 구조:**<br>- `category` (String): 카테고리명<br>- `count` (Int): 해당 카테고리의 실패 횟수 | JWT Token |
+| GET | `/api/v1/statistics` | 학생의 활동 히트맵(Heatmap), 카테고리별 통계, 누적 풀이 수를 포함한 통계 정보를 조회합니다. **모든 집계 로직은 백엔드에서 처리**되어 프론트엔드에 전달됩니다. 쉼표로 구분된 태그(예: "BFS, DP")는 자동으로 개별 카테고리로 분리되어 집계됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 365일간의 활동 히트맵 데이터 (오늘 포함하여 정확히 365일)<br>- `totalSolved` (Int): 누적 풀이 수 (성공한 문제 중 고유 문제 수)<br>- `totalRetrospectives` (Long): 총 회고 수<br>- `averageSolveTime` (Double): 평균 풀이 시간 (초 단위)<br>- `successRate` (Double): 성공률 (0.0 ~ 100.0, 소수점 첫째 자리까지 반올림)<br>- `categoryStats` (List<CategoryStatResponse>): **성공한 문제**의 카테고리별 통계 (Radar/Bar Chart용)<br>  - 쉼표로 구분된 태그는 개별 카테고리로 분리되어 집계됨<br>  - count 기준 내림차순 정렬<br>- `weaknessStats` (List<CategoryStatResponse>): **실패한 문제**의 카테고리별 통계 (Weakness Analysis용)<br>  - 쉼표로 구분된 태그는 개별 카테고리로 분리되어 집계됨<br>  - count 기준 내림차순 정렬<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수<br>- `problemIds` (List<String>): 해당 날짜에 풀이한 문제 ID 목록 (중복 제거됨)<br><br>**CategoryStatResponse 구조:**<br>- `category` (String): 카테고리명 (예: "BFS", "DP", "Greedy")<br>- `count` (Int): 해당 카테고리로 풀이한 문제 수 | JWT Token |
+| GET | `/api/v1/statistics/heatmap` | 특정 연도의 활동 히트맵 데이터를 조회합니다. 해당 연도의 1월 1일 00:00:00부터 12월 31일 23:59:59까지의 회고 데이터를 집계합니다. 현재 연도인 경우 오늘까지만 조회됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `year` (Int, optional, default: 0): 조회할 연도<br>  - `0`이면 현재 연도 사용<br>  - 유효성: `@Min(0)`, `@Max(2100)`<br>  - 유효 범위: 0 (현재 연도) 또는 1900 ~ 2100<br>  - 범위를 벗어나면 400 Bad Request | `List<HeatmapDataResponse>`<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 회고 수<br>- `problemIds` (List<String>): 해당 날짜에 작성한 회고의 문제 ID 목록 (중복 제거됨) | JWT Token |
 
 **예시 요청:**
 ```http
@@ -1195,79 +1196,74 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
       "problemIds": ["1005"]
     }
   ],
-  "categoryDistribution": {},
-  "algorithmCategoryDistribution": {
-    "DFS": 15,
-    "DP": 12,
-    "Greedy": 8,
-    "BFS": 5
-  },
-  "topUsedAlgorithms": [
-    {
-      "name": "DFS",
-      "count": 15
-    },
-    {
-      "name": "DP",
-      "count": 12
-    },
-    {
-      "name": "Greedy",
-      "count": 8
-    }
-  ],
-  "totalSolvedCount": 150,
+  "totalSolved": 150,
   "totalRetrospectives": 42,
   "averageSolveTime": 1800.5,
   "successRate": 72.5,
-  "tagRadarData": [
+  "categoryStats": [
     {
-      "tag": "DFS",
-      "count": 15,
-      "fullMark": 15
+      "category": "DFS",
+      "count": 15
     },
     {
-      "tag": "DP",
-      "count": 12,
-      "fullMark": 15
+      "category": "DP",
+      "count": 12
     },
     {
-      "tag": "Greedy",
-      "count": 8,
-      "fullMark": 15
+      "category": "Greedy",
+      "count": 8
     },
     {
-      "tag": "BFS",
-      "count": 5,
-      "fullMark": 15
+      "category": "BFS",
+      "count": 5
     },
     {
-      "tag": "Hash",
-      "count": 3,
-      "fullMark": 15
+      "category": "Hash",
+      "count": 3
     }
   ],
-  "weaknessAnalysis": {
-    "totalFailures": 10,
-    "topCategory": "GRAPH",
-    "topCategoryCount": 5,
-    "topReason": "FAIL",
-    "categoryFailures": [
-      {
-        "category": "GRAPH",
-        "count": 5
-      },
-      {
-        "category": "DP",
-        "count": 3
-      },
-      {
-        "category": "GREEDY",
-        "count": 2
-      }
-    ]
-  }
+  "weaknessStats": [
+    {
+      "category": "GRAPH",
+      "count": 5
+    },
+    {
+      "category": "DP",
+      "count": 3
+    },
+    {
+      "category": "GREEDY",
+      "count": 2
+    }
+  ]
 }
+```
+
+**예시 요청 (연도별 히트맵 조회):**
+```http
+GET /api/v1/statistics/heatmap?year=2024
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (연도별 히트맵 조회):**
+```json
+[
+  {
+    "date": "2024-01-15",
+    "count": 3,
+    "problemIds": ["1000", "1001", "1002"]
+  },
+  {
+    "date": "2024-01-16",
+    "count": 2,
+    "problemIds": ["1003", "1004"]
+  },
+  {
+    "date": "2024-03-20",
+    "count": 1,
+    "problemIds": ["2000"]
+  }
+]
 ```
 
 ---
@@ -1278,7 +1274,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/ranks` | 기간별 회고 작성 수 기준 상위 랭킹을 조회합니다. 동점자는 같은 순위로 처리합니다. | **Query Parameters:**<br>- `limit` (Int, optional, default: 100): 1~1000<br>- `period` (String, optional, default: TOTAL): DAILY/WEEKLY/MONTHLY/TOTAL | `List<LeaderboardResponse>`<br><br>**LeaderboardResponse 구조:**<br>- `rank` (Int): 순위 (1부터 시작)<br>- `nickname` (String): 닉네임<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `retrospectiveCount` (Long): 회고 작성 수<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br>- `profileImageUrl` (String, nullable): 프로필 이미지 URL (향후 확장용, 현재는 null) | None |
+| GET | `/api/v1/ranks` | 기간별 회고 작성 수 기준 상위 랭킹을 조회합니다. 동점자는 같은 순위로 처리합니다. | **Query Parameters:**<br>- `limit` (Int, optional, default: 100): 조회할 상위 랭킹 수<br>  - 유효성: `@Positive` (1 이상), `@Max(1000)` (1000 이하)<br>  - 유효 범위: 1 ~ 1000<br>  - 범위를 벗어나면 400 Bad Request<br>- `period` (String, optional, default: TOTAL): 집계 기간<br>  - 가능한 값: `DAILY`, `WEEKLY`, `MONTHLY`, `TOTAL` | `List<LeaderboardResponse>`<br><br>**LeaderboardResponse 구조:**<br>- `rank` (Int): 순위 (1부터 시작)<br>- `nickname` (String): 닉네임<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `retrospectiveCount` (Long): 회고 작성 수<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br>- `profileImageUrl` (String, nullable): 프로필 이미지 URL (향후 확장용, 현재는 null) | None |
 
 **예시 요청:**
 ```http

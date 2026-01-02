@@ -7,3 +7,4 @@ interface QuoteRepository : MongoRepository<Quote, String> {
 }
 
 
+

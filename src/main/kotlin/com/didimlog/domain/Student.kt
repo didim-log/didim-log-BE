@@ -138,10 +138,9 @@ data class Student(
             solution.solvedAt.toLocalDate() == today
         }
         
-        val updatedSolutions = if (todaySolutionIndex >= 0) {
-            updateExistingSolution(existingSolutions, todaySolutionIndex, problem, timeTakenSeconds, result)
-        } else {
-            addNewSolution(existingSolutions, problem, timeTakenSeconds, result)
+        val updatedSolutions = when {
+            todaySolutionIndex >= 0 -> updateExistingSolution(existingSolutions, todaySolutionIndex, problem, timeTakenSeconds, result)
+            else -> addNewSolution(existingSolutions, problem, timeTakenSeconds, result)
         }
         
         val updatedConsecutiveDays = calculateConsecutiveSolveDays(today)

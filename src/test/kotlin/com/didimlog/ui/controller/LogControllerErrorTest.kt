@@ -43,6 +43,12 @@ class LogControllerErrorTest {
 
         @Bean
         fun logService(): com.didimlog.application.log.LogService = mockk(relaxed = true)
+
+        @Bean
+        fun aiUsageService(): com.didimlog.application.ai.AiUsageService = mockk(relaxed = true)
+
+        @Bean
+        fun studentRepository(): com.didimlog.domain.repository.StudentRepository = mockk(relaxed = true)
     }
 
     @Test

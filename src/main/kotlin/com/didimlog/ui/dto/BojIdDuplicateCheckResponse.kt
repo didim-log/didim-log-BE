@@ -8,3 +8,4 @@ data class BojIdDuplicateCheckResponse(
     val message: String
 )
 
+

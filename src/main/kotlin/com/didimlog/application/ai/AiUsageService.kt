@@ -156,7 +156,9 @@ class AiUsageService(
      */
     private fun isServiceEnabled(): Boolean {
         val value = redisTemplate.opsForValue().get(CONFIG_ENABLED)
-        return value?.toBoolean() ?: DEFAULT_ENABLED
+        val isEnabled = value?.toBoolean() ?: DEFAULT_ENABLED
+        log.debug("AI service enabled check: key=$CONFIG_ENABLED, value=$value, result=$isEnabled")
+        return isEnabled
     }
 
     /**
@@ -192,8 +194,40 @@ class AiUsageService(
         val today = LocalDate.now().format(DATE_FORMATTER)
         val key = "$USAGE_USER_PREFIX$userId:$today"
         val value = redisTemplate.opsForValue().get(key)
-        return value?.toInt() ?: 0
+        val usage = value?.toInt() ?: 0
+        log.debug("User usage check: userId=$userId, key=$key, value=$value, usage=$usage")
+        return usage
     }
+    
+    /**
+     * 사용자의 AI 사용량 정보를 조회합니다.
+     * 
+     * @param userId 사용자 ID (bojId)
+     * @return 사용자 AI 사용량 정보
+     */
+    fun getUserUsage(userId: String): UserUsageInfo {
+        val isEnabled = isServiceEnabled()
+        val userLimit = getUserLimit()
+        val todayUserUsage = getTodayUserUsage(userId)
+        val remaining = (userLimit - todayUserUsage).coerceAtLeast(0)
+        
+        return UserUsageInfo(
+            limit = userLimit,
+            usage = todayUserUsage,
+            remaining = remaining,
+            isServiceEnabled = isEnabled
+        )
+    }
+    
+    /**
+     * 사용자 AI 사용량 정보
+     */
+    data class UserUsageInfo(
+        val limit: Int,
+        val usage: Int,
+        val remaining: Int,
+        val isServiceEnabled: Boolean
+    )
 
     /**
      * 자정까지 남은 초를 계산합니다.
@@ -215,4 +249,5 @@ class AiUsageService(
         val todayUserUsage: Int? = null
     )
 }
+
 

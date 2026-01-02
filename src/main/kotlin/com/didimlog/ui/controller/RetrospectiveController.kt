@@ -25,6 +25,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -221,7 +222,9 @@ class RetrospectiveController(
     @GetMapping("/{retrospectiveId}")
     fun getRetrospective(
         @Parameter(description = "회고 ID", required = true)
-        @PathVariable retrospectiveId: String
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String
     ): ResponseEntity<RetrospectiveResponse> {
         val retrospective = retrospectiveService.getRetrospective(retrospectiveId)
         val response = RetrospectiveResponse.from(retrospective)
@@ -245,7 +248,9 @@ class RetrospectiveController(
     @PostMapping("/{retrospectiveId}/bookmark")
     fun toggleBookmark(
         @Parameter(description = "회고 ID", required = true)
-        @PathVariable retrospectiveId: String
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String
     ): ResponseEntity<BookmarkToggleResponse> {
         val isBookmarked = retrospectiveService.toggleBookmark(retrospectiveId)
         val response = BookmarkToggleResponse(isBookmarked = isBookmarked)
@@ -320,7 +325,9 @@ class RetrospectiveController(
     fun deleteRetrospective(
         authentication: Authentication,
         @Parameter(description = "회고 ID", required = true)
-        @PathVariable retrospectiveId: String
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String
     ): ResponseEntity<Void> {
         // JWT 토큰에서 현재 사용자 정보 추출
         val bojId = authentication.name
@@ -403,7 +410,9 @@ class RetrospectiveController(
     fun updateRetrospective(
         authentication: Authentication,
         @Parameter(description = "회고 ID", required = true)
-        @PathVariable retrospectiveId: String,
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String,
         @RequestBody
         @Valid
         request: RetrospectiveRequest

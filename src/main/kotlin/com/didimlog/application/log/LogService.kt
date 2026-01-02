@@ -39,7 +39,10 @@ class LogService(
         isSuccess: Boolean? = null
     ): Log {
         // LogContent는 notBlank를 요구하므로, 빈 문자열인 경우 기본값 제공
-        val logContent = if (content.isBlank()) " " else content
+        val logContent = when {
+            content.isBlank() -> " "
+            else -> content
+        }
         val bojIdVo = bojId?.let { BojId(it) }
         val log = Log(
             title = LogTitle(title),

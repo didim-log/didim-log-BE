@@ -42,10 +42,12 @@ class AiReviewService(
         // AI 사용량 체크 (사용자 ID가 있는 경우만)
         val userId = logEntity.bojId?.value
         if (userId != null) {
+            log.info("Checking AI availability for user: $userId")
             try {
                 aiUsageService.checkAvailability(userId)
             } catch (e: BusinessException) {
                 // 사용량 제한 초과 시 예외를 그대로 전파
+                log.warn("AI availability check failed for user: $userId, reason: ${e.message}")
                 throw e
             }
         }
@@ -57,11 +59,7 @@ class AiReviewService(
             return handleLockNotAcquired(logId, now)
         }
 
-        // AI API 호출 전에 사용량 증가 (실제 호출 전에 증가하여 동시성 제어)
-        if (userId != null) {
-            aiUsageService.incrementUsage(userId)
-        }
-
+        // AI API 호출 및 사용량 증가는 generateAiReview 내부에서 처리
         return generateAiReview(logId, code, logEntity.isSuccess, userId)
     }
 
@@ -89,8 +87,20 @@ class AiReviewService(
         val prompt = buildPrompt(language, truncateCode(code), isSuccess)
 
         val startTime = System.currentTimeMillis()
-        val response = requestAiApiWithErrorHandling(logId, prompt, startTime, userId)
+        val response = try {
+            requestAiApiWithErrorHandling(logId, prompt, startTime, userId)
+        } catch (e: Exception) {
+            // AI 호출 실패 시 사용량 증가하지 않음
+            log.error("AI API 호출 실패: logId=$logId, userId=$userId", e)
+            throw e
+        }
         val duration = System.currentTimeMillis() - startTime
+
+        // AI 호출 성공 후에만 사용량 증가
+        if (userId != null) {
+            log.info("Incrementing AI usage for user: $userId")
+            aiUsageService.incrementUsage(userId)
+        }
 
         return saveAiReviewResult(logId, response.review, duration)
     }
@@ -186,6 +196,28 @@ class AiReviewService(
             appendLine()
             appendLine("코드:")
             appendLine(code)
+            appendLine()
+            appendLine("중요: 응답에서 사용자 코드를 인용할 때는 반드시 마크다운 코드 블록을 사용하고, 언어 태그를 '${normalizeLanguageTag(language)}'로 지정해야 합니다. (예: ```${normalizeLanguageTag(language)}). 'text' 태그를 사용하거나 자동 감지하지 마세요.")
+        }
+    }
+
+    private fun normalizeLanguageTag(language: String): String {
+        return when (language.uppercase()) {
+            "JAVA" -> "java"
+            "PYTHON" -> "python"
+            "CPP", "C++" -> "cpp"
+            "C" -> "c"
+            "JAVASCRIPT", "JS" -> "javascript"
+            "TYPESCRIPT", "TS" -> "typescript"
+            "CSHARP", "C#" -> "csharp"
+            "GO" -> "go"
+            "RUST" -> "rust"
+            "KOTLIN" -> "kotlin"
+            "SWIFT" -> "swift"
+            "RUBY" -> "ruby"
+            "PHP" -> "php"
+            "SCALA" -> "scala"
+            else -> language.lowercase()
         }
     }
 
