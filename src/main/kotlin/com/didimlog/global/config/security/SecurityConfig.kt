@@ -41,6 +41,7 @@ class SecurityConfig(
                 requests
                     .requestMatchers(
                         "/api/v1/auth/**",
+                        "/api/v1/system/**",
                         "/login/oauth2/**",
                         "/oauth2/**",
                         "/swagger-ui/**",

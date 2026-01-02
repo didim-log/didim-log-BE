@@ -22,7 +22,10 @@ class WebConfig(
         maintenanceModeInterceptorProvider.ifAvailable { interceptor ->
             registry.addInterceptor(interceptor)
                 .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/v1/admin/system/**") // 유지보수 모드 제어 API는 제외
+                .excludePathPatterns(
+                    "/api/v1/admin/system/**", // 유지보수 모드 제어 API는 제외
+                    "/api/v1/system/**" // 시스템 상태 조회 API는 제외 (Public)
+                )
         }
 
         performanceMonitoringInterceptorProvider.ifAvailable { interceptor ->

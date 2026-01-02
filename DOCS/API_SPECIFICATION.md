@@ -20,6 +20,7 @@
 - [AdminMemberController](#adminmembercontroller)
 - [AdminDashboardController](#admindashboardcontroller)
 - [SystemController](#systemcontroller)
+- [PublicSystemController](#publicsystemcontroller)
 - [ProblemCollectorController](#problemcollectorcontroller)
 - [NoticeController](#noticecontroller)
 - [FeedbackController](#feedbackcontroller)
