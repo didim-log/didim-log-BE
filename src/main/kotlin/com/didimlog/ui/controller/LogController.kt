@@ -181,11 +181,6 @@ class LogController(
         val bojId = authentication?.name
             ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
         
-        val student = studentRepository.findByBojId(BojId(bojId))
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
-            }
-        
         val usageInfo = aiUsageService.getUserUsage(bojId)
         
         return ResponseEntity.ok(

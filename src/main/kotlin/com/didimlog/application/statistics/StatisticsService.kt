@@ -30,6 +30,7 @@ class StatisticsService(
     /**
      * 학생의 통계 정보를 조회한다.
      * 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한다.
+     * 모든 집계 로직은 백엔드에서 처리하여 프론트엔드에 전달한다.
      *
      * @param bojId BOJ ID (JWT 토큰에서 추출)
      * @return 통계 정보
@@ -40,27 +41,25 @@ class StatisticsService(
         val student = findStudentByBojIdOrThrow(bojId)
         val studentId = student.id ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID가 없습니다. bojId=$bojId")
         val monthlyHeatmap = getMonthlyHeatmap(student)
-        val categoryDistribution = getCategoryDistribution(studentId)
-        val algorithmCategoryDistribution = getAlgorithmCategoryDistribution(studentId)
-        val topUsedAlgorithms = getTopUsedAlgorithms(algorithmCategoryDistribution)
         val totalSolvedCount = getTotalSolvedCount(student)
         val totalRetrospectives = getTotalRetrospectives(studentId)
         val averageSolveTime = getAverageSolveTime(student)
         val successRate = getSuccessRate(student)
-        val tagRadarData = getTagRadarData(studentId)
-        val weaknessAnalysis = getWeaknessAnalysis(studentId)
+        
+        // 성공한 문제의 카테고리별 통계 (Radar/Bar Chart용)
+        val categoryStats = getCategoryStats(studentId)
+        
+        // 실패한 문제의 카테고리별 통계 (Weakness Analysis용)
+        val weaknessStats = getWeaknessStats(studentId)
 
         return StatisticsInfo(
             monthlyHeatmap = monthlyHeatmap,
-            categoryDistribution = categoryDistribution,
-            algorithmCategoryDistribution = algorithmCategoryDistribution,
-            topUsedAlgorithms = topUsedAlgorithms,
             totalSolvedCount = totalSolvedCount,
             totalRetrospectives = totalRetrospectives,
             averageSolveTime = averageSolveTime,
             successRate = successRate,
-            tagRadarData = tagRadarData,
-            weaknessAnalysis = weaknessAnalysis
+            categoryStats = categoryStats,
+            weaknessStats = weaknessStats
         )
     }
 
@@ -104,71 +103,50 @@ class StatisticsService(
     }
 
     /**
-     * 카테고리별 풀이 통계를 집계한다.
-     * 회고의 mainCategory를 기준으로 분류한다.
-     * 사용자가 실제로 풀이한 문제의 카테고리 정보를 반영한다.
+     * 성공한 문제의 카테고리별 통계를 집계한다.
+     * 회고의 solvedCategory를 기준으로 집계하며, 쉼표로 구분된 태그는 개별 카테고리로 분리하여 집계한다.
+     * 예: "BFS, DP"가 있으면 BFS 1회, DP 1회로 카운트
      *
      * @param studentId 학생 ID
-     * @return 카테고리별 풀이 횟수 맵
+     * @return 카테고리별 통계 리스트 (count 기준 내림차순 정렬)
      */
-    private fun getCategoryDistribution(studentId: String): Map<String, Int> {
+    private fun getCategoryStats(studentId: String): List<CategoryStat> {
         val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
-        val distribution = mutableMapOf<String, Int>()
-
-        retrospectives.forEach { retrospective ->
-            retrospective.mainCategory?.let { category ->
-                val categoryName = category.name
-                distribution[categoryName] = distribution.getOrDefault(categoryName, 0) + 1
-            }
+        val successRetrospectives = retrospectives.filter { retrospective ->
+            retrospective.solutionResult == ProblemResult.SUCCESS
         }
 
-        return distribution
-    }
+        if (successRetrospectives.isEmpty()) {
+            return emptyList()
+        }
 
-    /**
-     * 알고리즘 카테고리별 사용 통계를 집계한다.
-     * Retrospective의 solvedCategory 필드를 기준으로 집계한다.
-     * 쉼표로 구분된 태그는 분리하여 각각 개별 알고리즘으로 카운트한다.
-     * 예: "BFS, DP"가 있으면 BFS 1회, DP 1회로 카운트
-     * 사용자가 회고 작성 시 선택한 카테고리만 집계한다.
-     *
-     * @param studentId 학생 ID
-     * @return 알고리즘 카테고리별 사용 횟수 맵
-     */
-    private fun getAlgorithmCategoryDistribution(studentId: String): Map<String, Int> {
-        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
-        val distribution = mutableMapOf<String, Int>()
+        val categoryCountMap = mutableMapOf<String, Int>()
 
-        retrospectives.forEach { retrospective ->
+        successRetrospectives.forEach { retrospective ->
             val category = retrospective.solvedCategory
             if (category != null && category.isNotBlank()) {
-                // 쉼표로 구분된 태그를 분리하여 각각 개별 알고리즘으로 카운트
-                val algorithms = category.split(",")
+                // 쉼표로 구분된 태그를 분리하여 각각 개별 카테고리로 카운트
+                val categories = category.split(",")
                     .map { it.trim() }
                     .filter { it.isNotBlank() }
                 
-                algorithms.forEach { algorithm ->
-                    distribution[algorithm] = distribution.getOrDefault(algorithm, 0) + 1
+                categories.forEach { cat ->
+                    categoryCountMap[cat] = categoryCountMap.getOrDefault(cat, 0) + 1
                 }
             }
         }
 
-        return distribution
-    }
+        if (categoryCountMap.isEmpty()) {
+            return emptyList()
+        }
 
-    /**
-     * 가장 많이 사용한 알고리즘 상위 3개를 반환한다.
-     *
-     * @param algorithmCategoryDistribution 알고리즘 카테고리별 사용 횟수 맵
-     * @return 상위 알고리즘 목록 (이름, 사용 횟수)
-     */
-    private fun getTopUsedAlgorithms(algorithmCategoryDistribution: Map<String, Int>): List<TopUsedAlgorithm> {
-        return algorithmCategoryDistribution
+        // count 기준 내림차순 정렬
+        return categoryCountMap
             .toList()
             .sortedByDescending { it.second }
-            .take(3)
-            .map { (name, count) -> TopUsedAlgorithm(name, count) }
+            .map { (category, count) -> CategoryStat(category, count) }
     }
+
 
     /**
      * 학생의 총 회고 수를 반환한다.
@@ -216,106 +194,50 @@ class StatisticsService(
         return Math.round(rate * 10.0) / 10.0
     }
 
-    /**
-     * 학생이 회고에서 선택한 알고리즘 카테고리를 집계하여 레이더 차트용 데이터를 생성한다.
-     * 회고의 solvedCategory를 기준으로 집계하여 사용자가 실제로 사용한 알고리즘을 반영한다.
-     * 쉼표로 구분된 태그는 하나의 카테고리로 취급한다.
-     *
-     * @param studentId 학생 ID
-     * @return 태그별 통계 리스트 (상위 5개)
-     */
-    private fun getTagRadarData(studentId: String): List<TagStat> {
-        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
-        if (retrospectives.isEmpty()) {
-            return emptyList()
-        }
-
-        // 회고의 solvedCategory를 기준으로 카운팅
-        val tagCountMap = mutableMapOf<String, Int>()
-        retrospectives.forEach { retrospective ->
-            val category = retrospective.solvedCategory
-            if (category != null && category.isNotBlank()) {
-                // 쉼표로 구분된 태그는 하나의 카테고리로 취급
-                tagCountMap[category] = tagCountMap.getOrDefault(category, 0) + 1
-            }
-        }
-
-        if (tagCountMap.isEmpty()) {
-            return emptyList()
-        }
-
-        // 상위 5개 태그 추출
-        val topTags = tagCountMap
-            .toList()
-            .sortedByDescending { it.second }
-            .take(5)
-
-        // 최대 카운트 값 (fullMark)
-        val maxCount = topTags.maxOf { it.second }
-
-        return topTags.map { (tag, count) ->
-            TagStat(
-                tag = tag,
-                count = count,
-                fullMark = maxCount
-            )
-        }
-    }
 
     /**
-     * 취약점 분석 데이터를 생성한다.
-     * FAIL 또는 TIME_OVER인 회고를 분석하여 가장 빈번한 실패 카테고리와 실패 원인을 파악한다.
+     * 실패한 문제의 카테고리별 통계를 집계한다.
+     * FAIL 또는 TIME_OVER인 회고의 solvedCategory를 기준으로 집계하며, 쉼표로 구분된 태그는 개별 카테고리로 분리하여 집계한다.
+     * 예: "BFS, DP"가 있으면 BFS 1회, DP 1회로 카운트
      *
      * @param studentId 학생 ID
-     * @return 취약점 분석 데이터
+     * @return 카테고리별 통계 리스트 (count 기준 내림차순 정렬)
      */
-    private fun getWeaknessAnalysis(studentId: String): WeaknessAnalysis? {
+    private fun getWeaknessStats(studentId: String): List<CategoryStat> {
         val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
         val failedRetrospectives = retrospectives.filter { retrospective ->
             retrospective.solutionResult == ProblemResult.FAIL || retrospective.solutionResult == ProblemResult.TIME_OVER
         }
 
         if (failedRetrospectives.isEmpty()) {
-            return null
+            return emptyList()
         }
 
-        // 카테고리별 실패 횟수 집계
-        val categoryFailures = mutableMapOf<String, Int>()
-        val resultTypeCounts = mutableMapOf<ProblemResult, Int>()
+        val categoryCountMap = mutableMapOf<String, Int>()
 
         failedRetrospectives.forEach { retrospective ->
-            // 카테고리 집계
-            retrospective.mainCategory?.let { category ->
-                val categoryName = category.name
-                categoryFailures[categoryName] = categoryFailures.getOrDefault(categoryName, 0) + 1
-            }
-
-            // 결과 타입 집계
-            retrospective.solutionResult?.let { result ->
-                resultTypeCounts[result] = resultTypeCounts.getOrDefault(result, 0) + 1
+            val category = retrospective.solvedCategory
+            if (category != null && category.isNotBlank()) {
+                // 쉼표로 구분된 태그를 분리하여 각각 개별 카테고리로 카운트
+                val categories = category.split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                
+                categories.forEach { cat ->
+                    categoryCountMap[cat] = categoryCountMap.getOrDefault(cat, 0) + 1
+                }
             }
         }
 
-        // 가장 빈번한 실패 카테고리
-        val topFailureCategory = categoryFailures.maxByOrNull { it.value }
+        if (categoryCountMap.isEmpty()) {
+            return emptyList()
+        }
 
-        // 가장 빈번한 실패 원인
-        val topFailureReason = resultTypeCounts.maxByOrNull { it.value }?.key
-
-        // 카테고리별 실패 분포 (상위 8개)
-        val categoryFailuresList = categoryFailures
+        // count 기준 내림차순 정렬
+        return categoryCountMap
             .toList()
             .sortedByDescending { it.second }
-            .take(8)
-            .map { (category, count) -> CategoryFailure(category, count) }
-
-        return WeaknessAnalysis(
-            totalFailures = failedRetrospectives.size,
-            topCategory = topFailureCategory?.key,
-            topCategoryCount = topFailureCategory?.value ?: 0,
-            topReason = topFailureReason,
-            categoryFailures = categoryFailuresList
-        )
+            .map { (category, count) -> CategoryStat(category, count) }
     }
 
     /**
@@ -343,15 +265,12 @@ class StatisticsService(
  */
 data class StatisticsInfo(
     val monthlyHeatmap: List<HeatmapData>,
-    val categoryDistribution: Map<String, Int>,
-    val algorithmCategoryDistribution: Map<String, Int>,
-    val topUsedAlgorithms: List<TopUsedAlgorithm>,
     val totalSolvedCount: Int,
     val totalRetrospectives: Long,
     val averageSolveTime: Double,
     val successRate: Double,
-    val tagRadarData: List<TagStat>,
-    val weaknessAnalysis: WeaknessAnalysis?
+    val categoryStats: List<CategoryStat>, // 성공한 문제의 카테고리별 통계
+    val weaknessStats: List<CategoryStat>  // 실패한 문제의 카테고리별 통계
 )
 
 /**
@@ -364,37 +283,9 @@ data class HeatmapData(
 )
 
 /**
- * 가장 많이 사용한 알고리즘 정보
+ * 카테고리별 통계 정보
  */
-data class TopUsedAlgorithm(
-    val name: String,
-    val count: Int
-)
-
-/**
- * 태그별 통계 정보 (레이더 차트용)
- */
-data class TagStat(
-    val tag: String,
-    val count: Int,
-    val fullMark: Int
-)
-
-/**
- * 취약점 분석 정보
- */
-data class WeaknessAnalysis(
-    val totalFailures: Int,
-    val topCategory: String?,
-    val topCategoryCount: Int,
-    val topReason: ProblemResult?,
-    val categoryFailures: List<CategoryFailure>
-)
-
-/**
- * 카테고리별 실패 정보
- */
-data class CategoryFailure(
+data class CategoryStat(
     val category: String,
     val count: Int
 )
