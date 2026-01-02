@@ -1,5 +1,6 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.admin.AdminService
 import com.didimlog.application.feedback.FeedbackService
 import com.didimlog.application.notice.NoticeService
@@ -92,6 +93,9 @@ class AdminControllerTest {
 
         @Bean
         fun noticeService(): NoticeService = mockk(relaxed = true)
+
+        @Bean
+        fun adminAuditService(): AdminAuditService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
