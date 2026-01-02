@@ -60,6 +60,9 @@ class AdminDashboardControllerTest {
 
         @Bean
         fun adminDashboardChartService(): com.didimlog.application.admin.AdminDashboardChartService = mockk(relaxed = true)
+
+        @Bean
+        fun aiQualityService(): com.didimlog.application.admin.AiQualityService = mockk(relaxed = true)
     }
 
     @Test

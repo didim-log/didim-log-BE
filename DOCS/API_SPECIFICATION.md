@@ -834,6 +834,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/logs` | 새로운 코딩 로그를 생성합니다. 생성된 로그 ID를 반환하며, 이후 AI 리뷰 생성에 사용할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`LogCreateRequest`<br>- `title` (String, required): 로그 제목<br>  - 유효성: `@NotBlank`<br>- `content` (String, required): 로그 내용<br>  - 유효성: `@NotBlank` (빈 문자열인 경우 서버에서 공백 문자로 기본값 처리)<br>- `code` (String, required): 사용자 코드<br>  - 유효성: `@NotBlank`<br>- `isSuccess` (Boolean, optional): 풀이 성공 여부<br>  - `true`: 성공한 코드 (AI 리뷰는 개선 제안 중심)<br>  - `false`: 실패한 코드 (AI 리뷰는 버그 분석 중심)<br>  - `null` (기본값): 미제출 또는 알 수 없음 (일반 코드 리뷰) | `LogResponse`<br><br>**LogResponse 구조:**<br>- `id` (String): 생성된 로그 ID | JWT Token |
 | POST | `/api/v1/logs/{logId}/ai-review` | 로그 엔티티에서 **코드와 언어를 자동으로 추출**하여 AI 한 줄 리뷰를 생성하거나 조회합니다. 언어는 코드 내용을 분석하여 자동 감지됩니다.<br><br>**지원 언어:** C, CPP, CSHARP, GO, JAVA, JAVASCRIPT, KOTLIN, PYTHON, R, RUBY, SCALA, SWIFT, TEXT (백준 온라인 저지 지원 언어와 동기화)<br><br>**AI 모델:** Gemini 2.5 Flash<br><br>**응답 언어:** 한국어 (모든 리뷰는 한국어로 제공)<br><br>**프롬프트 (성공/실패 정보에 따라 차별화):**<br>- **성공한 코드 (`isSuccess = true`)**: "이 코드는 성공적으로 실행되었습니다. 이 {language} 코드를 분석하고 시간 복잡도 개선이나 코드 품질 향상을 위한 제안에 초점을 맞춰주세요."<br>- **실패한 코드 (`isSuccess = false`)**: "이 코드는 실행에 실패했습니다. 이 {language} 코드를 분석하고 실패 원인 분석이나 버그 수정을 위한 구체적인 피드백을 제공해주세요."<br>- **미제출 (`isSuccess = null`)**: "이 {language} 코드를 분석하고 시간 복잡도나 클린 코드 원칙에 초점을 맞춘 도움이 되는 한 줄 리뷰를 제공하세요."<br><br>**비용 절감 로직:**<br>- DB의 `aiReview`가 이미 존재하면 **외부 AI 호출 없이** 즉시 반환합니다. (비용 0원)<br>- 코드가 2000자를 초과하면 프롬프트 입력을 2000자까지만 잘라서 사용합니다.<br>- 코드가 10자 미만이면 AI 호출 없이 기본 메시지를 반환합니다. (응답: "코드가 너무 짧아 분석할 수 없습니다")<br><br>**타임아웃 및 에러 처리:**<br>- AI 생성 타임아웃: 30초 (30초 초과 시 `AI_GENERATION_TIMEOUT` 에러 반환)<br>- AI 생성 실패 시 `AI_GENERATION_FAILED` 에러 반환<br><br>**중복 호출 방지(멀티 인스턴스):**<br>- 동일 `logId`에 대해 동시에 요청이 들어오면, MongoDB의 원자적 락으로 **외부 AI 호출은 1회만** 수행됩니다.<br>- 락이 잡혀 있고 아직 결과가 없으면 아래 메시지를 반환할 수 있습니다: `AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요.` | **Path Variables:**<br>- `logId` (String, required): 로그 ID | `AiReviewResponse`<br>- `review` (String): 한 줄 리뷰 (한국어) 또는 안내 메시지<br>- `cached` (Boolean): 캐시 히트 여부 | None |
+| POST | `/api/v1/logs/{logId}/feedback` | AI 리뷰에 대한 사용자 피드백을 제출합니다. LIKE 또는 DISLIKE를 선택할 수 있으며, DISLIKE의 경우 이유를 함께 제출할 수 있습니다. 피드백은 AI 리뷰 품질 개선을 위해 사용됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `logId` (String, required): 로그 ID<br><br>**Request Body:**<br>`LogFeedbackRequest`<br>- `status` (AiFeedbackStatus, required): 피드백 상태<br>  - `LIKE`: 긍정적 피드백<br>  - `DISLIKE`: 부정적 피드백<br>  - 유효성: `@NotNull`<br>- `reason` (String, optional): 부정적 피드백의 이유<br>  - DISLIKE 선택 시 제공 가능<br>  - 예: "INACCURATE", "GENERIC", "NOT_HELPFUL" 등 | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "피드백이 제출되었습니다." | JWT Token |
 
 **예시 요청 (로그 생성):**
 ```http
@@ -897,6 +898,46 @@ Content-Type: application/json
   "error": "Service Unavailable",
   "code": "AI_GENERATION_FAILED",
   "message": "AI 리뷰 생성에 실패했습니다. 잠시 후 다시 시도해주세요."
+}
+```
+
+**예시 요청 (AI 리뷰 피드백 제출 - LIKE):**
+```http
+POST /api/v1/logs/log-123/feedback
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "status": "LIKE"
+}
+```
+
+**예시 요청 (AI 리뷰 피드백 제출 - DISLIKE):**
+```http
+POST /api/v1/logs/log-123/feedback
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "status": "DISLIKE",
+  "reason": "INACCURATE"
+}
+```
+
+**예시 응답 (피드백 제출 성공):**
+```json
+{
+  "message": "피드백이 제출되었습니다."
+}
+```
+
+**에러 응답 예시 (로그를 찾을 수 없음):**
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "code": "COMMON_RESOURCE_NOT_FOUND",
+  "message": "로그를 찾을 수 없습니다. logId=non-existent"
 }
 ```
 
@@ -1677,6 +1718,37 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     {
       "date": "2024-01-03",
       "value": 40
+    }
+  ]
+}
+```
+
+**예시 요청 (AI 품질 통계 조회):**
+```http
+GET /api/v1/admin/dashboard/ai-quality
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (AI 품질 통계 조회):**
+```json
+{
+  "totalFeedbackCount": 150,
+  "positiveRate": 82.5,
+  "negativeReasons": {
+    "INACCURATE": 12,
+    "GENERIC": 8,
+    "NOT_HELPFUL": 6
+  },
+  "recentNegativeLogs": [
+    {
+      "id": "log-123",
+      "aiReview": "코드가 명확하고 시간 복잡도 O(N)으로 최적입니다.",
+      "codeSnippet": "def solve(arr):\n    return sum(arr)"
+    },
+    {
+      "id": "log-456",
+      "aiReview": "이 코드는 비효율적입니다.",
+      "codeSnippet": "for i in range(n):\n    for j in range(n):\n        ..."
     }
   ]
 }

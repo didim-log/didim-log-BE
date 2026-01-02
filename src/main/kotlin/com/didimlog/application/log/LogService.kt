@@ -1,11 +1,14 @@
 package com.didimlog.application.log
 
 import com.didimlog.domain.Log
+import com.didimlog.domain.enums.AiFeedbackStatus
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -46,6 +49,30 @@ class LogService(
             isSuccess = isSuccess
         )
         return logRepository.save(log)
+    }
+
+    /**
+     * AI 리뷰 피드백을 업데이트합니다.
+     *
+     * @param logId 로그 ID
+     * @param status 피드백 상태 (LIKE/DISLIKE)
+     * @param reason 부정적 피드백의 이유 (선택)
+     * @return 업데이트된 Log 엔티티
+     * @throws BusinessException 로그를 찾을 수 없는 경우
+     */
+    @Transactional
+    fun updateFeedback(
+        logId: String,
+        status: AiFeedbackStatus,
+        reason: String? = null
+    ): Log {
+        val log = logRepository.findById(logId)
+            .orElseThrow {
+                BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "로그를 찾을 수 없습니다. logId=$logId")
+            }
+        
+        val updatedLog = log.updateFeedback(status, reason)
+        return logRepository.save(updatedLog)
     }
 }
 
