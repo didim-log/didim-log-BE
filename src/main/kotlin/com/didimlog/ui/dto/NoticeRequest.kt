@@ -12,7 +12,7 @@ data class NoticeCreateRequest(
     val title: String,
     
     @field:NotBlank(message = "내용은 필수입니다.")
-    @field:Size(min = 1, max = 10000, message = "내용은 1자 이상 10000자 이하여야 합니다.")
+    @field:Size(min = 2, max = 10000, message = "내용은 2자 이상 10000자 이하여야 합니다.")
     val content: String,
     
     val isPinned: Boolean = false
