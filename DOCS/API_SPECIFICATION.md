@@ -1851,6 +1851,37 @@ Content-Type: application/json
 
 ---
 
+## PublicSystemController
+
+공개 시스템 상태 API를 제공합니다. 인증 없이 접근 가능합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/system/status` | 서버의 유지보수 모드 상태를 조회합니다. 인증 없이 접근 가능합니다. | 없음 | `SystemStatusResponse`<br><br>**SystemStatusResponse 구조:**<br>- `underMaintenance` (Boolean): 유지보수 모드 활성화 여부<br>- `maintenanceMessage` (String, nullable): 유지보수 메시지 | 없음 (Public) |
+
+**예시 요청 (시스템 상태 조회):**
+```http
+GET /api/v1/system/status
+```
+
+**예시 응답 (유지보수 모드 비활성화):**
+```json
+{
+  "underMaintenance": false,
+  "maintenanceMessage": null
+}
+```
+
+**예시 응답 (유지보수 모드 활성화):**
+```json
+{
+  "underMaintenance": true,
+  "maintenanceMessage": "서버 점검 중입니다. 잠시 후 다시 시도해주세요."
+}
+```
+
+---
+
 ## ProblemCollectorController
 
 문제 데이터 수집 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다.
