@@ -20,7 +20,7 @@
 - [AdminMemberController](#adminmembercontroller)
 - [AdminDashboardController](#admindashboardcontroller)
 - [AdminAuditController](#adminauditcontroller)
-- [SystemController](#systemcontroller)
+- [AdminSystemController](#adminsystemcontroller)
 - [PublicSystemController](#publicsystemcontroller)
 - [ProblemCollectorController](#problemcollectorcontroller)
 - [NoticeController](#noticecontroller)
@@ -1788,18 +1788,18 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ---
 
-## SystemController
+## AdminSystemController
 
-시스템 제어 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다.
+관리자 시스템 제어 API를 제공합니다. AI 서비스 제어, 저장 공간 관리, 유지보수 모드 설정 등 시스템 전반의 관리 기능을 제공합니다. ADMIN 권한이 필요하며, 모든 작업은 감사 로그에 기록됩니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/admin/system/maintenance` | 서버를 끄지 않고 일반 사용자의 접근만 차단하는 유지보수 모드를 활성화/비활성화합니다. 전역 필터/인터셉터에서 이 플래그가 `true`일 때, ADMIN 권한이 없는 요청은 `503 Service Unavailable` 예외를 발생시킵니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`MaintenanceModeRequest`<br>- `enabled` (Boolean, required): 유지보수 모드 활성화 여부 | `MaintenanceModeResponse`<br><br>**MaintenanceModeResponse 구조:**<br>- `enabled` (Boolean): 현재 유지보수 모드 상태<br>- `message` (String): 응답 메시지 ("유지보수 모드가 활성화되었습니다." 또는 "유지보수 모드가 비활성화되었습니다.") | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/maintenance` | 서버를 끄지 않고 일반 사용자의 접근만 차단하는 유지보수 모드를 활성화/비활성화합니다. 전역 필터/인터셉터에서 이 플래그가 `true`일 때, ADMIN 권한이 없는 요청은 `503 Service Unavailable` 예외를 발생시킵니다. 작업은 감사 로그에 기록됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`MaintenanceModeRequest`<br>- `enabled` (Boolean, required): 유지보수 모드 활성화 여부 | `MaintenanceModeResponse`<br><br>**MaintenanceModeResponse 구조:**<br>- `enabled` (Boolean): 현재 유지보수 모드 상태<br>- `message` (String): 응답 메시지 ("유지보수 모드가 활성화되었습니다." 또는 "유지보수 모드가 비활성화되었습니다.") | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/system/ai-status` | AI 서비스의 현재 상태(활성화 여부, 사용량, 제한값)를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AiStatusResponse`<br><br>**AiStatusResponse 구조:**<br>- `isEnabled` (Boolean): AI 서비스 활성화 여부<br>- `todayGlobalUsage` (Int): 오늘의 전역 사용량<br>- `globalLimit` (Int): 전역 일일 제한<br>- `userLimit` (Int): 사용자 일일 제한 | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/system/ai-status` | AI 서비스를 수동으로 활성화 또는 비활성화합니다. 긴급 상황에서 서비스를 중지할 수 있습니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiStatusUpdateRequest`<br>- `enabled` (Boolean, required): AI 서비스 활성화 여부 | `AiStatusResponse` | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/system/ai-limits` | AI 서비스의 전역 일일 제한 및 사용자 일일 제한을 동적으로 업데이트합니다. 서버 재시작 없이 즉시 적용됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiLimitsUpdateRequest`<br>- `globalLimit` (Int, required, min: 1): 전역 일일 제한<br>- `userLimit` (Int, required, min: 1): 사용자 일일 제한 | `AiStatusResponse` | JWT Token (ADMIN) |
-| GET | `/api/v1/admin/system/storage` | 회고 데이터의 저장 공간 사용량 통계를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `StorageStatsResponse`<br><br>**StorageStatsResponse 구조:**<br>- `totalCount` (Long): 총 회고 수<br>- `estimatedSizeKb` (Long): 예상 저장 공간 크기 (KB, 회고당 약 2KB로 추정)<br>- `oldestRecordDate` (String): 가장 오래된 레코드 날짜 (ISO 8601 형식, YYYY-MM-DD) | JWT Token (ADMIN) |
-| DELETE | `/api/v1/admin/system/storage/cleanup` | 지정된 일수보다 오래된 회고 데이터를 삭제합니다. 최소 30일 이상의 데이터만 삭제할 수 있습니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `olderThanDays` (Int, required): 기준일 (이보다 오래된 데이터 삭제)<br>  - 유효성: `@Min(30)` (최소 30일 이상) | `StorageCleanupResponse`<br><br>**StorageCleanupResponse 구조:**<br>- `message` (String): 응답 메시지 (예: "100개의 회고가 삭제되었습니다.")<br>- `deletedCount` (Long): 삭제된 회고 수 | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/ai-status` | AI 서비스를 수동으로 활성화 또는 비활성화합니다. 긴급 상황에서 서비스를 중지할 수 있습니다. 작업은 감사 로그에 기록됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiStatusUpdateRequest`<br>- `enabled` (Boolean, required): AI 서비스 활성화 여부 | `AiStatusResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/ai-limits` | AI 서비스의 전역 일일 제한 및 사용자 일일 제한을 동적으로 업데이트합니다. 서버 재시작 없이 즉시 적용됩니다. 작업은 감사 로그에 기록됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiLimitsUpdateRequest`<br>- `globalLimit` (Int, required, min: 1): 전역 일일 제한<br>- `userLimit` (Int, required, min: 1): 사용자 일일 제한 | `AiStatusResponse` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/system/storage` | 회고 데이터의 저장 공간 사용량 통계를 조회합니다. 총 회고 수, 예상 크기, 가장 오래된 레코드 날짜를 반환합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `StorageStatsResponse`<br><br>**StorageStatsResponse 구조:**<br>- `totalCount` (Long): 총 회고 수<br>- `estimatedSizeKb` (Long): 예상 저장 공간 크기 (KB, 회고당 약 2KB로 추정)<br>- `oldestRecordDate` (String): 가장 오래된 레코드 날짜 (ISO 8601 형식, YYYY-MM-DD) | JWT Token (ADMIN) |
+| DELETE | `/api/v1/admin/system/storage/cleanup` | 지정된 일수보다 오래된 회고 데이터를 삭제합니다. 최소 30일 이상의 데이터만 삭제할 수 있습니다. 작업은 감사 로그에 기록됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `olderThanDays` (Int, required): 기준일 (이보다 오래된 데이터 삭제)<br>  - 유효성: `@Min(30)` (최소 30일 이상) | `StorageCleanupResponse`<br><br>**StorageCleanupResponse 구조:**<br>- `message` (String): 응답 메시지 (예: "100개의 회고가 삭제되었습니다.")<br>- `deletedCount` (Long): 삭제된 회고 수 | JWT Token (ADMIN) |
 
 **예시 요청 (유지보수 모드 활성화):**
 ```http

@@ -1,6 +1,7 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.global.system.MaintenanceModeService
+import com.didimlog.ui.dto.SystemStatusResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -31,23 +32,19 @@ class PublicSystemController(
     @GetMapping("/status")
     fun getSystemStatus(): ResponseEntity<SystemStatusResponse> {
         val isMaintenance = maintenanceModeService.isMaintenanceMode()
+        val maintenanceMessage = getMaintenanceMessage(isMaintenance)
         val response = SystemStatusResponse(
             underMaintenance = isMaintenance,
-            maintenanceMessage = if (isMaintenance) {
-                "서버 점검 중입니다. 잠시 후 다시 시도해주세요."
-            } else {
-                null
-            }
+            maintenanceMessage = maintenanceMessage
         )
         return ResponseEntity.ok(response)
     }
-}
 
-/**
- * 시스템 상태 응답 DTO
- */
-data class SystemStatusResponse(
-    val underMaintenance: Boolean,
-    val maintenanceMessage: String? = null
-)
+    private fun getMaintenanceMessage(isMaintenance: Boolean): String? {
+        if (!isMaintenance) {
+            return null
+        }
+        return "서버 점검 중입니다. 잠시 후 다시 시도해주세요."
+    }
+}
 

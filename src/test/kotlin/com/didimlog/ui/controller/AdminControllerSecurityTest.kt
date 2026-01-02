@@ -21,6 +21,8 @@ import com.didimlog.domain.repository.QuoteRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
+import com.didimlog.ui.dto.FeedbackStatusUpdateRequest
+import com.didimlog.ui.dto.QuoteCreateRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk

@@ -10,6 +10,8 @@ import com.didimlog.domain.enums.FeedbackStatus
 import com.didimlog.ui.dto.AdminUserResponse
 import com.didimlog.ui.dto.AdminUserUpdateDto
 import com.didimlog.ui.dto.FeedbackResponse
+import com.didimlog.ui.dto.FeedbackStatusUpdateRequest
+import com.didimlog.ui.dto.QuoteCreateRequest
 import com.didimlog.ui.dto.QuoteResponse
 import com.didimlog.ui.dto.NoticeCreateRequest
 import com.didimlog.ui.dto.NoticeResponse
@@ -24,8 +26,6 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
-import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Positive
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
@@ -487,21 +487,3 @@ class AdminController(
         return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 }
-
-/**
- * 피드백 상태 변경 요청 DTO
- */
-data class FeedbackStatusUpdateRequest(
-    @field:NotNull(message = "상태 값은 필수입니다.")
-    val status: FeedbackStatus
-)
-
-/**
- * 명언 생성 요청 DTO
- */
-data class QuoteCreateRequest(
-    @field:NotBlank(message = "명언 내용은 필수입니다.")
-    val content: String,
-    @field:NotBlank(message = "저자명은 필수입니다.")
-    val author: String
-)

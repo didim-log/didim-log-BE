@@ -17,7 +17,9 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.ui.dto.FeedbackStatusUpdateRequest
 import com.didimlog.ui.dto.NoticeCreateRequest
+import com.didimlog.ui.dto.QuoteCreateRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk

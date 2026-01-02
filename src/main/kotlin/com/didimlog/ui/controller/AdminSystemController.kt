@@ -4,10 +4,13 @@ import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.ai.AiUsageService
 import com.didimlog.application.storage.StorageManagementService
 import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.global.system.MaintenanceModeService
 import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.ui.dto.AiLimitsUpdateRequest
 import com.didimlog.ui.dto.AiStatusResponse
 import com.didimlog.ui.dto.AiStatusUpdateRequest
+import com.didimlog.ui.dto.MaintenanceModeRequest
+import com.didimlog.ui.dto.MaintenanceModeResponse
 import com.didimlog.ui.dto.StorageCleanupResponse
 import com.didimlog.ui.dto.StorageStatsResponse
 import io.swagger.v3.oas.annotations.Operation
@@ -39,7 +42,8 @@ import org.springframework.web.bind.annotation.RestController
 class AdminSystemController(
     private val aiUsageService: AiUsageService,
     private val storageManagementService: StorageManagementService,
-    private val adminAuditService: AdminAuditService
+    private val adminAuditService: AdminAuditService,
+    private val maintenanceModeService: MaintenanceModeService
 ) {
 
     @Operation(
@@ -100,7 +104,7 @@ class AdminSystemController(
         val adminId = authentication.name
         val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
         val action = AdminActionType.AI_SERVICE_TOGGLE
-        val details = "AI 서비스 ${if (request.enabled) "활성화" else "비활성화"}"
+        val details = createAiServiceToggleDetails(request.enabled)
         adminAuditService.logAction(adminId, action, details, ipAddress)
         
         return ResponseEntity.ok(createAiStatusResponse(status))
@@ -236,6 +240,69 @@ class AdminSystemController(
             globalLimit = status.globalLimit,
             userLimit = status.userLimit
         )
+    }
+
+    private fun createAiServiceToggleDetails(enabled: Boolean): String {
+        if (enabled) {
+            return "AI 서비스 활성화"
+        }
+        return "AI 서비스 비활성화"
+    }
+
+    @Operation(
+        summary = "유지보수 모드 토글",
+        description = "서버를 끄지 않고 일반 사용자의 접근만 차단하는 유지보수 모드를 활성화/비활성화합니다. ADMIN 권한이 필요합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "토글 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/maintenance")
+    fun toggleMaintenanceMode(
+        @Valid @RequestBody request: MaintenanceModeRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest
+    ): ResponseEntity<MaintenanceModeResponse> {
+        maintenanceModeService.setMaintenanceMode(request.enabled)
+        val message = createMaintenanceModeMessage(request.enabled)
+        val response = MaintenanceModeResponse(
+            enabled = maintenanceModeService.isMaintenanceMode(),
+            message = message
+        )
+
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.MAINTENANCE_MODE_TOGGLE
+        val details = createMaintenanceModeDetails(request.enabled)
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+
+        return ResponseEntity.ok(response)
+    }
+
+    private fun createMaintenanceModeMessage(enabled: Boolean): String {
+        if (enabled) {
+            return "유지보수 모드가 활성화되었습니다."
+        }
+        return "유지보수 모드가 비활성화되었습니다."
+    }
+
+    private fun createMaintenanceModeDetails(enabled: Boolean): String {
+        if (enabled) {
+            return "유지보수 모드 활성화"
+        }
+        return "유지보수 모드 비활성화"
     }
 }
 
