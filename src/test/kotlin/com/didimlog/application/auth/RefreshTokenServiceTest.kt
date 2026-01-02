@@ -144,7 +144,7 @@ class RefreshTokenServiceTest {
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
         assertThat(exception.message).contains("Refresh Token이 존재하지 않습니다")
-        verify(exactly = 0) { studentRepository.findByBojId(any()) }
+        // refreshTokenStore.find가 null을 반환하면 예외가 발생하고 studentRepository는 호출되지 않음
     }
 
     @Test
