@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -42,6 +43,9 @@ class SystemControllerTest {
 
     @Autowired
     private lateinit var maintenanceModeService: MaintenanceModeService
+
+    @Autowired
+    private lateinit var adminAuditService: AdminAuditService
 
     @Autowired
     private lateinit var objectMapper: ObjectMapper
@@ -74,6 +78,7 @@ class SystemControllerTest {
         mockMvc.perform(
             post("/api/v1/admin/system/maintenance")
                 .with(csrf())
+                .principal(UsernamePasswordAuthenticationToken("admin", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -98,6 +103,7 @@ class SystemControllerTest {
         mockMvc.perform(
             post("/api/v1/admin/system/maintenance")
                 .with(csrf())
+                .principal(UsernamePasswordAuthenticationToken("admin", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
