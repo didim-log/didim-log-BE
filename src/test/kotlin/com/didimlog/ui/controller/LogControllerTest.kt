@@ -58,6 +58,12 @@ class LogControllerTest {
 
         @Bean
         fun aiReviewService(): com.didimlog.application.log.AiReviewService = mockk(relaxed = true)
+
+        @Bean
+        fun aiUsageService(): com.didimlog.application.ai.AiUsageService = mockk(relaxed = true)
+
+        @Bean
+        fun studentRepository(): com.didimlog.domain.repository.StudentRepository = mockk(relaxed = true)
     }
 
     @Test

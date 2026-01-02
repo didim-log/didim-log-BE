@@ -1,7 +1,12 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.ai.AiUsageService
 import com.didimlog.application.log.AiReviewService
 import com.didimlog.application.log.LogService
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AiReviewResponse
 import com.didimlog.ui.dto.LogCreateRequest
 import com.didimlog.ui.dto.LogFeedbackRequest
@@ -15,9 +20,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
+import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -27,9 +35,12 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Log", description = "코딩 로그 관련 API")
 @RestController
 @RequestMapping("/api/v1/logs")
+@Validated
 class LogController(
     private val logService: LogService,
-    private val aiReviewService: AiReviewService
+    private val aiReviewService: AiReviewService,
+    private val aiUsageService: AiUsageService,
+    private val studentRepository: StudentRepository
 ) {
 
     @Operation(
@@ -94,7 +105,9 @@ class LogController(
     )
     @PostMapping("/{logId}/ai-review")
     fun requestAiReview(
-        @PathVariable logId: String
+        @PathVariable
+        @NotBlank(message = "로그 ID는 필수입니다.")
+        logId: String
     ): ResponseEntity<AiReviewResponse> {
         val result = aiReviewService.requestOneLineReview(logId)
         return ResponseEntity.ok(AiReviewResponse(review = result.review, cached = result.cached))
@@ -128,7 +141,9 @@ class LogController(
     @PostMapping("/{logId}/feedback")
     fun submitFeedback(
         @Parameter(description = "로그 ID", required = true)
-        @PathVariable logId: String,
+        @PathVariable
+        @NotBlank(message = "로그 ID는 필수입니다.")
+        logId: String,
         @Parameter(description = "피드백 정보", required = true)
         @RequestBody
         @Valid
@@ -136,6 +151,51 @@ class LogController(
     ): ResponseEntity<Map<String, String>> {
         logService.updateFeedback(logId, request.status, request.reason)
         return ResponseEntity.ok(mapOf("message" to "피드백이 제출되었습니다."))
+    }
+
+    @Operation(
+        summary = "AI 사용량 조회",
+        description = "현재 사용자의 AI 사용량 정보를 조회합니다. 일일 제한, 현재 사용량, 남은 사용량, 서비스 활성화 여부를 반환합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "400",
+                description = "BOJ 인증이 완료되지 않은 사용자",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/ai-usage/me")
+    fun getMyAiUsage(
+        @Parameter(hidden = true)
+        authentication: Authentication?
+    ): ResponseEntity<com.didimlog.ui.dto.AiUsageResponse> {
+        val bojId = authentication?.name
+            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        
+        val student = studentRepository.findByBojId(BojId(bojId))
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+            }
+        
+        val usageInfo = aiUsageService.getUserUsage(bojId)
+        
+        return ResponseEntity.ok(
+            com.didimlog.ui.dto.AiUsageResponse(
+                limit = usageInfo.limit,
+                usage = usageInfo.usage,
+                remaining = usageInfo.remaining,
+                isServiceEnabled = usageInfo.isServiceEnabled
+            )
+        )
     }
 }
 

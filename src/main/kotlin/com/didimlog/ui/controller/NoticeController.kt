@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
@@ -92,7 +93,9 @@ class NoticeController(
     @GetMapping("/{noticeId}")
     fun getNotice(
         @Parameter(description = "공지사항 ID", required = true)
-        @PathVariable noticeId: String
+        @PathVariable
+        @NotBlank(message = "공지사항 ID는 필수입니다.")
+        noticeId: String
     ): ResponseEntity<NoticeResponse> {
         val notice = noticeService.getNotice(noticeId)
         val response = NoticeResponse.from(notice)
@@ -133,7 +136,9 @@ class NoticeController(
     @PatchMapping("/{noticeId}")
     fun updateNotice(
         @Parameter(description = "공지사항 ID", required = true)
-        @PathVariable noticeId: String,
+        @PathVariable
+        @NotBlank(message = "공지사항 ID는 필수입니다.")
+        noticeId: String,
         @RequestBody
         @Valid
         request: NoticeUpdateRequest,
@@ -186,7 +191,9 @@ class NoticeController(
     @DeleteMapping("/{noticeId}")
     fun deleteNotice(
         @Parameter(description = "공지사항 ID", required = true)
-        @PathVariable noticeId: String,
+        @PathVariable
+        @NotBlank(message = "공지사항 ID는 필수입니다.")
+        noticeId: String,
         authentication: org.springframework.security.core.Authentication,
         httpServletRequest: jakarta.servlet.http.HttpServletRequest
     ): ResponseEntity<Void> {

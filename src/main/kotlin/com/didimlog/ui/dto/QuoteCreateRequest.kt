@@ -12,3 +12,4 @@ data class QuoteCreateRequest(
     val author: String
 )
 
+

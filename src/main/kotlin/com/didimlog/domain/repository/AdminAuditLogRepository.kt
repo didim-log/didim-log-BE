@@ -21,3 +21,4 @@ interface AdminAuditLogRepository : MongoRepository<AdminAuditLog, String> {
     fun findAllByOrderByCreatedAtDesc(pageable: Pageable): Page<AdminAuditLog>
 }
 
+

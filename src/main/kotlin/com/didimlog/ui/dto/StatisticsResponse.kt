@@ -4,32 +4,44 @@ import com.didimlog.application.statistics.StatisticsInfo
 
 /**
  * 통계 응답 DTO
+ * 백엔드에서 모든 집계 로직을 처리하여 프론트엔드에 전달한다.
  */
 data class StatisticsResponse(
     val monthlyHeatmap: List<HeatmapDataResponse>,
-    val categoryDistribution: Map<String, Int>,
-    val algorithmCategoryDistribution: Map<String, Int>,
-    val topUsedAlgorithms: List<TopUsedAlgorithmResponse>,
-    val totalSolvedCount: Int,
+    val totalSolved: Int,
     val totalRetrospectives: Long,
     val averageSolveTime: Double,
     val successRate: Double,
-    val tagRadarData: List<TagStatResponse>,
-    val weaknessAnalysis: WeaknessAnalysisResponse?
+    val categoryStats: List<CategoryStatResponse>, // 성공한 문제의 카테고리별 통계 (Radar/Bar Chart용)
+    val weaknessStats: List<CategoryStatResponse>  // 실패한 문제의 카테고리별 통계 (Weakness Analysis용)
 ) {
     companion object {
         fun from(statisticsInfo: StatisticsInfo): StatisticsResponse {
             return StatisticsResponse(
                 monthlyHeatmap = statisticsInfo.monthlyHeatmap.map { HeatmapDataResponse.from(it) },
-                categoryDistribution = statisticsInfo.categoryDistribution,
-                algorithmCategoryDistribution = statisticsInfo.algorithmCategoryDistribution,
-                topUsedAlgorithms = statisticsInfo.topUsedAlgorithms.map { TopUsedAlgorithmResponse.from(it) },
-                totalSolvedCount = statisticsInfo.totalSolvedCount,
+                totalSolved = statisticsInfo.totalSolvedCount,
                 totalRetrospectives = statisticsInfo.totalRetrospectives,
                 averageSolveTime = statisticsInfo.averageSolveTime,
                 successRate = statisticsInfo.successRate,
-                tagRadarData = statisticsInfo.tagRadarData.map { TagStatResponse.from(it) },
-                weaknessAnalysis = statisticsInfo.weaknessAnalysis?.let { WeaknessAnalysisResponse.from(it) }
+                categoryStats = statisticsInfo.categoryStats.map { CategoryStatResponse.from(it) },
+                weaknessStats = statisticsInfo.weaknessStats.map { CategoryStatResponse.from(it) }
+            )
+        }
+    }
+}
+
+/**
+ * 카테고리별 통계 응답 DTO
+ */
+data class CategoryStatResponse(
+    val category: String,
+    val count: Int
+) {
+    companion object {
+        fun from(categoryStat: com.didimlog.application.statistics.CategoryStat): CategoryStatResponse {
+            return CategoryStatResponse(
+                category = categoryStat.category,
+                count = categoryStat.count
             )
         }
     }
@@ -49,82 +61,6 @@ data class HeatmapDataResponse(
                 date = heatmapData.date,
                 count = heatmapData.count,
                 problemIds = heatmapData.problemIds
-            )
-        }
-    }
-}
-
-/**
- * 가장 많이 사용한 알고리즘 응답 DTO
- */
-data class TopUsedAlgorithmResponse(
-    val name: String,
-    val count: Int
-) {
-    companion object {
-        fun from(topUsedAlgorithm: com.didimlog.application.statistics.TopUsedAlgorithm): TopUsedAlgorithmResponse {
-            return TopUsedAlgorithmResponse(
-                name = topUsedAlgorithm.name,
-                count = topUsedAlgorithm.count
-            )
-        }
-    }
-}
-
-/**
- * 태그별 통계 응답 DTO (레이더 차트용)
- */
-data class TagStatResponse(
-    val tag: String,
-    val count: Int,
-    val fullMark: Int
-) {
-    companion object {
-        fun from(tagStat: com.didimlog.application.statistics.TagStat): TagStatResponse {
-            return TagStatResponse(
-                tag = tagStat.tag,
-                count = tagStat.count,
-                fullMark = tagStat.fullMark
-            )
-        }
-    }
-}
-
-/**
- * 취약점 분석 응답 DTO
- */
-data class WeaknessAnalysisResponse(
-    val totalFailures: Int,
-    val topCategory: String?,
-    val topCategoryCount: Int,
-    val topReason: String?,
-    val categoryFailures: List<CategoryFailureResponse>
-) {
-    companion object {
-        fun from(weaknessAnalysis: com.didimlog.application.statistics.WeaknessAnalysis): WeaknessAnalysisResponse {
-            return WeaknessAnalysisResponse(
-                totalFailures = weaknessAnalysis.totalFailures,
-                topCategory = weaknessAnalysis.topCategory,
-                topCategoryCount = weaknessAnalysis.topCategoryCount,
-                topReason = weaknessAnalysis.topReason?.name,
-                categoryFailures = weaknessAnalysis.categoryFailures.map { CategoryFailureResponse.from(it) }
-            )
-        }
-    }
-}
-
-/**
- * 카테고리별 실패 응답 DTO
- */
-data class CategoryFailureResponse(
-    val category: String,
-    val count: Int
-) {
-    companion object {
-        fun from(categoryFailure: com.didimlog.application.statistics.CategoryFailure): CategoryFailureResponse {
-            return CategoryFailureResponse(
-                category = categoryFailure.category,
-                count = categoryFailure.count
             )
         }
     }

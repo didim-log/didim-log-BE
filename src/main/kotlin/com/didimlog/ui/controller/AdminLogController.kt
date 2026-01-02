@@ -12,12 +12,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -55,6 +57,7 @@ class AdminLogController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     fun getLogs(
         @Parameter(description = "BOJ ID 필터 (선택)")
@@ -104,10 +107,12 @@ class AdminLogController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{logId}")
     fun getLog(
         @Parameter(description = "로그 ID", required = true)
         @PathVariable
+        @NotBlank(message = "로그 ID는 필수입니다.")
         logId: String
     ): ResponseEntity<AdminLogResponse> {
         val log = adminLogService.getLog(logId)
@@ -139,6 +144,7 @@ class AdminLogController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/cleanup")
     fun cleanupLogs(
         @Parameter(description = "기준일 (이보다 오래된 로그 삭제)", required = true)

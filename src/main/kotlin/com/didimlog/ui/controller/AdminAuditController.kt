@@ -18,6 +18,7 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -53,6 +54,7 @@ class AdminAuditController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     fun getAuditLogs(
         @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
@@ -91,4 +93,5 @@ class AdminAuditController(
         return ResponseEntity.ok(response)
     }
 }
+
 

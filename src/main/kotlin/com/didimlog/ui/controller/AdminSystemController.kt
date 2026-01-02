@@ -25,6 +25,7 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -66,6 +67,7 @@ class AdminSystemController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/ai-status")
     fun getAiStatus(): ResponseEntity<AiStatusResponse> {
         val status = aiUsageService.getStatus()
@@ -92,6 +94,7 @@ class AdminSystemController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/ai-status")
     fun updateAiStatus(
         @Valid @RequestBody request: AiStatusUpdateRequest,
@@ -135,6 +138,7 @@ class AdminSystemController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/ai-limits")
     fun updateAiLimits(
         @Valid @RequestBody request: AiLimitsUpdateRequest,
@@ -173,6 +177,7 @@ class AdminSystemController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/storage")
     fun getStorageStats(): ResponseEntity<StorageStatsResponse> {
         val stats = storageManagementService.getStats()
@@ -209,6 +214,7 @@ class AdminSystemController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/storage/cleanup")
     fun cleanupStorage(
         @Parameter(description = "기준일 (이보다 오래된 데이터 삭제, 최소 30일)", required = true)
@@ -269,6 +275,7 @@ class AdminSystemController(
             )
         ]
     )
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/maintenance")
     fun toggleMaintenanceMode(
         @Valid @RequestBody request: MaintenanceModeRequest,

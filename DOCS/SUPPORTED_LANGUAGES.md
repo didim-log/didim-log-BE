@@ -7,20 +7,25 @@
 
 ## 지원 언어 목록
 
-| 언어 코드 | 표시명 | 설명 |
-|---------|--------|------|
-| `JAVA` | Java | Java 프로그래밍 언어 |
-| `PYTHON` | Python | Python 프로그래밍 언어 |
-| `KOTLIN` | Kotlin | Kotlin 프로그래밍 언어 |
-| `JAVASCRIPT` | JavaScript | JavaScript 프로그래밍 언어 |
-| `CPP` | C++ | C++ 프로그래밍 언어 |
-| `GO` | Go | Go 프로그래밍 언어 |
-| `RUST` | Rust | Rust 프로그래밍 언어 |
-| `SWIFT` | Swift | Swift 프로그래밍 언어 |
-| `CSHARP` | C# | C# 프로그래밍 언어 |
-| `TEXT` | Text | 언어를 특정할 수 없는 경우 (기본값) |
+백준 온라인 저지(BOJ) 지원 언어와 동기화되어 있습니다.
 
-**총 10개 언어 지원**
+| 언어 코드 | 표시명 | 설명 | BOJ 지원 |
+|---------|--------|------|---------|
+| `C` | C | C 프로그래밍 언어 | ✅ |
+| `CPP` | C++ | C++ 프로그래밍 언어 | ✅ |
+| `CSHARP` | C# | C# 프로그래밍 언어 | ✅ |
+| `GO` | Go | Go 프로그래밍 언어 | ✅ |
+| `JAVA` | Java | Java 프로그래밍 언어 | ✅ |
+| `JAVASCRIPT` | JavaScript | JavaScript 프로그래밍 언어 | ✅ |
+| `KOTLIN` | Kotlin | Kotlin 프로그래밍 언어 | ✅ |
+| `PYTHON` | Python | Python 프로그래밍 언어 (Python2/3 통합) | ✅ |
+| `R` | R | R 프로그래밍 언어 | ✅ |
+| `RUBY` | Ruby | Ruby 프로그래밍 언어 | ✅ |
+| `SCALA` | Scala | Scala 프로그래밍 언어 | ✅ |
+| `SWIFT` | Swift | Swift 프로그래밍 언어 | ✅ |
+| `TEXT` | Text | 언어를 특정할 수 없는 경우 (기본값) | - |
+
+**총 13개 언어 지원 (BOJ 기준)**
 
 ---
 
@@ -30,15 +35,18 @@
 
 ### 감지 규칙
 
-- **Python**: `def `, `import ` + `print(`, `if __name__`
-- **Kotlin**: `fun `, `val `, `class ` + `:`, `package ` + `import kotlin`
-- **Java**: `public class`, `public static`, `System.out.println`, `import java.`
-- **C++**: `#include`, `int main`, `using namespace std`
-- **JavaScript**: `function `, `const `, `let `, `var `, `console.log`
-- **Go**: `package ` + `func `, `import "fmt"`, `fmt.Println`
-- **Rust**: `fn ` + `let `, `use std::`, `println!`
-- **Swift**: `import Swift`, `func ` + `var `, `print(` + `let `
+- **C**: `#include`, `int main`, `printf(`, `scanf(`, `malloc(` (C++ 특유 키워드 없음)
+- **C++**: `#include`, `int main`, `using namespace std`, `std::`, `cout`, `cin`, `vector<`
 - **C#**: `using ` + `namespace `, `using System`, `class ` + `static void Main`
+- **Go**: `package ` + `func `, `import "fmt"`, `fmt.Println`
+- **Java**: `public class`, `public static`, `System.out.println`, `import java.`
+- **JavaScript**: `function `, `const `, `let `, `var `, `console.log`
+- **Kotlin**: `fun `, `val `, `class ` + `:`, `package ` + `import kotlin`
+- **Python**: `def `, `import ` + `print(`, `if __name__` (Python2/3 통합)
+- **R**: `<-`, `cat(`, `library(`, `data.frame`, `read.csv`
+- **Ruby**: `def ` + `end`, `puts `, `require `, `class ` + `end`, `each do`
+- **Scala**: `object `, `def ` + `:`, `val ` + `:`, `import scala.`
+- **Swift**: `import Swift`, `func ` + `var `, `print(` + `let `
 
 ---
 
@@ -48,15 +56,18 @@
 
 ```typescript
 const LANGUAGE_LABELS: Record<string, string> = {
-    JAVA: 'Java',
-    PYTHON: 'Python',
-    KOTLIN: 'Kotlin',
-    JAVASCRIPT: 'JavaScript',
+    C: 'C',
     CPP: 'C++',
-    GO: 'Go',
-    RUST: 'Rust',
-    SWIFT: 'Swift',
     CSHARP: 'C#',
+    GO: 'Go',
+    JAVA: 'Java',
+    JAVASCRIPT: 'JavaScript',
+    KOTLIN: 'Kotlin',
+    PYTHON: 'Python',
+    R: 'R',
+    RUBY: 'Ruby',
+    SCALA: 'Scala',
+    SWIFT: 'Swift',
     TEXT: 'Text',
 };
 ```
@@ -69,15 +80,18 @@ const LANGUAGE_LABELS: Record<string, string> = {
 
 ```kotlin
 enum class PrimaryLanguage(val value: String) {
-    JAVA("java"),
-    PYTHON("python"),
-    KOTLIN("kotlin"),
-    JAVASCRIPT("javascript"),
+    C("c"),
     CPP("cpp"),
-    GO("go"),
-    RUST("rust"),
-    SWIFT("swift"),
     CSHARP("csharp"),
+    GO("go"),
+    JAVA("java"),
+    JAVASCRIPT("javascript"),
+    KOTLIN("kotlin"),
+    PYTHON("python"),
+    R("r"),
+    RUBY("ruby"),
+    SCALA("scala"),
+    SWIFT("swift"),
     TEXT("text");
 }
 ```
@@ -106,15 +120,18 @@ object CodeLanguageDetector {
 
 템플릿 생성 시 언어 코드는 마크다운 코드 블록 형식으로 변환됩니다:
 
-- `JAVA` → `java`
-- `PYTHON` → `python`
-- `KOTLIN` → `kotlin`
-- `JAVASCRIPT` → `javascript`
+- `C` → `c`
 - `CPP` → `cpp`
-- `GO` → `go`
-- `RUST` → `rust`
-- `SWIFT` → `swift`
 - `CSHARP` → `csharp`
+- `GO` → `go`
+- `JAVA` → `java`
+- `JAVASCRIPT` → `javascript`
+- `KOTLIN` → `kotlin`
+- `PYTHON` → `python`
+- `R` → `r`
+- `RUBY` → `ruby`
+- `SCALA` → `scala`
+- `SWIFT` → `swift`
 - `TEXT` → `text`
 
 ---
@@ -124,4 +141,5 @@ object CodeLanguageDetector {
 - 언어 감지는 휴리스틱 기반이므로, 100% 정확하지 않을 수 있습니다.
 - 감지 실패 시 기본값으로 `TEXT`가 사용됩니다.
 - 사용자는 필요 시 수동으로 언어를 선택할 수 있습니다.
+
 

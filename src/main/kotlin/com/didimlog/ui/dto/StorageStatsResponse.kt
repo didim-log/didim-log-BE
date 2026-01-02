@@ -9,3 +9,4 @@ data class StorageStatsResponse(
     val oldestRecordDate: String // ISO 8601 형식 (YYYY-MM-DD)
 )
 
+
