@@ -6,7 +6,6 @@
 
 - [AuthController](#authcontroller)
 - [OAuth2 Authentication](#oauth2-authentication)
-- [AiAnalysisController](#aianalysiscontroller)
 - [ProblemController](#problemcontroller)
 - [StudyController](#studycontroller)
 - [RetrospectiveController](#retrospectivecontroller)
@@ -413,18 +412,6 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 - **신규 유저**: OAuth 인증 후 DB에 저장되지 않으며, `finalizeSignup` API를 통해 약관 동의 및 닉네임 설정 완료 시 Student 엔티티가 생성됩니다.
 - **기존 유저**: OAuth 인증 완료 시 즉시 JWT 토큰이 발급되어 로그인 완료됩니다.
 - OAuth2 인증은 Spring Security의 기본 동작을 따르므로, 공급자별 설정은 `application.yaml`에서 관리됩니다.
-
----
-
-## AiAnalysisController
-
-AI 분석 관련 API를 제공합니다. 풀이 성공 여부(`isSuccess`)에 따라 `success-retrospective.md` 또는 `failure-retrospective.md` 프롬프트 템플릿을 사용하여 회고록을 생성합니다. **추천 학습 키워드**를 최상단에 제시하고, 문제 설명과 사용자 코드가 포함된 완성된 회고록을 반환합니다.
-
-**참고:** AI 서비스가 비활성화된 경우 정적 템플릿이 필요한 경우, `POST /api/v1/retrospectives/template/static` API를 사용하세요.
-
-| Method | URI | 기능 설명 | Request | Response | Auth |
-|--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/ai/analyze` | 풀이 성공 여부에 따라 성공 회고 또는 실패 회고를 AI가 생성하여 마크다운으로 반환합니다. **추천 학습 키워드**를 최상단에 제시하고, 문제 설명 요약, 사용자 코드, 핵심 분석, 개선점이 포함된 완성된 회고록을 생성합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`AiAnalyzeRequest`<br>- `code` (String, required): 사용자 코드<br>- `problemId` (String, required): 문제 ID<br>- `isSuccess` (Boolean, required): 풀이 성공 여부<br>  - `true`: 성공 회고 (`success-retrospective.md` 사용)<br>    - 코드 구조, 가독성, 패턴 분석 후 학습 키워드 3~4개 제시<br>    - 효율성 칭찬, 리팩토링 제안 중심<br>  - `false`: 실패 회고 (`failure-retrospective.md` 사용)<br>    - 에러 원인 관련 CS 지식/프레임워크 동작 원리 키워드 3~4개 제시<br>    - 원인 분석, 학습 키워드 제시 중심 | `AiAnalyzeResponse`<br>- `markdown` (String): 생성된 마크다운 회고록<br><br>**응답 마크다운 구조 (성공):**<br>- 🔑 추천 학습 키워드 (최상단)<br>- 📝 문제 설명<br>- 💻 나의 풀이 (코드 블록 포함)<br>- 💡 코드 분석 (잘된 점, 효율성 분석, 개선 가능성)<br><br>**응답 마크다운 구조 (실패):**<br>- 🔑 추천 학습 키워드 (최상단)<br>- 📝 문제 설명<br>- 💻 나의 풀이 (코드 블록 포함)<br>- ❌ 실패 분석 (원인 분석, 해결 방안) | JWT Token |
 
 ---
 
