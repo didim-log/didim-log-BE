@@ -941,6 +941,36 @@ Content-Type: application/json
 }
 ```
 
+**에러 응답 예시 (AI 사용량 제한 초과 - 사용자):**
+```json
+{
+  "status": 429,
+  "error": "Too Many Requests",
+  "code": "AI_USER_LIMIT_EXCEEDED",
+  "message": "일일 AI 사용 횟수(5회)를 초과했습니다. 내일 다시 이용해주세요."
+}
+```
+
+**에러 응답 예시 (AI 사용량 제한 초과 - 전역):**
+```json
+{
+  "status": 503,
+  "error": "Service Unavailable",
+  "code": "AI_GLOBAL_LIMIT_EXCEEDED",
+  "message": "현재 서비스 이용량이 많아 AI 기능이 일시 중지되었습니다."
+}
+```
+
+**에러 응답 예시 (AI 서비스 비활성화):**
+```json
+{
+  "status": 503,
+  "error": "Service Unavailable",
+  "code": "AI_SERVICE_DISABLED",
+  "message": "AI 서비스가 일시 중지되었습니다."
+}
+```
+
 ---
 
 ## MemberController
@@ -1763,6 +1793,12 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/admin/system/maintenance` | 서버를 끄지 않고 일반 사용자의 접근만 차단하는 유지보수 모드를 활성화/비활성화합니다. 전역 필터/인터셉터에서 이 플래그가 `true`일 때, ADMIN 권한이 없는 요청은 `503 Service Unavailable` 예외를 발생시킵니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`MaintenanceModeRequest`<br>- `enabled` (Boolean, required): 유지보수 모드 활성화 여부 | `MaintenanceModeResponse`<br><br>**MaintenanceModeResponse 구조:**<br>- `enabled` (Boolean): 현재 유지보수 모드 상태<br>- `message` (String): 응답 메시지 ("유지보수 모드가 활성화되었습니다." 또는 "유지보수 모드가 비활성화되었습니다.") | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/system/ai-status` | AI 서비스의 현재 상태(활성화 여부, 사용량, 제한값)를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AiStatusResponse`<br><br>**AiStatusResponse 구조:**<br>- `isEnabled` (Boolean): AI 서비스 활성화 여부<br>- `todayGlobalUsage` (Int): 오늘의 전역 사용량<br>- `globalLimit` (Int): 전역 일일 제한<br>- `userLimit` (Int): 사용자 일일 제한 | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/ai-status` | AI 서비스를 수동으로 활성화 또는 비활성화합니다. 긴급 상황에서 서비스를 중지할 수 있습니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiStatusUpdateRequest`<br>- `enabled` (Boolean, required): AI 서비스 활성화 여부 | `AiStatusResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/ai-limits` | AI 서비스의 전역 일일 제한 및 사용자 일일 제한을 동적으로 업데이트합니다. 서버 재시작 없이 즉시 적용됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiLimitsUpdateRequest`<br>- `globalLimit` (Int, required, min: 1): 전역 일일 제한<br>- `userLimit` (Int, required, min: 1): 사용자 일일 제한 | `AiStatusResponse` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/system/ai-status` | AI 서비스의 현재 상태(활성화 여부, 사용량, 제한값)를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AiStatusResponse`<br><br>**AiStatusResponse 구조:**<br>- `isEnabled` (Boolean): AI 서비스 활성화 여부<br>- `todayGlobalUsage` (Int): 오늘의 전역 사용량<br>- `globalLimit` (Int): 전역 일일 제한<br>- `userLimit` (Int): 사용자 일일 제한 | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/ai-status` | AI 서비스를 수동으로 활성화 또는 비활성화합니다. 긴급 상황에서 서비스를 중지할 수 있습니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiStatusUpdateRequest`<br>- `enabled` (Boolean, required): AI 서비스 활성화 여부 | `AiStatusResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/ai-limits` | AI 서비스의 전역 일일 제한 및 사용자 일일 제한을 동적으로 업데이트합니다. 서버 재시작 없이 즉시 적용됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiLimitsUpdateRequest`<br>- `globalLimit` (Int, required, min: 1): 전역 일일 제한<br>- `userLimit` (Int, required, min: 1): 사용자 일일 제한 | `AiStatusResponse` | JWT Token (ADMIN) |
 
 **예시 요청 (유지보수 모드 활성화):**
 ```http

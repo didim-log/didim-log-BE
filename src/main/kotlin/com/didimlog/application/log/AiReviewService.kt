@@ -1,34 +1,53 @@
 package com.didimlog.application.log
 
+import com.didimlog.application.ai.AiUsageService
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.AiGenerationTimeoutException
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.infra.ai.AiApiClient
 import java.time.LocalDateTime
 import java.util.concurrent.TimeoutException
+import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.client.HttpClientErrorException
 
 @Service
 class AiReviewService(
     private val logRepository: LogRepository,
     private val aiApiClient: AiApiClient,
-    private val logAiReviewLockRepository: LogAiReviewLockRepository
+    private val logAiReviewLockRepository: LogAiReviewLockRepository,
+    private val aiUsageService: AiUsageService
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
 
     @Transactional
     fun requestOneLineReview(logId: String): AiReviewResult {
-        val log = findLogOrThrow(logId)
+        val logEntity = findLogOrThrow(logId)
         
-        val cachedReview = log.aiReviewTextOrNull()
+        val cachedReview = logEntity.aiReviewTextOrNull()
         if (cachedReview != null) {
             return AiReviewResult(review = cachedReview, cached = true)
         }
 
-        val code = log.code.value.trim()
+        val code = logEntity.code.value.trim()
         if (code.length < MIN_CODE_LENGTH) {
             return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
+        }
+
+        // AI 사용량 체크 (사용자 ID가 있는 경우만)
+        val userId = logEntity.bojId?.value
+        if (userId != null) {
+            try {
+                aiUsageService.checkAvailability(userId)
+            } catch (e: BusinessException) {
+                // 사용량 제한 초과 시 예외를 그대로 전파
+                throw e
+            }
         }
 
         val now = LocalDateTime.now()
@@ -38,7 +57,12 @@ class AiReviewService(
             return handleLockNotAcquired(logId, now)
         }
 
-        return generateAiReview(logId, code, log.isSuccess)
+        // AI API 호출 전에 사용량 증가 (실제 호출 전에 증가하여 동시성 제어)
+        if (userId != null) {
+            aiUsageService.incrementUsage(userId)
+        }
+
+        return generateAiReview(logId, code, logEntity.isSuccess, userId)
     }
 
     private fun findLogOrThrow(logId: String): com.didimlog.domain.Log {
@@ -60,12 +84,12 @@ class AiReviewService(
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false)
     }
 
-    private fun generateAiReview(logId: String, code: String, isSuccess: Boolean?): AiReviewResult {
+    private fun generateAiReview(logId: String, code: String, isSuccess: Boolean?, userId: String?): AiReviewResult {
         val language = detectCodeLanguage(code)
         val prompt = buildPrompt(language, truncateCode(code), isSuccess)
 
         val startTime = System.currentTimeMillis()
-        val response = requestAiApiWithErrorHandling(logId, prompt, startTime)
+        val response = requestAiApiWithErrorHandling(logId, prompt, startTime, userId)
         val duration = System.currentTimeMillis() - startTime
 
         return saveAiReviewResult(logId, response.review, duration)
@@ -74,7 +98,8 @@ class AiReviewService(
     private fun requestAiApiWithErrorHandling(
         logId: String,
         prompt: String,
-        startTime: Long
+        startTime: Long,
+        userId: String?
     ): com.didimlog.infra.ai.AiApiResponse {
         return try {
             aiApiClient.requestOneLineReview(prompt, timeoutSeconds = AI_TIMEOUT_SECONDS)
@@ -82,7 +107,26 @@ class AiReviewService(
             val duration = System.currentTimeMillis() - startTime
             logAiReviewLockRepository.markFailed(logId)
             throw AiGenerationTimeoutException(duration, cause = e)
+        } catch (e: HttpClientErrorException) {
+            // Circuit Breaker: 429 (Too Many Requests) 또는 QuotaExceeded 시 긴급 중지
+            if (e.statusCode == HttpStatus.TOO_MANY_REQUESTS || 
+                e.message?.contains("QuotaExceeded", ignoreCase = true) == true ||
+                e.message?.contains("429", ignoreCase = true) == true) {
+                log.error("AI API Quota 초과 감지. 긴급 중지 실행. userId=$userId", e)
+                aiUsageService.emergencyStop()
+            }
+            logAiReviewLockRepository.markFailed(logId)
+            throw AiGenerationFailedException(
+                message = "AI 리뷰 생성 실패 (소요 시간: ${System.currentTimeMillis() - startTime}ms)",
+                cause = e
+            )
         } catch (e: Exception) {
+            // 기타 예외에서도 Quota 관련 메시지 확인
+            if (e.message?.contains("QuotaExceeded", ignoreCase = true) == true ||
+                e.message?.contains("429", ignoreCase = true) == true) {
+                log.error("AI API Quota 초과 감지. 긴급 중지 실행. userId=$userId", e)
+                aiUsageService.emergencyStop()
+            }
             logAiReviewLockRepository.markFailed(logId)
             throw AiGenerationFailedException(
                 message = "AI 리뷰 생성 실패 (소요 시간: ${System.currentTimeMillis() - startTime}ms)",
