@@ -27,23 +27,27 @@ class StorageManagementService(
     @Transactional(readOnly = true)
     fun getStats(): StorageStats {
         val totalCount = retrospectiveRepository.count()
-        val estimatedSizeKb = totalCount * 2L // 회고당 약 2KB로 추정
+        val estimatedSizeKb = calculateEstimatedSize(totalCount)
+        val oldestRecordDate = findOldestRecordDate()
+        return StorageStats(
+            totalCount = totalCount,
+            estimatedSizeKb = estimatedSizeKb,
+            oldestRecordDate = oldestRecordDate
+        )
+    }
 
-        // 가장 오래된 레코드 날짜 조회
+    private fun calculateEstimatedSize(totalCount: Long): Long {
+        return totalCount * 2L // 회고당 약 2KB로 추정
+    }
+
+    private fun findOldestRecordDate(): LocalDate {
         val oldestRecord = mongoTemplate.findOne(
             Query.query(Criteria.where("createdAt").exists(true))
                 .with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.ASC, "createdAt"))
                 .limit(1),
             com.didimlog.domain.Retrospective::class.java
         )
-
-        val oldestRecordDate = oldestRecord?.createdAt?.toLocalDate() ?: LocalDate.now()
-
-        return StorageStats(
-            totalCount = totalCount,
-            estimatedSizeKb = estimatedSizeKb,
-            oldestRecordDate = oldestRecordDate
-        )
+        return oldestRecord?.createdAt?.toLocalDate() ?: LocalDate.now()
     }
 
     /**

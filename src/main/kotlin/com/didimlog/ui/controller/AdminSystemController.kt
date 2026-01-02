@@ -2,9 +2,11 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.ai.AiUsageService
 import com.didimlog.application.storage.StorageManagementService
+import com.didimlog.ui.dto.AiLimitsUpdateRequest
 import com.didimlog.ui.dto.AiStatusResponse
 import com.didimlog.ui.dto.AiStatusUpdateRequest
-import com.didimlog.ui.dto.AiLimitsUpdateRequest
+import com.didimlog.ui.dto.StorageCleanupResponse
+import com.didimlog.ui.dto.StorageStatsResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -57,13 +59,7 @@ class AdminSystemController(
     @GetMapping("/ai-status")
     fun getAiStatus(): ResponseEntity<AiStatusResponse> {
         val status = aiUsageService.getStatus()
-        val response = AiStatusResponse(
-            isEnabled = status.isEnabled,
-            todayGlobalUsage = status.todayGlobalUsage,
-            globalLimit = status.globalLimit,
-            userLimit = status.userLimit
-        )
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(createAiStatusResponse(status))
     }
 
     @Operation(
@@ -92,13 +88,7 @@ class AdminSystemController(
     ): ResponseEntity<AiStatusResponse> {
         aiUsageService.setServiceEnabled(request.enabled)
         val status = aiUsageService.getStatus()
-        val response = AiStatusResponse(
-            isEnabled = status.isEnabled,
-            todayGlobalUsage = status.todayGlobalUsage,
-            globalLimit = status.globalLimit,
-            userLimit = status.userLimit
-        )
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(createAiStatusResponse(status))
     }
 
     @Operation(
@@ -132,13 +122,7 @@ class AdminSystemController(
     ): ResponseEntity<AiStatusResponse> {
         aiUsageService.updateLimits(request.globalLimit, request.userLimit)
         val status = aiUsageService.getStatus()
-        val response = AiStatusResponse(
-            isEnabled = status.isEnabled,
-            todayGlobalUsage = status.todayGlobalUsage,
-            globalLimit = status.globalLimit,
-            userLimit = status.userLimit
-        )
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(createAiStatusResponse(status))
     }
 
     @Operation(
@@ -211,22 +195,14 @@ class AdminSystemController(
         )
         return ResponseEntity.ok(response)
     }
+
+    private fun createAiStatusResponse(status: AiUsageService.AiStatus): AiStatusResponse {
+        return AiStatusResponse(
+            isEnabled = status.isEnabled,
+            todayGlobalUsage = status.todayGlobalUsage,
+            globalLimit = status.globalLimit,
+            userLimit = status.userLimit
+        )
+    }
 }
-
-/**
- * 저장 공간 통계 응답 DTO
- */
-data class StorageStatsResponse(
-    val totalCount: Long,
-    val estimatedSizeKb: Long,
-    val oldestRecordDate: String // ISO 8601 형식 (YYYY-MM-DD)
-)
-
-/**
- * 저장 공간 정리 응답 DTO
- */
-data class StorageCleanupResponse(
-    val message: String,
-    val deletedCount: Long
-)
 
