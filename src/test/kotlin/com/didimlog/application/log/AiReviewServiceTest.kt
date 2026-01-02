@@ -1,5 +1,6 @@
 package com.didimlog.application.log
 
+import com.didimlog.application.ai.AiUsageService
 import com.didimlog.domain.Log
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.valueobject.AiReview
@@ -23,7 +24,8 @@ class AiReviewServiceTest {
     private val logRepository: LogRepository = mockk()
     private val aiApiClient: AiApiClient = mockk()
     private val lockRepository: LogAiReviewLockRepository = mockk()
-    private val aiReviewService = AiReviewService(logRepository, aiApiClient, lockRepository)
+    private val aiUsageService: AiUsageService = mockk(relaxed = true)
+    private val aiReviewService = AiReviewService(logRepository, aiApiClient, lockRepository, aiUsageService)
 
     @Test
     @DisplayName("이미 aiReview가 있으면 외부 API를 호출하지 않고 캐시를 반환한다")
@@ -62,6 +64,14 @@ class AiReviewServiceTest {
         every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
         every { lockRepository.markCompleted(any(), any(), any()) } returns true
         every { lockRepository.markFailed(any()) } returns true
+        every { aiUsageService.checkAvailability(any()) } returns com.didimlog.application.ai.AiUsageService.AiStatus(
+            isEnabled = true,
+            todayGlobalUsage = 0,
+            globalLimit = 1000,
+            userLimit = 5,
+            todayUserUsage = 0
+        )
+        every { aiUsageService.incrementUsage(any()) } returns Unit
         every { aiApiClient.requestOneLineReview(any()) } answers {
             val prompt = firstArg<String>()
             assertThat(prompt).contains("a".repeat(2_000))
@@ -86,7 +96,8 @@ class AiReviewServiceTest {
             title = LogTitle("제목"),
             content = LogContent("내용"),
             code = LogCode("short"),
-            aiReview = null
+            aiReview = null,
+            bojId = null // bojId가 없으면 사용량 체크를 하지 않음
         )
         every { logRepository.findById(logId) } returns Optional.of(log)
 
@@ -107,7 +118,8 @@ class AiReviewServiceTest {
             title = LogTitle("제목"),
             content = LogContent("내용"),
             code = LogCode("0123456789"),
-            aiReview = null
+            aiReview = null,
+            bojId = null // bojId가 없으면 사용량 체크를 하지 않음
         )
         every { logRepository.findById(logId) } returns Optional.of(log)
         every { lockRepository.tryAcquireLock(any(), any(), any()) } returns false

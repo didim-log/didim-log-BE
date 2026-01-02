@@ -72,7 +72,7 @@ class RetrospectiveTest {
 
         // expect
         assertThatThrownBy {
-            retrospective.updateContent("짧아요")
+            retrospective.updateContent("짧아요", "요약")
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("회고 내용은 10자 이상이어야 합니다.")
     }

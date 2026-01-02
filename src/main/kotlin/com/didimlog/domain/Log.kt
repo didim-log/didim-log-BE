@@ -6,6 +6,7 @@ import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.enums.AiReviewStatus
+import com.didimlog.domain.enums.AiFeedbackStatus
 import com.didimlog.domain.enums.ProblemResult
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.Id
@@ -26,13 +27,23 @@ data class Log(
     val aiReview: AiReview? = null,
     val aiReviewStatus: AiReviewStatus? = null,
     val aiReviewLockExpiresAt: LocalDateTime? = null,
-    val aiReviewDurationMillis: Long? = null
+    val aiReviewDurationMillis: Long? = null,
+    val aiFeedbackStatus: AiFeedbackStatus = AiFeedbackStatus.NONE,
+    val aiFeedbackReason: String? = null,
+    val promptVersion: String = "v1.0"
 ) {
     fun hasAiReview(): Boolean = aiReview != null
 
     fun aiReviewTextOrNull(): String? = aiReview?.value
 
     fun saveAiReview(review: String): Log = copy(aiReview = AiReview(review))
+
+    fun updateFeedback(status: AiFeedbackStatus, reason: String? = null): Log {
+        return copy(
+            aiFeedbackStatus = status,
+            aiFeedbackReason = reason
+        )
+    }
 }
 
 

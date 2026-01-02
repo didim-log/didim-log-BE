@@ -1,5 +1,6 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.notice.NoticeService
 import com.didimlog.domain.Notice
 import com.didimlog.global.exception.BusinessException
@@ -52,6 +53,9 @@ class NoticeControllerTest {
     class TestConfig {
         @Bean
         fun noticeService(): NoticeService = mockk(relaxed = true)
+        
+        @Bean
+        fun adminAuditService(): AdminAuditService = mockk(relaxed = true)
     }
 
     @Test

@@ -57,6 +57,12 @@ class AdminDashboardControllerTest {
 
         @Bean
         fun performanceMetricsService(): PerformanceMetricsService = mockk(relaxed = true)
+
+        @Bean
+        fun adminDashboardChartService(): com.didimlog.application.admin.AdminDashboardChartService = mockk(relaxed = true)
+
+        @Bean
+        fun aiQualityService(): com.didimlog.application.admin.AiQualityService = mockk(relaxed = true)
     }
 
     @Test
@@ -96,10 +102,12 @@ class AdminDashboardControllerTest {
     fun `성능 메트릭 조회 성공`() {
         // given
         clearMocks(performanceMetricsService)
-        val metrics = PerformanceMetrics(
+        val metrics = com.didimlog.application.admin.PerformanceMetrics(
             rpm = 45.5,
             averageResponseTime = 125.3,
-            timeRangeMinutes = 30
+            timeRangeMinutes = 30,
+            rpmTimeSeries = emptyList(),
+            latencyTimeSeries = emptyList()
         )
 
         every { performanceMetricsService.getPerformanceMetrics(30) } returns metrics
@@ -123,10 +131,12 @@ class AdminDashboardControllerTest {
     fun `성능 메트릭 조회 - 기본값`() {
         // given
         clearMocks(performanceMetricsService)
-        val metrics = PerformanceMetrics(
+        val metrics = com.didimlog.application.admin.PerformanceMetrics(
             rpm = 30.0,
             averageResponseTime = 100.0,
-            timeRangeMinutes = 30
+            timeRangeMinutes = 30,
+            rpmTimeSeries = emptyList(),
+            latencyTimeSeries = emptyList()
         )
 
         every { performanceMetricsService.getPerformanceMetrics(30) } returns metrics

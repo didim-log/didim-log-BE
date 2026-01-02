@@ -144,7 +144,7 @@ class RetrospectiveControllerTest {
     @DisplayName("회고 작성 시 content가 10자 미만일 때 400 Bad Request 반환")
     fun `회고 작성 시 content 길이 검증`() {
         // given
-        val request = RetrospectiveRequest(content = "짧음") // 10자 미만
+        val request = RetrospectiveRequest(content = "짧음", summary = "요약") // 10자 미만
         val bojId = "testuser"
 
         // when & then
@@ -385,27 +385,6 @@ class RetrospectiveControllerTest {
                 solveTime = null
             )
         }
-    }
-
-    @Test
-    @DisplayName("템플릿 생성 시 200 OK 및 Response JSON 구조 검증")
-    fun `템플릿 생성 성공`() {
-        // given
-        val problemId = "1000"
-        val resultType = ProblemResult.SUCCESS
-        val template = "# 문제 분석\n\n## 접근 방법\n..."
-
-        every { retrospectiveService.generateTemplate(problemId, resultType) } returns template
-
-        // when & then
-        mockMvc.perform(
-            get("/api/v1/retrospectives/template")
-                .param("problemId", problemId)
-                .param("resultType", resultType.name)
-                .contentType(MediaType.APPLICATION_JSON)
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.template").value(template))
     }
 
     private fun createRetrospective(

@@ -58,7 +58,8 @@ class DashboardService(
                 nickname = student.nickname.value,
                 bojId = bojIdValue,
                 currentTier = student.tier(),
-                consecutiveSolveDays = student.consecutiveSolveDays
+                consecutiveSolveDays = student.consecutiveSolveDays,
+                primaryLanguage = student.primaryLanguage
             ),
             todaySolvedCount = todayRetrospectives.size,
             todaySolvedProblems = todayRetrospectives.map { TodaySolvedProblem.from(it) },
@@ -117,7 +118,8 @@ data class StudentProfile(
     val nickname: String,
     val bojId: String,
     val currentTier: Tier,
-    val consecutiveSolveDays: Int
+    val consecutiveSolveDays: Int,
+    val primaryLanguage: com.didimlog.domain.enums.PrimaryLanguage? = null
 )
 
 /**

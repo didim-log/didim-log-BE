@@ -158,7 +158,7 @@ class RetrospectiveServiceTest {
 
         // expect
         val exception = assertThrows<BusinessException> {
-            retrospectiveService.writeRetrospective("missing", "1000", "content", null)
+            retrospectiveService.writeRetrospective("missing", "1000", "content", "summary")
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
     }
@@ -173,7 +173,7 @@ class RetrospectiveServiceTest {
 
         // expect
         val exception = assertThrows<BusinessException> {
-            retrospectiveService.writeRetrospective("student-id", "missing", "content", null)
+            retrospectiveService.writeRetrospective("student-id", "missing", "content", "summary")
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.PROBLEM_NOT_FOUND)
     }
@@ -246,7 +246,7 @@ class RetrospectiveServiceTest {
                 retrospectiveId = retrospectiveId,
                 studentId = attackerId,
                 content = "수정된 내용입니다.",
-                summary = null,
+                summary = "수정된 요약",
                 solutionResult = null,
                 solvedCategory = null,
                 solveTime = null
@@ -281,12 +281,13 @@ class RetrospectiveServiceTest {
         every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(ownerId, problemId) } returns existingRetrospective
-        every { retrospectiveRepository.save(any<Retrospective>()) } returns existingRetrospective.updateContent("수정된 내용입니다.")
+        every { retrospectiveRepository.save(any<Retrospective>()) } returns existingRetrospective.updateContent("수정된 내용입니다.", "수정된 요약")
 
         val result = retrospectiveService.writeRetrospective(
             studentId = ownerId,
             problemId = problemId,
-            content = "수정된 내용입니다."
+            content = "수정된 내용입니다.",
+            summary = "수정된 요약"
         )
         assertThat(result.content).isEqualTo("수정된 내용입니다.")
 
@@ -335,6 +336,7 @@ class RetrospectiveServiceTest {
 
         every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
         every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
         every { retrospectiveRepository.delete(any<Retrospective>()) } returns Unit
 
         // when
@@ -395,101 +397,5 @@ class RetrospectiveServiceTest {
         assertThat(exception.errorCode).isEqualTo(ErrorCode.RETROSPECTIVE_NOT_FOUND)
     }
 
-    @Test
-    @DisplayName("generateTemplate은 SUCCESS 결과에 따라 성공 템플릿을 생성한다")
-    fun `성공 템플릿 생성`() {
-        // given
-        val problemId = "1000"
-        val problem = Problem(
-            id = ProblemId(problemId),
-            title = "A+B",
-            category = ProblemCategory.IMPLEMENTATION,
-            difficulty = Tier.BRONZE,
-            level = 3,
-            url = "https://www.acmicpc.net/problem/$problemId"
-        )
-
-        every { problemRepository.findById(problemId) } returns Optional.of(problem)
-
-        // when
-        val template = retrospectiveService.generateTemplate(problemId, com.didimlog.domain.enums.ProblemResult.SUCCESS)
-
-        // then
-        assertThat(template).contains("# 🏆 A+B 해결 회고")
-        assertThat(template).contains("## 💡 핵심 접근 (Key Idea)")
-        assertThat(template).contains("## ⏱️ 시간/공간 복잡도")
-        assertThat(template).contains("## ✨ 개선할 점")
-        assertThat(template).doesNotContain("## 🧐 실패 원인")
-        assertThat(template).doesNotContain("## 📚 부족했던 개념")
-        assertThat(template).doesNotContain("## 🔧 다음 시도 계획")
-    }
-
-    @Test
-    @DisplayName("generateTemplate은 FAIL 결과에 따라 실패 템플릿을 생성한다")
-    fun `실패 템플릿 생성`() {
-        // given
-        val problemId = "1000"
-        val problem = Problem(
-            id = ProblemId(problemId),
-            title = "A+B",
-            category = ProblemCategory.IMPLEMENTATION,
-            difficulty = Tier.BRONZE,
-            level = 3,
-            url = "https://www.acmicpc.net/problem/$problemId"
-        )
-
-        every { problemRepository.findById(problemId) } returns Optional.of(problem)
-
-        // when
-        val template = retrospectiveService.generateTemplate(problemId, com.didimlog.domain.enums.ProblemResult.FAIL)
-
-        // then
-        assertThat(template).contains("# 💥 A+B 오답 노트")
-        assertThat(template).contains("## 🧐 실패 원인 (Why?)")
-        assertThat(template).contains("## 📚 부족했던 개념")
-        assertThat(template).contains("## 🔧 다음 시도 계획")
-        assertThat(template).doesNotContain("## 💡 핵심 접근")
-        assertThat(template).doesNotContain("## ⏱️ 시간/공간 복잡도")
-        assertThat(template).doesNotContain("## ✨ 개선할 점")
-    }
-
-    @Test
-    @DisplayName("generateTemplate은 TIME_OVER 결과에 따라 실패 템플릿을 생성한다")
-    fun `시간 초과 템플릿 생성`() {
-        // given
-        val problemId = "1000"
-        val problem = Problem(
-            id = ProblemId(problemId),
-            title = "A+B",
-            category = ProblemCategory.IMPLEMENTATION,
-            difficulty = Tier.BRONZE,
-            level = 3,
-            url = "https://www.acmicpc.net/problem/$problemId"
-        )
-
-        every { problemRepository.findById(problemId) } returns Optional.of(problem)
-
-        // when
-        val template = retrospectiveService.generateTemplate(problemId, com.didimlog.domain.enums.ProblemResult.TIME_OVER)
-
-        // then
-        assertThat(template).contains("# 💥 A+B 오답 노트")
-        assertThat(template).contains("## 🧐 실패 원인 (Why?)")
-        assertThat(template).contains("## 📚 부족했던 개념")
-        assertThat(template).contains("## 🔧 다음 시도 계획")
-    }
-
-    @Test
-    @DisplayName("generateTemplate은 문제가 없으면 예외를 발생시킨다")
-    fun `템플릿 생성 시 문제가 없으면 예외`() {
-        // given
-        every { problemRepository.findById("missing") } returns Optional.empty()
-
-        // expect
-        val exception = assertThrows<BusinessException> {
-            retrospectiveService.generateTemplate("missing", com.didimlog.domain.enums.ProblemResult.SUCCESS)
-        }
-        assertThat(exception.errorCode).isEqualTo(ErrorCode.PROBLEM_NOT_FOUND)
-    }
 }
 

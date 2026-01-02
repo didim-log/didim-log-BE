@@ -145,6 +145,10 @@ class RetrospectiveController(
         @RequestParam(required = false)
         category: String?,
 
+        @Parameter(description = "풀이 전략 태그 필터 (부분 일치 검색, 예: DFS, DP)", required = false)
+        @RequestParam(required = false)
+        solvedCategory: String?,
+
         @Parameter(description = "북마크 여부 (true인 경우만 필터링)", required = false)
         @RequestParam(required = false)
         isBookmarked: Boolean?,
@@ -168,19 +172,20 @@ class RetrospectiveController(
     ): ResponseEntity<RetrospectivePageResponse> {
         // 인증된 사용자의 경우, 자신의 studentId만 조회 가능하도록 제한
         if (authentication == null) {
-            val response = searchRetrospectives(keyword, category, isBookmarked, studentId, page, size, sort)
+            val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
             return ResponseEntity.ok(response)
         }
 
         val bojId = authentication.name
         val currentStudent = getStudentByBojId(bojId)
-        val response = searchRetrospectives(keyword, category, isBookmarked, currentStudent.id, page, size, sort)
+        val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, currentStudent.id, page, size, sort)
         return ResponseEntity.ok(response)
     }
 
     private fun searchRetrospectives(
         keyword: String?,
         category: String?,
+        solvedCategory: String?,
         isBookmarked: Boolean?,
         studentId: String?,
         page: Int,
@@ -191,6 +196,7 @@ class RetrospectiveController(
         val condition = RetrospectiveSearchCondition(
             keyword = keyword,
             category = category?.let { parseProblemCategory(it) },
+            solvedCategory = solvedCategory?.trim()?.takeIf { it.isNotBlank() },
             isBookmarked = isBookmarked,
             studentId = studentId
         )
@@ -328,39 +334,6 @@ class RetrospectiveController(
     }
 
     @Operation(
-        summary = "회고 템플릿 생성",
-        description = "문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. " +
-                "resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "생성 성공"),
-            ApiResponse(
-                responseCode = "400",
-                description = "유효하지 않은 요청 파라미터(resultType 등)",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            ),
-            ApiResponse(
-                responseCode = "404",
-                description = "문제를 찾을 수 없음",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
-    @GetMapping("/template")
-    fun generateTemplate(
-        @Parameter(description = "문제 ID", required = true)
-        @RequestParam problemId: String,
-        
-        @Parameter(description = "풀이 결과 타입 (SUCCESS/FAIL)", required = true)
-        @RequestParam resultType: com.didimlog.domain.enums.ProblemResult
-    ): ResponseEntity<TemplateResponse> {
-        val template = retrospectiveService.generateTemplate(problemId, resultType)
-        val response = TemplateResponse(template = template)
-        return ResponseEntity.ok(response)
-    }
-
-    @Operation(
         summary = "정적 회고 템플릿 생성",
         description = "AI 서비스 없이 정적 템플릿을 생성하여 반환합니다. 문제 카테고리, 사용자 코드, 에러 메시지(실패 시)를 포함한 기본 템플릿을 제공합니다."
     )
@@ -389,7 +362,8 @@ class RetrospectiveController(
             problemId = request.problemId,
             code = request.code,
             isSuccess = request.isSuccess,
-            errorMessage = request.errorMessage
+            errorMessage = request.errorMessage,
+            solveTime = request.solveTime
         )
         val response = TemplateResponse(template = template)
         return ResponseEntity.ok(response)

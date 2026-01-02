@@ -1,5 +1,6 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.admin.AdminService
 import com.didimlog.application.feedback.FeedbackService
 import com.didimlog.application.notice.NoticeService
@@ -16,7 +17,9 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.ui.dto.FeedbackStatusUpdateRequest
 import com.didimlog.ui.dto.NoticeCreateRequest
+import com.didimlog.ui.dto.QuoteCreateRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
@@ -92,6 +95,9 @@ class AdminControllerTest {
 
         @Bean
         fun noticeService(): NoticeService = mockk(relaxed = true)
+
+        @Bean
+        fun adminAuditService(): AdminAuditService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)

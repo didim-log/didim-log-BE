@@ -40,14 +40,15 @@ class StatisticsService(
         val student = findStudentByBojIdOrThrow(bojId)
         val studentId = student.id ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID가 없습니다. bojId=$bojId")
         val monthlyHeatmap = getMonthlyHeatmap(student)
-        val categoryDistribution = getCategoryDistribution()
+        val categoryDistribution = getCategoryDistribution(studentId)
         val algorithmCategoryDistribution = getAlgorithmCategoryDistribution(studentId)
         val topUsedAlgorithms = getTopUsedAlgorithms(algorithmCategoryDistribution)
-        val totalSolvedCount = student.solutions.getAll().size
+        val totalSolvedCount = getTotalSolvedCount(student)
         val totalRetrospectives = getTotalRetrospectives(studentId)
         val averageSolveTime = getAverageSolveTime(student)
         val successRate = getSuccessRate(student)
-        val tagRadarData = getTagRadarData(student)
+        val tagRadarData = getTagRadarData(studentId)
+        val weaknessAnalysis = getWeaknessAnalysis(studentId)
 
         return StatisticsInfo(
             monthlyHeatmap = monthlyHeatmap,
@@ -58,7 +59,8 @@ class StatisticsService(
             totalRetrospectives = totalRetrospectives,
             averageSolveTime = averageSolveTime,
             successRate = successRate,
-            tagRadarData = tagRadarData
+            tagRadarData = tagRadarData,
+            weaknessAnalysis = weaknessAnalysis
         )
     }
 
@@ -74,6 +76,7 @@ class StatisticsService(
      * 최근 365일간의 활동 히트맵 데이터를 생성한다.
      * 각 날짜별 풀이 수와 풀이한 문제 ID 목록을 집계한다.
      * 프론트엔드의 GitHub 스타일 히트맵과 일치하도록 정확히 365일 전부터 오늘까지의 데이터를 반환한다.
+     * 연도별 히트맵도 함께 생성한다.
      */
     private fun getMonthlyHeatmap(student: Student): List<HeatmapData> {
         val solutions = student.solutions.getAll()
@@ -102,22 +105,32 @@ class StatisticsService(
 
     /**
      * 카테고리별 풀이 통계를 집계한다.
-     * 문제의 카테고리를 기준으로 분류한다.
-     * 
-     * Note: 현재 Solution에는 카테고리 정보가 없으므로, 
-     * 문제 ID를 통해 Problem을 조회해야 하지만, 
-     * 성능상의 이유로 일단 빈 맵을 반환한다.
-     * 향후 Solution에 카테고리 정보를 추가하거나, 
-     * ProblemRepository를 주입받아 조회하도록 개선할 수 있다.
+     * 회고의 mainCategory를 기준으로 분류한다.
+     * 사용자가 실제로 풀이한 문제의 카테고리 정보를 반영한다.
+     *
+     * @param studentId 학생 ID
+     * @return 카테고리별 풀이 횟수 맵
      */
-    private fun getCategoryDistribution(): Map<String, Int> {
-        // TODO: 향후 Solution에 카테고리 정보 추가 또는 Problem 조회 로직 구현
-        return emptyMap()
+    private fun getCategoryDistribution(studentId: String): Map<String, Int> {
+        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        val distribution = mutableMapOf<String, Int>()
+
+        retrospectives.forEach { retrospective ->
+            retrospective.mainCategory?.let { category ->
+                val categoryName = category.name
+                distribution[categoryName] = distribution.getOrDefault(categoryName, 0) + 1
+            }
+        }
+
+        return distribution
     }
 
     /**
      * 알고리즘 카테고리별 사용 통계를 집계한다.
      * Retrospective의 solvedCategory 필드를 기준으로 집계한다.
+     * 쉼표로 구분된 태그는 분리하여 각각 개별 알고리즘으로 카운트한다.
+     * 예: "BFS, DP"가 있으면 BFS 1회, DP 1회로 카운트
+     * 사용자가 회고 작성 시 선택한 카테고리만 집계한다.
      *
      * @param studentId 학생 ID
      * @return 알고리즘 카테고리별 사용 횟수 맵
@@ -129,7 +142,14 @@ class StatisticsService(
         retrospectives.forEach { retrospective ->
             val category = retrospective.solvedCategory
             if (category != null && category.isNotBlank()) {
-                distribution[category] = distribution.getOrDefault(category, 0) + 1
+                // 쉼표로 구분된 태그를 분리하여 각각 개별 알고리즘으로 카운트
+                val algorithms = category.split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                
+                algorithms.forEach { algorithm ->
+                    distribution[algorithm] = distribution.getOrDefault(algorithm, 0) + 1
+                }
             }
         }
 
@@ -197,32 +217,31 @@ class StatisticsService(
     }
 
     /**
-     * 학생이 푼 문제들의 태그를 집계하여 레이더 차트용 데이터를 생성한다.
-     * Solution -> Problem -> tags를 추적하여 상위 5개 태그의 점수를 반환한다.
+     * 학생이 회고에서 선택한 알고리즘 카테고리를 집계하여 레이더 차트용 데이터를 생성한다.
+     * 회고의 solvedCategory를 기준으로 집계하여 사용자가 실제로 사용한 알고리즘을 반영한다.
+     * 쉼표로 구분된 태그는 하나의 카테고리로 취급한다.
      *
-     * @param student 학생 엔티티
+     * @param studentId 학생 ID
      * @return 태그별 통계 리스트 (상위 5개)
      */
-    private fun getTagRadarData(student: Student): List<TagStat> {
-        val solutions = student.solutions.getAll()
-        if (solutions.isEmpty()) {
+    private fun getTagRadarData(studentId: String): List<TagStat> {
+        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        if (retrospectives.isEmpty()) {
             return emptyList()
         }
 
-        // 문제 ID 목록 추출
-        val problemIds = solutions.map { it.problemId }.distinct()
-
-        // 문제 엔티티 조회
-        val problems = problemIds.mapNotNull { problemId ->
-            problemRepository.findById(problemId.value).orElse(null)
+        // 회고의 solvedCategory를 기준으로 카운팅
+        val tagCountMap = mutableMapOf<String, Int>()
+        retrospectives.forEach { retrospective ->
+            val category = retrospective.solvedCategory
+            if (category != null && category.isNotBlank()) {
+                // 쉼표로 구분된 태그는 하나의 카테고리로 취급
+                tagCountMap[category] = tagCountMap.getOrDefault(category, 0) + 1
+            }
         }
 
-        // 태그별 카운팅
-        val tagCountMap = mutableMapOf<String, Int>()
-        problems.forEach { problem ->
-            problem.tags.forEach { tag ->
-                tagCountMap[tag] = tagCountMap.getOrDefault(tag, 0) + 1
-            }
+        if (tagCountMap.isEmpty()) {
+            return emptyList()
         }
 
         // 상위 5개 태그 추출
@@ -230,10 +249,6 @@ class StatisticsService(
             .toList()
             .sortedByDescending { it.second }
             .take(5)
-
-        if (topTags.isEmpty()) {
-            return emptyList()
-        }
 
         // 최대 카운트 값 (fullMark)
         val maxCount = topTags.maxOf { it.second }
@@ -245,6 +260,81 @@ class StatisticsService(
                 fullMark = maxCount
             )
         }
+    }
+
+    /**
+     * 취약점 분석 데이터를 생성한다.
+     * FAIL 또는 TIME_OVER인 회고를 분석하여 가장 빈번한 실패 카테고리와 실패 원인을 파악한다.
+     *
+     * @param studentId 학생 ID
+     * @return 취약점 분석 데이터
+     */
+    private fun getWeaknessAnalysis(studentId: String): WeaknessAnalysis? {
+        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        val failedRetrospectives = retrospectives.filter { retrospective ->
+            retrospective.solutionResult == ProblemResult.FAIL || retrospective.solutionResult == ProblemResult.TIME_OVER
+        }
+
+        if (failedRetrospectives.isEmpty()) {
+            return null
+        }
+
+        // 카테고리별 실패 횟수 집계
+        val categoryFailures = mutableMapOf<String, Int>()
+        val resultTypeCounts = mutableMapOf<ProblemResult, Int>()
+
+        failedRetrospectives.forEach { retrospective ->
+            // 카테고리 집계
+            retrospective.mainCategory?.let { category ->
+                val categoryName = category.name
+                categoryFailures[categoryName] = categoryFailures.getOrDefault(categoryName, 0) + 1
+            }
+
+            // 결과 타입 집계
+            retrospective.solutionResult?.let { result ->
+                resultTypeCounts[result] = resultTypeCounts.getOrDefault(result, 0) + 1
+            }
+        }
+
+        // 가장 빈번한 실패 카테고리
+        val topFailureCategory = categoryFailures.maxByOrNull { it.value }
+
+        // 가장 빈번한 실패 원인
+        val topFailureReason = resultTypeCounts.maxByOrNull { it.value }?.key
+
+        // 카테고리별 실패 분포 (상위 8개)
+        val categoryFailuresList = categoryFailures
+            .toList()
+            .sortedByDescending { it.second }
+            .take(8)
+            .map { (category, count) -> CategoryFailure(category, count) }
+
+        return WeaknessAnalysis(
+            totalFailures = failedRetrospectives.size,
+            topCategory = topFailureCategory?.key,
+            topCategoryCount = topFailureCategory?.value ?: 0,
+            topReason = topFailureReason,
+            categoryFailures = categoryFailuresList
+        )
+    }
+
+    /**
+     * 학생이 풀이한 고유한 문제의 개수를 반환한다.
+     * 성공한 풀이(isSuccess = true) 중에서 DISTINCT problemId의 개수를 계산한다.
+     *
+     * @param student 학생 엔티티
+     * @return 고유한 문제 풀이 수
+     */
+    private fun getTotalSolvedCount(student: Student): Int {
+        val solutions = student.solutions.getAll()
+        // 성공한 풀이 중에서 고유한 problemId의 개수를 계산
+        val uniqueSolvedProblems = solutions
+            .filter { it.result == ProblemResult.SUCCESS }
+            .map { it.problemId.value }
+            .distinct()
+            .size
+        
+        return uniqueSolvedProblems
     }
 }
 
@@ -260,7 +350,8 @@ data class StatisticsInfo(
     val totalRetrospectives: Long,
     val averageSolveTime: Double,
     val successRate: Double,
-    val tagRadarData: List<TagStat>
+    val tagRadarData: List<TagStat>,
+    val weaknessAnalysis: WeaknessAnalysis?
 )
 
 /**
@@ -287,4 +378,23 @@ data class TagStat(
     val tag: String,
     val count: Int,
     val fullMark: Int
+)
+
+/**
+ * 취약점 분석 정보
+ */
+data class WeaknessAnalysis(
+    val totalFailures: Int,
+    val topCategory: String?,
+    val topCategoryCount: Int,
+    val topReason: ProblemResult?,
+    val categoryFailures: List<CategoryFailure>
+)
+
+/**
+ * 카테고리별 실패 정보
+ */
+data class CategoryFailure(
+    val category: String,
+    val count: Int
 )

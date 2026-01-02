@@ -32,6 +32,7 @@ class AuthServiceFindIdPasswordTest {
     private val passwordEncoder = mockk<PasswordEncoder>(relaxed = true)
     private val emailService = mockk<EmailService>(relaxed = true)
     private val passwordResetCodeRepository = mockk<PasswordResetCodeRepository>(relaxed = true)
+    private val refreshTokenService = mockk<com.didimlog.application.auth.RefreshTokenService>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient = solvedAcClient,
@@ -39,7 +40,8 @@ class AuthServiceFindIdPasswordTest {
         jwtTokenProvider = jwtTokenProvider,
         passwordEncoder = passwordEncoder,
         emailService = emailService,
-        passwordResetCodeRepository = passwordResetCodeRepository
+        passwordResetCodeRepository = passwordResetCodeRepository,
+        refreshTokenService = refreshTokenService
     )
 
     @Test

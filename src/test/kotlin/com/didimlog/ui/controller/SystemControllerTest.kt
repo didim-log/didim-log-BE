@@ -1,5 +1,8 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.admin.AdminAuditService
+import com.didimlog.application.ai.AiUsageService
+import com.didimlog.application.storage.StorageManagementService
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.global.system.MaintenanceModeService
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -16,15 +19,16 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
-@DisplayName("SystemController 테스트")
+@DisplayName("AdminSystemController Maintenance 테스트")
 @WebMvcTest(
-    controllers = [SystemController::class],
+    controllers = [AdminSystemController::class],
     excludeAutoConfiguration = [
         org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration::class,
         org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration::class
@@ -41,12 +45,24 @@ class SystemControllerTest {
     private lateinit var maintenanceModeService: MaintenanceModeService
 
     @Autowired
+    private lateinit var adminAuditService: AdminAuditService
+
+    @Autowired
     private lateinit var objectMapper: ObjectMapper
 
     @TestConfiguration
     class TestConfig {
         @Bean
         fun maintenanceModeService(): MaintenanceModeService = mockk(relaxed = true)
+
+        @Bean
+        fun aiUsageService(): AiUsageService = mockk(relaxed = true)
+
+        @Bean
+        fun storageManagementService(): StorageManagementService = mockk(relaxed = true)
+
+        @Bean
+        fun adminAuditService(): AdminAuditService = mockk(relaxed = true)
     }
 
     @Test
@@ -62,6 +78,7 @@ class SystemControllerTest {
         mockMvc.perform(
             post("/api/v1/admin/system/maintenance")
                 .with(csrf())
+                .principal(UsernamePasswordAuthenticationToken("admin", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -86,6 +103,7 @@ class SystemControllerTest {
         mockMvc.perform(
             post("/api/v1/admin/system/maintenance")
                 .with(csrf())
+                .principal(UsernamePasswordAuthenticationToken("admin", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )

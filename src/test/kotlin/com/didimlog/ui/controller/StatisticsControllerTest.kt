@@ -64,7 +64,8 @@ class StatisticsControllerTest {
             totalRetrospectives = 0L,
             averageSolveTime = 0.0,
             successRate = 0.0,
-            tagRadarData = emptyList()
+            tagRadarData = emptyList(),
+            weaknessAnalysis = null
         )
 
         every { statisticsService.getStatistics("bojId") } returns statisticsInfo

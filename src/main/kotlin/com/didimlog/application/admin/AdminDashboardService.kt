@@ -36,10 +36,14 @@ class AdminDashboardService(
         // 향후 createdAt 필드 추가 시 수정 필요
         val todaySignups = 0L // TODO: createdAt 필드 추가 후 구현
         
-        // 총 해결된 문제 수는 모든 Student의 solutions에서 SUCCESS인 Solution 개수를 집계
+        // 총 해결된 문제 수는 모든 Student의 solutions에서 SUCCESS인 Solution 중 고유한 problemId 개수를 집계
         val totalSolvedProblems = studentRepository.findAll()
             .sumOf { student ->
-                student.solutions.getAll().count { it.isSuccess() }
+                student.solutions.getAll()
+                    .filter { it.isSuccess() }
+                    .map { it.problemId.value }
+                    .distinct()
+                    .size
             }
         
         // 오늘 작성된 회고 수

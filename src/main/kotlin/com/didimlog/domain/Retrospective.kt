@@ -40,8 +40,9 @@ data class Retrospective(
         validateContent(content)
     }
 
-    fun updateContent(newContent: String, newSummary: String? = null): Retrospective {
+    fun updateContent(newContent: String, newSummary: String): Retrospective {
         validateContent(newContent)
+        require(newSummary.isNotBlank()) { "한 줄 요약은 필수입니다." }
         return copy(content = newContent, summary = newSummary)
     }
 
@@ -92,5 +93,6 @@ data class Retrospective(
 
     private fun validateContent(target: String) {
         require(target.length >= 10) { "회고 내용은 10자 이상이어야 합니다." }
+        require(target.length <= 2000) { "회고 내용은 2000자 이하여야 합니다." }
     }
 }

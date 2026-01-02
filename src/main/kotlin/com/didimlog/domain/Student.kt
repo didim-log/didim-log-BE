@@ -114,6 +114,9 @@ data class Student(
      * 문제 풀이 결과를 기록한다.
      * Solved.ac를 Source of Truth로 사용하므로, 자동 승급 로직은 포함하지 않는다.
      * 연속 풀이 일수와 마지막 풀이 날짜를 업데이트한다.
+     * 
+     * 같은 문제에 대해 오늘 날짜에 이미 풀이 기록이 있는 경우, 기존 기록을 업데이트한다.
+     * 이를 통해 중복 제출로 인한 통계 왜곡을 방지한다.
      *
      * @param problem 풀이한 문제
      * @param timeTakenSeconds 풀이에 소요된 시간 (초)
@@ -126,17 +129,21 @@ data class Student(
         isSuccess: Boolean
     ): Student {
         val result = toProblemResult(isSuccess)
-        val newSolution = Solution(
-            problemId = problem.id,
-            timeTaken = timeTakenSeconds,
-            result = result
-        )
-        val updatedSolutions = Solutions().apply {
-            solutions.getAll().forEach { add(it) }
-            add(newSolution)
+        val today = LocalDate.now()
+        
+        // 오늘 날짜에 같은 문제에 대한 풀이 기록이 있는지 확인
+        val existingSolutions = solutions.getAll()
+        val todaySolutionIndex = existingSolutions.indexOfFirst { solution ->
+            solution.problemId == problem.id && 
+            solution.solvedAt.toLocalDate() == today
         }
         
-        val today = LocalDate.now()
+        val updatedSolutions = if (todaySolutionIndex >= 0) {
+            updateExistingSolution(existingSolutions, todaySolutionIndex, problem, timeTakenSeconds, result)
+        } else {
+            addNewSolution(existingSolutions, problem, timeTakenSeconds, result)
+        }
+        
         val updatedConsecutiveDays = calculateConsecutiveSolveDays(today)
         val updatedLastSolvedAt = today
         
@@ -145,6 +152,23 @@ data class Student(
             consecutiveSolveDays = updatedConsecutiveDays,
             lastSolvedAt = updatedLastSolvedAt
         )
+    }
+
+    /**
+     * 특정 문제의 풀이 기록을 제거한다.
+     * 회고 삭제 시 해당 문제의 풀이 기록도 함께 삭제하기 위해 사용한다.
+     *
+     * @param problemId 제거할 문제 ID
+     * @return 풀이 기록이 제거된 새로운 Student 인스턴스
+     */
+    fun removeSolutionByProblemId(problemId: ProblemId): Student {
+        val updatedSolutions = Solutions().apply {
+            solutions.getAll()
+                .filter { it.problemId != problemId }
+                .forEach { add(it) }
+        }
+        
+        return copy(solutions = updatedSolutions)
     }
 
     /**
@@ -296,6 +320,46 @@ data class Student(
     fun updatePassword(encodedPassword: String): Student {
         require(encodedPassword.isNotBlank()) { "비밀번호는 필수입니다." }
         return copy(password = encodedPassword)
+    }
+
+    private fun updateExistingSolution(
+        existingSolutions: List<Solution>,
+        todaySolutionIndex: Int,
+        problem: Problem,
+        timeTakenSeconds: TimeTakenSeconds,
+        result: ProblemResult
+    ): Solutions {
+        return Solutions().apply {
+            existingSolutions.forEachIndexed { index, solution ->
+                if (index == todaySolutionIndex) {
+                    val updatedSolution = Solution(
+                        problemId = problem.id,
+                        timeTaken = timeTakenSeconds,
+                        result = result
+                    )
+                    add(updatedSolution)
+                    return@forEachIndexed
+                }
+                add(solution)
+            }
+        }
+    }
+
+    private fun addNewSolution(
+        existingSolutions: List<Solution>,
+        problem: Problem,
+        timeTakenSeconds: TimeTakenSeconds,
+        result: ProblemResult
+    ): Solutions {
+        return Solutions().apply {
+            existingSolutions.forEach { add(it) }
+            val newSolution = Solution(
+                problemId = problem.id,
+                timeTaken = timeTakenSeconds,
+                result = result
+            )
+            add(newSolution)
+        }
     }
 
     private fun toProblemResult(isSuccess: Boolean): ProblemResult {

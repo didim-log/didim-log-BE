@@ -17,7 +17,7 @@ data class NoticeResponse(
     companion object {
         fun from(notice: Notice): NoticeResponse {
             return NoticeResponse(
-                id = notice.id ?: "",
+                id = notice.id ?: throw IllegalStateException("Notice ID가 null입니다. 저장 후 조회해야 합니다."),
                 title = notice.title,
                 content = notice.content,
                 isPinned = notice.isPinned,

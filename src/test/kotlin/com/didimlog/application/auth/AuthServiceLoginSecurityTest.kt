@@ -8,6 +8,7 @@ import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -32,6 +33,7 @@ class AuthServiceLoginSecurityTest {
     private val passwordEncoder = mockk<PasswordEncoder>(relaxed = true)
     private val emailService = mockk<EmailService>(relaxed = true)
     private val passwordResetCodeRepository = mockk<PasswordResetCodeRepository>(relaxed = true)
+    private val refreshTokenService = mockk<RefreshTokenService>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient = solvedAcClient,
@@ -39,7 +41,8 @@ class AuthServiceLoginSecurityTest {
         jwtTokenProvider = jwtTokenProvider,
         passwordEncoder = passwordEncoder,
         emailService = emailService,
-        passwordResetCodeRepository = passwordResetCodeRepository
+        passwordResetCodeRepository = passwordResetCodeRepository,
+        refreshTokenService = refreshTokenService
     )
 
     @Test

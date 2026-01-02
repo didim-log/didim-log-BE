@@ -38,7 +38,8 @@ class AuthService(
     private val jwtTokenProvider: JwtTokenProvider,
     private val passwordEncoder: PasswordEncoder,
     private val emailService: EmailService,
-    private val passwordResetCodeRepository: PasswordResetCodeRepository
+    private val passwordResetCodeRepository: PasswordResetCodeRepository,
+    private val refreshTokenService: RefreshTokenService
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -48,6 +49,7 @@ class AuthService(
      */
     data class AuthResult(
         val token: String,
+        val refreshToken: String,
         val rating: Int,
         val tier: com.didimlog.domain.enums.Tier
     )
@@ -107,9 +109,13 @@ class AuthService(
             // 예외 발생 시에도 로그인은 진행 (기존 정보 유지)
         }
 
-        // JWT 토큰 발급 (role 정보 포함)
+        // JWT Access Token 발급 (role 정보 포함)
         val token = jwtTokenProvider.createToken(bojId, currentStudent.role.value)
-        return AuthResult(token, currentStudent.rating, currentStudent.tier())
+        
+        // Refresh Token 발급 및 저장
+        val refreshToken = refreshTokenService.generateAndSave(bojId)
+        
+        return AuthResult(token, refreshToken, currentStudent.rating, currentStudent.tier())
     }
 
     /**
@@ -347,8 +353,11 @@ class AuthService(
 
         saveStudentOrThrowDuplicate(bojId, student)
         val token = jwtTokenProvider.createToken(bojId, role.value)
+        
+        // Refresh Token 발급 및 저장
+        val refreshToken = refreshTokenService.generateAndSave(bojId)
 
-        return AuthResult(token, rating, tier)
+        return AuthResult(token, refreshToken, rating, tier)
     }
 
     private fun validateBojIdNotRegistered(bojIdVo: BojId, bojId: String) {
@@ -497,7 +506,11 @@ class AuthService(
 
     private fun issueUserToken(student: Student, bojId: String): AuthResult {
         val token = jwtTokenProvider.createToken(bojId, Role.USER.value)
-        return AuthResult(token, student.rating, student.tier())
+        
+        // Refresh Token 발급 및 저장
+        val refreshToken = refreshTokenService.generateAndSave(bojId)
+        
+        return AuthResult(token, refreshToken, student.rating, student.tier())
     }
 
     companion object {

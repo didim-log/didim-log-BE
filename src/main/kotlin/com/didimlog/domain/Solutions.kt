@@ -36,4 +36,17 @@ class Solutions(
 
         return successCount.toDouble() / recentItems.size
     }
+
+    /**
+     * 특정 문제 ID에 해당하는 풀이 기록을 제거한다.
+     * 문제 ID가 일치하는 모든 Solution을 제거한다.
+     *
+     * @param problemId 제거할 문제 ID
+     * @return 제거된 Solution이 있는지 여부
+     */
+    fun removeByProblemId(problemId: com.didimlog.domain.valueobject.ProblemId): Boolean {
+        val initialSize = items.size
+        items.removeAll { it.problemId == problemId }
+        return items.size < initialSize
+    }
 }

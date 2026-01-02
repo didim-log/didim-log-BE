@@ -1,6 +1,9 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.notice.NoticeService
+import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.ui.dto.NoticeCreateRequest
 import com.didimlog.ui.dto.NoticeResponse
 import com.didimlog.ui.dto.NoticeUpdateRequest
@@ -37,7 +40,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/notices")
 @Validated
 class NoticeController(
-    private val noticeService: NoticeService
+    private val noticeService: NoticeService,
+    private val adminAuditService: AdminAuditService
 ) {
 
     @Operation(
@@ -132,7 +136,9 @@ class NoticeController(
         @PathVariable noticeId: String,
         @RequestBody
         @Valid
-        request: NoticeUpdateRequest
+        request: NoticeUpdateRequest,
+        authentication: org.springframework.security.core.Authentication,
+        httpServletRequest: jakarta.servlet.http.HttpServletRequest
     ): ResponseEntity<NoticeResponse> {
         val notice = noticeService.updateNotice(
             noticeId = noticeId,
@@ -141,6 +147,13 @@ class NoticeController(
             isPinned = request.isPinned
         )
         val response = NoticeResponse.from(notice)
+        
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.NOTICE_UPDATE
+        val details = "공지사항 수정: ID=$noticeId"
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+        
         return ResponseEntity.ok(response)
     }
 
@@ -173,9 +186,18 @@ class NoticeController(
     @DeleteMapping("/{noticeId}")
     fun deleteNotice(
         @Parameter(description = "공지사항 ID", required = true)
-        @PathVariable noticeId: String
+        @PathVariable noticeId: String,
+        authentication: org.springframework.security.core.Authentication,
+        httpServletRequest: jakarta.servlet.http.HttpServletRequest
     ): ResponseEntity<Void> {
         noticeService.deleteNotice(noticeId)
+        
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.NOTICE_DELETE
+        val details = "공지사항 삭제: ID=$noticeId"
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+        
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 }

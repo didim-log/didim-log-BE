@@ -2,6 +2,7 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.auth.AuthService
 import com.didimlog.application.auth.FindAccountService
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.domain.enums.Tier
 import com.didimlog.global.exception.BusinessException
@@ -34,6 +35,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.domain.repository.StudentRepository
 
 @DisplayName("AuthController 테스트")
 @WebMvcTest(
@@ -72,7 +74,13 @@ class AuthControllerTest {
         fun bojOwnershipVerificationService(): BojOwnershipVerificationService = mockk(relaxed = true)
 
         @Bean
+        fun refreshTokenService(): RefreshTokenService = mockk(relaxed = true)
+
+        @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
+
+        @Bean
+        fun studentRepository(): StudentRepository = mockk(relaxed = true)
 
         @Bean
         fun methodValidationPostProcessor(): MethodValidationPostProcessor {
@@ -87,6 +95,7 @@ class AuthControllerTest {
         val request = SignupRequest(bojId = "testuser", password = "ValidPassword123!", email = "test@example.com")
         val authResult = AuthService.AuthResult(
             token = "jwt-token",
+            refreshToken = "refresh-token",
             rating = 100,
             tier = Tier.BRONZE
         )
@@ -101,6 +110,7 @@ class AuthControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.token").value("jwt-token"))
+            .andExpect(jsonPath("$.refreshToken").value("refresh-token"))
             .andExpect(jsonPath("$.rating").value(100))
             .andExpect(jsonPath("$.tier").value("BRONZE"))
             .andExpect(jsonPath("$.message").value("회원가입이 완료되었습니다."))
@@ -151,6 +161,7 @@ class AuthControllerTest {
         val request = LoginRequest(bojId = "testuser", password = "ValidPassword123!")
         val authResult = AuthService.AuthResult(
             token = "jwt-token",
+            refreshToken = "refresh-token",
             rating = 100,
             tier = Tier.BRONZE
         )
@@ -165,6 +176,7 @@ class AuthControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.token").value("jwt-token"))
+            .andExpect(jsonPath("$.refreshToken").value("refresh-token"))
             .andExpect(jsonPath("$.rating").value(100))
             .andExpect(jsonPath("$.tier").value("BRONZE"))
             .andExpect(jsonPath("$.message").value("로그인에 성공했습니다."))
