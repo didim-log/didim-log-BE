@@ -1849,6 +1849,45 @@ Content-Type: application/json
 }
 ```
 
+**예시 요청 (저장 공간 통계 조회):**
+```http
+GET /api/v1/admin/system/storage
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (저장 공간 통계 조회):**
+```json
+{
+  "totalCount": 1240,
+  "estimatedSizeKb": 2480,
+  "oldestRecordDate": "2023-01-15"
+}
+```
+
+**예시 요청 (오래된 데이터 정리):**
+```http
+DELETE /api/v1/admin/system/storage/cleanup?olderThanDays=365
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (오래된 데이터 정리):**
+```json
+{
+  "message": "100개의 회고가 삭제되었습니다.",
+  "deletedCount": 100
+}
+```
+
+**에러 응답 예시 (최소 일수 미만):**
+```json
+{
+  "status": 400,
+  "error": "Bad Request",
+  "code": "COMMON_VALIDATION_FAILED",
+  "message": "최소 30일 이상의 데이터만 삭제할 수 있습니다."
+}
+```
+
 ---
 
 ## PublicSystemController
