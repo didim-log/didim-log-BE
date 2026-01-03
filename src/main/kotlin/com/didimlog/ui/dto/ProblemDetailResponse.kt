@@ -18,7 +18,8 @@ data class ProblemDetailResponse(
     val outputDescriptionHtml: String?,
     val sampleInputs: List<String>?,
     val sampleOutputs: List<String>?,
-    val tags: List<String>
+    val tags: List<String>,
+    val language: String
 ) {
     companion object {
         fun from(problem: Problem): ProblemDetailResponse {
@@ -34,11 +35,13 @@ data class ProblemDetailResponse(
                 outputDescriptionHtml = problem.outputDescriptionHtml,
                 sampleInputs = problem.sampleInputs,
                 sampleOutputs = problem.sampleOutputs,
-                tags = problem.tags
+                tags = problem.tags,
+                language = problem.language
             )
         }
     }
 }
+
 
 
 

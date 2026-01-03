@@ -12,7 +12,8 @@ data class ProblemResponse(
     val category: String,
     val difficulty: String,
     val difficultyLevel: Int,
-    val url: String
+    val url: String,
+    val language: String
 ) {
     companion object {
         fun from(problem: Problem): ProblemResponse {
@@ -22,7 +23,8 @@ data class ProblemResponse(
                 category = problem.category.englishName,
                 difficulty = problem.difficulty.name,
                 difficultyLevel = problem.difficultyLevel,
-                url = problem.url
+                url = problem.url,
+                language = problem.language
             )
         }
     }

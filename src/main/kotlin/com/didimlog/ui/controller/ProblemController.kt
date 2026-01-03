@@ -73,10 +73,13 @@ class ProblemController(
         count: Int,
         @Parameter(description = "문제 카테고리 (선택사항, 예: IMPLEMENTATION, GRAPH, DP 등)", required = false)
         @RequestParam(required = false)
-        category: String?
+        category: String?,
+        @Parameter(description = "문제 언어 (선택사항, \"ko\" 또는 \"en\", null이면 모든 언어)", required = false)
+        @RequestParam(required = false)
+        language: String?
     ): ResponseEntity<List<ProblemResponse>> {
         val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val problems = recommendationService.recommendProblems(bojId, count, category)
+        val problems = recommendationService.recommendProblems(bojId, count, category, language)
         val response = problems.map { ProblemResponse.from(it) }
         return ResponseEntity.ok(response)
     }

@@ -32,13 +32,14 @@ class RecommendationService(
      * @param bojId BOJ ID (JWT 토큰에서 추출)
      * @param count 추천할 문제 개수
      * @param category 문제 카테고리 (선택사항, null이면 모든 카테고리)
+     * @param language 문제 언어 (선택사항, "ko" 또는 "en", null이면 모든 언어)
      * @return 추천 문제 목록 (풀 수 있는 문제가 없으면 빈 리스트)
      */
-    fun recommendProblems(bojId: String, count: Int, category: String? = null): List<Problem> {
+    fun recommendProblems(bojId: String, count: Int, category: String? = null, language: String? = null): List<Problem> {
         val student = findStudentByBojIdOrThrow(bojId)
         val (minLevel, maxLevel) = calculateTargetDifficultyLevelRange(student.tier())
 
-        val candidateProblems = findCandidateProblems(minLevel, maxLevel, category)
+        val candidateProblems = findCandidateProblems(minLevel, maxLevel, category, language)
         val solvedProblemIds = student.getSolvedProblemIds()
         val unsolvedProblems = filterUnsolvedProblems(candidateProblems, solvedProblemIds)
 
@@ -71,8 +72,8 @@ class RecommendationService(
         return Pair(minLevel, maxLevel)
     }
 
-    private fun findCandidateProblems(minLevel: Int, maxLevel: Int, category: String?): List<Problem> {
-        if (category != null) {
+    private fun findCandidateProblems(minLevel: Int, maxLevel: Int, category: String?, language: String?): List<Problem> {
+        val problems = if (category != null) {
             // API에서 받은 category 문자열을 ProblemCategory의 englishName과 비교
             // ProblemCategory.entries에서 englishName이 일치하는 것을 찾아서 사용
             val categoryEnglishName = ProblemCategory.entries
@@ -80,16 +81,24 @@ class RecommendationService(
                 ?.englishName
                 ?: category // 매칭 안 되면 원본 문자열 사용
             
-            return problemRepository.findByLevelBetweenAndCategory(
+            problemRepository.findByLevelBetweenAndCategory(
                 min = minLevel,
                 max = maxLevel,
                 category = categoryEnglishName
             )
+        } else {
+            problemRepository.findByLevelBetween(
+                min = minLevel,
+                max = maxLevel
+            )
         }
-        return problemRepository.findByLevelBetween(
-            min = minLevel,
-            max = maxLevel
-        )
+        
+        // language 필터 적용
+        return if (language != null) {
+            problems.filter { it.language == language }
+        } else {
+            problems
+        }
     }
 
     private fun filterUnsolvedProblems(
