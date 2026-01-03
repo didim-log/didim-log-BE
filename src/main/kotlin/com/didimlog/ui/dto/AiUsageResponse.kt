@@ -10,3 +10,4 @@ data class AiUsageResponse(
     val isServiceEnabled: Boolean
 )
 
+

@@ -31,17 +31,20 @@ class PublicSystemController(
     )
     @GetMapping("/status")
     fun getSystemStatus(): ResponseEntity<SystemStatusResponse> {
-        val isMaintenance = maintenanceModeService.isMaintenanceMode()
-        val maintenanceMessage = getMaintenanceMessage(isMaintenance)
+        val config = maintenanceModeService.getMaintenanceConfig()
+        val maintenanceMessage = getMaintenanceMessage(config)
         val response = SystemStatusResponse(
-            underMaintenance = isMaintenance,
-            maintenanceMessage = maintenanceMessage
+            underMaintenance = config.enabled,
+            maintenanceMessage = maintenanceMessage,
+            startTime = config.startTime,
+            endTime = config.endTime,
+            noticeId = config.noticeId
         )
         return ResponseEntity.ok(response)
     }
 
-    private fun getMaintenanceMessage(isMaintenance: Boolean): String? {
-        if (!isMaintenance) {
+    private fun getMaintenanceMessage(config: com.didimlog.global.system.MaintenanceModeService.MaintenanceConfig): String? {
+        if (!config.enabled) {
             return null
         }
         return "서버 점검 중입니다. 잠시 후 다시 시도해주세요."

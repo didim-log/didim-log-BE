@@ -43,6 +43,7 @@ class StatisticsService(
         val monthlyHeatmap = getMonthlyHeatmap(student)
         val totalSolvedCount = getTotalSolvedCount(student)
         val totalRetrospectives = getTotalRetrospectives(studentId)
+        val totalFailures = getTotalFailures(studentId)
         val averageSolveTime = getAverageSolveTime(student)
         val successRate = getSuccessRate(student)
         
@@ -56,6 +57,7 @@ class StatisticsService(
             monthlyHeatmap = monthlyHeatmap,
             totalSolvedCount = totalSolvedCount,
             totalRetrospectives = totalRetrospectives,
+            totalFailures = totalFailures,
             averageSolveTime = averageSolveTime,
             successRate = successRate,
             categoryStats = categoryStats,
@@ -160,6 +162,21 @@ class StatisticsService(
     }
 
     /**
+     * 학생의 총 실패 회고 수를 반환한다.
+     * FAIL 또는 TIME_OVER 상태인 Retrospective 문서의 개수를 반환한다.
+     * 태그의 합계가 아닌 실제 문서 개수를 반환한다.
+     *
+     * @param studentId 학생 ID
+     * @return 총 실패 회고 수
+     */
+    private fun getTotalFailures(studentId: String): Long {
+        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        return retrospectives.count { retrospective ->
+            retrospective.solutionResult == ProblemResult.FAIL || retrospective.solutionResult == ProblemResult.TIME_OVER
+        }.toLong()
+    }
+
+    /**
      * 학생의 평균 풀이 시간을 계산한다.
      * 모든 Solution의 timeTaken 평균값을 초 단위로 반환한다.
      *
@@ -258,6 +275,52 @@ class StatisticsService(
         
         return uniqueSolvedProblems
     }
+
+    /**
+     * 특정 연도의 활동 히트맵 데이터를 조회한다.
+     * 해당 연도의 1월 1일 00:00:00부터 12월 31일 23:59:59까지의 회고 데이터를 집계한다.
+     * 현재 연도인 경우 오늘까지만 조회된다.
+     *
+     * @param bojId BOJ ID (JWT 토큰에서 추출)
+     * @param year 조회할 연도 (0이면 현재 연도)
+     * @return 히트맵 데이터 리스트
+     */
+    @Transactional(readOnly = true)
+    fun getHeatmapByYear(bojId: String, year: Int): List<HeatmapData> {
+        val student = findStudentByBojIdOrThrow(bojId)
+        val studentId = student.id ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID가 없습니다. bojId=$bojId")
+        
+        val targetYear = if (year == 0) LocalDate.now().year else year
+        val yearStart = LocalDate.of(targetYear, 1, 1)
+        val yearEnd = LocalDate.of(targetYear, 12, 31)
+        val today = LocalDate.now()
+        val endDate = if (yearEnd.isAfter(today)) today else yearEnd
+
+        // 해당 연도의 회고 데이터 조회
+        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        val yearRetrospectives = retrospectives.filter { retrospective ->
+            val retrospectiveDate = retrospective.createdAt.toLocalDate()
+            !retrospectiveDate.isBefore(yearStart) && !retrospectiveDate.isAfter(endDate)
+        }
+
+        // 날짜별로 그룹화하여 집계
+        val heatmapMap = mutableMapOf<LocalDate, MutableList<String>>()
+        yearRetrospectives.forEach { retrospective ->
+            val retrospectiveDate = retrospective.createdAt.toLocalDate()
+            val problemIds = heatmapMap.getOrPut(retrospectiveDate) { mutableListOf() }
+            if (retrospective.problemId !in problemIds) {
+                problemIds.add(retrospective.problemId)
+            }
+        }
+
+        return heatmapMap.map { (date, problemIds) ->
+            HeatmapData(
+                date = date.toString(),
+                count = problemIds.size,
+                problemIds = problemIds.distinct()
+            )
+        }.sortedBy { it.date }
+    }
 }
 
 /**
@@ -267,6 +330,7 @@ data class StatisticsInfo(
     val monthlyHeatmap: List<HeatmapData>,
     val totalSolvedCount: Int,
     val totalRetrospectives: Long,
+    val totalFailures: Long,
     val averageSolveTime: Double,
     val successRate: Double,
     val categoryStats: List<CategoryStat>, // 성공한 문제의 카테고리별 통계

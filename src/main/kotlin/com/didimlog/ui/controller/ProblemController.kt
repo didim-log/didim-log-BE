@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.Positive
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -64,9 +66,10 @@ class ProblemController(
     @GetMapping("/recommend")
     fun recommendProblems(
         authentication: Authentication,
-        @Parameter(description = "추천할 문제 개수 (기본값: 1)", required = false)
-        @RequestParam(defaultValue = "1")
-        @Positive(message = "추천 개수는 1 이상이어야 합니다.")
+        @Parameter(description = "추천할 문제 개수 (기본값: 10, 최소: 10, 최대: 50)", required = false)
+        @RequestParam(defaultValue = "10")
+        @Min(value = 10, message = "추천 개수는 최소 10개 이상이어야 합니다.")
+        @Max(value = 50, message = "추천 개수는 최대 50개 이하여야 합니다.")
         count: Int,
         @Parameter(description = "문제 카테고리 (선택사항, 예: IMPLEMENTATION, GRAPH, DP 등)", required = false)
         @RequestParam(required = false)

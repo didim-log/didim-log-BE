@@ -56,6 +56,19 @@ data class StudentProfileResponse(
                 primaryLanguage = profile.primaryLanguage
             )
         }
+
+        fun from(student: com.didimlog.domain.Student): StudentProfileResponse {
+            val bojIdValue = student.bojId?.value
+                ?: throw IllegalStateException("BOJ ID가 null입니다. BOJ 인증이 완료되지 않은 사용자입니다.")
+            return StudentProfileResponse(
+                nickname = student.nickname.value,
+                bojId = bojIdValue,
+                currentTier = student.currentTier.name,
+                currentTierLevel = student.currentTier.value,
+                consecutiveSolveDays = student.consecutiveSolveDays,
+                primaryLanguage = student.primaryLanguage
+            )
+        }
     }
 }
 

@@ -57,6 +57,7 @@ import java.time.LocalDateTime
 )
 @Import(GlobalExceptionHandler::class, AdminControllerSecurityTest.TestConfig::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
+@org.springframework.test.context.TestPropertySource(properties = ["spring.main.allow-bean-definition-overriding=true"])
 class AdminControllerSecurityTest {
 
     @Autowired
@@ -96,6 +97,14 @@ class AdminControllerSecurityTest {
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
+
+        // WebConfig를 제외하기 위해 RateLimitInterceptor 관련 빈을 모킹
+        @Bean
+        fun rateLimitService(): com.didimlog.global.ratelimit.RateLimitService = mockk(relaxed = true)
+
+        @Bean
+        fun rateLimitInterceptor(): com.didimlog.global.ratelimit.RateLimitInterceptor = mockk(relaxed = true)
+
 
         // @WebMvcTest는 Repository를 로드하지 않으므로, Security 설정에서 필요할 수 있는 Repository들을 Mock으로 추가
         @Bean

@@ -49,6 +49,13 @@ class StatisticsControllerTest {
         fun methodValidationPostProcessor(): org.springframework.validation.beanvalidation.MethodValidationPostProcessor {
             return org.springframework.validation.beanvalidation.MethodValidationPostProcessor()
         }
+
+        // WebConfig를 제외하기 위해 RateLimitInterceptor 관련 빈을 모킹
+        @Bean
+        fun rateLimitService(): com.didimlog.global.ratelimit.RateLimitService = mockk(relaxed = true)
+
+        @Bean
+        fun rateLimitInterceptor(): com.didimlog.global.ratelimit.RateLimitInterceptor = mockk(relaxed = true)
     }
 
     @Test
@@ -58,11 +65,12 @@ class StatisticsControllerTest {
         val statisticsInfo = StatisticsInfo(
             monthlyHeatmap = emptyList(),
             totalSolvedCount = 10,
-            totalRetrospectives = 0L,
+            totalRetrospectives = 2L,
             averageSolveTime = 0.0,
-            successRate = 0.0,
+            successRate = 50.0,
             categoryStats = emptyList(),
-            weaknessStats = emptyList()
+            weaknessStats = emptyList(),
+            totalFailures = 1L
         )
 
         every { statisticsService.getStatistics("bojId") } returns statisticsInfo
@@ -76,7 +84,9 @@ class StatisticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.monthlyHeatmap").exists())
             .andExpect(jsonPath("$.totalSolved").value(10))
-            .andExpect(jsonPath("$.totalRetrospectives").value(0))
+            .andExpect(jsonPath("$.totalRetrospectives").value(2))
+            .andExpect(jsonPath("$.totalFailures").value(1))
+            .andExpect(jsonPath("$.successRate").value(50.0))
             .andExpect(jsonPath("$.categoryStats").exists())
             .andExpect(jsonPath("$.weaknessStats").exists())
     }

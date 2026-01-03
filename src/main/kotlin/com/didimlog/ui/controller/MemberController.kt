@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -20,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.security.Principal
 
 @Tag(name = "Member", description = "회원 관련 API")
 @RestController
@@ -73,15 +73,13 @@ class MemberController(
     )
     @PatchMapping("/me/nickname")
     fun updateMyNickname(
-        principal: Principal?,
+        authentication: Authentication,
         @RequestBody
         @Valid
         request: UpdateMyNicknameRequest
     ): ResponseEntity<Void> {
-        val memberId = principal?.name ?: throw IllegalArgumentException("인증이 필요합니다.")
+        val memberId = authentication.name
         memberService.updateMyNickname(memberId, request.nickname)
         return ResponseEntity.noContent().build()
     }
 }
-
-

@@ -62,6 +62,7 @@ import java.time.LocalDateTime
 @Import(GlobalExceptionHandler::class, AdminControllerTest.TestConfig::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
 @org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
+@org.springframework.test.context.TestPropertySource(properties = ["spring.main.allow-bean-definition-overriding=true"])
 class AdminControllerTest {
 
     @Autowired
@@ -101,6 +102,13 @@ class AdminControllerTest {
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
+
+        // WebConfig를 제외하기 위해 RateLimitInterceptor 관련 빈을 모킹
+        @Bean
+        fun rateLimitService(): com.didimlog.global.ratelimit.RateLimitService = mockk(relaxed = true)
+
+        @Bean
+        fun rateLimitInterceptor(): com.didimlog.global.ratelimit.RateLimitInterceptor = mockk(relaxed = true)
 
         @Bean
         fun methodValidationPostProcessor(): MethodValidationPostProcessor {

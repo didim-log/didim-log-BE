@@ -45,7 +45,7 @@ import com.didimlog.domain.repository.StudentRepository
         org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration::class
     ]
 )
-@Import(GlobalExceptionHandler::class)
+@Import(GlobalExceptionHandler::class, AuthControllerTest.TestConfig::class)
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc(addFilters = false)
 @TestPropertySource(properties = ["app.admin.secret-key=test-secret-key"])
 class AuthControllerTest {
@@ -81,6 +81,15 @@ class AuthControllerTest {
 
         @Bean
         fun studentRepository(): StudentRepository = mockk(relaxed = true)
+
+        // WebConfig를 제외하기 위해 RateLimitInterceptor 관련 빈을 모킹
+        @Bean
+        fun rateLimitService(): com.didimlog.global.ratelimit.RateLimitService = mockk(relaxed = true) {
+            every { isAllowed(any(), any(), any()) } returns true
+        }
+
+        @Bean
+        fun rateLimitInterceptor(): com.didimlog.global.ratelimit.RateLimitInterceptor = mockk(relaxed = true)
 
         @Bean
         fun methodValidationPostProcessor(): MethodValidationPostProcessor {
