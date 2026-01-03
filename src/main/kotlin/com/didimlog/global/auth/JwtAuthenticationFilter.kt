@@ -25,6 +25,24 @@ class JwtAuthenticationFilter(
 
     companion object {
         private const val BEARER_PREFIX = "Bearer "
+        
+        /**
+         * JWT 필터를 적용하지 않을 경로 목록
+         * Swagger UI 경로는 HTTP Basic Authentication으로 처리되므로 제외
+         */
+        private val EXCLUDE_PATHS = listOf(
+            "/swagger-ui",
+            "/v3/api-docs",
+            "/swagger-resources"
+        )
+    }
+
+    /**
+     * Swagger UI 경로는 JWT 필터를 건너뛰어 HTTP Basic Authentication이 처리하도록 함
+     */
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean {
+        val path = request.requestURI
+        return EXCLUDE_PATHS.any { path.startsWith(it) }
     }
 
     override fun doFilterInternal(
