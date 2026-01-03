@@ -3,6 +3,7 @@ package com.didimlog.global.config.security
 import com.didimlog.global.auth.JwtAuthenticationFilter
 import com.didimlog.global.security.CustomOAuth2UserService
 import com.didimlog.global.security.OAuth2SuccessHandler
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
@@ -28,7 +29,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 class SecurityConfig(
     private val customOAuth2UserService: CustomOAuth2UserService,
     private val oAuth2SuccessHandler: OAuth2SuccessHandler,
-    private val jwtAuthenticationFilter: JwtAuthenticationFilter
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    @Value("\${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
+    private val allowedOrigins: String
 ) {
 
     @Bean
@@ -72,10 +75,21 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        configuration.allowedOriginPatterns = listOf("*")
+        
+        // 환경 변수에서 허용된 Origin 목록을 가져옴
+        val origins = allowedOrigins.split(",").map { it.trim() }
+        if (origins.contains("*")) {
+            // 개발 환경: 모든 Origin 허용
+            configuration.allowedOriginPatterns = listOf("*")
+        } else {
+            // 프로덕션 환경: 특정 Origin만 허용
+            configuration.allowedOrigins = origins
+        }
+        
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         configuration.allowedHeaders = listOf("*")
         configuration.allowCredentials = true
+        configuration.maxAge = 3600L // 1시간
 
         val source = UrlBasedCorsConfigurationSource()
         source.registerCorsConfiguration("/**", configuration)

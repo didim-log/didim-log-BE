@@ -41,6 +41,7 @@ data class ErrorResponse(
             403 to "Forbidden",
             404 to "Not Found",
             409 to "Conflict",
+            429 to "Too Many Requests",
             500 to "Internal Server Error"
         )
     }
