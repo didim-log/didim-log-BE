@@ -2,6 +2,29 @@
 
 이 문서는 DidimLog 프로젝트의 모든 REST API 엔드포인트를 정리한 명세서입니다.
 
+## ⚠️ 중요 사항
+
+### Rate Limiting (요청 속도 제한)
+
+다음 API는 Rate Limiting이 적용되어 있습니다:
+
+- **회원가입** (`POST /api/v1/auth/signup`): IP당 1시간에 5회
+- **로그인** (`POST /api/v1/auth/login`): IP당 1시간에 10회
+- **계정 찾기** (`POST /api/v1/auth/find-account`): IP당 1시간에 3회
+- **비밀번호 재설정** (`POST /api/v1/auth/reset-password`): IP당 1시간에 3회
+
+Rate Limit 초과 시 `429 Too Many Requests` 응답이 반환됩니다.
+
+**응답 예시:**
+```json
+{
+  "status": 429,
+  "error": "Too Many Requests",
+  "code": "RATE_LIMIT_EXCEEDED",
+  "message": "회원가입 요청이 너무 많습니다. 1시간 후 다시 시도해주세요."
+}
+```
+
 ## 목차
 
 - [AuthController](#authcontroller)
