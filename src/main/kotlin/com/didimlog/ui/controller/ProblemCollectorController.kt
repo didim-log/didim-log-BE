@@ -1,6 +1,7 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.ProblemCollectorService
+import com.didimlog.ui.dto.ProblemStatsResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -13,6 +14,7 @@ import jakarta.validation.constraints.Positive
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -112,6 +114,34 @@ class ProblemCollectorController(
                 "message" to "문제 상세 정보 크롤링이 완료되었습니다."
             )
         )
+    }
+
+    @Operation(
+        summary = "문제 통계 조회",
+        description = "DB에 저장된 문제의 총 개수, 최소 문제 ID, 최대 문제 ID를 조회합니다. 관리자가 다음 크롤링 범위를 결정하는 데 사용합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/stats")
+    fun getProblemStats(
+        authentication: Authentication
+    ): ResponseEntity<ProblemStatsResponse> {
+        val stats = problemCollectorService.getProblemStats()
+        return ResponseEntity.ok(stats)
     }
 }
 

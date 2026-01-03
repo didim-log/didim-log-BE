@@ -58,11 +58,12 @@ class StatisticsControllerTest {
         val statisticsInfo = StatisticsInfo(
             monthlyHeatmap = emptyList(),
             totalSolvedCount = 10,
-            totalRetrospectives = 0L,
+            totalRetrospectives = 2L,
             averageSolveTime = 0.0,
-            successRate = 0.0,
+            successRate = 50.0,
             categoryStats = emptyList(),
-            weaknessStats = emptyList()
+            weaknessStats = emptyList(),
+            totalFailures = 1L
         )
 
         every { statisticsService.getStatistics("bojId") } returns statisticsInfo
@@ -76,7 +77,9 @@ class StatisticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.monthlyHeatmap").exists())
             .andExpect(jsonPath("$.totalSolved").value(10))
-            .andExpect(jsonPath("$.totalRetrospectives").value(0))
+            .andExpect(jsonPath("$.totalRetrospectives").value(2))
+            .andExpect(jsonPath("$.totalFailures").value(1))
+            .andExpect(jsonPath("$.successRate").value(50.0))
             .andExpect(jsonPath("$.categoryStats").exists())
             .andExpect(jsonPath("$.weaknessStats").exists())
     }

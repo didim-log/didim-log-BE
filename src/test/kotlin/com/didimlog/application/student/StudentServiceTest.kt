@@ -28,12 +28,14 @@ class StudentServiceTest {
     private val retrospectiveRepository: RetrospectiveRepository = mockk(relaxed = true)
     private val feedbackRepository: FeedbackRepository = mockk(relaxed = true)
     private val passwordEncoder: PasswordEncoder = mockk()
+    private val solvedAcClient: com.didimlog.infra.solvedac.SolvedAcClient = mockk(relaxed = true)
 
     private val studentService = StudentService(
         studentRepository,
         retrospectiveRepository,
         feedbackRepository,
-        passwordEncoder
+        passwordEncoder,
+        solvedAcClient
     )
 
     @Test

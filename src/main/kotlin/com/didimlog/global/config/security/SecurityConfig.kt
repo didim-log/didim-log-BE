@@ -42,6 +42,7 @@ class SecurityConfig(
                     .requestMatchers(
                         "/api/v1/auth/**",
                         "/api/v1/system/**",
+                        "/api/v1/notices/**", // 공지사항 조회는 인증 없이 접근 가능 (점검 공지 조회용)
                         "/login/oauth2/**",
                         "/oauth2/**",
                         "/swagger-ui/**",

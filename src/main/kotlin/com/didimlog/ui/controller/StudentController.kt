@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PatchMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -96,6 +97,46 @@ class StudentController(
         val bojId = authentication.name // JWT 토큰의 subject(bojId)
         studentService.withdraw(bojId)
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
+    }
+
+    @Operation(
+        summary = "BOJ 프로필 동기화",
+        description = "Solved.ac API를 호출하여 사용자의 최신 Rating과 Tier 정보를 동기화합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "동기화 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "BOJ 인증이 완료되지 않은 사용자",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "Solved.ac API 호출 실패 또는 서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/sync")
+    fun syncBojProfile(
+        authentication: Authentication
+    ): ResponseEntity<com.didimlog.ui.dto.StudentProfileResponse> {
+        val bojId = authentication.name // JWT 토큰의 subject(bojId)
+        val updatedStudent = studentService.syncBojProfile(bojId)
+        val response = com.didimlog.ui.dto.StudentProfileResponse.from(updatedStudent)
+        return ResponseEntity.ok(response)
     }
 }
 

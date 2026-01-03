@@ -3,7 +3,6 @@ package com.didimlog.ui.controller
 import com.didimlog.application.admin.AdminDashboardService
 import com.didimlog.application.admin.AdminDashboardStats
 import com.didimlog.application.admin.PerformanceMetricsService
-import com.didimlog.application.admin.PerformanceMetrics
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ui.dto.AdminDashboardStatsResponse
 import com.didimlog.ui.dto.PerformanceMetricsResponse
@@ -102,7 +101,7 @@ class AdminDashboardControllerTest {
     fun `성능 메트릭 조회 성공`() {
         // given
         clearMocks(performanceMetricsService)
-        val metrics = com.didimlog.application.admin.PerformanceMetrics(
+        val metrics = PerformanceMetricsService.PerformanceMetrics(
             rpm = 45.5,
             averageResponseTime = 125.3,
             timeRangeMinutes = 30,
@@ -131,7 +130,7 @@ class AdminDashboardControllerTest {
     fun `성능 메트릭 조회 - 기본값`() {
         // given
         clearMocks(performanceMetricsService)
-        val metrics = com.didimlog.application.admin.PerformanceMetrics(
+        val metrics = PerformanceMetricsService.PerformanceMetrics(
             rpm = 30.0,
             averageResponseTime = 100.0,
             timeRangeMinutes = 30,

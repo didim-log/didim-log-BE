@@ -78,7 +78,7 @@ class NoticeController(
 
     @Operation(
         summary = "공지사항 상세 조회",
-        description = "공지사항 ID로 공지사항을 조회합니다."
+        description = "공지사항 ID로 공지사항을 조회합니다. 인증 없이 접근 가능합니다 (점검 공지 조회용)."
     )
     @ApiResponses(
         value = [

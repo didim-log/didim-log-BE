@@ -93,12 +93,12 @@ class ProblemControllerTest {
             createProblem("1001", "A-B")
         )
 
-        every { recommendationService.recommendProblems("bojId", 2, null) } returns problems
+        every { recommendationService.recommendProblems("bojId", 10, null) } returns problems
 
         // when & then
         mockMvc.perform(
             get("/api/v1/problems/recommend")
-                .param("count", "2")
+                .param("count", "10")
                 .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
@@ -111,12 +111,25 @@ class ProblemControllerTest {
     }
 
     @Test
-    @DisplayName("문제 추천 시 count가 0 이하일 때 400 Bad Request 반환")
-    fun `문제 추천 시 count 유효성 검증`() {
+    @DisplayName("문제 추천 시 count가 10 미만일 때 400 Bad Request 반환")
+    fun `문제 추천 시 count 최소값 유효성 검증`() {
         // when & then
         mockMvc.perform(
             get("/api/v1/problems/recommend")
-                .param("count", "0")
+                .param("count", "9")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    @DisplayName("문제 추천 시 count가 50 초과일 때 400 Bad Request 반환")
+    fun `문제 추천 시 count 최대값 유효성 검증`() {
+        // when & then
+        mockMvc.perform(
+            get("/api/v1/problems/recommend")
+                .param("count", "51")
                 .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
@@ -145,6 +158,8 @@ class ProblemControllerTest {
         )
     }
 }
+
+
 
 
 

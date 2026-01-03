@@ -282,8 +282,13 @@ class AdminSystemController(
         authentication: Authentication,
         httpServletRequest: HttpServletRequest
     ): ResponseEntity<MaintenanceModeResponse> {
-        maintenanceModeService.setMaintenanceMode(request.enabled)
-        val message = createMaintenanceModeMessage(request.enabled)
+        maintenanceModeService.setMaintenanceMode(
+            enabled = request.enabled,
+            startTime = request.startTime,
+            endTime = request.endTime,
+            noticeId = request.noticeId
+        )
+        val message = createMaintenanceModeMessage(request.enabled, request.startTime, request.endTime)
         val response = MaintenanceModeResponse(
             enabled = maintenanceModeService.isMaintenanceMode(),
             message = message
@@ -292,24 +297,48 @@ class AdminSystemController(
         val adminId = authentication.name
         val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
         val action = AdminActionType.MAINTENANCE_MODE_TOGGLE
-        val details = createMaintenanceModeDetails(request.enabled)
+        val details = createMaintenanceModeDetails(request.enabled, request.startTime, request.endTime, request.noticeId)
         adminAuditService.logAction(adminId, action, details, ipAddress)
 
         return ResponseEntity.ok(response)
     }
 
-    private fun createMaintenanceModeMessage(enabled: Boolean): String {
+    private fun createMaintenanceModeMessage(
+        enabled: Boolean,
+        startTime: java.time.LocalDateTime? = null,
+        endTime: java.time.LocalDateTime? = null
+    ): String {
         if (enabled) {
-            return "유지보수 모드가 활성화되었습니다."
+            val timeInfo = when {
+                startTime != null && endTime != null -> " (${formatDateTime(startTime)} ~ ${formatDateTime(endTime)})"
+                endTime != null -> " (종료 예정: ${formatDateTime(endTime)})"
+                else -> ""
+            }
+            return "유지보수 모드가 활성화되었습니다.$timeInfo"
         }
         return "유지보수 모드가 비활성화되었습니다."
     }
 
-    private fun createMaintenanceModeDetails(enabled: Boolean): String {
+    private fun createMaintenanceModeDetails(
+        enabled: Boolean,
+        startTime: java.time.LocalDateTime? = null,
+        endTime: java.time.LocalDateTime? = null,
+        noticeId: String? = null
+    ): String {
         if (enabled) {
-            return "유지보수 모드 활성화"
+            val timeInfo = when {
+                startTime != null && endTime != null -> " 시작: ${formatDateTime(startTime)}, 종료: ${formatDateTime(endTime)}"
+                endTime != null -> " 종료 예정: ${formatDateTime(endTime)}"
+                else -> ""
+            }
+            val noticeInfo = noticeId?.let { ", 공지사항 ID: $it" } ?: ""
+            return "유지보수 모드 활성화$timeInfo$noticeInfo"
         }
         return "유지보수 모드 비활성화"
+    }
+
+    private fun formatDateTime(dateTime: java.time.LocalDateTime): String {
+        return dateTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
     }
 }
 

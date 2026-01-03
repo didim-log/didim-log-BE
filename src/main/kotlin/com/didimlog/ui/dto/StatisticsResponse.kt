@@ -10,6 +10,7 @@ data class StatisticsResponse(
     val monthlyHeatmap: List<HeatmapDataResponse>,
     val totalSolved: Int,
     val totalRetrospectives: Long,
+    val totalFailures: Long,
     val averageSolveTime: Double,
     val successRate: Double,
     val categoryStats: List<CategoryStatResponse>, // 성공한 문제의 카테고리별 통계 (Radar/Bar Chart용)
@@ -21,6 +22,7 @@ data class StatisticsResponse(
                 monthlyHeatmap = statisticsInfo.monthlyHeatmap.map { HeatmapDataResponse.from(it) },
                 totalSolved = statisticsInfo.totalSolvedCount,
                 totalRetrospectives = statisticsInfo.totalRetrospectives,
+                totalFailures = statisticsInfo.totalFailures,
                 averageSolveTime = statisticsInfo.averageSolveTime,
                 successRate = statisticsInfo.successRate,
                 categoryStats = statisticsInfo.categoryStats.map { CategoryStatResponse.from(it) },

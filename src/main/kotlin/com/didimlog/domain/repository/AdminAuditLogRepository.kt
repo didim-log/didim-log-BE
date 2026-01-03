@@ -22,3 +22,4 @@ interface AdminAuditLogRepository : MongoRepository<AdminAuditLog, String> {
 }
 
 
+

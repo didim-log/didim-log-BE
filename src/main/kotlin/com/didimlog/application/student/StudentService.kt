@@ -9,6 +9,7 @@ import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.PasswordValidator
+import com.didimlog.infra.solvedac.SolvedAcClient
 import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -23,7 +24,8 @@ class StudentService(
     private val studentRepository: StudentRepository,
     private val retrospectiveRepository: RetrospectiveRepository,
     private val feedbackRepository: FeedbackRepository,
-    private val passwordEncoder: PasswordEncoder
+    private val passwordEncoder: PasswordEncoder,
+    private val solvedAcClient: SolvedAcClient
 ) {
 
     private val log = LoggerFactory.getLogger(StudentService::class.java)
@@ -137,5 +139,57 @@ class StudentService(
 
         // 본인 데이터 삭제
         studentRepository.delete(student)
+    }
+
+    /**
+     * BOJ 프로필 정보를 Solved.ac API에서 동기화한다.
+     * Rating과 Tier 정보를 최신 상태로 업데이트한다.
+     *
+     * @param bojId BOJ ID (JWT 토큰에서 추출)
+     * @return 동기화된 Student 엔티티
+     * @throws BusinessException 학생을 찾을 수 없거나, BOJ ID가 없는 경우
+     */
+    @Transactional
+    fun syncBojProfile(bojId: String): Student {
+        val bojIdVo = BojId(bojId)
+        val student = studentRepository.findByBojId(bojIdVo)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+            }
+
+        if (student.bojId == null) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "BOJ 인증이 완료되지 않은 사용자입니다. BOJ 계정을 연동해주세요."
+            )
+        }
+
+        log.info("BOJ 프로필 동기화 시작: bojId=${bojIdVo.value}")
+
+        try {
+            val userResponse = solvedAcClient.fetchUser(bojIdVo)
+            val newRating = userResponse.rating
+
+            // Rating이 변경되지 않았으면 업데이트하지 않음
+            if (student.rating == newRating) {
+                log.debug("BOJ 프로필 동기화 완료 (변경 없음): bojId=${bojIdVo.value}, rating=$newRating")
+                return student
+            }
+
+            val updatedStudent = student.updateInfo(newRating)
+            val savedStudent = studentRepository.save(updatedStudent)
+
+            log.info("BOJ 프로필 동기화 완료: bojId=${bojIdVo.value}, oldRating=${student.rating}, newRating=$newRating")
+            return savedStudent
+        } catch (e: BusinessException) {
+            log.error("BOJ 프로필 동기화 실패: bojId=${bojIdVo.value}, error=${e.message}", e)
+            throw e
+        } catch (e: Exception) {
+            log.error("BOJ 프로필 동기화 중 예상치 못한 예외 발생: bojId=${bojIdVo.value}", e)
+            throw BusinessException(
+                ErrorCode.COMMON_INTERNAL_ERROR,
+                "BOJ 프로필 동기화에 실패했습니다. bojId=${bojIdVo.value}"
+            )
+        }
     }
 }

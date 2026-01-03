@@ -153,6 +153,44 @@ class ProblemCollectorService(
         log.info("문제 상세 정보 크롤링 완료: 성공=$successCount, 실패=$failCount")
     }
 
+    /**
+     * 문제 통계 정보를 조회한다.
+     * 총 문제 수, 최소 문제 ID, 최대 문제 ID를 반환한다.
+     *
+     * @return 문제 통계 정보
+     */
+    fun getProblemStats(): com.didimlog.ui.dto.ProblemStatsResponse {
+        val totalCount = problemRepository.count()
+        
+        val allProblems = problemRepository.findAll()
+        
+        val minProblemId = allProblems
+            .mapNotNull { problem ->
+                try {
+                    problem.id.value.toInt()
+                } catch (e: NumberFormatException) {
+                    null
+                }
+            }
+            .minOrNull()
+        
+        val maxProblemId = allProblems
+            .mapNotNull { problem ->
+                try {
+                    problem.id.value.toInt()
+                } catch (e: NumberFormatException) {
+                    null
+                }
+            }
+            .maxOrNull()
+        
+        return com.didimlog.ui.dto.ProblemStatsResponse(
+            totalCount = totalCount,
+            minProblemId = minProblemId,
+            maxProblemId = maxProblemId
+        )
+    }
+
     private fun solvedAcProblemUrl(problemId: Int): String {
         return "https://www.acmicpc.net/problem/$problemId"
     }

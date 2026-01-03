@@ -2,6 +2,7 @@ package com.didimlog.domain.repository
 
 import com.didimlog.domain.Log
 import com.didimlog.domain.enums.AiFeedbackStatus
+import com.didimlog.domain.enums.AiReviewStatus
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.mongodb.repository.MongoRepository
@@ -60,6 +61,31 @@ interface LogRepository : MongoRepository<Log, String> {
      * @return 로그 페이지
      */
     fun findByAiFeedbackStatusOrderByCreatedAtDesc(status: AiFeedbackStatus, pageable: Pageable): List<Log>
+
+    /**
+     * AI 리뷰 상태 목록으로 로그를 조회하고 생성일시 내림차순으로 정렬한다.
+     * 관리자 대시보드에서 실제 AI 생성이 시도된 로그만 조회하기 위해 사용한다.
+     *
+     * @param statuses AI 리뷰 상태 목록 (예: COMPLETED, FAILED)
+     * @param pageable 페이징 정보
+     * @return 로그 페이지
+     */
+    fun findAllByAiReviewStatusInOrderByCreatedAtDesc(statuses: List<AiReviewStatus>, pageable: Pageable): Page<Log>
+
+    /**
+     * BOJ ID와 AI 리뷰 상태 목록으로 로그를 조회하고 생성일시 내림차순으로 정렬한다.
+     *
+     * @param bojIdValue BOJ ID 값
+     * @param statuses AI 리뷰 상태 목록
+     * @param pageable 페이징 정보
+     * @return 로그 페이지
+     */
+    @Query("{ 'bojId.value': ?0, 'aiReviewStatus': { \$in: ?1 } }")
+    fun findByBojIdValueAndAiReviewStatusInOrderByCreatedAtDesc(
+        bojIdValue: String,
+        statuses: List<AiReviewStatus>,
+        pageable: Pageable
+    ): Page<Log>
 }
 
 
