@@ -15,7 +15,6 @@ import jakarta.servlet.http.HttpServletRequest
 import org.springframework.security.core.userdetails.User
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.core.userdetails.UserDetailsService
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.provisioning.InMemoryUserDetailsManager
 import org.springframework.security.web.AuthenticationEntryPoint
@@ -38,6 +37,7 @@ class SecurityConfig(
     private val customOAuth2UserService: CustomOAuth2UserService,
     private val oAuth2SuccessHandler: OAuth2SuccessHandler,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val passwordEncoder: PasswordEncoder,
     @Value("\${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
     private val allowedOrigins: String,
     @Value("\${spring.security.user.name:admin}")
@@ -85,15 +85,6 @@ class SecurityConfig(
     }
 
     /**
-     * PasswordEncoder Bean
-     * Swagger UI 인증에 사용
-     */
-    @Bean
-    fun passwordEncoder(): PasswordEncoder {
-        return BCryptPasswordEncoder()
-    }
-
-    /**
      * Swagger UI 접근을 위한 UserDetailsService
      * application.yaml의 평문 비밀번호를 BCrypt로 인코딩하여 사용
      */
@@ -101,7 +92,7 @@ class SecurityConfig(
     fun swaggerUserDetailsService(): UserDetailsService {
         val userDetails: UserDetails = User.builder()
             .username(swaggerUsername)
-            .password(passwordEncoder().encode(swaggerPassword))
+            .password(passwordEncoder.encode(swaggerPassword))
             .roles("USER")
             .build()
         
