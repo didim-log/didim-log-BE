@@ -12,6 +12,12 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
 import jakarta.servlet.http.HttpServletRequest
+import org.springframework.security.core.userdetails.User
+import org.springframework.security.core.userdetails.UserDetails
+import org.springframework.security.core.userdetails.UserDetailsService
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.security.provisioning.InMemoryUserDetailsManager
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.access.AccessDeniedHandler
@@ -33,7 +39,11 @@ class SecurityConfig(
     private val oAuth2SuccessHandler: OAuth2SuccessHandler,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     @Value("\${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
-    private val allowedOrigins: String
+    private val allowedOrigins: String,
+    @Value("\${spring.security.user.name:admin}")
+    private val swaggerUsername: String,
+    @Value("\${spring.security.user.password:admin123}")
+    private val swaggerPassword: String
 ) {
 
     @Bean
@@ -56,7 +66,7 @@ class SecurityConfig(
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
             }
-            .httpBasic { }
+            .httpBasic { it.authenticationEntryPoint(basicAuthenticationEntryPoint()) }
             .oauth2Login { oauth2 ->
                 oauth2
                     .userInfoEndpoint { userInfo ->
@@ -72,6 +82,30 @@ class SecurityConfig(
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
+    }
+
+    /**
+     * PasswordEncoder Bean
+     * Swagger UI 인증에 사용
+     */
+    @Bean
+    fun passwordEncoder(): PasswordEncoder {
+        return BCryptPasswordEncoder()
+    }
+
+    /**
+     * Swagger UI 접근을 위한 UserDetailsService
+     * application.yaml의 평문 비밀번호를 BCrypt로 인코딩하여 사용
+     */
+    @Bean
+    fun swaggerUserDetailsService(): UserDetailsService {
+        val userDetails: UserDetails = User.builder()
+            .username(swaggerUsername)
+            .password(passwordEncoder().encode(swaggerPassword))
+            .roles("USER")
+            .build()
+        
+        return InMemoryUserDetailsManager(userDetails)
     }
 
     @Bean
@@ -99,15 +133,23 @@ class SecurityConfig(
     }
 
     /**
+     * Swagger UI용 HTTP Basic Authentication EntryPoint
+     */
+    @Bean
+    fun basicAuthenticationEntryPoint(): BasicAuthenticationEntryPoint {
+        return BasicAuthenticationEntryPoint().apply {
+            realmName = "Swagger UI"
+        }
+    }
+
+    /**
      * 인증 실패 시 처리 (401 Unauthorized)
      * Swagger 경로는 HTTP Basic Authentication 팝업을 표시하고,
      * 기타 경로는 JSON 응답을 반환합니다.
      */
     @Bean
     fun authenticationEntryPoint(): AuthenticationEntryPoint {
-        val basicAuthEntryPoint = BasicAuthenticationEntryPoint().apply {
-            realmName = "Swagger UI"
-        }
+        val basicAuthEntryPoint = basicAuthenticationEntryPoint()
         
         return AuthenticationEntryPoint { request, response, authException ->
             val path = (request as HttpServletRequest).requestURI
