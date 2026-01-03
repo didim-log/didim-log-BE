@@ -1,5 +1,6 @@
 package com.didimlog.application.recommendation
 
+import com.didimlog.application.utils.TagUtils
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
@@ -74,12 +75,19 @@ class RecommendationService(
 
     private fun findCandidateProblems(minLevel: Int, maxLevel: Int, category: String?, language: String?): List<Problem> {
         val problems = if (category != null) {
-            // API에서 받은 category 문자열을 ProblemCategory의 englishName과 비교
-            // ProblemCategory.entries에서 englishName이 일치하는 것을 찾아서 사용
+            // 1. 태그 별칭을 공식 전체 이름으로 변환 (예: "BFS" -> "Breadth-first Search")
+            val normalizedCategory = TagUtils.normalizeTagName(category)
+            
+            // 2. ProblemCategory enum에서 englishName 또는 enum 이름으로 매칭
             val categoryEnglishName = ProblemCategory.entries
-                .find { it.englishName.equals(category, ignoreCase = true) }
+                .find { 
+                    // enum 이름 매칭 (예: BFS, DFS, DP)
+                    it.name.equals(normalizedCategory, ignoreCase = true) ||
+                    // englishName 매칭 (예: "Breadth-first Search")
+                    it.englishName.equals(normalizedCategory, ignoreCase = true)
+                }
                 ?.englishName
-                ?: category // 매칭 안 되면 원본 문자열 사용
+                ?: normalizedCategory // 매칭 안 되면 정규화된 문자열 사용
             
             problemRepository.findByLevelBetweenAndCategory(
                 min = minLevel,
