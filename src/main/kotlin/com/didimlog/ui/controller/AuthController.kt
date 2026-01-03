@@ -16,6 +16,9 @@ import com.didimlog.ui.dto.BojVerifyRequest
 import com.didimlog.ui.dto.BojVerifyResponse
 import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.FindAccountResponse
+import com.didimlog.ui.dto.FindIdRequest
+import com.didimlog.ui.dto.FindIdPasswordResponse
+import com.didimlog.ui.dto.FindPasswordRequest
 import com.didimlog.ui.dto.LoginRequest
 import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.RefreshTokenRequest
@@ -246,6 +249,72 @@ class AuthController(
             FindAccountResponse(
                 provider = result.provider,
                 message = result.message
+            )
+        )
+    }
+
+    @Operation(
+        summary = "아이디 찾기",
+        description = "이메일을 입력받아 해당 이메일로 가입된 계정의 BOJ ID를 이메일로 전송합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "이메일 전송 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 이메일 형식 또는 BOJ ID가 등록되지 않은 계정",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "해당 이메일로 가입된 계정을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/find-id")
+    fun findId(
+        @RequestBody
+        @Valid
+        request: FindIdRequest
+    ): ResponseEntity<FindIdPasswordResponse> {
+        authService.findId(request.email)
+        return ResponseEntity.ok(
+            FindIdPasswordResponse(
+                message = "이메일로 아이디가 전송되었습니다."
+            )
+        )
+    }
+
+    @Operation(
+        summary = "비밀번호 찾기",
+        description = "이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 비밀번호 재설정 코드(8자리 영문+숫자 조합)를 생성하여 Redis에 저장하고 이메일로 전송합니다. 코드는 30분간 유효합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "이메일 전송 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 이메일 형식, 이메일과 BOJ ID 불일치, 또는 소셜 로그인 계정",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "해당 이메일로 가입된 계정을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/find-password")
+    fun findPassword(
+        @RequestBody
+        @Valid
+        request: FindPasswordRequest
+    ): ResponseEntity<FindIdPasswordResponse> {
+        authService.findPassword(request.email, request.bojId)
+        return ResponseEntity.ok(
+            FindIdPasswordResponse(
+                message = "이메일로 비밀번호 재설정 코드가 전송되었습니다."
             )
         )
     }
