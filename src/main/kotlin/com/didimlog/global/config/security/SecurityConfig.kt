@@ -11,9 +11,11 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.access.AccessDeniedHandler
+import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
@@ -98,10 +100,27 @@ class SecurityConfig(
 
     /**
      * 인증 실패 시 처리 (401 Unauthorized)
+     * Swagger 경로는 HTTP Basic Authentication 팝업을 표시하고,
+     * 기타 경로는 JSON 응답을 반환합니다.
      */
     @Bean
     fun authenticationEntryPoint(): AuthenticationEntryPoint {
-        return AuthenticationEntryPoint { _, response, _ ->
+        val basicAuthEntryPoint = BasicAuthenticationEntryPoint().apply {
+            realmName = "Swagger UI"
+        }
+        
+        return AuthenticationEntryPoint { request, response, authException ->
+            val path = (request as HttpServletRequest).requestURI
+            
+            // Swagger 경로는 HTTP Basic Authentication 팝업 표시
+            if (path.startsWith("/swagger-ui") || 
+                path.startsWith("/v3/api-docs") || 
+                path.startsWith("/swagger-resources")) {
+                basicAuthEntryPoint.commence(request, response, authException)
+                return@AuthenticationEntryPoint
+            }
+            
+            // 기타 경로는 JSON 응답 반환
             response.status = HttpStatus.UNAUTHORIZED.value()
             response.contentType = "application/json;charset=UTF-8"
             response.writer.write(
