@@ -38,24 +38,24 @@ class MemberService(
 
     @Transactional
     fun completeOnboarding(bojId: String) {
-        val bojIdVo = BojId(bojId)
-        val student = studentRepository.findByBojId(bojIdVo)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
-            }
+        val student = findStudentByBojIdOrThrow(bojId)
         val updated = student.completeOnboarding()
         studentRepository.save(updated)
     }
 
     @Transactional
     fun resetOnboarding(bojId: String) {
+        val student = findStudentByBojIdOrThrow(bojId)
+        val updated = student.resetOnboarding()
+        studentRepository.save(updated)
+    }
+
+    private fun findStudentByBojIdOrThrow(bojId: String): com.didimlog.domain.Student {
         val bojIdVo = BojId(bojId)
-        val student = studentRepository.findByBojId(bojIdVo)
+        return studentRepository.findByBojId(bojIdVo)
             .orElseThrow {
                 BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
             }
-        val updated = student.resetOnboarding()
-        studentRepository.save(updated)
     }
 
     private fun tryCreateNicknameOrNull(nickname: String): Nickname? {

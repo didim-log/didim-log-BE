@@ -1020,6 +1020,7 @@ Content-Type: application/json
 | GET | `/api/v1/members/check-nickname` | 닉네임이 **유효하고** 중복이 아니면 `true`, 그렇지 않으면 `false`를 반환합니다. (유효성 검증 + 중복 체크) | **Query Parameters:**<br>- `nickname` (String, required): 닉네임<br>  - 유효성: `@NotBlank`<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$` | `Boolean` | None |
 | PATCH | `/api/v1/members/me/nickname` | 로그인한 사용자의 닉네임을 변경합니다. 변경 시 **유효성 + 중복 검사**를 수행합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateMyNicknameRequest`<br>- `nickname` (String, required)<br>  - 유효성: `@NotBlank`<br>  - 닉네임 정책은 위와 동일 | `204 No Content` | JWT Token |
 | PATCH | `/api/v1/members/onboarding/complete` | 사용자가 온보딩 투어를 완료했음을 표시합니다. 이후 투어가 자동으로 표시되지 않습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `204 No Content` | JWT Token |
+| PATCH | `/api/v1/members/onboarding/reset` | 사용자의 온보딩 완료 상태를 리셋합니다. Help 버튼(?)을 눌러 온보딩을 다시 볼 수 있도록 합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `204 No Content` | JWT Token |
 
 **예시 요청 (닉네임 사용 가능 여부):**
 ```http
