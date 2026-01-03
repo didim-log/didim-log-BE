@@ -30,17 +30,18 @@ class MaintenanceModeInterceptor(
             return true
         }
 
+        // ✅ ADMIN 권한이 있으면 유지보수 모드에서도 접근 허용
         val authentication = SecurityContextHolder.getContext().authentication
-        if (authentication == null || !authentication.isAuthenticated) {
-            throw BusinessException(ErrorCode.MAINTENANCE_MODE, ErrorCode.MAINTENANCE_MODE.message)
+        if (authentication != null && authentication.isAuthenticated) {
+            val isAdmin = authentication.authorities.any { it.authority == "ROLE_ADMIN" }
+            if (isAdmin) {
+                // ADMIN은 유지보수 모드에서도 접근 가능
+                return true
+            }
         }
 
-        val isAdmin = authentication.authorities.contains(SimpleGrantedAuthority("ROLE_ADMIN"))
-        if (!isAdmin) {
-            throw BusinessException(ErrorCode.MAINTENANCE_MODE, ErrorCode.MAINTENANCE_MODE.message)
-        }
-
-        return true
+        // ADMIN이 아니거나 인증되지 않은 사용자는 차단
+        throw BusinessException(ErrorCode.MAINTENANCE_MODE, ErrorCode.MAINTENANCE_MODE.message)
     }
 }
 
