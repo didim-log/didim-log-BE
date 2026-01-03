@@ -47,6 +47,17 @@ class MemberService(
         studentRepository.save(updated)
     }
 
+    @Transactional
+    fun resetOnboarding(bojId: String) {
+        val bojIdVo = BojId(bojId)
+        val student = studentRepository.findByBojId(bojIdVo)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+            }
+        val updated = student.resetOnboarding()
+        studentRepository.save(updated)
+    }
+
     private fun tryCreateNicknameOrNull(nickname: String): Nickname? {
         return try {
             Nickname(nickname)

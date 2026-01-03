@@ -333,6 +333,15 @@ data class Student(
         return copy(isOnboardingFinished = true)
     }
 
+    /**
+     * 온보딩 투어 완료 상태를 리셋한다. (Help 버튼으로 재시작 시 사용)
+     *
+     * @return 온보딩 완료 상태가 false로 업데이트된 새로운 Student 인스턴스
+     */
+    fun resetOnboarding(): Student {
+        return copy(isOnboardingFinished = false)
+    }
+
     private fun updateExistingSolution(
         existingSolutions: List<Solution>,
         todaySolutionIndex: Int,
