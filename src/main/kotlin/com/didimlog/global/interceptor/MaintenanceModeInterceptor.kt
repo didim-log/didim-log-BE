@@ -29,18 +29,35 @@ class MaintenanceModeInterceptor(
             return true
         }
 
-        // ✅ ADMIN 권한이 있으면 유지보수 모드에서도 접근 허용
-        val authentication = SecurityContextHolder.getContext().authentication
-        if (authentication != null && authentication.isAuthenticated) {
-            val isAdmin = authentication.authorities.any { it.authority == "ROLE_ADMIN" }
-            if (isAdmin) {
-                // ADMIN은 유지보수 모드에서도 접근 가능
-                return true
-            }
+        if (shouldAllowRequest(request)) {
+            return true
         }
 
-        // ADMIN이 아니거나 인증되지 않은 사용자는 차단
         throw BusinessException(ErrorCode.MAINTENANCE_MODE, ErrorCode.MAINTENANCE_MODE.message)
+    }
+
+    private fun shouldAllowRequest(request: HttpServletRequest): Boolean {
+        if (isPublicApi(request)) {
+            return true
+        }
+        if (isAdminUser()) {
+            return true
+        }
+        return false
+    }
+
+    private fun isPublicApi(request: HttpServletRequest): Boolean {
+        val path = request.requestURI
+        val method = request.method
+        return method == "GET" && (path.startsWith("/api/v1/notices") || path.startsWith("/api/v1/system/status"))
+    }
+
+    private fun isAdminUser(): Boolean {
+        val authentication = SecurityContextHolder.getContext().authentication
+        if (authentication == null || !authentication.isAuthenticated) {
+            return false
+        }
+        return authentication.authorities.any { it.authority == "ROLE_ADMIN" }
     }
 }
 
