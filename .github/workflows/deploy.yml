@@ -23,6 +23,8 @@ name: didim-log-be Deploy CICD
 # - GEMINI_API_URL: Gemini API URL (generateContent endpoint)
 # - MAIL_USERNAME: SMTP 이메일 발송 계정 (기본값: didimlognoreply@gmail.com)
 # - MAIL_PASSWORD: SMTP 이메일 발송 앱 비밀번호 (Gmail 앱 비밀번호 필수)
+# - SWAGGER_USERNAME: Swagger UI 접근용 HTTP Basic Authentication 사용자명 (기본값: admin)
+# - SWAGGER_PASSWORD: Swagger UI 접근용 HTTP Basic Authentication 비밀번호 (프로덕션에서는 강력한 비밀번호 필수)
 
 on:
   push:
@@ -109,6 +111,8 @@ jobs:
             echo "ADMIN_SECRET_KEY=${{ secrets.ADMIN_SECRET_KEY }}" >> .env
             echo "MAIL_USERNAME=${{ secrets.MAIL_USERNAME }}" >> .env
             echo "MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}" >> .env
+            echo "SWAGGER_USERNAME=${{ secrets.SWAGGER_USERNAME }}" >> .env
+            echo "SWAGGER_PASSWORD=${{ secrets.SWAGGER_PASSWORD }}" >> .env
 
       - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@master
@@ -135,3 +139,4 @@ jobs:
 # ✅ ADMIN_SECRET_KEY
 # ✅ GEMINI_API_KEY, GEMINI_API_URL
 # ✅ MAIL_USERNAME, MAIL_PASSWORD (SMTP 이메일 발송)
+# ✅ SWAGGER_USERNAME, SWAGGER_PASSWORD (Swagger UI HTTP Basic Authentication)

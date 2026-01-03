@@ -118,12 +118,12 @@ class ProblemControllerTest {
     }
 
     @Test
-    @DisplayName("문제 추천 시 count가 10 미만일 때 400 Bad Request 반환")
+    @DisplayName("문제 추천 시 count가 1 미만일 때 400 Bad Request 반환")
     fun `문제 추천 시 count 최소값 유효성 검증`() {
         // when & then
         mockMvc.perform(
             get("/api/v1/problems/recommend")
-                .param("count", "9")
+                .param("count", "0")
                 .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )

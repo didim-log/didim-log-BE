@@ -1,7 +1,10 @@
 package com.didimlog.application.member
 
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.DuplicateNicknameException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -31,6 +34,17 @@ class MemberService(
             return
         }
         throw DuplicateNicknameException("이미 사용 중인 닉네임입니다. nickname=${nicknameVo.value}")
+    }
+
+    @Transactional
+    fun completeOnboarding(bojId: String) {
+        val bojIdVo = BojId(bojId)
+        val student = studentRepository.findByBojId(bojIdVo)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+            }
+        val updated = student.completeOnboarding()
+        studentRepository.save(updated)
     }
 
     private fun tryCreateNicknameOrNull(nickname: String): Nickname? {

@@ -43,7 +43,8 @@ data class StudentProfileResponse(
     val currentTier: String,
     val currentTierLevel: Int,
     val consecutiveSolveDays: Int,
-    val primaryLanguage: com.didimlog.domain.enums.PrimaryLanguage? = null
+    val primaryLanguage: com.didimlog.domain.enums.PrimaryLanguage? = null,
+    val isOnboardingFinished: Boolean = false
 ) {
     companion object {
         fun from(profile: com.didimlog.application.dashboard.StudentProfile): StudentProfileResponse {
@@ -53,7 +54,8 @@ data class StudentProfileResponse(
                 currentTier = profile.currentTier.name,
                 currentTierLevel = profile.currentTier.value,
                 consecutiveSolveDays = profile.consecutiveSolveDays,
-                primaryLanguage = profile.primaryLanguage
+                primaryLanguage = profile.primaryLanguage,
+                isOnboardingFinished = profile.isOnboardingFinished
             )
         }
 
@@ -66,7 +68,8 @@ data class StudentProfileResponse(
                 currentTier = student.currentTier.name,
                 currentTierLevel = student.currentTier.value,
                 consecutiveSolveDays = student.consecutiveSolveDays,
-                primaryLanguage = student.primaryLanguage
+                primaryLanguage = student.primaryLanguage,
+                isOnboardingFinished = student.isOnboardingFinished
             )
         }
     }

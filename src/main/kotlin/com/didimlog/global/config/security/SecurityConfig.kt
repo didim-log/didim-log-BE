@@ -48,13 +48,13 @@ class SecurityConfig(
                         "/api/v1/notices/**", // 공지사항 조회는 인증 없이 접근 가능 (점검 공지 조회용)
                         "/login/oauth2/**",
                         "/oauth2/**",
-                        "/swagger-ui/**",
-                        "/v3/api-docs/**",
                         "/error"
                     ).permitAll()
+                    .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").authenticated()
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
             }
+            .httpBasic { }
             .oauth2Login { oauth2 ->
                 oauth2
                     .userInfoEndpoint { userInfo ->
