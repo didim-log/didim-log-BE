@@ -1927,6 +1927,13 @@ Content-Type: application/json
 }
 ```
 
+**참고사항:**
+- 유지보수 모드가 활성화되어 있어도 다음 API는 접근 가능합니다:
+  - `GET /api/v1/notices/**`: 공지사항 조회 (점검 공지 확인용)
+  - `GET /api/v1/system/status`: 시스템 상태 조회
+- ADMIN 권한이 있는 사용자는 유지보수 모드에서도 모든 API에 접근 가능합니다.
+- 프론트엔드는 503 에러(`MAINTENANCE_MODE` 코드)를 감지하면 자동으로 `/maintenance` 페이지로 리다이렉트합니다.
+
 **예시 요청 (저장 공간 통계 조회):**
 ```http
 GET /api/v1/admin/system/storage
