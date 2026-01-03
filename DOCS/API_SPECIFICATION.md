@@ -1020,6 +1020,7 @@ Content-Type: application/json
 | GET | `/api/v1/members/check-nickname` | 닉네임이 **유효하고** 중복이 아니면 `true`, 그렇지 않으면 `false`를 반환합니다. (유효성 검증 + 중복 체크) | **Query Parameters:**<br>- `nickname` (String, required): 닉네임<br>  - 유효성: `@NotBlank`<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$` | `Boolean` | None |
 | PATCH | `/api/v1/members/me/nickname` | 로그인한 사용자의 닉네임을 변경합니다. 변경 시 **유효성 + 중복 검사**를 수행합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateMyNicknameRequest`<br>- `nickname` (String, required)<br>  - 유효성: `@NotBlank`<br>  - 닉네임 정책은 위와 동일 | `204 No Content` | JWT Token |
 | PATCH | `/api/v1/members/onboarding/complete` | 사용자가 온보딩 투어를 완료했음을 표시합니다. 이후 투어가 자동으로 표시되지 않습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `204 No Content` | JWT Token |
+| PATCH | `/api/v1/members/onboarding/reset` | 사용자의 온보딩 완료 상태를 리셋합니다. Help 버튼(?)을 눌러 온보딩을 다시 볼 수 있도록 합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `204 No Content` | JWT Token |
 
 **예시 요청 (닉네임 사용 가능 여부):**
 ```http
@@ -1857,7 +1858,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/admin/system/maintenance` | 서버를 끄지 않고 일반 사용자의 접근만 차단하는 유지보수 모드를 활성화/비활성화합니다. 전역 필터/인터셉터에서 이 플래그가 `true`일 때, ADMIN 권한이 없는 요청은 `503 Service Unavailable` 예외를 발생시킵니다. 작업은 감사 로그에 기록됩니다. 점검 시간과 관련 공지사항을 설정할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`MaintenanceModeRequest`<br>- `enabled` (Boolean, required): 유지보수 모드 활성화 여부<br>- `startTime` (LocalDateTime, optional): 점검 시작 시간 (ISO 8601 형식, 예: "2024-01-20T00:00:00")<br>- `endTime` (LocalDateTime, optional): 점검 종료 시간 (ISO 8601 형식, 예: "2024-01-20T02:00:00")<br>- `noticeId` (String, optional): 관련 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1") | `MaintenanceModeResponse`<br><br>**MaintenanceModeResponse 구조:**<br>- `enabled` (Boolean): 현재 유지보수 모드 상태<br>- `message` (String): 응답 메시지 ("유지보수 모드가 활성화되었습니다." 또는 "유지보수 모드가 비활성화되었습니다.") | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/system/maintenance` | 서버를 끄지 않고 일반 사용자의 접근만 차단하는 유지보수 모드를 활성화/비활성화합니다. 전역 인터셉터(`MaintenanceModeInterceptor`)에서 이 플래그가 `true`일 때, 다음 규칙이 적용됩니다:<br><br>**접근 허용:**<br>- ADMIN 권한이 있는 사용자: 모든 API 접근 가능<br>- Public Read-Only API: `GET /api/v1/notices/**`, `GET /api/v1/system/status` (인증 없이 접근 가능)<br><br>**접근 차단:**<br>- ADMIN 권한이 없는 일반 사용자: 위 허용 목록 외의 모든 API는 `503 Service Unavailable` 예외 발생<br><br>작업은 감사 로그에 기록됩니다. 점검 시간과 관련 공지사항을 설정할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`MaintenanceModeRequest`<br>- `enabled` (Boolean, required): 유지보수 모드 활성화 여부<br>- `startTime` (LocalDateTime, optional): 점검 시작 시간 (ISO 8601 형식, 예: "2024-01-20T00:00:00")<br>- `endTime` (LocalDateTime, optional): 점검 종료 시간 (ISO 8601 형식, 예: "2024-01-20T02:00:00")<br>- `noticeId` (String, optional): 관련 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1") | `MaintenanceModeResponse`<br><br>**MaintenanceModeResponse 구조:**<br>- `enabled` (Boolean): 현재 유지보수 모드 상태<br>- `message` (String): 응답 메시지 ("유지보수 모드가 활성화되었습니다." 또는 "유지보수 모드가 비활성화되었습니다.") | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/system/ai-status` | AI 서비스의 현재 상태(활성화 여부, 사용량, 제한값)를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AiStatusResponse`<br><br>**AiStatusResponse 구조:**<br>- `isEnabled` (Boolean): AI 서비스 활성화 여부<br>- `todayGlobalUsage` (Int): 오늘의 전역 사용량<br>- `globalLimit` (Int): 전역 일일 제한<br>- `userLimit` (Int): 사용자 일일 제한 | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/system/ai-status` | AI 서비스를 수동으로 활성화 또는 비활성화합니다. 긴급 상황에서 서비스를 중지할 수 있습니다. 작업은 감사 로그에 기록됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiStatusUpdateRequest`<br>- `enabled` (Boolean, required): AI 서비스 활성화 여부 | `AiStatusResponse` | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/system/ai-limits` | AI 서비스의 전역 일일 제한 및 사용자 일일 제한을 동적으로 업데이트합니다. 서버 재시작 없이 즉시 적용됩니다. 작업은 감사 로그에 기록됩니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Request Body:**<br>`AiLimitsUpdateRequest`<br>- `globalLimit` (Int, required, min: 1): 전역 일일 제한<br>- `userLimit` (Int, required, min: 1): 사용자 일일 제한 | `AiStatusResponse` | JWT Token (ADMIN) |
@@ -1925,6 +1926,13 @@ Content-Type: application/json
   "message": "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."
 }
 ```
+
+**참고사항:**
+- 유지보수 모드가 활성화되어 있어도 다음 API는 접근 가능합니다:
+  - `GET /api/v1/notices/**`: 공지사항 조회 (점검 공지 확인용)
+  - `GET /api/v1/system/status`: 시스템 상태 조회
+- ADMIN 권한이 있는 사용자는 유지보수 모드에서도 모든 API에 접근 가능합니다.
+- 프론트엔드는 503 에러(`MAINTENANCE_MODE` 코드)를 감지하면 자동으로 `/maintenance` 페이지로 리다이렉트합니다.
 
 **예시 요청 (저장 공간 통계 조회):**
 ```http
@@ -2165,15 +2173,15 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## NoticeController
 
-공지사항 관련 API를 제공합니다.
+공지사항 관련 API를 제공합니다. **유지보수 모드에서도 접근 가능한 Public API**입니다.
 
 - **작성**: `AdminController`의 `POST /api/v1/admin/notices`
 - **조회/수정/삭제**: `NoticeController`의 `/api/v1/notices` 하위 API
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/notices` | 공지사항 목록을 조회합니다. 상단 고정 공지(`isPinned=true`)가 먼저 오고, 그 다음 최신순으로 정렬됩니다. 페이징을 지원합니다. | **Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<NoticeResponse>`<br><br>**NoticeResponse 구조:**<br>- `id` (String): 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1")<br>- `title` (String): 제목<br>- `content` (String): 내용<br>- `isPinned` (Boolean): 상단 고정 여부<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `updatedAt` (LocalDateTime): 수정 일시 (ISO 8601 형식)<br><br>**Page 구조 (Spring Data Page 직렬화):**<br>- `content` (List<NoticeResponse>)<br>- `totalElements` (Long)<br>- `totalPages` (Int)<br>- `size` (Int)<br>- `number` (Int): 0부터 시작하는 현재 페이지 인덱스 | None |
-| GET | `/api/v1/notices/{noticeId}` | 공지사항 ID로 공지사항을 조회합니다. | **Path Variables:**<br>- `noticeId` (String, required): 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1") | `NoticeResponse` | None |
+| GET | `/api/v1/notices` | 공지사항 목록을 조회합니다. 상단 고정 공지(`isPinned=true`)가 먼저 오고, 그 다음 최신순으로 정렬됩니다. 페이징을 지원합니다. **유지보수 모드에서도 접근 가능합니다.** (점검 공지 확인용) | **Query Parameters:**<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상) | `Page<NoticeResponse>`<br><br>**NoticeResponse 구조:**<br>- `id` (String): 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1")<br>- `title` (String): 제목<br>- `content` (String): 내용<br>- `isPinned` (Boolean): 상단 고정 여부<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `updatedAt` (LocalDateTime): 수정 일시 (ISO 8601 형식)<br><br>**Page 구조 (Spring Data Page 직렬화):**<br>- `content` (List<NoticeResponse>)<br>- `totalElements` (Long)<br>- `totalPages` (Int)<br>- `size` (Int)<br>- `number` (Int): 0부터 시작하는 현재 페이지 인덱스 | None |
+| GET | `/api/v1/notices/{noticeId}` | 공지사항 ID로 공지사항을 조회합니다. **유지보수 모드에서도 접근 가능합니다.** | **Path Variables:**<br>- `noticeId` (String, required): 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1") | `NoticeResponse` | None |
 | PATCH | `/api/v1/notices/{noticeId}` | 공지사항을 수정합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `noticeId` (String, required): 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1")<br><br>**Request Body:**<br>`NoticeUpdateRequest`<br>- `title` (String, optional): 제목<br>  - 유효성: `@Size(max=200)`<br>- `content` (String, optional): 내용<br>  - 유효성: `@Size(max=10000)`<br>- `isPinned` (Boolean, optional): 상단 고정 여부 | `NoticeResponse` | JWT Token (ADMIN) |
 | DELETE | `/api/v1/notices/{noticeId}` | 공지사항을 삭제합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `noticeId` (String, required): 공지사항 ID (MongoDB ObjectId 형식, 예: "65a1b2c3d4e5f6g7h8i9j0k1") | `204 No Content` | JWT Token (ADMIN) |
 

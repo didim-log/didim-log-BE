@@ -111,4 +111,33 @@ class MemberController(
         memberService.completeOnboarding(bojId)
         return ResponseEntity.noContent().build()
     }
+
+    @Operation(
+        summary = "온보딩 투어 리셋",
+        description = "사용자의 온보딩 완료 상태를 리셋합니다. Help 버튼(?)을 눌러 온보딩을 다시 볼 수 있도록 합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "리셋 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "사용자를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PatchMapping("/onboarding/reset")
+    fun resetOnboarding(
+        authentication: Authentication
+    ): ResponseEntity<Void> {
+        val bojId = authentication.name
+        memberService.resetOnboarding(bojId)
+        return ResponseEntity.noContent().build()
+    }
 }

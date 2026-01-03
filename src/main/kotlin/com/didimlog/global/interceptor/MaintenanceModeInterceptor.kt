@@ -6,7 +6,6 @@ import com.didimlog.global.exception.ErrorCode
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.beans.factory.ObjectProvider
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.HandlerInterceptor
@@ -30,17 +29,35 @@ class MaintenanceModeInterceptor(
             return true
         }
 
+        if (shouldAllowRequest(request)) {
+            return true
+        }
+
+        throw BusinessException(ErrorCode.MAINTENANCE_MODE, ErrorCode.MAINTENANCE_MODE.message)
+    }
+
+    private fun shouldAllowRequest(request: HttpServletRequest): Boolean {
+        if (isPublicApi(request)) {
+            return true
+        }
+        if (isAdminUser()) {
+            return true
+        }
+        return false
+    }
+
+    private fun isPublicApi(request: HttpServletRequest): Boolean {
+        val path = request.requestURI
+        val method = request.method
+        return method == "GET" && (path.startsWith("/api/v1/notices") || path.startsWith("/api/v1/system/status"))
+    }
+
+    private fun isAdminUser(): Boolean {
         val authentication = SecurityContextHolder.getContext().authentication
         if (authentication == null || !authentication.isAuthenticated) {
-            throw BusinessException(ErrorCode.MAINTENANCE_MODE, ErrorCode.MAINTENANCE_MODE.message)
+            return false
         }
-
-        val isAdmin = authentication.authorities.contains(SimpleGrantedAuthority("ROLE_ADMIN"))
-        if (!isAdmin) {
-            throw BusinessException(ErrorCode.MAINTENANCE_MODE, ErrorCode.MAINTENANCE_MODE.message)
-        }
-
-        return true
+        return authentication.authorities.any { it.authority == "ROLE_ADMIN" }
     }
 }
 
