@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDateTime
 
-@Tag(name = "Admin Audit", description = "관리자 작업 감사 로그 API (ADMIN 권한 필요)")
+@Tag(name = "Admin", description = "관리자 작업 감사 로그 API (ADMIN 권한 필요)")
 @RestController
 @RequestMapping("/api/v1/admin/audit-logs")
 @Validated

@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Problem Collector", description = "문제 데이터 수집 관련 API (관리자용)")
+@Tag(name = "Admin", description = "문제 데이터 수집 관련 API (관리자용)")
 @RestController
 @RequestMapping("/api/v1/admin/problems")
 @Validated

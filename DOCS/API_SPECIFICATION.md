@@ -2428,9 +2428,20 @@ JWT 토큰 기반 인증을 지원합니다.
 
 API 문서는 Swagger UI를 통해 확인할 수 있습니다:
 
-- **URL:** `http://localhost:8080/swagger-ui.html` (로컬 환경)
+- **URL:** `http://localhost:8080/swagger-ui/index.html` (로컬 환경)
 - **보안:** HTTP Basic Authentication 적용
   - **Username:** 환경 변수 `SWAGGER_USERNAME` (기본값: `admin`)
   - **Password:** 환경 변수 `SWAGGER_PASSWORD` (기본값: `admin123`)
   - Swagger UI 접근 시 브라우저에서 사용자명/비밀번호 입력 팝업이 표시됩니다.
+
+### Swagger 태그 통합
+
+관리자 관련 API는 모두 **"Admin"** 태그로 통합되어 있습니다:
+- AdminController: 회원 관리, 명언 관리, 피드백 관리, 공지사항 작성
+- AdminDashboardController: 관리자 대시보드 통계, 성능 메트릭, 차트 데이터, AI 품질 통계
+- AdminMemberController: 관리자 회원 정보 수정
+- AdminLogController: AI 리뷰 로그 조회 및 정리
+- AdminAuditController: 관리자 작업 감사 로그
+- AdminSystemController: AI 서비스 제어, 저장 공간 관리, 유지보수 모드
+- ProblemCollectorController: 문제 데이터 수집 (관리자용)
 
