@@ -46,6 +46,7 @@ data class Student(
     val consecutiveSolveDays: Int = 0, // 연속 풀이 일수
     val lastSolvedAt: LocalDate? = null, // 마지막으로 문제를 푼 날짜
     val primaryLanguage: PrimaryLanguage? = null, // 주로 사용하는 프로그래밍 언어 (nullable: 기존 사용자 호환성)
+    val isOnboardingFinished: Boolean = false, // 온보딩 투어 완료 여부
     @Indexed
     val createdAt: LocalDateTime = LocalDateTime.now() // 회원 가입 일시
 ) {
@@ -89,6 +90,7 @@ data class Student(
         consecutiveSolveDays: Int?,
         lastSolvedAt: LocalDate?,
         primaryLanguage: PrimaryLanguage?,
+        isOnboardingFinished: Boolean?,
         createdAt: LocalDateTime?
     ) : this(
         id = id,
@@ -107,6 +109,7 @@ data class Student(
         consecutiveSolveDays = consecutiveSolveDays ?: 0,
         lastSolvedAt = lastSolvedAt,
         primaryLanguage = primaryLanguage,
+        isOnboardingFinished = isOnboardingFinished ?: false,
         createdAt = createdAt ?: LocalDateTime.now()
     )
 
@@ -319,6 +322,15 @@ data class Student(
     fun updatePassword(encodedPassword: String): Student {
         require(encodedPassword.isNotBlank()) { "비밀번호는 필수입니다." }
         return copy(password = encodedPassword)
+    }
+
+    /**
+     * 온보딩 투어 완료 상태로 업데이트한다.
+     *
+     * @return 온보딩 완료 상태가 업데이트된 새로운 Student 인스턴스
+     */
+    fun completeOnboarding(): Student {
+        return copy(isOnboardingFinished = true)
     }
 
     private fun updateExistingSolution(

@@ -66,9 +66,9 @@ class ProblemController(
     @GetMapping("/recommend")
     fun recommendProblems(
         authentication: Authentication,
-        @Parameter(description = "추천할 문제 개수 (기본값: 10, 최소: 10, 최대: 50)", required = false)
+        @Parameter(description = "추천할 문제 개수 (기본값: 10, 최소: 1, 최대: 50)", required = false)
         @RequestParam(defaultValue = "10")
-        @Min(value = 10, message = "추천 개수는 최소 10개 이상이어야 합니다.")
+        @Min(value = 1, message = "추천 개수는 최소 1개 이상이어야 합니다.")
         @Max(value = 50, message = "추천 개수는 최대 50개 이하여야 합니다.")
         count: Int,
         @Parameter(description = "문제 카테고리 (선택사항, 예: IMPLEMENTATION, GRAPH, DP 등)", required = false)

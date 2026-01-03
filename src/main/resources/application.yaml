@@ -5,15 +5,11 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
-  data:
-    mongodb:
-      uri: mongodb://localhost:27017/didimlog
-
-  redis:
-    host: localhost
-    port: 6379
-
+  # Swagger UI 접근을 위한 HTTP Basic Authentication 설정
   security:
+    user:
+      name: ${SWAGGER_USERNAME:admin}
+      password: ${SWAGGER_PASSWORD:admin123}
     oauth2:
       client:
         registration:
