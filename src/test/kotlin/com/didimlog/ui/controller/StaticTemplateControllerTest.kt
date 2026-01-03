@@ -61,6 +61,13 @@ class StaticTemplateControllerTest {
         fun methodValidationPostProcessor(): org.springframework.validation.beanvalidation.MethodValidationPostProcessor {
             return org.springframework.validation.beanvalidation.MethodValidationPostProcessor()
         }
+
+        // WebConfig를 제외하기 위해 RateLimitInterceptor 관련 빈을 모킹
+        @Bean
+        fun rateLimitService(): com.didimlog.global.ratelimit.RateLimitService = mockk(relaxed = true)
+
+        @Bean
+        fun rateLimitInterceptor(): com.didimlog.global.ratelimit.RateLimitInterceptor = mockk(relaxed = true)
     }
 
     @Test
