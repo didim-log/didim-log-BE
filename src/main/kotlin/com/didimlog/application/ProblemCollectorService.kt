@@ -134,7 +134,8 @@ class ProblemCollectorService(
                     inputDescriptionHtml = details.inputDescriptionHtml,
                     outputDescriptionHtml = details.outputDescriptionHtml,
                     sampleInputs = details.sampleInputs.takeIf { it.isNotEmpty() },
-                    sampleOutputs = details.sampleOutputs.takeIf { it.isNotEmpty() }
+                    sampleOutputs = details.sampleOutputs.takeIf { it.isNotEmpty() },
+                    language = details.language
                 )
                 problemRepository.save(updatedProblem)
                 successCount++

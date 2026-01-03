@@ -30,16 +30,46 @@ class BojCrawler {
             val outputDescriptionHtml = extractOutputDescription(doc)
             val (sampleInputs, sampleOutputs) = extractSampleData(doc)
 
+            // 언어 감지: 문제 설명 텍스트에서 한글 문자 개수 확인
+            val combinedText = (descriptionHtml ?: "") + (inputDescriptionHtml ?: "") + (outputDescriptionHtml ?: "")
+            val detectedLanguage = detectLanguage(combinedText)
+
             ProblemDetails(
                 descriptionHtml = descriptionHtml,
                 inputDescriptionHtml = inputDescriptionHtml,
                 outputDescriptionHtml = outputDescriptionHtml,
                 sampleInputs = sampleInputs,
-                sampleOutputs = sampleOutputs
+                sampleOutputs = sampleOutputs,
+                language = detectedLanguage
             )
         } catch (e: Exception) {
             log.warn("BOJ 크롤링 실패: problemId=$problemId, error=${e.message}", e)
             null
+        }
+    }
+
+    /**
+     * 텍스트에서 언어를 감지한다.
+     * 한글 문자(Unicode AC00~D7A3)가 5개 미만이면 영어("en"), 그렇지 않으면 한국어("ko")로 판단한다.
+     *
+     * @param text 분석할 텍스트
+     * @return "ko" 또는 "en"
+     */
+    private fun detectLanguage(text: String): String {
+        if (text.isBlank()) {
+            return "ko" // 기본값
+        }
+
+        // 한글 문자 범위: AC00 (가) ~ D7A3 (힣)
+        val koreanCharCount = text.count { char ->
+            val codePoint = char.code
+            codePoint in 0xAC00..0xD7A3
+        }
+
+        return if (koreanCharCount < 5) {
+            "en"
+        } else {
+            "ko"
         }
     }
 
@@ -90,5 +120,6 @@ data class ProblemDetails(
     val inputDescriptionHtml: String?,
     val outputDescriptionHtml: String?,
     val sampleInputs: List<String>,
-    val sampleOutputs: List<String>
+    val sampleOutputs: List<String>,
+    val language: String = "ko"
 )

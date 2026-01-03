@@ -446,7 +446,7 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/problems/recommend` | 학생의 현재 티어보다 한 단계 높은 난이도(UserLevel + 1 ~ +2)의 문제 중, 아직 풀지 않은 문제를 추천합니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)` (최소 1개 이상), `@Max(50)` (최대 50개 이하)<br>  - 범위를 벗어나면 400 Bad Request<br>- `category` (String, optional): 문제 카테고리 필터<br>  - 예: "IMPLEMENTATION", "GRAPH", "DP" 등<br>  - 미지정 시 모든 카테고리에서 추천 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL | JWT Token |
+| GET | `/api/v1/problems/recommend` | 학생의 현재 티어보다 한 단계 높은 난이도(UserLevel + 1 ~ +2)의 문제 중, 아직 풀지 않은 문제를 추천합니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. **태그 별칭 지원:** 축약형 태그(예: "BFS", "DFS", "DP")를 입력하면 자동으로 공식 전체 이름(예: "Breadth-first Search")으로 변환하여 검색합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)` (최소 1개 이상), `@Max(50)` (최대 50개 이하)<br>  - 범위를 벗어나면 400 Bad Request<br>- `category` (String, optional): 문제 카테고리 필터<br>  - **지원 형식:**<br>    - 축약형 태그: "BFS", "DFS", "DP", "MST", "LCA", "KMP", "FFT", "LIS", "LCS" 등<br>    - 공식 전체 이름: "Breadth-first Search", "Depth-first Search", "Dynamic Programming" 등<br>    - Enum 이름: "IMPLEMENTATION", "GRAPH", "BFS", "DFS", "DP" 등<br>  - **자동 변환:** 축약형 태그는 자동으로 공식 전체 이름으로 변환되어 검색됩니다.<br>  - 예: "BFS" → "Breadth-first Search", "DP" → "Dynamic Programming"<br>  - 미지정 시 모든 카테고리에서 추천<br>- `language` (String, optional): 문제 언어 필터<br>  - 가능한 값: "ko" (한국어), "en" (영어)<br>  - 미지정 시 모든 언어에서 추천 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 설명 언어 ("ko" 또는 "en") | JWT Token |
 | GET | `/api/v1/problems/{problemId}` | 문제 ID로 문제 상세 정보를 조회합니다. DB에 상세 정보(HTML 본문)가 없으면 백준 웹사이트에서 실시간으로 크롤링하여 가져온 후 DB에 저장합니다. (Read-Through 전략) | **Path Variables:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Positive` (1 이상) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력 리스트<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력 리스트<br>- `tags` (List<String>): 알고리즘 분류 태그 리스트 | None |
 | GET | `/api/v1/problems/search` | 문제 번호로 문제를 검색합니다. DB에 문제가 없으면 Solved.ac API로 메타데이터를 조회하고 크롤링하여 저장한 후 반환합니다. | **Query Parameters:**<br>- `q` (Long, required): 문제 번호<br>  - 유효성: `@Positive` (1 이상) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력 리스트<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력 리스트<br>- `tags` (List<String>): 알고리즘 분류 태그 리스트 | None |
 
@@ -456,9 +456,28 @@ GET /api/v1/problems/recommend?count=10
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-**예시 요청 (카테고리별 추천):**
+**예시 요청 (카테고리별 추천 - Enum 이름):**
 ```http
 GET /api/v1/problems/recommend?count=10&category=IMPLEMENTATION
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (카테고리별 추천 - 축약형 태그):**
+```http
+GET /api/v1/problems/recommend?count=10&category=BFS
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+*참고: "BFS"는 자동으로 "Breadth-first Search"로 변환되어 검색됩니다.*
+
+**예시 요청 (카테고리별 추천 - 공식 전체 이름):**
+```http
+GET /api/v1/problems/recommend?count=10&category=Breadth-first Search
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (언어 필터 포함):**
+```http
+GET /api/v1/problems/recommend?count=10&category=DP&language=ko
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -2428,9 +2447,20 @@ JWT 토큰 기반 인증을 지원합니다.
 
 API 문서는 Swagger UI를 통해 확인할 수 있습니다:
 
-- **URL:** `http://localhost:8080/swagger-ui.html` (로컬 환경)
+- **URL:** `http://localhost:8080/swagger-ui/index.html` (로컬 환경)
 - **보안:** HTTP Basic Authentication 적용
   - **Username:** 환경 변수 `SWAGGER_USERNAME` (기본값: `admin`)
   - **Password:** 환경 변수 `SWAGGER_PASSWORD` (기본값: `admin123`)
   - Swagger UI 접근 시 브라우저에서 사용자명/비밀번호 입력 팝업이 표시됩니다.
+
+### Swagger 태그 통합
+
+관리자 관련 API는 모두 **"Admin"** 태그로 통합되어 있습니다:
+- AdminController: 회원 관리, 명언 관리, 피드백 관리, 공지사항 작성
+- AdminDashboardController: 관리자 대시보드 통계, 성능 메트릭, 차트 데이터, AI 품질 통계
+- AdminMemberController: 관리자 회원 정보 수정
+- AdminLogController: AI 리뷰 로그 조회 및 정리
+- AdminAuditController: 관리자 작업 감사 로그
+- AdminSystemController: AI 서비스 제어, 저장 공간 관리, 유지보수 모드
+- ProblemCollectorController: 문제 데이터 수집 (관리자용)
 

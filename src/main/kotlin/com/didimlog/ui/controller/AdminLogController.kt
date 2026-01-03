@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Admin Log", description = "관리자 AI 리뷰 로그 조회 API (ADMIN 권한 필요)")
+@Tag(name = "Admin", description = "관리자 AI 리뷰 로그 조회 API (ADMIN 권한 필요)")
 @RestController
 @RequestMapping("/api/v1/admin/logs")
 @Validated

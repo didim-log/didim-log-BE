@@ -71,12 +71,15 @@ class ProblemController(
         @Min(value = 1, message = "추천 개수는 최소 1개 이상이어야 합니다.")
         @Max(value = 50, message = "추천 개수는 최대 50개 이하여야 합니다.")
         count: Int,
-        @Parameter(description = "문제 카테고리 (선택사항, 예: IMPLEMENTATION, GRAPH, DP 등)", required = false)
+        @Parameter(description = "문제 카테고리 (선택사항). 축약형 태그(BFS, DFS, DP 등) 또는 공식 전체 이름(Breadth-first Search 등) 또는 Enum 이름(IMPLEMENTATION, GRAPH 등)을 입력할 수 있습니다. 축약형 태그는 자동으로 공식 전체 이름으로 변환됩니다.", required = false)
         @RequestParam(required = false)
-        category: String?
+        category: String?,
+        @Parameter(description = "문제 언어 (선택사항, \"ko\" 또는 \"en\", null이면 모든 언어)", required = false)
+        @RequestParam(required = false)
+        language: String?
     ): ResponseEntity<List<ProblemResponse>> {
         val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val problems = recommendationService.recommendProblems(bojId, count, category)
+        val problems = recommendationService.recommendProblems(bojId, count, category, language)
         val response = problems.map { ProblemResponse.from(it) }
         return ResponseEntity.ok(response)
     }

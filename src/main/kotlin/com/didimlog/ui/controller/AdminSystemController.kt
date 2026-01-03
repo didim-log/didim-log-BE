@@ -36,7 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Admin System", description = "관리자 시스템 제어 API (ADMIN 권한 필요)")
+@Tag(name = "Admin", description = "관리자 시스템 제어 API (ADMIN 권한 필요)")
 @RestController
 @RequestMapping("/api/v1/admin/system")
 @Validated

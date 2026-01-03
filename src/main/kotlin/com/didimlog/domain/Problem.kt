@@ -22,6 +22,7 @@ import org.springframework.data.mongodb.core.mapping.Document
  * @property sampleInputs 샘플 입력 리스트 (크롤링으로 수집, nullable)
  * @property sampleOutputs 샘플 출력 리스트 (크롤링으로 수집, nullable)
  * @property tags 알고리즘 분류 태그 리스트 (영문 표준명으로 저장)
+ * @property language 문제 설명 언어 ("ko" 또는 "en", 기본값: "ko")
  */
 @Document(collection = "problems")
 data class Problem(
@@ -41,7 +42,8 @@ data class Problem(
     val outputDescriptionHtml: String? = null,
     val sampleInputs: List<String>? = null,
     val sampleOutputs: List<String>? = null,
-    val tags: List<String> = emptyList()
+    val tags: List<String> = emptyList(),
+    val language: String = "ko"
 ) {
     init {
         require(level in 1..30) { "난이도 레벨은 1~30 사이여야 합니다. level=$level" }
