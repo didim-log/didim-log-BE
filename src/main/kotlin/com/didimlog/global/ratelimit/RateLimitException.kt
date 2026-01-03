@@ -11,3 +11,4 @@ class RateLimitException(
     val retryAfterSeconds: Long? = null
 ) : BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED, message)
 
+
