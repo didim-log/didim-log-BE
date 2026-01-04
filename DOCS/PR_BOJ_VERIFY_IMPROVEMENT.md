@@ -230,7 +230,11 @@ async function verifyBojOwnership(sessionId: string, bojId: string) {
     }
 
     const data = await response.json();
-    return { success: true, data };
+    // 인증 성공: verifiedBojId를 반환하여 회원가입 마무리 시 사용
+    return { 
+      success: true, 
+      verifiedBojId: data.verifiedBojId 
+    };
   } catch (error) {
     return {
       success: false,
