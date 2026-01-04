@@ -63,12 +63,17 @@
 }
 ```
 
-### Response (변경 없음)
+### Response (변경됨)
 ```json
 {
-  "verified": true
+  "verified": true,
+  "verifiedBojId": "mekazon"
 }
 ```
+
+**변경 사항:**
+- `verifiedBojId` 필드 추가: 인증된 BOJ ID를 반환합니다.
+- 프론트엔드에서 이 값을 저장하여 회원가입 마무리 시 사용합니다.
 
 ### ⚠️ 에러 응답 변경 (중요)
 
@@ -134,11 +139,11 @@
 - 메시지: "프로필 페이지에서 코드를 찾을 수 없습니다. 프로필 상태 메시지에 인증 코드(DIDIM-LOG-XXXXXX)를 정확히 입력하고 저장한 후, 몇 초 대기한 뒤 다시 시도해주세요."
 - HTTP Status: `400`
 
-#### 5. DB에서 학생을 찾을 수 없음 (변경 없음)
-- 에러 코드: `STUDENT_NOT_FOUND`
-- 메시지: "사용자를 찾을 수 없습니다. bojId=mekazon"
-- HTTP Status: `404`
-- **참고**: 이 에러는 코드 검증을 통과한 후에만 발생합니다.
+#### 5. DB에서 학생을 찾을 수 없음 (제거됨)
+- ~~에러 코드: `STUDENT_NOT_FOUND`~~ (더 이상 발생하지 않음)
+- **변경 사항**: `verifyOwnership`에서 DB 조회 로직을 제거했습니다.
+- **이유**: 회원가입 플로우에서 새 사용자는 당연히 DB에 없으므로, 인증 단계에서 DB 조회가 불필요합니다.
+- **새로운 플로우**: 인증 성공 시 `verifiedBojId`를 반환하고, 회원가입 마무리(`/api/v1/auth/signup/finalize`)에서 최종적으로 Student를 생성합니다.
 
 ---
 
@@ -168,7 +173,7 @@ if (error.code === 'COMMON_RESOURCE_NOT_FOUND') {
 }
 ```
 
-### 2. 에러 메시지 표시 개선
+### 3. 에러 메시지 표시 개선
 
 #### 권장 에러 처리 로직
 ```typescript
@@ -215,14 +220,6 @@ async function verifyBojOwnership(sessionId: string, bojId: string) {
             };
           }
         
-        case 'STUDENT_NOT_FOUND':
-          // 코드 검증 성공 후 DB 조회 실패 (드문 경우)
-          return {
-            success: false,
-            message: '사용자를 찾을 수 없습니다.',
-            userAction: '회원가입을 먼저 진행해주세요.',
-          };
-        
         default:
           return {
             success: false,
@@ -244,7 +241,7 @@ async function verifyBojOwnership(sessionId: string, bojId: string) {
 }
 ```
 
-### 3. 사용자 안내 메시지 개선
+### 4. 사용자 안내 메시지 개선
 
 #### 상태별 안내 메시지 예시
 
@@ -285,6 +282,35 @@ const ERROR_GUIDES = {
     ],
   },
 };
+```
+
+### 5. 회원가입 플로우 연동
+
+인증된 BOJ ID를 회원가입 마무리 API에 전달해야 합니다.
+
+```typescript
+// 1. BOJ 인증 완료
+const verifyResponse = await verifyBojOwnership(sessionId, bojId);
+if (!verifyResponse.success) {
+  // 에러 처리
+  return;
+}
+
+const verifiedBojId = verifyResponse.data.verifiedBojId;
+
+// 2. 정보 입력 화면으로 이동 (verifiedBojId 저장)
+setVerifiedBojId(verifiedBojId);
+navigateToInfoInput();
+
+// 3. 회원가입 마무리
+const finalizeResponse = await finalizeSignup({
+  email,
+  provider,
+  providerId,
+  nickname,
+  bojId: verifiedBojId, // 인증된 BOJ ID 사용
+  isAgreedToTerms: true,
+});
 ```
 
 ## 🔍 선택적 개선 사항
@@ -369,17 +395,19 @@ function BojVerificationErrorGuide({ errorCode, bojId }: Props) {
 | 백준 프로필 403 | `COMMON_INVALID_INPUT` | 400 | 프로필 공개 확인 안내 |
 | 상태 메시지 파싱 실패 | `COMMON_INVALID_INPUT` | 400 | 상태 메시지 입력 안내 |
 | 코드 불일치 | `COMMON_INVALID_INPUT` | 400 | 코드 재입력 안내 |
-| DB에 학생 없음 | `STUDENT_NOT_FOUND` | 404 | 회원가입 안내 |
 | 네트워크 오류 | `COMMON_INTERNAL_ERROR` | 500 | 재시도 안내 |
+
+**참고**: `STUDENT_NOT_FOUND` 에러는 더 이상 발생하지 않습니다. 인증 단계에서는 DB 조회를 하지 않습니다.
 
 ## ✅ 체크리스트
 
 프론트엔드 개발 시 다음 사항을 확인하세요:
 
 - [ ] `COMMON_RESOURCE_NOT_FOUND` 에러 코드 처리 추가
-- [ ] `STUDENT_NOT_FOUND`와 `COMMON_RESOURCE_NOT_FOUND` 구분 처리
+- [ ] `verifiedBojId` 필드 처리 추가 (응답에 포함됨)
 - [ ] 에러 메시지에 따른 사용자 안내 개선
 - [ ] 상태 메시지 관련 에러 처리 추가
+- [ ] 인증된 BOJ ID를 프론트엔드에서 저장하여 회원가입 마무리 시 사용
 - [ ] 에러 로깅 개선 (선택적)
 - [ ] 재시도 로직 개선 (선택적)
 - [ ] 사용자 가이드 UI 추가 (선택적)
