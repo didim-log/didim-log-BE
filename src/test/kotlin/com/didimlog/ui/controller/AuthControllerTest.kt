@@ -14,7 +14,9 @@ import com.didimlog.ui.dto.AuthResponse
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.clearMocks
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.runs
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
@@ -36,6 +38,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.global.ratelimit.RateLimitService
 
 @DisplayName("AuthController 테스트")
 @WebMvcTest(
@@ -62,6 +65,9 @@ class AuthControllerTest {
     @Autowired
     private lateinit var findAccountService: FindAccountService
 
+    @Autowired
+    private lateinit var rateLimitService: com.didimlog.global.ratelimit.RateLimitService
+
     @TestConfiguration
     class TestConfig {
         @Bean
@@ -86,6 +92,8 @@ class AuthControllerTest {
         @Bean
         fun rateLimitService(): com.didimlog.global.ratelimit.RateLimitService = mockk(relaxed = true) {
             every { isAllowed(any(), any(), any()) } returns true
+            every { getRemainingRequests(any(), any()) } returns 9 // 기본값: 9회 남음
+            every { reset(any()) } just runs // 로그인 성공 시 초기화
         }
 
         @Bean
@@ -164,7 +172,7 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("로그인 요청 시 200 OK와 토큰을 반환한다")
+    @DisplayName("로그인 요청 시 200 OK와 토큰을 반환하고 Rate Limit을 초기화한다")
     fun `로그인 성공`() {
         // given
         val request = LoginRequest(bojId = "testuser", password = "ValidPassword123!")
@@ -176,6 +184,7 @@ class AuthControllerTest {
         )
 
         every { authService.login(request.bojId, request.password) } returns authResult
+        every { rateLimitService.reset(any()) } just runs
 
         // when & then
         mockMvc.perform(
@@ -191,6 +200,7 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.message").value("로그인에 성공했습니다."))
 
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
+        verify(exactly = 1) { rateLimitService.reset(any()) }
     }
 
     @Test
@@ -217,11 +227,16 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 비밀번호가 일치하지 않으면 400 Bad Request를 반환한다")
     fun `로그인 실패 - 비밀번호 불일치`() {
         // given
+        clearMocks(authService, rateLimitService)
         val request = LoginRequest(bojId = "testuser", password = "WrongPassword123!")
 
         every {
             authService.login(request.bojId, request.password)
         } throws BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 일치하지 않습니다.")
+
+        every {
+            rateLimitService.getRemainingRequests(any(), any())
+        } returns 9
 
         // when & then
         mockMvc.perform(
@@ -230,19 +245,30 @@ class AuthControllerTest {
                 .content(objectMapper.writeValueAsString(request))
         )
             .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+            .andExpect(jsonPath("$.message").value("비밀번호가 일치하지 않습니다."))
+            .andExpect(jsonPath("$.remainingAttempts").value(9)) // Rate Limit 정보 포함
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Remaining", "9"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Limit", "10"))
 
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
+        verify(exactly = 1) { rateLimitService.getRemainingRequests(any(), any()) }
     }
 
     @Test
     @DisplayName("로그인 요청 시 존재하지 않는 BOJ ID면 404 Not Found를 반환한다")
     fun `로그인 실패 - 존재하지 않는 BOJ ID`() {
         // given
+        clearMocks(authService, rateLimitService)
         val request = LoginRequest(bojId = "nonexistent", password = "ValidPassword123!")
 
         every {
             authService.login(request.bojId, request.password)
         } throws BusinessException(ErrorCode.STUDENT_NOT_FOUND, "가입되지 않은 BOJ ID입니다.")
+
+        every {
+            rateLimitService.getRemainingRequests(any(), any())
+        } returns 9
 
         // when & then
         mockMvc.perform(
@@ -251,8 +277,39 @@ class AuthControllerTest {
                 .content(objectMapper.writeValueAsString(request))
         )
             .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code").value("STUDENT_NOT_FOUND"))
+            .andExpect(jsonPath("$.message").value("가입되지 않은 BOJ ID입니다."))
+            .andExpect(jsonPath("$.remainingAttempts").value(9)) // Rate Limit 정보 포함
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Remaining", "9"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Limit", "10"))
 
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
+        verify(exactly = 1) { rateLimitService.getRemainingRequests(any(), any()) }
+    }
+
+    @Test
+    @DisplayName("로그인 실패 시 남은 시도 횟수가 0이면 remainingAttempts가 0으로 반환된다")
+    fun `로그인 실패 - 남은 시도 횟수 0`() {
+        // given
+        val request = LoginRequest(bojId = "testuser", password = "WrongPassword123!")
+
+        every {
+            authService.login(request.bojId, request.password)
+        } throws BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 일치하지 않습니다.")
+
+        every {
+            rateLimitService.getRemainingRequests(any(), any())
+        } returns 0 // 남은 횟수 0
+
+        // when & then
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.remainingAttempts").value(0))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Remaining", "0"))
     }
 
     @Test

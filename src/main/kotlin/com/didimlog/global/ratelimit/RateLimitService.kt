@@ -57,7 +57,20 @@ class RateLimitService(
         val redisKey = "$RATE_LIMIT_PREFIX$key"
         redisTemplate.delete(redisKey)
     }
+
+    /**
+     * Rate Limit 키의 남은 TTL(초)을 조회합니다.
+     *
+     * @param key Rate Limit 키
+     * @return 남은 TTL(초), 키가 없거나 만료되었으면 null
+     */
+    fun getTtlSeconds(key: String): Long? {
+        val redisKey = "$RATE_LIMIT_PREFIX$key"
+        val ttl = redisTemplate.getExpire(redisKey, TimeUnit.SECONDS) ?: return null
+        return if (ttl > 0) ttl else null
+    }
 }
+
 
 
 
