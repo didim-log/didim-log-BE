@@ -63,11 +63,17 @@ class RecommendationService(
      * 예: BRONZE 티어(레벨 1~5) 학생 -> 레벨 (1-2) ~ (5+2) = 레벨 1~7 문제 추천
      * 예: SILVER 티어(레벨 6~10) 학생 -> 레벨 (6-2) ~ (10+2) = 레벨 4~12 문제 추천
      * 예: RUBY 티어(레벨 26~30) 학생 -> 레벨 (26-2) ~ (30+2) = 레벨 24~32 문제 추천
+     * 예: UNRATED 티어(레벨 0) 학생 -> 레벨 1~2 (Bronze V ~ Bronze IV) 문제 추천
      *
      * @param currentTier 현재 티어
      * @return 타겟 난이도 레벨 범위 (minLevel, maxLevel) Pair
      */
     private fun calculateTargetDifficultyLevelRange(currentTier: Tier): Pair<Int, Int> {
+        // UNRATED 특별 처리: Bronze V(레벨 1) ~ Bronze IV(레벨 2) 추천
+        if (currentTier == Tier.UNRATED) {
+            return Pair(1, 2)
+        }
+        
         val minLevel = (currentTier.minLevel - 2).coerceAtLeast(1)
         val maxLevel = currentTier.maxLevel + 2
         return Pair(minLevel, maxLevel)

@@ -313,6 +313,36 @@ class RecommendationServiceTest {
         verify { problemRepository.findByLevelBetweenAndCategory(1, 7, "DYNAMIC_PROGRAMMING") }
     }
 
+    @Test
+    @DisplayName("UNRATED 티어 학생에게 Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제를 추천한다")
+    fun `UNRATED 티어 학생에게 Bronze V~IV 레벨 문제 추천`() {
+        // given
+        // UNRATED 티어(레벨 0) 학생 -> 레벨 1~2 (Bronze V ~ Bronze IV) 문제 추천
+        val bojId = "unrated123"
+        val student = createStudent(
+            id = "student-unrated",
+            bojId = bojId,
+            tier = Tier.UNRATED,
+            solvedProblemIds = setOf()
+        )
+        val bronzeProblems = listOf(
+            createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
+            createProblem(id = "p2", tier = Tier.BRONZE, level = 2),
+            createProblem(id = "p3", tier = Tier.BRONZE, level = 3)
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetween(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
+
+        // when
+        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+
+        // then
+        assertThat(recommended).hasSize(2)
+        assertThat(recommended.map { it.level }).allMatch { it in 1..2 }
+        verify { problemRepository.findByLevelBetween(1, 2) }
+    }
+
     private fun createStudent(
         id: String,
         bojId: String,
