@@ -343,11 +343,43 @@ class RecommendationServiceTest {
         verify { problemRepository.findByLevelBetween(1, 2) }
     }
 
+    @Test
+    @DisplayName("rating=0(UNRATED)인데 currentTier가 불일치하더라도 Bronze V~IV(레벨 1~2) 문제를 추천한다")
+    fun `rating 기반으로 UNRATED 추천 범위를 계산한다`() {
+        // given
+        // legacy 데이터: rating은 0인데 currentTier가 BRONZE로 저장되어 있는 케이스를 가정
+        val bojId = "unratedlegacy"
+        val student = createStudent(
+            id = "student-legacy",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        ).copy(rating = 0)
+
+        val bronzeProblems = listOf(
+            createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
+            createProblem(id = "p2", tier = Tier.BRONZE, level = 2),
+            createProblem(id = "p3", tier = Tier.BRONZE, level = 3)
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetween(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
+
+        // when
+        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+
+        // then
+        assertThat(recommended).hasSize(2)
+        assertThat(recommended.map { it.level }).allMatch { it in 1..2 }
+        verify { problemRepository.findByLevelBetween(1, 2) }
+    }
+
     private fun createStudent(
         id: String,
         bojId: String,
         tier: Tier,
-        solvedProblemIds: Set<ProblemId>
+        solvedProblemIds: Set<ProblemId>,
+        rating: Int = if (tier == Tier.UNRATED) 0 else tier.minRating
     ): Student {
         val solutions = Solutions()
         solvedProblemIds.forEach { problemId ->
@@ -366,6 +398,7 @@ class RecommendationServiceTest {
             providerId = bojId,
             bojId = BojId(bojId),
             password = "test-password",
+            rating = rating,
             currentTier = tier,
             role = Role.USER,
             solutions = solutions
