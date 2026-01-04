@@ -12,3 +12,8 @@ class RateLimitException(
 ) : BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED, message)
 
 
+
+
+
+
+

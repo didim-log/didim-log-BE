@@ -5,7 +5,6 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
-import org.jsoup.Jsoup
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -15,10 +14,12 @@ import java.util.UUID
 @Service
 class BojOwnershipVerificationService(
     private val codeStore: BojVerificationCodeStore,
-    private val studentRepository: StudentRepository
+    private val studentRepository: StudentRepository,
+    private val profileStatusMessageClient: BojProfileStatusMessageClient
 ) {
 
     private val log = LoggerFactory.getLogger(BojOwnershipVerificationService::class.java)
+    private val codeMatcher = BojVerificationCodeMatcher()
 
     companion object {
         private const val CODE_PREFIX = "DIDIM-LOG-"
@@ -61,10 +62,11 @@ class BojOwnershipVerificationService(
         val storedCode = codeStore.find(sessionId)
             ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "인증 코드가 만료되었거나 존재하지 않습니다.")
 
-        val bojIdVo = BojId(bojId)
-        val profileBodyText = fetchBojProfileBodyText(bojIdVo.value)
+        val bojIdVo = BojId(bojId.trim())
+        val verificationCode = BojVerificationCode(storedCode)
+        val statusMessage = fetchStatusMessageOrThrow(bojIdVo)
 
-        if (!isCodePresentInMessage(profileBodyText, storedCode)) {
+        if (!codeMatcher.matches(statusMessage, verificationCode)) {
             throw BusinessException(
                 ErrorCode.COMMON_INVALID_INPUT,
                 "프로필 페이지에서 코드를 찾을 수 없습니다. 프로필 상태 메시지에 인증 코드($storedCode)를 정확히 입력하고 저장한 후, 몇 초 대기한 뒤 다시 시도해주세요."
@@ -80,124 +82,57 @@ class BojOwnershipVerificationService(
         codeStore.delete(sessionId)
     }
 
-    /**
-     * Jsoup을 사용하여 백준 프로필 페이지를 직접 크롤링하고 본문(Body) 전체 텍스트를 가져온다.
-     *
-     * @param bojId BOJ ID
-     * @return 프로필 페이지 본문 전체 텍스트
-     * @throws BusinessException 크롤링 실패 시 (네트워크 오류, 404 등)
-     */
-    private fun fetchBojProfileBodyText(bojId: String): String {
-        val url = "https://www.acmicpc.net/user/$bojId"
-        return try {
-            val document = connectToBojProfile(url)
-            document.body().text()
-        } catch (e: org.jsoup.HttpStatusException) {
-            handleHttpStatusException(e, bojId)
-        } catch (e: java.net.SocketTimeoutException) {
-            handleTimeoutException(e, bojId)
-        } catch (e: java.net.UnknownHostException) {
-            handleNetworkException(e, bojId)
-        } catch (e: Exception) {
-            handleGenericException(e, bojId)
+    private fun fetchStatusMessageOrThrow(bojId: BojId): BojProfileStatusMessage {
+        val fetchResult = profileStatusMessageClient.fetchStatusMessage(bojId.value)
+        if (fetchResult is BojProfileStatusMessageFetchResult.Found) {
+            return fetchResult.statusMessage
         }
-    }
-
-    private fun connectToBojProfile(url: String): org.jsoup.nodes.Document {
-        return Jsoup.connect(url)
-            .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .timeout(10000)
-            .get()
-    }
-
-    private fun handleHttpStatusException(e: org.jsoup.HttpStatusException, bojId: String): Nothing {
-        if (e.statusCode == 404) {
+        if (fetchResult is BojProfileStatusMessageFetchResult.UserNotFound) {
             throwNotFoundException(bojId)
         }
-        if (e.statusCode == 403) {
+        if (fetchResult is BojProfileStatusMessageFetchResult.AccessDenied) {
             throwAccessDeniedException(bojId)
         }
-        throwInternalErrorException(bojId, e.statusCode, e.message)
+        if (fetchResult is BojProfileStatusMessageFetchResult.StatusMessageNotFound) {
+            throwStatusMessageNotFoundException(bojId)
+        }
+        throwFetchFailedException(bojId, fetchResult)
     }
 
-    private fun throwNotFoundException(bojId: String): Nothing {
-        log.warn("BOJ 프로필을 찾을 수 없음: bojId=$bojId, status=404")
+    private fun throwNotFoundException(bojId: BojId): Nothing {
+        log.warn("BOJ 프로필을 찾을 수 없음: bojId={}", bojId.value)
         throw BusinessException(
             ErrorCode.COMMON_RESOURCE_NOT_FOUND,
-            "백준 프로필을 찾을 수 없습니다. BOJ ID가 올바른지 확인해주세요. bojId=$bojId"
+            "백준 프로필을 찾을 수 없습니다. BOJ ID가 올바른지 확인해주세요. bojId=${bojId.value}"
         )
     }
 
-    private fun throwAccessDeniedException(bojId: String): Nothing {
-        log.warn("BOJ 프로필 접근 거부: bojId=$bojId, status=403")
+    private fun throwAccessDeniedException(bojId: BojId): Nothing {
+        log.warn("BOJ 프로필 접근 거부: bojId={}", bojId.value)
         throw BusinessException(
             ErrorCode.COMMON_INVALID_INPUT,
-            "백준 프로필 페이지에 접근할 수 없습니다. 프로필이 공개되어 있는지 확인해주세요. bojId=$bojId"
+            "백준 프로필 페이지에 접근할 수 없습니다. 프로필이 공개되어 있는지 확인해주세요. bojId=${bojId.value}"
         )
     }
 
-    private fun throwInternalErrorException(bojId: String, statusCode: Int, message: String?): Nothing {
-        log.error("BOJ 프로필 크롤링 실패: bojId=$bojId, status=$statusCode, message=$message")
+    private fun throwStatusMessageNotFoundException(bojId: BojId): Nothing {
+        log.warn("BOJ 프로필 상태 메시지를 찾을 수 없음: bojId={}", bojId.value)
+        throw BusinessException(
+            ErrorCode.COMMON_INVALID_INPUT,
+            "백준 프로필 상태 메시지를 찾을 수 없습니다. 프로필 상태 메시지에 인증 코드를 입력하고 저장한 뒤 다시 시도해주세요. bojId=${bojId.value}"
+        )
+    }
+
+    private fun throwFetchFailedException(
+        bojId: BojId,
+        fetchResult: BojProfileStatusMessageFetchResult
+    ): Nothing {
+        val reason = (fetchResult as? BojProfileStatusMessageFetchResult.Failed)?.reason ?: fetchResult.toString()
+        log.error("BOJ 프로필 상태 메시지 조회 실패: bojId={}, reason={}", bojId.value, reason)
         throw BusinessException(
             ErrorCode.COMMON_INTERNAL_ERROR,
-            "백준 프로필 페이지를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. bojId=$bojId"
+            "백준 프로필 페이지를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. bojId=${bojId.value}"
         )
-    }
-
-    private fun handleTimeoutException(e: java.net.SocketTimeoutException, bojId: String): Nothing {
-        log.error("BOJ 프로필 크롤링 타임아웃: bojId=$bojId, message=${e.message}", e)
-        throw BusinessException(
-            ErrorCode.COMMON_INTERNAL_ERROR,
-            "백준 프로필 페이지를 가져오는 중 시간이 초과되었습니다. 잠시 후 다시 시도해주세요. bojId=$bojId"
-        )
-    }
-
-    private fun handleNetworkException(e: java.net.UnknownHostException, bojId: String): Nothing {
-        log.error("BOJ 프로필 크롤링 네트워크 오류: bojId=$bojId, message=${e.message}", e)
-        throw BusinessException(
-            ErrorCode.COMMON_INTERNAL_ERROR,
-            "네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요. bojId=$bojId"
-        )
-    }
-
-    private fun handleGenericException(e: Exception, bojId: String): Nothing {
-        log.error("BOJ 프로필 크롤링 실패: bojId=$bojId, exceptionType=${e.javaClass.simpleName}, message=${e.message}", e)
-        throw BusinessException(
-            ErrorCode.COMMON_INTERNAL_ERROR,
-            "백준 프로필 페이지를 가져오는 중 오류가 발생했습니다. bojId=$bojId, error=${e.message}"
-        )
-    }
-
-    /**
-     * 상태 메시지에 코드가 정확히 포함되어 있는지 검증한다.
-     * 부분 문자열 일치 문제를 방지하기 위해 단어 경계 또는 공백/문자열 끝을 확인한다.
-     *
-     * 예시:
-     * - 코드 "DIDIM-LOG-1234"가 상태 메시지 "DIDIM-LOG-12345"에 포함되는 것을 방지
-     * - 코드 "DIDIM-LOG-1234"가 상태 메시지 "DIDIM-LOG-1234"와 정확히 일치하면 통과
-     * - 코드 "DIDIM-LOG-1234"가 상태 메시지 "코드: DIDIM-LOG-1234 입니다"에 포함되면 통과
-     *
-     * @param statusMessage BOJ 프로필 상태 메시지
-     * @param code 검증할 코드
-     * @return 코드가 정확히 포함되어 있으면 true
-     */
-    private fun isCodePresentInMessage(statusMessage: String, code: String): Boolean {
-        val trimmedStatus = statusMessage.trim()
-        val trimmedCode = code.trim()
-
-        // 정확한 일치
-        if (trimmedStatus == trimmedCode) {
-            return true
-        }
-
-        // 단어 경계 또는 공백/문자열 끝으로 감싸져 있는지 확인 (부분 문자열 일치 방지)
-        // Regex.escape를 사용하여 특수문자(하이픈 등)를 이스케이프 처리
-        // \b는 단어 경계를 의미하지만, 하이픈이 포함된 경우 더 정확한 패턴 사용
-        val escapedCode = Regex.escape(trimmedCode)
-        
-        // 패턴: 문자열 시작 또는 공백/비단어 문자 뒤에 코드가 오고, 문자열 끝 또는 공백/비단어 문자가 뒤에 오는 경우
-        val pattern = Regex("(^|[\\s\\W])$escapedCode([\\s\\W]|\$)")
-        return pattern.containsMatchIn(trimmedStatus)
     }
 
     private fun randomUpperAlphaNumeric(length: Int): String {
