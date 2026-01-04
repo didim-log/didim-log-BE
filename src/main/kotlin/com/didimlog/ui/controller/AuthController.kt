@@ -9,6 +9,9 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.global.exception.ErrorResponse
+import com.didimlog.global.ratelimit.RateLimitService
+import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.ui.dto.AuthResponse
 import com.didimlog.ui.dto.BojIdDuplicateCheckResponse
 import com.didimlog.ui.dto.BojCodeIssueResponse
@@ -56,6 +59,7 @@ class AuthController(
     private val refreshTokenService: RefreshTokenService,
     private val jwtTokenProvider: JwtTokenProvider,
     private val studentRepository: StudentRepository,
+    private val rateLimitService: RateLimitService,
     @Value("\${app.admin.secret-key}")
     private val adminSecretKey: String
 ) {
@@ -98,23 +102,49 @@ class AuthController(
 
     @Operation(
         summary = "로그인",
-        description = "BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다."
+        description = "BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 성공 시 Rate Limit이 초기화되며, 로그인 실패 시 남은 시도 횟수가 응답 헤더와 바디에 포함됩니다."
     )
     @PostMapping("/login")
     fun login(
         @RequestBody
         @Valid
-        request: LoginRequest
-    ): ResponseEntity<AuthResponse> {
-        val result = authService.login(request.bojId, request.password)
-        val response = AuthResponse.login(
-            token = result.token,
-            refreshToken = result.refreshToken,
-            rating = result.rating,
-            tier = result.tier.name,
-            tierLevel = result.tier.value
-        )
-        return ResponseEntity.ok(response)
+        request: LoginRequest,
+        httpRequest: jakarta.servlet.http.HttpServletRequest,
+        httpResponse: jakarta.servlet.http.HttpServletResponse
+    ): ResponseEntity<*> {
+        return try {
+            val result = authService.login(request.bojId, request.password)
+            
+            // 로그인 성공 시 Rate Limit 초기화 (정상 사용자임을 증명했으므로 실패 횟수 리셋)
+            val clientIp = HttpRequestUtil.getClientIpAddress(httpRequest)
+            rateLimitService.reset("login:$clientIp")
+            
+            val response = AuthResponse.login(
+                token = result.token,
+                refreshToken = result.refreshToken,
+                rating = result.rating,
+                tier = result.tier.name,
+                tierLevel = result.tier.value
+            )
+            ResponseEntity.ok(response)
+        } catch (e: BusinessException) {
+            // 로그인 실패 시 Rate Limit 정보 포함
+            val clientIp = HttpRequestUtil.getClientIpAddress(httpRequest)
+            val maxLoginRequests = 10
+            val remainingAttempts = rateLimitService.getRemainingRequests("login:$clientIp", maxLoginRequests)
+            
+            // 응답 헤더에 Rate Limit 정보 추가
+            httpResponse.setHeader("X-Rate-Limit-Remaining", remainingAttempts.toString())
+            httpResponse.setHeader("X-Rate-Limit-Limit", maxLoginRequests.toString())
+            
+            // 응답 바디에 Rate Limit 정보 포함
+            val errorResponse = ErrorResponse.of(
+                errorCode = e.errorCode,
+                customMessage = e.message ?: e.errorCode.message,
+                remainingAttempts = remainingAttempts
+            )
+            ResponseEntity.status(e.errorCode.status).body(errorResponse)
+        }
     }
 
     @Operation(

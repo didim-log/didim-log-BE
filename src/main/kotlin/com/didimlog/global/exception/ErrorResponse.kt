@@ -8,7 +8,9 @@ data class ErrorResponse(
     val status: Int,
     val error: String,
     val code: String,
-    val message: String
+    val message: String,
+    val remainingAttempts: Int? = null, // Rate Limiting 남은 횟수 (선택적)
+    val unlockTime: String? = null // Rate Limit 해제 시간 (한국시간, ISO 8601 형식, 선택적)
 ) {
     companion object {
         fun of(errorCode: ErrorCode): ErrorResponse {
@@ -26,6 +28,16 @@ data class ErrorResponse(
                 error = getHttpStatusName(errorCode.status),
                 code = errorCode.code,
                 message = customMessage
+            )
+        }
+
+        fun of(errorCode: ErrorCode, customMessage: String, remainingAttempts: Int): ErrorResponse {
+            return ErrorResponse(
+                status = errorCode.status,
+                error = getHttpStatusName(errorCode.status),
+                code = errorCode.code,
+                message = customMessage,
+                remainingAttempts = remainingAttempts
             )
         }
 

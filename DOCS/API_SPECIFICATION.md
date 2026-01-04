@@ -9,11 +9,14 @@
 다음 API는 Rate Limiting이 적용되어 있습니다:
 
 - **회원가입** (`POST /api/v1/auth/signup`): IP당 1시간에 5회
-- **로그인** (`POST /api/v1/auth/login`): IP당 1시간에 10회
+- **로그인** (`POST /api/v1/auth/login`): IP당 1시간에 10회 (로그인 성공 시 Rate Limit 초기화)
 - **계정 찾기** (`POST /api/v1/auth/find-account`): IP당 1시간에 3회
 - **비밀번호 재설정** (`POST /api/v1/auth/reset-password`): IP당 1시간에 3회
 
-Rate Limit 초과 시 `429 Too Many Requests` 응답이 반환됩니다.
+**관리자 계정 예외:**
+- ADMIN 권한을 가진 사용자는 Rate Limiting이 적용되지 않습니다.
+
+Rate Limit 초과 시 `429 Too Many Requests` 응답이 반환되며, 한국시간으로 잠금 해제 시간이 포함됩니다.
 
 **응답 예시:**
 ```json
@@ -21,9 +24,15 @@ Rate Limit 초과 시 `429 Too Many Requests` 응답이 반환됩니다.
   "status": 429,
   "error": "Too Many Requests",
   "code": "RATE_LIMIT_EXCEEDED",
-  "message": "회원가입 요청이 너무 많습니다. 1시간 후 다시 시도해주세요."
+  "message": "회원가입 요청이 너무 많습니다. 1시간 후 다시 시도해주세요.",
+  "unlockTime": "2024-01-15T14:30:00+09:00"
 }
 ```
+
+**unlockTime 필드:**
+- 한국시간(Asia/Seoul, UTC+9)으로 표시된 잠금 해제 시간
+- ISO 8601 형식 (예: "2024-01-15T14:30:00+09:00")
+- Rate Limit이 해제되는 정확한 시각을 사용자에게 알려줍니다
 
 ## 목차
 
@@ -58,7 +67,7 @@ Rate Limit 초과 시 `429 Too Many Requests` 응답이 반환됩니다.
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/auth/signup` | BOJ ID, 비밀번호, 이메일을 입력받아 Solved.ac API로 검증 후 회원가입을 진행하고 JWT 토큰을 발급합니다. 비밀번호는 BCrypt로 암호화되어 저장됩니다. Solved.ac의 Rating(점수)을 기반으로 티어를 자동 계산합니다. 이메일은 아이디/비밀번호 찾기에 사용됩니다. | **Request Body:**<br>`SignupRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - **비밀번호 정책:**<br>    - 영문, 숫자, 특수문자 중 **3종류 이상 조합**: 최소 **8자리** 이상<br>    - 영문, 숫자, 특수문자 중 **2종류 이상 조합**: 최소 **10자리** 이상<br>    - 공백 포함 불가<br>- `email` (String, required): 이메일 주소<br>  - 유효성: `@NotBlank`, `@Email`<br>  - **중복 불가** (이미 사용 중인 이메일이면 400 발생)<br>  - 아이디/비밀번호 찾기에 사용됨 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (30분 유효)<br>- `refreshToken` (String): JWT Refresh Token (7일 유효)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
-| POST | `/api/v1/auth/login` | BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 시 Solved.ac API를 통해 Rating 및 Tier 정보를 동기화합니다. | **Request Body:**<br>`LoginRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상) | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (30분 유효)<br>- `refreshToken` (String): JWT Refresh Token (7일 유효)<br>- `message` (String): 응답 메시지 ("로그인에 성공했습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
+| POST | `/api/v1/auth/login` | BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 시 Solved.ac API를 통해 Rating 및 Tier 정보를 동기화합니다.<br><br>**Rate Limiting:**<br>- 로그인 성공 시: Rate Limit이 초기화되어 실패 횟수가 리셋됩니다.<br>- 로그인 실패 시: 남은 시도 횟수가 응답 헤더(`X-Rate-Limit-Remaining`, `X-Rate-Limit-Limit`)와 응답 바디(`remainingAttempts`)에 포함됩니다. | **Request Body:**<br>`LoginRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상) | `AuthResponse` (성공 시)<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (30분 유효)<br>- `refreshToken` (String): JWT Refresh Token (7일 유효)<br>- `message` (String): 응답 메시지 ("로그인에 성공했습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값)<br><br>**ErrorResponse** (실패 시)<br>- `status` (Int): HTTP 상태 코드<br>- `error` (String): 에러 이름<br>- `code` (String): 에러 코드<br>- `message` (String): 에러 메시지<br>- `remainingAttempts` (Int): 남은 시도 횟수<br><br>**응답 헤더 (실패 시):**<br>- `X-Rate-Limit-Remaining`: 남은 시도 횟수<br>- `X-Rate-Limit-Limit`: 최대 시도 횟수 (10) | None |
 | GET | `/api/v1/auth/check-duplicate` | 회원가입 2단계(인증) 전, 입력한 BOJ ID가 이미 가입된 계정인지 확인합니다. | **Query Parameters:**<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank` | `BojIdDuplicateCheckResponse`<br><br>**BojIdDuplicateCheckResponse 구조:**<br>- `isDuplicate` (Boolean): 중복 여부<br>- `message` (String): 안내 메시지 | None |
 | POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `email` (String, required): 이메일 주소<br>  - 유효성: `@NotBlank`, `@Email`<br>  - **중복 불가** (이미 사용 중인 이메일이면 400 발생)<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함, 30분 유효)<br>- `refreshToken` (String): JWT Refresh Token (7일 유효)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/signup/finalize` | 소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되며 정식 Access Token이 발급됩니다. | **Request Body:**<br>`SignupFinalizeRequest`<br>- `email` (String, required): 사용자 이메일<br>  - 유효성: `@NotBlank` (null/공백 불가)<br>  - **GitHub 비공개 이메일 등 제공자에서 이메일을 내려주지 않는 경우**: 프론트엔드에서 사용자가 직접 입력한 값을 전달해야 함<br>- `provider` (String, required): 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)<br>  - 유효성: `@NotBlank`<br>- `providerId` (String, required): 제공자별 사용자 ID<br>  - 유효성: `@NotBlank`<br>- `nickname` (String, required): 설정할 닉네임<br>  - 유효성: `@NotBlank`<br>  - **닉네임 정책:**<br>    - 길이: 2~12<br>    - 허용: 영문/숫자/완성형 한글(가-힣)/특수문자(., _, -)<br>    - 금지: 공백/한글 자모(ㄱ-ㅎ, ㅏ-ㅣ)/기타 특수문자/예약어(admin, manager)<br>    - 정규식: `^[a-zA-Z0-9가-힣._-]{2,12}$`<br>- `bojId` (String, optional): BOJ ID (선택)<br>  - 제공된 경우 Solved.ac API로 검증 및 Rating 조회<br>  - **중복 불가** (이미 존재하는 BOJ ID면 409 발생)<br>- `isAgreedToTerms` (Boolean, required): 약관 동의 여부<br>  - 유효성: `@NotNull`<br>  - 반드시 `true`여야 함 (약관 동의는 필수)<br><br>※ 서버는 호환성을 위해 `termsAgreed`도 함께 지원합니다. | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (USER role 포함, 30분 유효)<br>- `refreshToken` (String): JWT Refresh Token (7일 유효)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수, BOJ ID가 제공된 경우)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER", "BRONZE")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
@@ -172,8 +181,15 @@ GET /api/v1/auth/check-duplicate?bojId=user123
   "status": 400,
   "error": "Bad Request",
   "code": "COMMON_INVALID_INPUT",
-  "message": "비밀번호가 일치하지 않습니다."
+  "message": "비밀번호가 일치하지 않습니다.",
+  "remainingAttempts": 9
 }
+```
+
+**응답 헤더 (비밀번호 불일치 시):**
+```
+X-Rate-Limit-Remaining: 9
+X-Rate-Limit-Limit: 10
 ```
 
 **에러 응답 예시 (이미 가입된 사용자):**
@@ -446,9 +462,16 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/problems/recommend` | 학생의 현재 티어보다 한 단계 높은 난이도(UserLevel + 1 ~ +2)의 문제 중, 아직 풀지 않은 문제를 추천합니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. **태그 별칭 지원:** 축약형 태그(예: "BFS", "DFS", "DP")를 입력하면 자동으로 공식 전체 이름(예: "Breadth-first Search")으로 변환하여 검색합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)` (최소 1개 이상), `@Max(50)` (최대 50개 이하)<br>  - 범위를 벗어나면 400 Bad Request<br>- `category` (String, optional): 문제 카테고리 필터<br>  - **지원 형식:**<br>    - 축약형 태그: "BFS", "DFS", "DP", "MST", "LCA", "KMP", "FFT", "LIS", "LCS" 등<br>    - 공식 전체 이름: "Breadth-first Search", "Depth-first Search", "Dynamic Programming" 등<br>    - Enum 이름: "IMPLEMENTATION", "GRAPH", "BFS", "DFS", "DP" 등<br>  - **자동 변환:** 축약형 태그는 자동으로 공식 전체 이름으로 변환되어 검색됩니다.<br>  - 예: "BFS" → "Breadth-first Search", "DP" → "Dynamic Programming"<br>  - 미지정 시 모든 카테고리에서 추천<br>- `language` (String, optional): 문제 언어 필터<br>  - 가능한 값: "ko" (한국어), "en" (영어)<br>  - 미지정 시 모든 언어에서 추천 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 설명 언어 ("ko" 또는 "en") | JWT Token |
+| GET | `/api/v1/problems/recommend` | 학생의 현재 티어를 기반으로 적절한 난이도의 문제를 추천합니다. **추천 로직:** 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 문제 중, 아직 풀지 않은 문제를 추천합니다. **UNRATED 사용자 특별 처리:** UNRATED 티어(레벨 0) 사용자는 Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제를 추천받습니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. **태그 별칭 지원:** 축약형 태그(예: "BFS", "DFS", "DP")를 입력하면 자동으로 공식 전체 이름(예: "Breadth-first Search")으로 변환하여 검색합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)` (최소 1개 이상), `@Max(50)` (최대 50개 이하)<br>  - 범위를 벗어나면 400 Bad Request<br>- `category` (String, optional): 문제 카테고리 필터<br>  - **지원 형식:**<br>    - 축약형 태그: "BFS", "DFS", "DP", "MST", "LCA", "KMP", "FFT", "LIS", "LCS" 등<br>    - 공식 전체 이름: "Breadth-first Search", "Depth-first Search", "Dynamic Programming" 등<br>    - Enum 이름: "IMPLEMENTATION", "GRAPH", "BFS", "DFS", "DP" 등<br>  - **자동 변환:** 축약형 태그는 자동으로 공식 전체 이름으로 변환되어 검색됩니다.<br>  - 예: "BFS" → "Breadth-first Search", "DP" → "Dynamic Programming"<br>  - 미지정 시 모든 카테고리에서 추천<br>- `language` (String, optional): 문제 언어 필터<br>  - 가능한 값: "ko" (한국어), "en" (영어)<br>  - 미지정 시 모든 언어에서 추천 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 설명 언어 ("ko" 또는 "en") | JWT Token |
 | GET | `/api/v1/problems/{problemId}` | 문제 ID로 문제 상세 정보를 조회합니다. DB에 상세 정보(HTML 본문)가 없으면 백준 웹사이트에서 실시간으로 크롤링하여 가져온 후 DB에 저장합니다. (Read-Through 전략) | **Path Variables:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Positive` (1 이상) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력 리스트<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력 리스트<br>- `tags` (List<String>): 알고리즘 분류 태그 리스트 | None |
 | GET | `/api/v1/problems/search` | 문제 번호로 문제를 검색합니다. DB에 문제가 없으면 Solved.ac API로 메타데이터를 조회하고 크롤링하여 저장한 후 반환합니다. | **Query Parameters:**<br>- `q` (Long, required): 문제 번호<br>  - 유효성: `@Positive` (1 이상) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력 리스트<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력 리스트<br>- `tags` (List<String>): 알고리즘 분류 태그 리스트 | None |
+
+**추천 로직 상세:**
+- **UNRATED 사용자**: Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제 추천
+- **BRONZE 사용자**: 레벨 1~7 문제 추천 (레벨 1~5 범위에서 -2 ~ +2)
+- **SILVER 사용자**: 레벨 4~12 문제 추천 (레벨 6~10 범위에서 -2 ~ +2)
+- **GOLD 사용자**: 레벨 9~17 문제 추천 (레벨 11~15 범위에서 -2 ~ +2)
+- **기타 티어**: 현재 티어 레벨 범위에서 -2 ~ +2 단계 문제 추천
 
 **예시 요청 (기본 추천):**
 ```http
