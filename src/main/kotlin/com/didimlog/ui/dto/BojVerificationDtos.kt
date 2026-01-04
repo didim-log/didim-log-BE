@@ -16,6 +16,7 @@ data class BojVerifyRequest(
 )
 
 data class BojVerifyResponse(
-    val verified: Boolean = true
+    val verified: Boolean = true,
+    val verifiedBojId: String
 )
 

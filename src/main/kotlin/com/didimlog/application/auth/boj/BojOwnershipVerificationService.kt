@@ -1,7 +1,5 @@
 package com.didimlog.application.auth.boj
 
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -14,7 +12,6 @@ import java.util.UUID
 @Service
 class BojOwnershipVerificationService(
     private val codeStore: BojVerificationCodeStore,
-    private val studentRepository: StudentRepository,
     private val profileStatusMessageClient: BojProfileStatusMessageClient
 ) {
 
@@ -57,8 +54,21 @@ class BojOwnershipVerificationService(
         return IssuedCode(sessionId = sessionId, code = code, expiresInSeconds = DEFAULT_TTL_SECONDS)
     }
 
+    /**
+     * BOJ 소유권 인증을 수행한다.
+     * 프로필 상태 메시지에서 인증 코드를 확인하고, 성공 시 인증된 BOJ ID를 세션에 저장한다.
+     * 
+     * 회원가입 플로우:
+     * 1. 이 API로 BOJ ID 인증 완료
+     * 2. 인증된 BOJ ID를 프론트엔드에서 관리
+     * 3. /api/v1/auth/signup/finalize에서 인증된 BOJ ID로 회원가입 마무리
+     * 
+     * @param sessionId 인증 코드 발급 시 받은 세션 ID
+     * @param bojId 인증할 BOJ ID
+     * @return 인증된 BOJ ID
+     */
     @Transactional
-    fun verifyOwnership(sessionId: String, bojId: String) {
+    fun verifyOwnership(sessionId: String, bojId: String): String {
         val storedCode = codeStore.find(sessionId)
             ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "인증 코드가 만료되었거나 존재하지 않습니다.")
 
@@ -73,13 +83,15 @@ class BojOwnershipVerificationService(
             )
         }
 
-        val student = studentRepository.findByBojId(bojIdVo)
-            .orElseThrow { BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. bojId=$bojId") }
-
-        val verifiedStudent = student.copy(isVerified = true, role = Role.USER, bojId = student.bojId ?: bojIdVo)
-        studentRepository.save(verifiedStudent)
-
+        // 인증 성공: 인증된 BOJ ID를 세션에 저장 (회원가입 마무리 시 사용)
+        val verifiedBojIdKey = "boj:verified:$sessionId"
+        codeStore.save(verifiedBojIdKey, bojIdVo.value, DEFAULT_TTL_SECONDS)
+        
+        // 인증 코드는 삭제 (일회성)
         codeStore.delete(sessionId)
+
+        log.info("BOJ 소유권 인증 성공: bojId={}, sessionId={}", bojIdVo.value, sessionId)
+        return bojIdVo.value
     }
 
     private fun fetchStatusMessageOrThrow(bojId: BojId): BojProfileStatusMessage {

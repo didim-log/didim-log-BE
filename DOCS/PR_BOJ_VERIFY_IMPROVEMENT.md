@@ -389,3 +389,4 @@ function BojVerificationErrorGuide({ errorCode, bojId }: Props) {
 - [API 명세서](./API_SPECIFICATION.md#authcontroller) - `POST /api/v1/auth/boj/verify` 섹션
 - [에러 코드 목록](./API_SPECIFICATION.md#에러-응답-형식) - 공통 에러 코드 참조
 
+
