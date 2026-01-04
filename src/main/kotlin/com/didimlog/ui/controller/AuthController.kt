@@ -338,7 +338,7 @@ class AuthController(
 
     @Operation(
         summary = "BOJ 소유권 인증 확인",
-        description = "백준 프로필 상태 메시지에 발급된 인증 코드가 포함되어 있는지 확인하고, 성공 시 Student.isVerified를 true로 업데이트합니다."
+        description = "백준 프로필 상태 메시지에 발급된 인증 코드가 포함되어 있는지 확인합니다. 인증 성공 시 인증된 BOJ ID를 반환하며, 이후 회원가입 마무리(/api/v1/auth/signup/finalize)에서 이 BOJ ID를 사용하여 계정을 생성합니다."
     )
     @PostMapping("/boj/verify")
     fun verifyBojOwnership(
@@ -346,11 +346,11 @@ class AuthController(
         @Valid
         request: BojVerifyRequest
     ): ResponseEntity<BojVerifyResponse> {
-        bojOwnershipVerificationService.verifyOwnership(
+        val verifiedBojId = bojOwnershipVerificationService.verifyOwnership(
             sessionId = request.sessionId,
             bojId = request.bojId
         )
-        return ResponseEntity.ok(BojVerifyResponse())
+        return ResponseEntity.ok(BojVerifyResponse(verifiedBojId = verifiedBojId))
     }
 
     @Operation(

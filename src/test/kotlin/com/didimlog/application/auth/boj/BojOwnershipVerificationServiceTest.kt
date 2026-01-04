@@ -1,13 +1,5 @@
 package com.didimlog.application.auth.boj
 
-import com.didimlog.domain.Student
-import com.didimlog.domain.Solutions
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
@@ -15,7 +7,6 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.verify
-import java.util.Optional
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
@@ -25,9 +16,8 @@ import org.junit.jupiter.api.Test
 class BojOwnershipVerificationServiceTest {
 
     private val codeStore: BojVerificationCodeStore = mockk()
-    private val studentRepository: StudentRepository = mockk()
     private val profileStatusMessageClient: BojProfileStatusMessageClient = mockk()
-    private val service = BojOwnershipVerificationService(codeStore, studentRepository, profileStatusMessageClient)
+    private val service = BojOwnershipVerificationService(codeStore, profileStatusMessageClient)
 
     @Test
     @DisplayName("인증 코드를 발급하면 sessionId와 함께 저장한다")
@@ -108,51 +98,31 @@ class BojOwnershipVerificationServiceTest {
     }
 
     @Test
-    @DisplayName("상태 메시지에 코드가 있으면 학생을 인증 처리하고 코드를 삭제한다")
-    fun `verifyOwnership marks student verified and deletes session`() {
+    @DisplayName("상태 메시지에 코드가 있으면 인증된 BOJ ID를 반환하고 세션을 저장한다")
+    fun `verifyOwnership returns verified bojId and saves to session`() {
         val bojId = "mekazon"
         val sessionId = "session"
         val storedCode = "DIDIM-LOG-ABC123"
-        val student = student(bojId)
 
         every { codeStore.find(sessionId) } returns storedCode
         every { profileStatusMessageClient.fetchStatusMessage(bojId) } returns BojProfileStatusMessageFetchResult.Found(
             BojProfileStatusMessage("코드: $storedCode")
         )
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { studentRepository.save(any()) } answers { firstArg() }
+        every { codeStore.save(any(), any(), any()) } just runs
         every { codeStore.delete(sessionId) } just runs
 
-        service.verifyOwnership(sessionId = sessionId, bojId = bojId)
+        val verifiedBojId = service.verifyOwnership(sessionId = sessionId, bojId = bojId)
 
-        verify(exactly = 1) {
-            studentRepository.save(
-                match {
-                    it.isVerified &&
-                        it.role == Role.USER &&
-                        it.bojId == BojId(bojId)
-                }
+        assertThat(verifiedBojId).isEqualTo(bojId)
+        verify(exactly = 1) { 
+            codeStore.save(
+                "boj:verified:$sessionId",
+                bojId,
+                300L
             )
         }
         verify(exactly = 1) { codeStore.delete(sessionId) }
     }
 
-    private fun student(bojId: String): Student {
-        return Student(
-            id = "id",
-            nickname = Nickname("닉네임12"),
-            provider = Provider.GOOGLE,
-            providerId = "providerId",
-            email = "test@example.com",
-            bojId = BojId(bojId),
-            password = null,
-            rating = 0,
-            currentTier = Tier.UNRATED,
-            role = Role.GUEST,
-            termsAgreed = false,
-            isVerified = false,
-            solutions = Solutions()
-        )
-    }
 }
 
