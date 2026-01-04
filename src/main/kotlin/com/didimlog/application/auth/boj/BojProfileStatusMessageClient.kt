@@ -5,6 +5,6 @@ package com.didimlog.application.auth.boj
  */
 interface BojProfileStatusMessageClient {
 
-    fun fetchStatusMessage(bojId: String): String?
+    fun fetchStatusMessage(bojId: String): BojProfileStatusMessageFetchResult
 }
 
