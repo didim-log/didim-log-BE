@@ -1,16 +1,16 @@
 pluginManagement {
     repositories {
-        mavenCentral() // MUST BE FIRST - prioritize direct Maven Central access
+        google() // 1순위: Google 미러 사용 (Rate Limiting 회피)
         gradlePluginPortal()
-        google()
+        mavenCentral() // 2순위: 없는 경우에만 Maven Central 사용
     }
 }
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        mavenCentral() // MUST BE FIRST - prioritize direct Maven Central access
-        google()
+        google() // 1순위: Google 미러 사용 (Rate Limiting 회피)
+        mavenCentral() // 2순위: 없는 경우에만 Maven Central 사용
     }
 }
 
