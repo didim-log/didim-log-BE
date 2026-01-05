@@ -12,7 +12,6 @@ import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
 import io.mockk.mockk
-import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

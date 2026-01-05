@@ -3,7 +3,6 @@ package com.didimlog.application.study
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
-import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
@@ -12,7 +11,6 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
-import com.didimlog.domain.valueobject.TimeTakenSeconds
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -20,7 +18,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import java.util.UUID
+import java.util.*
 
 @SpringBootTest
 @DisplayName("StudyService 통합 테스트")

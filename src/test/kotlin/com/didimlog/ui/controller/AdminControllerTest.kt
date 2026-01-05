@@ -11,12 +11,13 @@ import com.didimlog.domain.enums.FeedbackStatus
 import com.didimlog.domain.enums.FeedbackType
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.enums.Tier.Companion.fromRating
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ui.dto.FeedbackStatusUpdateRequest
 import com.didimlog.ui.dto.NoticeCreateRequest
 import com.didimlog.ui.dto.QuoteCreateRequest
@@ -26,7 +27,6 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -35,21 +35,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
-import org.springframework.validation.beanvalidation.MethodValidationPostProcessor
-import com.didimlog.global.exception.GlobalExceptionHandler
-import org.assertj.core.api.Assertions.assertThat
-import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import com.didimlog.global.auth.JwtTokenProvider
-import java.time.LocalDateTime
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor
 
 @DisplayName("AdminController 테스트")
 @WebMvcTest(

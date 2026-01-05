@@ -4,7 +4,6 @@ import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.application.template.StaticTemplateService
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
@@ -34,10 +33,7 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.LocalDateTime

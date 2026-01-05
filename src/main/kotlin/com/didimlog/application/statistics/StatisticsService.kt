@@ -1,20 +1,15 @@
 package com.didimlog.application.statistics
 
-import com.didimlog.domain.Solution
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
-import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
  * 통계 서비스
@@ -23,8 +18,7 @@ import java.time.LocalDateTime
 @Service
 class StatisticsService(
     private val studentRepository: StudentRepository,
-    private val retrospectiveRepository: RetrospectiveRepository,
-    private val problemRepository: ProblemRepository
+    private val retrospectiveRepository: RetrospectiveRepository
 ) {
 
     /**

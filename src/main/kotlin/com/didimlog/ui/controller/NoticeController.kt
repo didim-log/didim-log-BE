@@ -4,7 +4,6 @@ import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.notice.NoticeService
 import com.didimlog.domain.enums.AdminActionType
 import com.didimlog.global.util.HttpRequestUtil
-import com.didimlog.ui.dto.NoticeCreateRequest
 import com.didimlog.ui.dto.NoticeResponse
 import com.didimlog.ui.dto.NoticeUpdateRequest
 import io.swagger.v3.oas.annotations.Operation
@@ -26,15 +25,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.validation.annotation.Validated
-import org.springframework.web.bind.annotation.DeleteMapping
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PatchMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 @Tag(name = "Notice", description = "공지사항 관련 API")
 @RestController

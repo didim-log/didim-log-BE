@@ -3,9 +3,7 @@ package com.didimlog.global.security
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.oauth.info.OAuth2UserInfoFactory
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService

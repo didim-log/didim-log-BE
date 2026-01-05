@@ -8,7 +8,6 @@ import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
-import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -22,7 +21,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.security.crypto.password.PasswordEncoder
-import java.util.Optional
+import java.util.*
 
 @DisplayName("AuthService 로그인 보안 테스트")
 class AuthServiceLoginSecurityTest {

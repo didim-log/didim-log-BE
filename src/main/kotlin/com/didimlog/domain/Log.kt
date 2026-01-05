@@ -1,13 +1,8 @@
 package com.didimlog.domain
 
-import com.didimlog.domain.valueobject.AiReview
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.LogCode
-import com.didimlog.domain.valueobject.LogContent
-import com.didimlog.domain.valueobject.LogTitle
-import com.didimlog.domain.enums.AiReviewStatus
 import com.didimlog.domain.enums.AiFeedbackStatus
-import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.AiReviewStatus
+import com.didimlog.domain.valueobject.*
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document

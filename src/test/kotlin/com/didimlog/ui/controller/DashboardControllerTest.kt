@@ -1,13 +1,12 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.dashboard.DashboardService
 import com.didimlog.application.dashboard.DashboardInfo
+import com.didimlog.application.dashboard.DashboardService
 import com.didimlog.domain.enums.Tier
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

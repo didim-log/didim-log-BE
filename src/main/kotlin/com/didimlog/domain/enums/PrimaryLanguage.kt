@@ -34,7 +34,7 @@ enum class PrimaryLanguage(val value: String) {
             if (value == null || value.isBlank()) {
                 return TEXT
             }
-            return values().find { it.value.equals(value, ignoreCase = true) } ?: TEXT
+            return PrimaryLanguage.entries.find { it.value.equals(value, ignoreCase = true) } ?: TEXT
         }
     }
 }

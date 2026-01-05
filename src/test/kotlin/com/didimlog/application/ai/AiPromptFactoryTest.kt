@@ -1,8 +1,6 @@
 package com.didimlog.application.ai
 
 import com.didimlog.infra.ai.PromptTemplateLoader
-import io.mockk.every
-import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test

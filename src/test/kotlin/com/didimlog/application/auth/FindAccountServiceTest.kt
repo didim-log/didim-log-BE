@@ -6,7 +6,6 @@ import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
-import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -14,7 +13,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import java.util.Optional
+import java.util.*
 
 @DisplayName("FindAccountService 테스트")
 class FindAccountServiceTest {

@@ -1,11 +1,6 @@
 package com.didimlog.domain
 
-import com.didimlog.domain.enums.PrimaryLanguage
-import com.didimlog.domain.enums.ProblemCategory
-import com.didimlog.domain.enums.ProblemResult
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.enums.*
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId

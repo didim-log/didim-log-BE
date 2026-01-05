@@ -3,7 +3,6 @@ package com.didimlog.application.study
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
