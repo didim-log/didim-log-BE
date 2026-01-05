@@ -92,6 +92,11 @@ app:
     redirect-uri: ${OAUTH_REDIRECT_URI:http://localhost:5173/oauth/callback}
   admin:
     secret-key: ${ADMIN_SECRET_KEY}
+  # 회고 데이터 보관 기간 설정 (일 단위)
+  # 작성일로부터 지정된 일수가 지나면 자동으로 삭제됩니다.
+  # 기본값: 180일 (6개월)
+  retrospective:
+    retention-days: ${RETROSPECTIVE_RETENTION_DAYS:180}
   # AI 서비스 활성화 여부 (기본값: false)
   # true로 설정하면 정적 템플릿에 AI 키워드가 주입됩니다.
   ai:
