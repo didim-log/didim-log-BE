@@ -93,6 +93,6 @@ data class Retrospective(
 
     private fun validateContent(target: String) {
         require(target.length >= 10) { "회고 내용은 10자 이상이어야 합니다." }
-        require(target.length <= 2000) { "회고 내용은 2000자 이하여야 합니다." }
+        require(target.length <= 5000) { "회고 내용은 5000자 이하여야 합니다." }
     }
 }

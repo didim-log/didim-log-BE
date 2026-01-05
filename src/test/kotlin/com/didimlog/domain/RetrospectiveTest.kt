@@ -78,6 +78,40 @@ class RetrospectiveTest {
     }
 
     @Test
+    @DisplayName("회고 내용이 5000자를 초과하면 예외가 발생한다")
+    fun `회고 내용이 5000자 초과시 예외 발생`() {
+        // given
+        val tooLongContent = "a".repeat(5001)
+
+        // expect
+        assertThatThrownBy {
+            Retrospective(
+                studentId = "student-id",
+                problemId = "problem-id",
+                content = tooLongContent
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("회고 내용은 5000자 이하여야 합니다.")
+    }
+
+    @Test
+    @DisplayName("회고 내용이 정확히 5000자이면 정상적으로 생성된다")
+    fun `회고 내용이 5000자이면 생성 성공`() {
+        // given
+        val exactly5000Chars = "a".repeat(5000)
+
+        // when
+        val retrospective = Retrospective(
+            studentId = "student-id",
+            problemId = "problem-id",
+            content = exactly5000Chars
+        )
+
+        // then
+        assertThat(retrospective.content).hasSize(5000)
+    }
+
+    @Test
     @DisplayName("isOwner는 회고 소유자일 때 true를 반환한다")
     fun `소유자인 경우 true 반환`() {
         // given
