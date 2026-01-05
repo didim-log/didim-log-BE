@@ -38,7 +38,11 @@ class RecommendationService(
      */
     fun recommendProblems(bojId: String, count: Int, category: String? = null, language: String? = null): List<Problem> {
         val student = findStudentByBojIdOrThrow(bojId)
-        val (minLevel, maxLevel) = calculateTargetDifficultyLevelRange(student.tier())
+        // Rating(Solved.ac)을 Source of Truth로 사용한다.
+        // 과거 데이터/동기화 타이밍 이슈로 currentTier가 rating과 불일치할 수 있어,
+        // 추천 범위 계산은 rating 기반으로 수행한다.
+        val effectiveTier = Tier.fromRating(student.rating)
+        val (minLevel, maxLevel) = calculateTargetDifficultyLevelRange(effectiveTier)
 
         val candidateProblems = findCandidateProblems(minLevel, maxLevel, category, language)
         val solvedProblemIds = student.getSolvedProblemIds()

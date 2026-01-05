@@ -9,8 +9,12 @@ DidimLog의 문제 추천 시스템은 학생의 현재 티어를 기반으로 �
 
 ### 1. 기본 추천 로직
 
+- **Source of Truth**: Solved.ac의 **Rating(점수)** 를 기준으로 티어를 판정합니다.
+  - 운영/동기화 타이밍에 따라 `currentTier`(DB 저장값)와 `rating`이 불일치할 수 있으므로,
+    추천 범위 계산은 `rating` 기반 티어 판정을 사용합니다.
+
 - **타겟 난이도 범위**: 학생의 현재 티어 레벨 범위에서 -2 ~ +2 단계
-  - **UNRATED 티어(레벨 0) 특별 처리**: Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제 추천
+  - **UNRATED 특별 처리**: UNRATED(레벨 0, rating=0) 사용자는 Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제 추천
   - 예: BRONZE 티어(레벨 1~5) 학생 → 레벨 (1-2) ~ (5+2) = 레벨 1~7 문제 추천 (단, 최소 레벨은 1)
   - 예: SILVER 티어(레벨 6~10) 학생 → 레벨 (6-2) ~ (10+2) = 레벨 4~12 문제 추천
   - 예: GOLD 티어(레벨 11~15) 학생 → 레벨 (11-2) ~ (15+2) = 레벨 9~17 문제 추천
@@ -26,6 +30,9 @@ DidimLog의 문제 추천 시스템은 학생의 현재 티어를 기반으로 �
 
 - **카테고리 지정 시**: 해당 카테고리와 타겟 레벨 범위에 맞는 문제만 추천
 - **카테고리 미지정 시**: 타겟 레벨 범위의 모든 문제 중에서 추천
+- **태그 별칭 지원**: 축약형 태그(예: "BFS", "DP")는 서버에서 공식 전체 이름으로 정규화하여 처리합니다.
+  - 예: "BFS" → "Breadth-first Search"
+  - 예: "DP" → "Dynamic Programming"
 
 ### 3. 필터링 조건
 
@@ -33,6 +40,7 @@ DidimLog의 문제 추천 시스템은 학생의 현재 티어를 기반으로 �
    - **UNRATED**: 레벨 1~2 (Bronze V ~ Bronze IV)
    - **기타 티어**: 현재 티어 레벨 범위에서 -2 ~ +2 단계
 2. **카테고리 필터**: 카테고리가 지정된 경우 해당 카테고리만 (선택사항)
+3. **언어 필터(선택사항)**: `language=ko|en`이 주어지면 해당 언어의 문제만 추천
 3. **미해결 필터**: 학생이 아직 풀지 않은 문제만 추천
 4. **랜덤 선택**: 필터링된 문제 중 랜덤으로 선택
 
@@ -50,6 +58,12 @@ GET /api/v1/problems/recommend?count=5&category=GRAPH
 GET /api/v1/problems/recommend?count=5&category=DP
 ```
 
+### 언어 필터 포함
+```
+GET /api/v1/problems/recommend?count=5&language=ko
+GET /api/v1/problems/recommend?count=5&category=DP&language=ko
+```
+
 ## 구현 세부사항
 
 ### Repository 레이어
@@ -63,6 +77,6 @@ GET /api/v1/problems/recommend?count=5&category=DP
 
 ## 주의사항
 
-- 카테고리는 대소문자를 구분합니다. (예: "IMPLEMENTATION", "GRAPH", "DP")
+- 카테고리는 서버에서 정규화/매칭 처리되며, 입력은 일반적으로 **대소문자를 구분하지 않습니다.**
 - 존재하지 않는 카테고리를 지정하면 빈 리스트가 반환됩니다.
 - 타겟 레벨 범위에 해당하는 문제가 없으면 빈 리스트가 반환됩니다.
