@@ -5,16 +5,14 @@ import com.didimlog.domain.repository.LogRepository
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.AiGenerationTimeoutException
 import com.didimlog.global.exception.BusinessException
-import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.infra.ai.AiApiClient
-import java.time.LocalDateTime
-import java.util.concurrent.TimeoutException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.HttpClientErrorException
+import java.time.LocalDateTime
 
 @Service
 class AiReviewService(

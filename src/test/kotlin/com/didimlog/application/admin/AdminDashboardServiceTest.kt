@@ -1,10 +1,9 @@
 package com.didimlog.application.admin
 
 import com.didimlog.domain.Retrospective
-import com.didimlog.domain.Student
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Solutions
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
@@ -21,9 +20,7 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 
 @DisplayName("AdminDashboardService 테스트")
 class AdminDashboardServiceTest {

@@ -27,7 +27,6 @@
 3. **Finalization**
 
    - 사용자가 승인하면, `DOCS/COMMIT_CONVENTION.md` 규칙에 맞춰 커밋 메시지를 생성하세요.
-   - `TODO.md`를 업데이트하세요.
 
 # Tech Stack
 
@@ -39,7 +38,6 @@
 프로젝트의 목표는 `SECRET_DOCS/PRD.md`와 `SECRET_DOCS/DOMAIN.md`에 정의되어 있습니다.
 
 # Work Process (Strict Order)
-모든 작업 요청(`TODO.md`의 항목 구현 등)을 받으면 반드시 아래 순서를 따르세요.
 
 1. **Analysis & Implementation**
    - 요구사항을 분석하고 코드를 작성합니다.
@@ -48,12 +46,11 @@
    - 작성된 코드에 대해 JUnit5 기반의 단위 테스트를 반드시 함께 작성합니다.
 
 2. **Self-Reflection & User Review (STOP HERE 🛑)**
-   - 코드를 제안한 후, **즉시 `TODO.md`를 수정하거나 커밋 메시지를 주지 마세요.**
+   - 코드를 제안한 후, **즉시 `커밋 메시지를 주지 마세요.**
    - 대신, 사용자에게 구현 내용 요약과 함께 **"검증 요청"**을 하세요.
-   - 예시: "구현 및 테스트 작성이 완료되었습니다. 요구사항을 충족하는지 검토 부탁드립니다. 승인하시면 TODO 체크 및 커밋 메시지를 생성하겠습니다."
+   - 예시: "구현 및 테스트 작성이 완료되었습니다. 요구사항을 충족하는지 검토 부탁드립니다. 승인하시면 커밋 메시지를 생성하겠습니다."
 
 3. **Finalization (After User Approval)**
-   - 사용자가 "승인" 또는 "다음"이라고 하면 그때 `TODO.md`의 해당 항목을 `[x]`로 변경하세요.
    - 마지막으로, AngularJS Commit Convention을 준수하여 커밋 메시지를 제안하세요.
 
 # Code Style Guidelines
@@ -68,4 +65,4 @@
 # Commit Message Convention
 - Format: `<type>(<scope>): <subject>`
 - Types: feat, fix, docs, style, refactor, test, chore
-- Body: 'What'과 'Why'를 명확하게 기술
+- Body: 'What'과 'Why'를 명확하게 기입

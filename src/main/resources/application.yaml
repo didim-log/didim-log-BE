@@ -87,11 +87,18 @@ app:
     # 하위 호환성을 위해 expiration도 유지 (access-token-expiration과 동일)
     expiration: ${JWT_EXPIRATION:1800000} # 30분 (밀리초) - access-token-expiration과 동일
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,https://*.firebaseapp.com,https://*.web.app,https://didim-log-fe.web.app}
+    # 로컬 기본값은 로컬 프론트만 허용한다.
+    # 운영 환경에서는 CORS_ALLOWED_ORIGINS 환경 변수로 운영 프론트 도메인만 주입한다.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
   oauth:
     redirect-uri: ${OAUTH_REDIRECT_URI:http://localhost:5173/oauth/callback}
   admin:
     secret-key: ${ADMIN_SECRET_KEY}
+  # 회고 데이터 보관 기간 설정 (일 단위)
+  # 작성일로부터 지정된 일수가 지나면 자동으로 삭제됩니다.
+  # 기본값: 180일 (6개월)
+  retrospective:
+    retention-days: ${RETROSPECTIVE_RETENTION_DAYS:180}
   # AI 서비스 활성화 여부 (기본값: false)
   # true로 설정하면 정적 템플릿에 AI 키워드가 주입됩니다.
   ai:

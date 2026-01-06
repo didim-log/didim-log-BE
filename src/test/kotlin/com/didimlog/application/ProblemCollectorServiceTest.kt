@@ -1,23 +1,18 @@
 package com.didimlog.application
 
 import com.didimlog.domain.Problem
-import com.didimlog.domain.enums.ProblemCategory
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
-import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
 import com.didimlog.infra.solvedac.SolvedAcTag
 import com.didimlog.infra.solvedac.SolvedAcTagDisplayName
-import com.didimlog.infra.solvedac.SolvedAcTierMapper
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import java.util.Optional
+import java.util.*
 
 @DisplayName("ProblemCollectorService 테스트")
 class ProblemCollectorServiceTest {

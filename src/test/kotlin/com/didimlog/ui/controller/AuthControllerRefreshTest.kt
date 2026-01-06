@@ -5,9 +5,10 @@ import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
-import com.didimlog.ui.dto.AuthResponse
 import com.didimlog.ui.dto.RefreshTokenRequest
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -20,14 +21,12 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import org.springframework.test.context.TestPropertySource
 import org.springframework.validation.beanvalidation.MethodValidationPostProcessor
-import com.didimlog.global.auth.JwtTokenProvider
-import com.fasterxml.jackson.databind.ObjectMapper
 
 @DisplayName("AuthController Refresh Token 테스트")
 @WebMvcTest(

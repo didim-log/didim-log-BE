@@ -1,6 +1,5 @@
 package com.didimlog.application.log
 
-import com.didimlog.domain.enums.AiReviewStatus
 import java.time.LocalDateTime
 
 interface LogAiReviewLockRepository {

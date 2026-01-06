@@ -26,4 +26,19 @@ interface RetrospectiveRepository : MongoRepository<Retrospective, String>, Retr
         startDate: LocalDateTime,
         endDate: LocalDateTime
     ): List<Retrospective>
+
+    /**
+     * 특정 날짜 이전에 생성된 회고를 삭제한다.
+     *
+     * @param dateTime 기준 날짜/시간
+     */
+    fun deleteByCreatedAtBefore(dateTime: LocalDateTime)
+
+    /**
+     * 특정 날짜 이전에 생성된 회고의 개수를 조회한다.
+     *
+     * @param dateTime 기준 날짜/시간
+     * @return 회고 개수
+     */
+    fun countByCreatedAtBefore(dateTime: LocalDateTime): Long
 }

@@ -1,13 +1,11 @@
 package com.didimlog.application
 
 import com.didimlog.domain.Problem
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
-import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.solvedac.ProblemCategoryMapper
 import com.didimlog.infra.solvedac.SolvedAcClient

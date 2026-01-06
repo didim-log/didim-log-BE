@@ -13,22 +13,12 @@ import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.crawler.ProblemDetails
-import com.didimlog.infra.solvedac.SolvedAcClient
-import com.didimlog.infra.solvedac.SolvedAcProblemResponse
-import com.didimlog.infra.solvedac.SolvedAcTag
-import com.didimlog.infra.solvedac.SolvedAcTagDisplayName
-import com.didimlog.infra.solvedac.SolvedAcUserResponse
-import io.mockk.CapturingSlot
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.verify
-import io.mockk.verifyOrder
-import io.mockk.clearAllMocks
-import java.util.Optional
+import com.didimlog.infra.solvedac.*
+import io.mockk.*
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import java.util.*
 
 @DisplayName("ProblemService 테스트")
 class ProblemServiceTest {

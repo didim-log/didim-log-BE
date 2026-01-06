@@ -12,17 +12,11 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
-import io.mockk.CapturingSlot
-import io.mockk.every
-import io.mockk.just
-import io.mockk.mockk
-import io.mockk.runs
-import io.mockk.slot
-import io.mockk.verify
-import java.util.Optional
+import io.mockk.*
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.util.*
 
 @DisplayName("StudyService 테스트")
 class StudyServiceTest {

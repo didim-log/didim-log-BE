@@ -5,19 +5,16 @@ import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.global.exception.GlobalExceptionHandler
+import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.LoginRequest
 import com.didimlog.ui.dto.SignupRequest
-import com.didimlog.ui.dto.FindAccountRequest
-import com.didimlog.ui.dto.AuthResponse
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.mockk.clearMocks
-import io.mockk.every
-import io.mockk.just
-import io.mockk.mockk
-import io.mockk.runs
-import io.mockk.verify
+import io.mockk.*
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -27,18 +24,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
-import org.springframework.validation.beanvalidation.MethodValidationPostProcessor
-import com.didimlog.global.exception.GlobalExceptionHandler
-import org.assertj.core.api.Assertions.assertThat
 import org.springframework.http.MediaType
 import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import com.didimlog.global.auth.JwtTokenProvider
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.global.ratelimit.RateLimitService
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor
 
 @DisplayName("AuthController 테스트")
 @WebMvcTest(

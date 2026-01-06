@@ -12,7 +12,7 @@ class GeminiLlmClientRetryTest {
 
     private val properties = AiGeminiProperties(
         apiKey = "test-api-key",
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-latest:generateContent"
     )
     private val objectMapper = ObjectMapper()
     private val rateLimiter = mockk<GeminiRateLimiter>(relaxed = true)

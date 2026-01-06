@@ -4,12 +4,10 @@ import com.didimlog.application.ai.AiUsageService
 import com.didimlog.application.log.AiReviewService
 import com.didimlog.application.log.LogService
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AiReviewResponse
 import com.didimlog.ui.dto.LogCreateRequest
-import com.didimlog.ui.dto.LogFeedbackRequest
 import com.didimlog.ui.dto.LogResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -25,12 +23,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 @Tag(name = "Log", description = "코딩 로그 관련 API")
 @RestController
