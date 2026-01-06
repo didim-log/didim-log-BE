@@ -6,6 +6,7 @@ import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.PasswordValidator
@@ -169,17 +170,29 @@ class StudentService(
         try {
             val userResponse = solvedAcClient.fetchUser(bojIdVo)
             val newRating = userResponse.rating
+            val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
 
-            // Rating이 변경되지 않았으면 업데이트하지 않음
-            if (student.rating == newRating) {
-                log.debug("BOJ 프로필 동기화 완료 (변경 없음): bojId=${bojIdVo.value}, rating=$newRating")
+            if (student.rating == newRating && student.solvedAcTierLevel == newTierLevel) {
+                log.debug(
+                    "BOJ 프로필 동기화 완료 (변경 없음): bojId={}, rating={}, tierLevel={}",
+                    bojIdVo.value,
+                    newRating,
+                    newTierLevel.value
+                )
                 return student
             }
 
-            val updatedStudent = student.updateInfo(newRating)
+            val updatedStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
             val savedStudent = studentRepository.save(updatedStudent)
 
-            log.info("BOJ 프로필 동기화 완료: bojId=${bojIdVo.value}, oldRating=${student.rating}, newRating=$newRating")
+            log.info(
+                "BOJ 프로필 동기화 완료: bojId={}, oldRating={}, newRating={}, oldTierLevel={}, newTierLevel={}",
+                bojIdVo.value,
+                student.rating,
+                newRating,
+                student.solvedAcTierLevel.value,
+                newTierLevel.value
+            )
             return savedStudent
         } catch (e: BusinessException) {
             log.error("BOJ 프로필 동기화 실패: bojId=${bojIdVo.value}, error=${e.message}", e)

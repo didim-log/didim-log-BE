@@ -14,6 +14,8 @@ import com.didimlog.global.config.mongo.NicknameReadConverter
 import com.didimlog.global.config.mongo.NicknameWriteConverter
 import com.didimlog.global.config.mongo.ProblemCategoryReadConverter
 import com.didimlog.global.config.mongo.ProblemCategoryWriteConverter
+import com.didimlog.global.config.mongo.SolvedAcTierLevelReadConverter
+import com.didimlog.global.config.mongo.SolvedAcTierLevelWriteConverter
 import com.didimlog.global.config.mongo.TierIntegerReadConverter
 import com.didimlog.global.config.mongo.TierStringReadConverter
 import com.didimlog.global.config.mongo.TierWriteConverter
@@ -49,6 +51,7 @@ class MongoConfig {
         converters.add(AiReviewWriteConverter())
         converters.add(TierWriteConverter())
         converters.add(ProblemCategoryWriteConverter())
+        converters.add(SolvedAcTierLevelWriteConverter())
 
         // Reading Converters (DB -> 객체)
         converters.add(NicknameReadConverter())
@@ -60,6 +63,7 @@ class MongoConfig {
         converters.add(TierStringReadConverter())
         converters.add(TierIntegerReadConverter())
         converters.add(ProblemCategoryReadConverter())
+        converters.add(SolvedAcTierLevelReadConverter())
 
         return MongoCustomConversions(converters)
     }

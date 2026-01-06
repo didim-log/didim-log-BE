@@ -68,7 +68,8 @@ class AuthServiceTest {
         every { PasswordValidator.validate(password) } returns Unit
         every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
             handle = "duplicate",
-            rating = 100
+            rating = 100,
+            tier = 3
         )
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(existingStudent)
 
@@ -178,7 +179,7 @@ class AuthServiceTest {
         val bojId = "newuser"
         val password = "ValidPassword123!"
         val bojIdVo = BojId(bojId)
-        val userResponse = SolvedAcUserResponse(handle = "newuser", rating = 100)
+        val userResponse = SolvedAcUserResponse(handle = "newuser", rating = 100, tier = 3)
         val encodedPassword = "encoded-password"
         val token = "jwt-token"
 
@@ -199,6 +200,7 @@ class AuthServiceTest {
         assertThat(result.token).isEqualTo(token)
         assertThat(result.rating).isEqualTo(100)
         assertThat(result.tier).isEqualTo(Tier.BRONZE)
+        assertThat(result.tierLevel).isEqualTo(3)
         verify(exactly = 1) { studentRepository.save(any()) }
         unmockkObject(PasswordValidator)
     }
@@ -225,7 +227,7 @@ class AuthServiceTest {
 
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
         every { student.matchPassword(password, passwordEncoder) } returns true
-        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(handle = "testuser", rating = 100)
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(handle = "testuser", rating = 100, tier = 3)
         every { studentRepository.save(any()) } answers { firstArg() }
         every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns token
 
@@ -236,5 +238,6 @@ class AuthServiceTest {
         assertThat(result.token).isEqualTo(token)
         assertThat(result.rating).isEqualTo(100)
         assertThat(result.tier).isEqualTo(Tier.BRONZE)
+        assertThat(result.tierLevel).isEqualTo(3)
     }
 }

@@ -95,7 +95,7 @@ class AuthController(
             refreshToken = result.refreshToken,
             rating = result.rating,
             tier = result.tier.name,
-            tierLevel = result.tier.value
+            tierLevel = result.tierLevel
         )
         return ResponseEntity.ok(response)
     }
@@ -124,7 +124,7 @@ class AuthController(
                 refreshToken = result.refreshToken,
                 rating = result.rating,
                 tier = result.tier.name,
-                tierLevel = result.tier.value
+                tierLevel = result.tierLevel
             )
             ResponseEntity.ok(response)
         } catch (e: BusinessException) {
@@ -201,7 +201,7 @@ class AuthController(
             refreshToken = result.refreshToken,
             rating = result.rating,
             tier = result.tier.name,
-            tierLevel = result.tier.value
+            tierLevel = result.tierLevel
         )
         return ResponseEntity.ok(response)
     }
@@ -244,7 +244,7 @@ class AuthController(
             refreshToken = result.refreshToken,
             rating = result.rating,
             tier = result.tier.name,
-            tierLevel = result.tier.value
+            tierLevel = result.tierLevel
         )
         return ResponseEntity.ok(response)
     }
@@ -438,7 +438,7 @@ class AuthController(
             refreshToken = newRefreshToken,
             rating = student.rating,
             tier = student.tier().name,
-            tierLevel = student.tier().value
+            tierLevel = student.solvedAcTierLevel.value
         )
         return ResponseEntity.ok(response)
     }

@@ -9,6 +9,7 @@ import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -51,7 +52,8 @@ class AuthService(
         val token: String,
         val refreshToken: String,
         val rating: Int,
-        val tier: com.didimlog.domain.enums.Tier
+        val tier: com.didimlog.domain.enums.Tier,
+        val tierLevel: Int
     )
 
     /**
@@ -96,10 +98,18 @@ class AuthService(
         try {
             val userResponse = solvedAcClient.fetchUser(bojIdVo)
             val newRating = userResponse.rating
-            if (student.rating != newRating) {
-                currentStudent = student.updateInfo(newRating)
+            val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
+            if (student.rating != newRating || student.solvedAcTierLevel != newTierLevel) {
+                currentStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
                 studentRepository.save(currentStudent)
-                log.info("Rating 및 티어 정보 동기화 완료: bojId=$bojId, 기존 rating=${student.rating}, 새 rating=$newRating, 기존 티어=${student.tier()}, 새 티어=${currentStudent.tier()}")
+                log.info(
+                    "Rating 및 티어 정보 동기화 완료: bojId={}, oldRating={}, newRating={}, oldTierLevel={}, newTierLevel={}",
+                    bojId,
+                    student.rating,
+                    newRating,
+                    student.solvedAcTierLevel.value,
+                    newTierLevel.value
+                )
             }
         } catch (e: IllegalStateException) {
             log.warn("Solved.ac API 호출 실패로 Rating 동기화 건너뜀: bojId=$bojId, message=${e.message}")
@@ -115,7 +125,13 @@ class AuthService(
         // Refresh Token 발급 및 저장
         val refreshToken = refreshTokenService.generateAndSave(bojId)
         
-        return AuthResult(token, refreshToken, currentStudent.rating, currentStudent.tier())
+        return AuthResult(
+            token = token,
+            refreshToken = refreshToken,
+            rating = currentStudent.rating,
+            tier = currentStudent.tier(),
+            tierLevel = currentStudent.solvedAcTierLevel.value
+        )
     }
 
     /**
@@ -174,7 +190,15 @@ class AuthService(
             return issueUserToken(saved, bojIdVo.value)
         }
 
-        val saved = createNewStudent(providerEnum, providerId, nickname, bojIdVo, email, userResponse.rating)
+        val saved = createNewStudent(
+            provider = providerEnum,
+            providerId = providerId,
+            nickname = nickname,
+            bojIdVo = bojIdVo,
+            email = email,
+            rating = userResponse.rating,
+            tierLevel = SolvedAcTierLevel.fromRating(userResponse.rating).value
+        )
         return issueUserToken(saved, bojIdVo.value)
     }
 
@@ -326,6 +350,7 @@ class AuthService(
         val encodedPassword = passwordEncoder.encode(password)
 
         val rating = userResponse.rating
+        val tierLevel = SolvedAcTierLevel.fromRating(rating).value
         val tier = Tier.fromRating(rating)
         val nickname = createNicknameOrThrow(bojId, userResponse.handle)
 
@@ -346,6 +371,7 @@ class AuthService(
             bojId = bojIdVo,
             password = encodedPassword,
             rating = rating,
+            solvedAcTierLevel = SolvedAcTierLevel(tierLevel),
             currentTier = tier,
             role = role,
             termsAgreed = true
@@ -357,7 +383,7 @@ class AuthService(
         // Refresh Token 발급 및 저장
         val refreshToken = refreshTokenService.generateAndSave(bojId)
 
-        return AuthResult(token, refreshToken, rating, tier)
+        return AuthResult(token, refreshToken, rating, tier, tierLevel)
     }
 
     private fun validateBojIdNotRegistered(bojIdVo: BojId, bojId: String) {
@@ -480,7 +506,8 @@ class AuthService(
         nickname: String,
         bojIdVo: BojId,
         email: String,
-        rating: Int
+        rating: Int,
+        tierLevel: Int
     ): Student {
         val nicknameVo = Nickname(nickname)
         if (studentRepository.existsByNickname(nicknameVo)) {
@@ -496,6 +523,7 @@ class AuthService(
             bojId = bojIdVo,
             password = null,
             rating = rating,
+            solvedAcTierLevel = SolvedAcTierLevel(tierLevel),
             currentTier = tier,
             role = Role.USER,
             termsAgreed = true
@@ -510,7 +538,13 @@ class AuthService(
         // Refresh Token 발급 및 저장
         val refreshToken = refreshTokenService.generateAndSave(bojId)
         
-        return AuthResult(token, refreshToken, student.rating, student.tier())
+        return AuthResult(
+            token = token,
+            refreshToken = refreshToken,
+            rating = student.rating,
+            tier = student.tier(),
+            tierLevel = student.solvedAcTierLevel.value
+        )
     }
 
     companion object {

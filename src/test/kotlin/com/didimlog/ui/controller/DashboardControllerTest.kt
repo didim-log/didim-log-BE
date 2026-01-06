@@ -68,6 +68,7 @@ class DashboardControllerTest {
                 nickname = "user1",
                 bojId = "bojId",
                 currentTier = Tier.BRONZE,
+                solvedAcTierLevel = 1,
                 consecutiveSolveDays = 5
             ),
             todaySolvedCount = 1,

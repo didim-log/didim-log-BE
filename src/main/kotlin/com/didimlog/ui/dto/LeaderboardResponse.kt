@@ -23,7 +23,7 @@ data class LeaderboardResponse(
                 rank = rank,
                 nickname = student.nickname.value,
                 tier = student.currentTier.name,
-                tierLevel = student.currentTier.value,
+                tierLevel = student.solvedAcTierLevel.value,
                 rating = student.rating,
                 retrospectiveCount = retrospectiveCount,
                 consecutiveSolveDays = student.consecutiveSolveDays,

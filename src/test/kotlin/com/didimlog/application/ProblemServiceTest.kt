@@ -123,7 +123,8 @@ class ProblemServiceTest {
 
         val userResponse = SolvedAcUserResponse(
             handle = bojId.value,
-            rating = 1200  // Rating 1200점은 GOLD 티어 (800점 이상)
+            rating = 1200,  // Rating 1200점은 GOLD 티어 (800점 이상)
+            tier = 13
         )
         every { solvedAcClient.fetchUser(bojId) } returns userResponse
         
@@ -176,7 +177,8 @@ class ProblemServiceTest {
 
         val userResponse = SolvedAcUserResponse(
             handle = bojId.value,
-            rating = 500  // Rating 500점은 SILVER (200점 이상이지만 800점 미만)
+            rating = 500,  // Rating 500점은 SILVER (200점 이상이지만 800점 미만)
+            tier = 9
         )
         every { solvedAcClient.fetchUser(bojId) } returns userResponse
 

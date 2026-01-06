@@ -8,6 +8,7 @@ import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import org.springframework.core.convert.converter.Converter
 import org.springframework.data.convert.ReadingConverter
 import org.springframework.data.convert.WritingConverter
@@ -84,6 +85,16 @@ class TierWriteConverter : Converter<Tier, String> {
 class ProblemCategoryWriteConverter : Converter<ProblemCategory, String> {
     override fun convert(source: ProblemCategory): String {
         return source.englishName
+    }
+}
+
+/**
+ * SolvedAcTierLevel Value Object를 Integer로 변환
+ */
+@WritingConverter
+class SolvedAcTierLevelWriteConverter : Converter<SolvedAcTierLevel, Int> {
+    override fun convert(source: SolvedAcTierLevel): Int {
+        return source.value
     }
 }
 
@@ -176,5 +187,15 @@ class ProblemCategoryReadConverter : Converter<String, ProblemCategory> {
     override fun convert(source: String): ProblemCategory {
         return ProblemCategory.entries.find { it.englishName == source }
             ?: ProblemCategory.UNKNOWN
+    }
+}
+
+/**
+ * Integer를 SolvedAcTierLevel Value Object로 변환
+ */
+@ReadingConverter
+class SolvedAcTierLevelReadConverter : Converter<Int, SolvedAcTierLevel> {
+    override fun convert(source: Int): SolvedAcTierLevel {
+        return SolvedAcTierLevel(source)
     }
 }

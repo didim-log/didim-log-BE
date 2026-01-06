@@ -22,9 +22,6 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.access.AccessDeniedHandler
 import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
-import org.springframework.web.cors.CorsConfiguration
-import org.springframework.web.cors.CorsConfigurationSource
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 /**
  * Spring Security 설정 클래스
@@ -38,8 +35,6 @@ class SecurityConfig(
     private val oAuth2SuccessHandler: OAuth2SuccessHandler,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val passwordEncoder: PasswordEncoder,
-    @Value("\${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
-    private val allowedOrigins: String,
     @Value("\${spring.security.user.name:admin}")
     private val swaggerUsername: String,
     @Value("\${spring.security.user.password:admin123}")
@@ -50,7 +45,7 @@ class SecurityConfig(
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .csrf { it.disable() }
-            .cors { it.configurationSource(corsConfigurationSource()) }
+            .cors { }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { requests ->
                 requests
@@ -97,30 +92,6 @@ class SecurityConfig(
             .build()
         
         return InMemoryUserDetailsManager(userDetails)
-    }
-
-    @Bean
-    fun corsConfigurationSource(): CorsConfigurationSource {
-        val configuration = CorsConfiguration()
-        
-        // 환경 변수에서 허용된 Origin 목록을 가져옴
-        val origins = allowedOrigins.split(",").map { it.trim() }
-        if (origins.contains("*")) {
-            // 개발 환경: 모든 Origin 허용
-            configuration.allowedOriginPatterns = listOf("*")
-        } else {
-            // 프로덕션 환경: 특정 Origin만 허용
-            configuration.allowedOrigins = origins
-        }
-        
-        configuration.allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-        configuration.allowedHeaders = listOf("*")
-        configuration.allowCredentials = true
-        configuration.maxAge = 3600L // 1시간
-
-        val source = UrlBasedCorsConfigurationSource()
-        source.registerCorsConfiguration("/**", configuration)
-        return source
     }
 
     /**

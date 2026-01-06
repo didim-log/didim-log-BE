@@ -25,6 +25,7 @@ name: didim-log-be Deploy CICD
 # - MAIL_PASSWORD: SMTP 이메일 발송 앱 비밀번호 (Gmail 앱 비밀번호 필수)
 # - SWAGGER_USERNAME: Swagger UI 접근용 HTTP Basic Authentication 사용자명 (기본값: admin)
 # - SWAGGER_PASSWORD: Swagger UI 접근용 HTTP Basic Authentication 비밀번호 (프로덕션에서는 강력한 비밀번호 필수)
+# - ALLOWED_ORIGINS: CORS 허용 Origin 목록 (예: https://your-frontend-domain.com,https://www.your-frontend-domain.com)
 
 on:
   push:
@@ -99,6 +100,9 @@ jobs:
             echo "SPRING_DATA_REDIS_PORT=${{ secrets.SPRING_DATA_REDIS_PORT }}" >> .env
             echo "SERVER_URL=${{ secrets.SERVER_URL }}" >> .env
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
+            # 하위 호환(legacy): 기존 키를 사용하는 경우를 대비
+            echo "CORS_ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
             echo "GEMINI_API_URL=${{ secrets.GEMINI_API_URL }}" >> .env
             echo "OAUTH_GOOGLE_ID=${{ secrets.OAUTH_GOOGLE_ID }}" >> .env

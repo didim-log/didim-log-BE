@@ -7,6 +7,7 @@ import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.solvedac.SolvedAcClient
@@ -40,6 +41,8 @@ class StudentSignupService(
             providerId = bojIdVo.value,
             bojId = bojIdVo,
             password = null, // BOJ 직접 로그인이 아닌 경우 password는 null
+            rating = user.rating,
+            solvedAcTierLevel = SolvedAcTierLevel.fromRating(user.rating),
             currentTier = initialTier,
             role = Role.USER
         )

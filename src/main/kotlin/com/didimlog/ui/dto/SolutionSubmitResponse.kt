@@ -15,7 +15,7 @@ data class SolutionSubmitResponse(
             return SolutionSubmitResponse(
                 message = "문제 풀이 결과가 저장되었습니다.",
                 currentTier = student.tier().name,
-                currentTierLevel = student.tier().value
+                currentTierLevel = student.solvedAcTierLevel.value
             )
         }
     }
