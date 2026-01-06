@@ -20,7 +20,7 @@ import org.springframework.web.util.UriComponentsBuilder
 class OAuth2SuccessHandler(
     private val jwtTokenProvider: JwtTokenProvider,
     private val studentRepository: StudentRepository,
-    @Value("\${app.oauth.redirect-uri:http://localhost:5173/oauth/callback}")
+    @Value("\${cors.oauth.redirect-uri:http://localhost:5173/oauth/callback}")
     private val frontendRedirectUri: String
 ) : SimpleUrlAuthenticationSuccessHandler() {
 
