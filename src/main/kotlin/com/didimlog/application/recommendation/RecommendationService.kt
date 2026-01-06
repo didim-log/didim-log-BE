@@ -1,6 +1,5 @@
 package com.didimlog.application.recommendation
 
-import com.didimlog.application.utils.AlgorithmHierarchyUtils
 import com.didimlog.application.utils.TagUtils
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
@@ -90,16 +89,20 @@ class RecommendationService(
             val normalizedCategory = TagUtils.normalizeTagName(category)
             
             // 2. ProblemCategory enum에서 englishName 또는 enum 이름으로 매칭
-            val categoryEnglishName = AlgorithmHierarchyUtils.findCategoryEnglishName(normalizedCategory)
+            val categoryEnglishName = ProblemCategory.entries
+                .find { 
+                    // enum 이름 매칭 (예: BFS, DFS, DP)
+                    it.name.equals(normalizedCategory, ignoreCase = true) ||
+                    // englishName 매칭 (예: "Breadth-first Search")
+                    it.englishName.equals(normalizedCategory, ignoreCase = true)
+                }
+                ?.englishName
+                ?: normalizedCategory // 매칭 안 되면 정규화된 문자열 사용
             
-            // 3. 카테고리 확장: 상위 카테고리를 선택하면 하위 태그들도 포함하여 검색
-            val expandedTags = AlgorithmHierarchyUtils.getExpandedTags(categoryEnglishName)
-            
-            // 4. 확장된 태그 리스트로 검색 (문제의 tags 중 하나라도 포함되면 검색)
-            problemRepository.findByLevelBetweenAndTagsIn(
+            problemRepository.findByLevelBetweenAndCategory(
                 min = minLevel,
                 max = maxLevel,
-                expandedTags = expandedTags
+                category = categoryEnglishName
             )
         } else {
             problemRepository.findByLevelBetween(

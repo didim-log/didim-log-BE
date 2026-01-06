@@ -9,7 +9,6 @@ import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
-import com.didimlog.application.utils.AlgorithmHierarchyUtils
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -270,14 +269,12 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        // RecommendationService는 category를 확장된 태그 리스트로 변환하여 검색
-        // "IMPLEMENTATION"은 ["Implementation"]로 확장됨 (계층 구조 없음)
-        // "Graph Theory"는 ["Graph Theory", "Breadth-first Search", "Depth-first Search", ...]로 확장됨
+        // RecommendationService는 category를 englishName으로 변환하므로, 실제 호출되는 값으로 모킹
+        // "IMPLEMENTATION"은 "Implementation"으로 변환되어 호출됨
+        // "Graph Theory"는 그대로 "Graph Theory"로 호출됨 (englishName과 일치)
         // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        val implementationExpandedTags = AlgorithmHierarchyUtils.getExpandedTags(ProblemCategory.IMPLEMENTATION.englishName)
-        val graphExpandedTags = AlgorithmHierarchyUtils.getExpandedTags(ProblemCategory.GRAPH_THEORY.englishName)
-        every { problemRepository.findByLevelBetweenAndTagsIn(1, 7, implementationExpandedTags) } returns implementationProblems
-        every { problemRepository.findByLevelBetweenAndTagsIn(1, 7, graphExpandedTags) } returns graphProblems
+        every { problemRepository.findByLevelBetweenAndCategory(1, 7, ProblemCategory.IMPLEMENTATION.englishName) } returns implementationProblems
+        every { problemRepository.findByLevelBetweenAndCategory(1, 7, ProblemCategory.GRAPH_THEORY.englishName) } returns graphProblems
 
         // when
         // RecommendationService는 category를 englishName으로 변환하므로, 실제로는 "Implementation"과 "Graph Theory"로 변환됨
@@ -306,18 +303,14 @@ class RecommendationServiceTest {
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
         // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        // "DYNAMIC_PROGRAMMING"은 "Dynamic Programming"으로 변환되고 확장된 태그 리스트로 검색됨
-        // RecommendationService에서 실제로 호출되는 확장된 태그 리스트를 계산
-        val categoryEnglishName = AlgorithmHierarchyUtils.findCategoryEnglishName("DYNAMIC_PROGRAMMING")
-        val dpExpandedTags = AlgorithmHierarchyUtils.getExpandedTags(categoryEnglishName)
-        every { problemRepository.findByLevelBetweenAndTagsIn(1, 7, dpExpandedTags) } returns emptyList()
+        every { problemRepository.findByLevelBetweenAndCategory(1, 7, "DYNAMIC_PROGRAMMING") } returns emptyList()
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 5, category = "DYNAMIC_PROGRAMMING")
 
         // then
         assertThat(recommended).isEmpty()
-        verify { problemRepository.findByLevelBetweenAndTagsIn(1, 7, dpExpandedTags) }
+        verify { problemRepository.findByLevelBetweenAndCategory(1, 7, "DYNAMIC_PROGRAMMING") }
     }
 
     @Test
@@ -424,8 +417,7 @@ class RecommendationServiceTest {
             category = category,
             difficulty = tier,
             level = level,
-            url = "https://www.acmicpc.net/problem/$id",
-            tags = listOf(category.englishName) // 카테고리의 englishName을 tags에 포함
+            url = "https://www.acmicpc.net/problem/$id"
         )
     }
 }
