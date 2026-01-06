@@ -106,7 +106,8 @@ class AuthControllerTest {
             token = "jwt-token",
             refreshToken = "refresh-token",
             rating = 100,
-            tier = Tier.BRONZE
+            tier = Tier.BRONZE,
+            tierLevel = 3
         )
 
         every { authService.signup(request.bojId, request.password, request.email) } returns authResult
@@ -172,7 +173,8 @@ class AuthControllerTest {
             token = "jwt-token",
             refreshToken = "refresh-token",
             rating = 100,
-            tier = Tier.BRONZE
+            tier = Tier.BRONZE,
+            tierLevel = 3
         )
 
         every { authService.login(request.bojId, request.password) } returns authResult

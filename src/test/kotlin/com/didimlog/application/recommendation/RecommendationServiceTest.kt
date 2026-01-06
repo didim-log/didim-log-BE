@@ -14,6 +14,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.domain.valueobject.TimeTakenSeconds
 import io.mockk.every
 import io.mockk.mockk
@@ -35,7 +36,7 @@ class RecommendationServiceTest {
     @DisplayName("BRONZE 티어 학생에게 현재 티어 레벨 범위 -2 ~ +2 단계 문제를 추천한다")
     fun `BRONZE 티어 학생에게 -2~+2 레벨 범위 문제 추천`() {
         // given
-        // BRONZE 티어(레벨 1~5) 학생 -> 레벨 (1-2) ~ (5+2) = 레벨 1~7 문제 추천
+        // BRONZE(예: Bronze III, tierLevel=3) 학생 -> 레벨 (3-2) ~ (3+2) = 레벨 1~5 문제 추천
         val bojId = "test123"
         val student = createStudent(
             id = "student-1",
@@ -46,20 +47,20 @@ class RecommendationServiceTest {
         val recommendedProblems = listOf(
             createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
             createProblem(id = "p2", tier = Tier.BRONZE, level = 3),
-            createProblem(id = "p3", tier = Tier.SILVER, level = 6),
-            createProblem(id = "p4", tier = Tier.SILVER, level = 7)
+            createProblem(id = "p3", tier = Tier.BRONZE, level = 4),
+            createProblem(id = "p4", tier = Tier.BRONZE, level = 5)
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { problemRepository.findByLevelBetween(1, 7) } returns recommendedProblems
+        every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns recommendedProblems
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 2)
 
         // then
         assertThat(recommended).hasSize(2)
-        assertThat(recommended.map { it.level }).allMatch { it in 1..7 }
-        verify { problemRepository.findByLevelBetween(1, 7) }
+        assertThat(recommended.map { it.level }).allMatch { it in 1..5 }
+        verify { problemRepository.findByLevelBetweenFlexible(1, 5) }
     }
 
     @Test
@@ -74,15 +75,15 @@ class RecommendationServiceTest {
             tier = Tier.BRONZE,
             solvedProblemIds = setOf(solvedProblemId)
         )
-        val silverProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
-            createProblem(id = "p2", tier = Tier.SILVER, level = 7),
-            createProblem(id = "p3", tier = Tier.SILVER, level = 8)
+        val candidateProblems = listOf(
+            createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
+            createProblem(id = "p2", tier = Tier.BRONZE, level = 3),
+            createProblem(id = "p3", tier = Tier.BRONZE, level = 5)
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        every { problemRepository.findByLevelBetween(1, 7) } returns silverProblems
+        // tierLevel=3 -> 레벨 1~5 범위
+        every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns candidateProblems
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 10)
@@ -106,8 +107,8 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        every { problemRepository.findByLevelBetween(1, 7) } returns emptyList()
+        // tierLevel=3 -> 레벨 1~5 범위
+        every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns emptyList()
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 5)
@@ -128,15 +129,15 @@ class RecommendationServiceTest {
             tier = Tier.BRONZE,
             solvedProblemIds = solvedProblemIds
         )
-        val silverProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
-            createProblem(id = "p2", tier = Tier.SILVER, level = 7),
-            createProblem(id = "p3", tier = Tier.SILVER, level = 8)
+        val candidateProblems = listOf(
+            createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
+            createProblem(id = "p2", tier = Tier.BRONZE, level = 3),
+            createProblem(id = "p3", tier = Tier.BRONZE, level = 5)
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        every { problemRepository.findByLevelBetween(1, 7) } returns silverProblems
+        // tierLevel=3 -> 레벨 1~5 범위
+        every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns candidateProblems
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 5)
@@ -149,7 +150,7 @@ class RecommendationServiceTest {
     @DisplayName("PLATINUM 티어 학생에게는 현재 티어 레벨 범위 -2 ~ +2 단계 문제를 추천한다")
     fun `PLATINUM 티어 학생에게 -2~+2 레벨 범위 문제 추천`() {
         // given
-        // PLATINUM 티어(레벨 16~20) 학생 -> 레벨 (16-2) ~ (20+2) = 레벨 14~22 문제 추천
+        // PLATINUM(예: Platinum III, tierLevel=18) 학생 -> 레벨 (18-2) ~ (18+2) = 레벨 16~20 문제 추천
         val bojId = "test123"
         val student = createStudent(
             id = "student-1",
@@ -158,22 +159,22 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
         val recommendedProblems = listOf(
-            createProblem(id = "p1", tier = Tier.GOLD, level = 14),
+            createProblem(id = "p1", tier = Tier.PLATINUM, level = 16),
             createProblem(id = "p2", tier = Tier.PLATINUM, level = 18),
-            createProblem(id = "p3", tier = Tier.DIAMOND, level = 21),
-            createProblem(id = "p4", tier = Tier.DIAMOND, level = 22)
+            createProblem(id = "p3", tier = Tier.PLATINUM, level = 19),
+            createProblem(id = "p4", tier = Tier.PLATINUM, level = 20)
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { problemRepository.findByLevelBetween(14, 22) } returns recommendedProblems
+        every { problemRepository.findByLevelBetweenFlexible(16, 20) } returns recommendedProblems
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 2)
 
         // then
-        verify { problemRepository.findByLevelBetween(14, 22) }
+        verify { problemRepository.findByLevelBetweenFlexible(16, 20) }
         assertThat(recommended).hasSize(2)
-        assertThat(recommended.map { it.level }).allMatch { it in 14..22 }
+        assertThat(recommended.map { it.level }).allMatch { it in 16..20 }
     }
 
     @Test
@@ -202,14 +203,14 @@ class RecommendationServiceTest {
             tier = Tier.BRONZE,
             solvedProblemIds = setOf()
         )
-        val silverProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
-            createProblem(id = "p2", tier = Tier.SILVER, level = 7)
+        val candidateProblems = listOf(
+            createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
+            createProblem(id = "p2", tier = Tier.BRONZE, level = 3)
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        every { problemRepository.findByLevelBetween(1, 7) } returns silverProblems
+        // tierLevel=3 -> 레벨 1~5 범위
+        every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns candidateProblems
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 10)
@@ -222,7 +223,7 @@ class RecommendationServiceTest {
     @DisplayName("SILVER 티어 학생에게 현재 티어 레벨 범위 -2 ~ +2 단계 문제를 추천한다")
     fun `SILVER 티어 학생에게 -2~+2 레벨 범위 문제 추천`() {
         // given
-        // SILVER 티어(레벨 6~10) 학생 -> 레벨 (6-2) ~ (10+2) = 레벨 4~12 문제 추천
+        // SILVER(예: Silver III, tierLevel=8) 학생 -> 레벨 (8-2) ~ (8+2) = 레벨 6~10 문제 추천
         val bojId = "test123"
         val student = createStudent(
             id = "student-1",
@@ -231,22 +232,22 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
         val recommendedProblems = listOf(
-            createProblem(id = "p1", tier = Tier.BRONZE, level = 4),
+            createProblem(id = "p1", tier = Tier.SILVER, level = 6),
             createProblem(id = "p2", tier = Tier.SILVER, level = 8),
-            createProblem(id = "p3", tier = Tier.GOLD, level = 11),
-            createProblem(id = "p4", tier = Tier.GOLD, level = 12)
+            createProblem(id = "p3", tier = Tier.SILVER, level = 9),
+            createProblem(id = "p4", tier = Tier.SILVER, level = 10)
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { problemRepository.findByLevelBetween(4, 12) } returns recommendedProblems
+        every { problemRepository.findByLevelBetweenFlexible(6, 10) } returns recommendedProblems
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 2)
 
         // then
         assertThat(recommended).hasSize(2)
-        assertThat(recommended.map { it.level }).allMatch { it in 4..12 }
-        verify { problemRepository.findByLevelBetween(4, 12) }
+        assertThat(recommended.map { it.level }).allMatch { it in 6..10 }
+        verify { problemRepository.findByLevelBetweenFlexible(6, 10) }
     }
 
     @Test
@@ -272,9 +273,9 @@ class RecommendationServiceTest {
         // RecommendationService는 category를 englishName으로 변환하므로, 실제 호출되는 값으로 모킹
         // "IMPLEMENTATION"은 "Implementation"으로 변환되어 호출됨
         // "Graph Theory"는 그대로 "Graph Theory"로 호출됨 (englishName과 일치)
-        // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        every { problemRepository.findByLevelBetweenAndCategory(1, 7, ProblemCategory.IMPLEMENTATION.englishName) } returns implementationProblems
-        every { problemRepository.findByLevelBetweenAndCategory(1, 7, ProblemCategory.GRAPH_THEORY.englishName) } returns graphProblems
+        // tierLevel=3 -> 레벨 1~5 범위
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.IMPLEMENTATION.englishName) } returns implementationProblems
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.GRAPH_THEORY.englishName) } returns graphProblems
 
         // when
         // RecommendationService는 category를 englishName으로 변환하므로, 실제로는 "Implementation"과 "Graph Theory"로 변환됨
@@ -302,15 +303,15 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        // BRONZE 티어(레벨 1~5) -> 레벨 1~7 범위
-        every { problemRepository.findByLevelBetweenAndCategory(1, 7, "DYNAMIC_PROGRAMMING") } returns emptyList()
+        // tierLevel=3 -> 레벨 1~5 범위
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, "DYNAMIC_PROGRAMMING") } returns emptyList()
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 5, category = "DYNAMIC_PROGRAMMING")
 
         // then
         assertThat(recommended).isEmpty()
-        verify { problemRepository.findByLevelBetweenAndCategory(1, 7, "DYNAMIC_PROGRAMMING") }
+        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, "DYNAMIC_PROGRAMMING") }
     }
 
     @Test
@@ -332,7 +333,7 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { problemRepository.findByLevelBetween(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
+        every { problemRepository.findByLevelBetweenFlexible(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 2)
@@ -340,21 +341,23 @@ class RecommendationServiceTest {
         // then
         assertThat(recommended).hasSize(2)
         assertThat(recommended.map { it.level }).allMatch { it in 1..2 }
-        verify { problemRepository.findByLevelBetween(1, 2) }
+        verify { problemRepository.findByLevelBetweenFlexible(1, 2) }
     }
 
     @Test
     @DisplayName("rating=0(UNRATED)인데 currentTier가 불일치하더라도 Bronze V~IV(레벨 1~2) 문제를 추천한다")
     fun `rating 기반으로 UNRATED 추천 범위를 계산한다`() {
         // given
-        // legacy 데이터: rating은 0인데 currentTier가 BRONZE로 저장되어 있는 케이스를 가정
+        // legacy 데이터: currentTier는 BRONZE로 저장되어 있지만, solvedAcTierLevel은 UNRATED(0)인 케이스를 가정
         val bojId = "unratedlegacy"
         val student = createStudent(
             id = "student-legacy",
             bojId = bojId,
             tier = Tier.BRONZE,
-            solvedProblemIds = setOf()
-        ).copy(rating = 0)
+            solvedProblemIds = setOf(),
+            rating = 0,
+            solvedAcTierLevel = 0
+        )
 
         val bronzeProblems = listOf(
             createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
@@ -363,7 +366,7 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { problemRepository.findByLevelBetween(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
+        every { problemRepository.findByLevelBetweenFlexible(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 2)
@@ -371,7 +374,36 @@ class RecommendationServiceTest {
         // then
         assertThat(recommended).hasSize(2)
         assertThat(recommended.map { it.level }).allMatch { it in 1..2 }
-        verify { problemRepository.findByLevelBetween(1, 2) }
+        verify { problemRepository.findByLevelBetweenFlexible(1, 2) }
+    }
+
+    @Test
+    @DisplayName("rating=2(UNRATED)인 경우에도 Bronze V~IV(레벨 1~2) 문제를 추천한다")
+    fun `rating 2 unrated still recommends bronze v iv`() {
+        // given
+        val bojId = "unrated2pt"
+        val student = createStudent(
+            id = "student-unrated2",
+            bojId = bojId,
+            tier = Tier.UNRATED,
+            solvedProblemIds = setOf()
+        ).copy(rating = 2)
+
+        val bronzeProblems = listOf(
+            createProblem(id = "p1", tier = Tier.BRONZE, level = 1),
+            createProblem(id = "p2", tier = Tier.BRONZE, level = 2)
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenFlexible(1, 2) } returns bronzeProblems
+
+        // when
+        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+
+        // then
+        assertThat(recommended).hasSize(2)
+        assertThat(recommended.map { it.level }).allMatch { it in 1..2 }
+        verify { problemRepository.findByLevelBetweenFlexible(1, 2) }
     }
 
     private fun createStudent(
@@ -379,7 +411,8 @@ class RecommendationServiceTest {
         bojId: String,
         tier: Tier,
         solvedProblemIds: Set<ProblemId>,
-        rating: Int = if (tier == Tier.UNRATED) 0 else tier.minRating
+        rating: Int = if (tier == Tier.UNRATED) 0 else tier.minRating,
+        solvedAcTierLevel: Int = if (tier == Tier.UNRATED) 0 else tier.value
     ): Student {
         val solutions = Solutions()
         solvedProblemIds.forEach { problemId ->
@@ -399,6 +432,7 @@ class RecommendationServiceTest {
             bojId = BojId(bojId),
             password = "test-password",
             rating = rating,
+            solvedAcTierLevel = SolvedAcTierLevel(solvedAcTierLevel),
             currentTier = tier,
             role = Role.USER,
             solutions = solutions

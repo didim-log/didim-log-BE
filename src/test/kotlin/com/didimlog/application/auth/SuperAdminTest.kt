@@ -55,7 +55,8 @@ class SuperAdminTest {
 
         val userResponse = SolvedAcUserResponse(
             handle = bojId,
-            rating = rating
+            rating = rating,
+            tier = 15
         )
 
         mockkObject(com.didimlog.global.util.PasswordValidator)
@@ -107,7 +108,8 @@ class SuperAdminTest {
         every { com.didimlog.global.util.PasswordValidator.validate(password) } returns Unit
         every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
             handle = bojId,
-            rating = 100
+            rating = 100,
+            tier = 3
         )
         every { studentRepository.findByBojId(BojId(bojId)) } returns java.util.Optional.of(existingStudent)
 

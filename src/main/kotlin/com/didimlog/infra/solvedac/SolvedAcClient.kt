@@ -39,14 +39,10 @@ data class SolvedAcTagDisplayName(
 data class SolvedAcUserResponse(
     val handle: String,
     @JsonProperty("rating")
-    val rating: Int  // Solved.ac API의 rating 필드 (0이면 Unrated)
-) {
-    /**
-     * rating 값을 tier로 변환 (0이면 1로 처리하여 BRONZE로 매핑)
-     */
-    val tier: Int
-        get() = rating.coerceAtLeast(1)
-}
+    val rating: Int,  // Solved.ac API의 rating 필드 (0이면 Unrated)
+    @JsonProperty("tier")
+    val tier: Int     // Solved.ac API의 tier 필드 (0이면 Unrated, 1=Bronze 5, 2=Bronze 4 ...)
+)
 
 object SolvedAcTierMapper {
 

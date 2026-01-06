@@ -52,7 +52,7 @@ data class StudentProfileResponse(
                 nickname = profile.nickname,
                 bojId = profile.bojId,
                 currentTier = profile.currentTier.name,
-                currentTierLevel = profile.currentTier.value,
+                currentTierLevel = profile.solvedAcTierLevel,
                 consecutiveSolveDays = profile.consecutiveSolveDays,
                 primaryLanguage = profile.primaryLanguage,
                 isOnboardingFinished = profile.isOnboardingFinished
@@ -66,7 +66,7 @@ data class StudentProfileResponse(
                 nickname = student.nickname.value,
                 bojId = bojIdValue,
                 currentTier = student.currentTier.name,
-                currentTierLevel = student.currentTier.value,
+                currentTierLevel = student.solvedAcTierLevel.value,
                 consecutiveSolveDays = student.consecutiveSolveDays,
                 primaryLanguage = student.primaryLanguage,
                 isOnboardingFinished = student.isOnboardingFinished

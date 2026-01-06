@@ -8,6 +8,7 @@ import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.domain.valueobject.TimeTakenSeconds
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.PersistenceCreator
@@ -38,6 +39,7 @@ data class Student(
     val password: String? = null, // BCrypt로 암호화된 비밀번호 (BOJ 로그인 사용자만 사용)
     @Indexed
     val rating: Int = 0, // Solved.ac Rating (점수) - 랭킹 조회 성능 최적화를 위한 인덱스
+    val solvedAcTierLevel: SolvedAcTierLevel = SolvedAcTierLevel.fromRating(rating),
     val currentTier: Tier,
     val role: Role = Role.GUEST, // 사용자 권한 (GUEST: 소셜 로그인만 완료, USER: BOJ 인증 완료)
     val termsAgreed: Boolean = false, // 약관 동의 여부
@@ -82,6 +84,7 @@ data class Student(
         bojId: BojId?,
         password: String?,
         rating: Int?,
+        solvedAcTierLevel: SolvedAcTierLevel?,
         currentTier: Tier,
         role: Role?,
         termsAgreed: Boolean?,
@@ -101,6 +104,7 @@ data class Student(
         bojId = bojId,
         password = password,
         rating = rating ?: 0,
+        solvedAcTierLevel = solvedAcTierLevel ?: SolvedAcTierLevel.fromRating(rating ?: 0),
         currentTier = currentTier,
         role = role ?: Role.GUEST,
         termsAgreed = termsAgreed ?: false,
@@ -209,8 +213,23 @@ data class Student(
      * @return Rating과 티어가 업데이트된 새로운 Student 인스턴스
      */
     fun updateInfo(newRating: Int): Student {
+        return updateSolvedAcProfile(
+            newRating = newRating,
+            newTierLevel = SolvedAcTierLevel.fromRating(newRating)
+        )
+    }
+
+    /**
+     * 외부(Solved.ac API)에서 가져온 Rating(점수)과 Tier(레벨) 정보로 프로필을 업데이트한다.
+     * Rating은 추천/랭킹 등에서 사용되며, tierLevel은 Solved.ac UI와 동일한 레벨(1=Bronze 5)을 유지한다.
+     */
+    fun updateSolvedAcProfile(newRating: Int, newTierLevel: SolvedAcTierLevel): Student {
         val newTier = Tier.fromRating(newRating)
-        return copy(rating = newRating, currentTier = newTier)
+        return copy(
+            rating = newRating,
+            solvedAcTierLevel = newTierLevel,
+            currentTier = newTier
+        )
     }
 
     /**

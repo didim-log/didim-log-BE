@@ -4,7 +4,6 @@ import com.didimlog.application.utils.TagUtils
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -38,11 +37,10 @@ class RecommendationService(
      */
     fun recommendProblems(bojId: String, count: Int, category: String? = null, language: String? = null): List<Problem> {
         val student = findStudentByBojIdOrThrow(bojId)
-        // Rating(Solved.ac)을 Source of Truth로 사용한다.
-        // 과거 데이터/동기화 타이밍 이슈로 currentTier가 rating과 불일치할 수 있어,
-        // 추천 범위 계산은 rating 기반으로 수행한다.
-        val effectiveTier = Tier.fromRating(student.rating)
-        val (minLevel, maxLevel) = calculateTargetDifficultyLevelRange(effectiveTier)
+        // Solved.ac tierLevel(1=Bronze 5 ...)을 추천 난이도 계산의 Source of Truth로 사용한다.
+        // 로그인/새로고침 시점에 동기화된 tierLevel을 기준으로 범위를 계산한다.
+        val effectiveTierLevel = student.solvedAcTierLevel.value
+        val (minLevel, maxLevel) = calculateTargetDifficultyLevelRange(effectiveTierLevel)
 
         val candidateProblems = findCandidateProblems(minLevel, maxLevel, category, language)
         val solvedProblemIds = student.getSolvedProblemIds()
@@ -69,17 +67,17 @@ class RecommendationService(
      * 예: RUBY 티어(레벨 26~30) 학생 -> 레벨 (26-2) ~ (30+2) = 레벨 24~32 문제 추천
      * 예: UNRATED 티어(레벨 0) 학생 -> 레벨 1~2 (Bronze V ~ Bronze IV) 문제 추천
      *
-     * @param currentTier 현재 티어
+     * @param tierLevel Solved.ac 사용자 티어 레벨 (0=Unrated, 1~30=Bronze 5~Ruby 1, 31=Master)
      * @return 타겟 난이도 레벨 범위 (minLevel, maxLevel) Pair
      */
-    private fun calculateTargetDifficultyLevelRange(currentTier: Tier): Pair<Int, Int> {
+    private fun calculateTargetDifficultyLevelRange(tierLevel: Int): Pair<Int, Int> {
         // UNRATED 특별 처리: Bronze V(레벨 1) ~ Bronze IV(레벨 2) 추천
-        if (currentTier == Tier.UNRATED) {
+        if (tierLevel <= 0) {
             return Pair(1, 2)
         }
         
-        val minLevel = (currentTier.minLevel - 2).coerceAtLeast(1)
-        val maxLevel = currentTier.maxLevel + 2
+        val minLevel = (tierLevel - 2).coerceAtLeast(1)
+        val maxLevel = tierLevel + 2
         return Pair(minLevel, maxLevel)
     }
 
@@ -105,10 +103,8 @@ class RecommendationService(
                 category = categoryEnglishName
             )
         } else {
-            problemRepository.findByLevelBetween(
-                min = minLevel,
-                max = maxLevel
-            )
+            // 레거시 스키마(difficultyLevel)도 함께 지원한다.
+            problemRepository.findByLevelBetweenFlexible(min = minLevel, max = maxLevel)
         }
         
         // language 필터 적용
