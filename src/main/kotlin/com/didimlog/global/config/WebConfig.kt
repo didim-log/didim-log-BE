@@ -1,50 +1,37 @@
 package com.didimlog.global.config
 
-import com.didimlog.global.interceptor.MaintenanceModeInterceptor
-import com.didimlog.global.interceptor.PerformanceMonitoringInterceptor
-import com.didimlog.global.ratelimit.RateLimitInterceptor
-import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Configuration
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry
+import org.springframework.web.servlet.config.annotation.CorsRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
 /**
  * Web MVC 설정
- * 인터셉터를 등록한다.
+ *
+ * CORS 허용 Origin을 환경 변수 기반으로 동적으로 구성한다.
+ * - 설정 키: cors.allowed-origins
+ * - 환경 변수: ALLOWED_ORIGINS
+ * - 기본값(로컬): http://localhost:5173,http://localhost:8080
  */
 @Configuration
-@org.springframework.context.annotation.Profile("!test")
 class WebConfig(
-    private val performanceMonitoringInterceptorProvider: ObjectProvider<PerformanceMonitoringInterceptor>,
-    private val maintenanceModeInterceptorProvider: ObjectProvider<MaintenanceModeInterceptor>,
-    private val rateLimitInterceptorProvider: ObjectProvider<RateLimitInterceptor>
+    @Value("\${cors.allowed-origins:http://localhost:5173,http://localhost:8080}")
+    private val allowedOrigins: String
 ) : WebMvcConfigurer {
 
-    override fun addInterceptors(registry: InterceptorRegistry) {
-        // 유지보수 모드 인터셉터 (가장 먼저 실행)
-        maintenanceModeInterceptorProvider.ifAvailable { interceptor ->
-            registry.addInterceptor(interceptor)
-                .addPathPatterns("/api/**")
-                .excludePathPatterns(
-                    "/api/v1/admin/system/**", // 유지보수 모드 제어 API는 제외
-                    "/api/v1/system/**" // 시스템 상태 조회 API는 제외 (Public)
-                )
-        }
+    override fun addCorsMappings(registry: CorsRegistry) {
+        val origins = parseAllowedOrigins(allowedOrigins)
+        registry.addMapping("/**")
+            .allowedOrigins(*origins.toTypedArray())
+            .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+            .allowedHeaders("*")
+            .allowCredentials(true)
+            .maxAge(3600)
+    }
 
-        // Rate Limiting 인터셉터 (인증 API 보호)
-        rateLimitInterceptorProvider.ifAvailable { interceptor ->
-            registry.addInterceptor(interceptor)
-                .addPathPatterns(
-                    "/api/v1/auth/signup",
-                    "/api/v1/auth/login",
-                    "/api/v1/auth/find-account",
-                    "/api/v1/auth/reset-password"
-                )
-        }
-
-        performanceMonitoringInterceptorProvider.ifAvailable { interceptor ->
-            registry.addInterceptor(interceptor)
-                .addPathPatterns("/api/**")
-        }
+    internal fun parseAllowedOrigins(value: String): List<String> {
+        return value.split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
     }
 }
