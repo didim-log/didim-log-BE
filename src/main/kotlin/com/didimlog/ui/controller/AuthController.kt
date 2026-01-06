@@ -60,7 +60,7 @@ class AuthController(
     private val jwtTokenProvider: JwtTokenProvider,
     private val studentRepository: StudentRepository,
     private val rateLimitService: RateLimitService,
-    @Value("\${app.admin.secret-key}")
+    @Value("\${app.admin.secret-key:}")
     private val adminSecretKey: String
 ) {
 

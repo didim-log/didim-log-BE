@@ -4,8 +4,10 @@ services:
     container_name: didim-log-be-container
     ports:
       - "8083:8080"
+    # .env 파일을 상대 경로로 참조 (docker-compose.yml과 같은 디렉토리의 .env 파일 사용)
+    # GitHub Actions가 /home/{AWS_USER}/app/didim-log-be/.env 경로에 생성한 파일을 자동으로 로드
     env_file:
-      - /home/ec2-user/app/didim-log-be/.env
+      - .env
     networks:
       - didim-log-network
     restart: always
