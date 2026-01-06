@@ -18,6 +18,21 @@
 
 Rate Limit 초과 시 `429 Too Many Requests` 응답이 반환되며, 한국시간으로 잠금 해제 시간이 포함됩니다.
 
+### Breaking Change: `tierLevel` / `currentTierLevel` 의미 변경
+
+과거에는 `tierLevel` / `currentTierLevel`을 **티어 그룹의 대표값(예: BRONZE=3, SILVER=8, GOLD=13)** 으로 해석하는 경우가 있었습니다.
+
+현재는 계약을 다음으로 **통일**합니다:
+
+- `tierLevel` / `currentTierLevel`은 **Solved.ac 티어 단계값(아이콘 번호, 0~31)** 입니다.
+- 계산 기준(Source of Truth)은 `rating`이며, rating이 속하는 **가장 높은 단계**를 `tierLevel`로 결정합니다.
+  - 예: `rating=0` → `tierLevel=0` (Unrated)
+  - 예: `rating=30` → `tierLevel=1` (Bronze V)
+  - 예: `rating=90` → `tierLevel=3` (Bronze III)
+  - 예: `rating>=3000` → `tierLevel=31` (Master)
+
+클라이언트/서버에서 `tierLevel`을 대표값으로 해석하고 있던 로직이 있다면 깨질 수 있으므로, 배포 시점에 반드시 함께 조정해야 합니다.
+
 **응답 예시:**
 ```json
 {

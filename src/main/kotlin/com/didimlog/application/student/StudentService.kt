@@ -170,7 +170,7 @@ class StudentService(
         try {
             val userResponse = solvedAcClient.fetchUser(bojIdVo)
             val newRating = userResponse.rating
-            val newTierLevel = SolvedAcTierLevel(userResponse.tier)
+            val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
 
             if (student.rating == newRating && student.solvedAcTierLevel == newTierLevel) {
                 log.debug(

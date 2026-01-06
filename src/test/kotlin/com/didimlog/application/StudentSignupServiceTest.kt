@@ -33,7 +33,7 @@ class StudentSignupServiceTest {
         every { solvedAcClient.fetchUser(BojId("tester123")) } returns SolvedAcUserResponse(
             handle = "tester123",
             rating = 1000,
-            tier = 11
+            tier = 12
         )
 
         val studentSlot = slot<Student>()
@@ -50,7 +50,7 @@ class StudentSignupServiceTest {
         assertThat(saved.nickname.value).isEqualTo("tester")
         assertThat(saved.tier()).isIn(Tier.SILVER, Tier.GOLD, Tier.PLATINUM)
         assertThat(saved.rating).isEqualTo(1000)
-        assertThat(saved.solvedAcTierLevel.value).isEqualTo(11)
+        assertThat(saved.solvedAcTierLevel.value).isEqualTo(12)
 
         verify(exactly = 1) { studentRepository.save(any<Student>()) }
     }

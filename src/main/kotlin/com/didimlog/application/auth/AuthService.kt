@@ -98,7 +98,7 @@ class AuthService(
         try {
             val userResponse = solvedAcClient.fetchUser(bojIdVo)
             val newRating = userResponse.rating
-            val newTierLevel = SolvedAcTierLevel(userResponse.tier)
+            val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
             if (student.rating != newRating || student.solvedAcTierLevel != newTierLevel) {
                 currentStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
                 studentRepository.save(currentStudent)
@@ -197,7 +197,7 @@ class AuthService(
             bojIdVo = bojIdVo,
             email = email,
             rating = userResponse.rating,
-            tierLevel = userResponse.tier
+            tierLevel = SolvedAcTierLevel.fromRating(userResponse.rating).value
         )
         return issueUserToken(saved, bojIdVo.value)
     }
@@ -350,7 +350,7 @@ class AuthService(
         val encodedPassword = passwordEncoder.encode(password)
 
         val rating = userResponse.rating
-        val tierLevel = userResponse.tier
+        val tierLevel = SolvedAcTierLevel.fromRating(rating).value
         val tier = Tier.fromRating(rating)
         val nickname = createNicknameOrThrow(bojId, userResponse.handle)
 

@@ -42,7 +42,7 @@ class StudentSignupService(
             bojId = bojIdVo,
             password = null, // BOJ 직접 로그인이 아닌 경우 password는 null
             rating = user.rating,
-            solvedAcTierLevel = SolvedAcTierLevel(user.tier),
+            solvedAcTierLevel = SolvedAcTierLevel.fromRating(user.rating),
             currentTier = initialTier,
             role = Role.USER
         )
