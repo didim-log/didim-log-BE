@@ -7,9 +7,14 @@ import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.solvedac.ProblemCategoryMapper
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcTierMapper
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
+import java.util.UUID
 import kotlin.random.Random
 
 /**
@@ -21,10 +26,18 @@ import kotlin.random.Random
 class ProblemCollectorService(
     private val solvedAcClient: SolvedAcClient,
     private val problemRepository: ProblemRepository,
-    private val bojCrawler: BojCrawler
+    private val bojCrawler: BojCrawler,
+    private val redisTemplate: StringRedisTemplate,
+    private val objectMapper: ObjectMapper
 ) {
 
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
+
+    companion object {
+        private const val LANGUAGE_UPDATE_JOB_KEY_PREFIX = "language:update:job:"
+        private const val DETAILS_COLLECT_JOB_KEY_PREFIX = "details:collect:job:"
+        private const val JOB_STATUS_TTL_HOURS = 24L // 24시간 후 자동 삭제
+    }
 
     /**
      * Solved.ac API를 통해 문제 메타데이터를 수집하여 DB에 저장한다 (Upsert).
@@ -104,11 +117,13 @@ class ProblemCollectorService(
     }
 
     /**
-     * DB에서 descriptionHtml이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다.
+     * DB에서 descriptionHtml이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다 (동기 처리).
      * Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둔다.
-     * 추후 @Scheduled로 주기적으로 실행할 수 있도록 설계되었다.
+     * 
+     * @deprecated 대량 문제 처리 시 타임아웃 발생 가능. collectDetailsBatchAsync() 사용 권장.
      */
     @Transactional
+    @Deprecated("대량 문제 처리 시 타임아웃 발생 가능. collectDetailsBatchAsync() 사용 권장.")
     fun collectDetailsBatch() {
         log.info("문제 상세 정보 크롤링 시작")
         val problemsWithoutDetails = problemRepository.findByDescriptionHtmlIsNull()
@@ -157,6 +172,230 @@ class ProblemCollectorService(
         }
 
         log.info("문제 상세 정보 크롤링 완료: 성공=$successCount, 실패=$failCount")
+    }
+
+    /**
+     * DB에서 descriptionHtml이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다 (비동기 처리).
+     * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
+     * 작업 진행 상황은 getDetailsCollectJobStatus()로 조회할 수 있다.
+     *
+     * @return 작업 ID (작업 상태 조회에 사용)
+     */
+    fun collectDetailsBatchAsync(): String {
+        val jobId = UUID.randomUUID().toString()
+        val problemsWithoutDetails = problemRepository.findByDescriptionHtmlIsNull()
+
+        if (problemsWithoutDetails.isEmpty()) {
+            log.info("상세 정보가 없는 문제가 없습니다.")
+            val status = DetailsCollectJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = 0,
+                processedCount = 0,
+                successCount = 0,
+                failCount = 0,
+                startedAt = System.currentTimeMillis(),
+                completedAt = System.currentTimeMillis()
+            )
+            saveDetailsCollectJobStatus(status)
+            return jobId
+        }
+
+        // 초기 상태 저장
+        val initialStatus = DetailsCollectJobStatus(
+            jobId = jobId,
+            status = JobStatus.PENDING,
+            totalCount = problemsWithoutDetails.size,
+            processedCount = 0,
+            successCount = 0,
+            failCount = 0,
+            startedAt = System.currentTimeMillis()
+        )
+        saveDetailsCollectJobStatus(initialStatus)
+
+        // 비동기로 작업 실행
+        executeDetailsCollectAsync(jobId, problemsWithoutDetails)
+
+        return jobId
+    }
+
+    /**
+     * 문제 상세 정보 수집 작업 상태를 조회한다.
+     *
+     * @param jobId 작업 ID
+     * @return 작업 상태 (없으면 null)
+     */
+    fun getDetailsCollectJobStatus(jobId: String): DetailsCollectJobStatus? {
+        val key = DETAILS_COLLECT_JOB_KEY_PREFIX + jobId
+        val json = redisTemplate.opsForValue().get(key) ?: return null
+
+        return try {
+            objectMapper.readValue(json, DetailsCollectJobStatus::class.java)
+        } catch (e: Exception) {
+            log.error("작업 상태 파싱 실패: jobId=$jobId", e)
+            null
+        }
+    }
+
+    /**
+     * 비동기로 문제 상세 정보 수집 작업을 실행한다.
+     */
+    @Async
+    fun executeDetailsCollectAsync(jobId: String, problems: List<Problem>) {
+        log.info("문제 상세 정보 크롤링 시작: jobId=$jobId, totalCount=${problems.size}")
+
+        var processedCount = 0
+        var successCount = 0
+        var failCount = 0
+        val startedAt = System.currentTimeMillis()
+
+        // 상태를 RUNNING으로 변경
+        updateDetailsCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+
+        try {
+            for (problem in problems) {
+                try {
+                    val details = bojCrawler.crawlProblemDetails(problem.id.value)
+
+                    if (details == null) {
+                        failCount++
+                        log.warn("문제 상세 정보 크롤링 실패: problemId=${problem.id.value}")
+                    } else {
+                        val updatedProblem = problem.copy(
+                            descriptionHtml = details.descriptionHtml,
+                            inputDescriptionHtml = details.inputDescriptionHtml,
+                            outputDescriptionHtml = details.outputDescriptionHtml,
+                            sampleInputs = details.sampleInputs.takeIf { it.isNotEmpty() },
+                            sampleOutputs = details.sampleOutputs.takeIf { it.isNotEmpty() },
+                            language = details.language
+                        )
+                        problemRepository.save(updatedProblem)
+                        successCount++
+                        log.debug("문제 상세 정보 수집 성공: problemId=${problem.id.value}")
+                    }
+
+                    processedCount++
+
+                    // 진행 상황 업데이트 (10개마다 또는 마지막 문제)
+                    if (processedCount % 10 == 0 || processedCount == problems.size) {
+                        updateDetailsCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+                    }
+
+                    // Anti-Ban Logic: 2~4초 간격으로 요청
+                    val delay = 2000 + Random.nextInt(2000)
+                    Thread.sleep(delay.toLong())
+                } catch (e: Exception) {
+                    log.error("문제 상세 정보 수집 중 예외 발생: problemId=${problem.id.value}, error=${e.message}", e)
+                    failCount++
+                    processedCount++
+                    // 다음 문제로 넘어가기 위해 예외를 잡고 계속 진행
+                }
+            }
+
+            // 완료 상태로 변경
+            val completedAt = System.currentTimeMillis()
+            val finalStatus = DetailsCollectJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = problems.size,
+                processedCount = processedCount,
+                successCount = successCount,
+                failCount = failCount,
+                startedAt = startedAt,
+                completedAt = completedAt
+            )
+            saveDetailsCollectJobStatus(finalStatus)
+
+            log.info("문제 상세 정보 크롤링 완료: jobId=$jobId, 성공=$successCount, 실패=$failCount")
+        } catch (e: Exception) {
+            log.error("문제 상세 정보 수집 작업 실패: jobId=$jobId", e)
+            val failedStatus = DetailsCollectJobStatus(
+                jobId = jobId,
+                status = JobStatus.FAILED,
+                totalCount = problems.size,
+                processedCount = processedCount,
+                successCount = successCount,
+                failCount = failCount,
+                startedAt = startedAt,
+                completedAt = System.currentTimeMillis(),
+                errorMessage = e.message
+            )
+            saveDetailsCollectJobStatus(failedStatus)
+        }
+    }
+
+    /**
+     * 언어 업데이트 작업 상태를 Redis에 저장한다.
+     */
+    private fun saveJobStatus(status: LanguageUpdateJobStatus) {
+        val key = LANGUAGE_UPDATE_JOB_KEY_PREFIX + status.jobId
+        try {
+            val json = objectMapper.writeValueAsString(status)
+            redisTemplate.opsForValue().set(
+                key,
+                json,
+                Duration.ofHours(JOB_STATUS_TTL_HOURS)
+            )
+        } catch (e: Exception) {
+            log.error("작업 상태 저장 실패: jobId=${status.jobId}", e)
+        }
+    }
+
+    /**
+     * 문제 상세 정보 수집 작업 상태를 Redis에 저장한다.
+     */
+    private fun saveDetailsCollectJobStatus(status: DetailsCollectJobStatus) {
+        val key = DETAILS_COLLECT_JOB_KEY_PREFIX + status.jobId
+        try {
+            val json = objectMapper.writeValueAsString(status)
+            redisTemplate.opsForValue().set(
+                key,
+                json,
+                Duration.ofHours(JOB_STATUS_TTL_HOURS)
+            )
+        } catch (e: Exception) {
+            log.error("작업 상태 저장 실패: jobId=${status.jobId}", e)
+        }
+    }
+
+    /**
+     * 언어 업데이트 작업 상태를 업데이트한다.
+     */
+    private fun updateJobStatus(
+        jobId: String,
+        status: JobStatus,
+        processedCount: Int,
+        successCount: Int,
+        failCount: Int
+    ) {
+        val currentStatus = getLanguageUpdateJobStatus(jobId) ?: return
+        val updatedStatus = currentStatus.copy(
+            status = status,
+            processedCount = processedCount,
+            successCount = successCount,
+            failCount = failCount
+        )
+        saveJobStatus(updatedStatus)
+    }
+
+    /**
+     * 문제 상세 정보 수집 작업 상태를 업데이트한다.
+     */
+    private fun updateDetailsCollectJobStatus(
+        jobId: String,
+        status: JobStatus,
+        processedCount: Int,
+        successCount: Int,
+        failCount: Int
+    ) {
+        val currentStatus = getDetailsCollectJobStatus(jobId) ?: return
+        val updatedStatus = currentStatus.copy(
+            status = status,
+            processedCount = processedCount,
+            successCount = successCount,
+            failCount = failCount
+        )
+        saveDetailsCollectJobStatus(updatedStatus)
     }
 
     /**
@@ -224,13 +463,15 @@ class ProblemCollectorService(
     }
 
     /**
-     * DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트한다.
+     * DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트한다 (동기 처리).
      * 기존 크롤링 데이터는 유지하고 language 필드만 업데이트한다.
      * Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둔다.
-     *
+     * 
+     * @deprecated 대량 문제 처리 시 타임아웃 발생 가능. updateLanguageBatchAsync() 사용 권장.
      * @return 업데이트된 문제 수
      */
     @Transactional
+    @Deprecated("대량 문제 처리 시 타임아웃 발생 가능. updateLanguageBatchAsync() 사용 권장.")
     fun updateLanguageBatch(): Int {
         log.info("문제 언어 정보 최신화 시작")
         val allProblems = problemRepository.findAll()
@@ -277,6 +518,153 @@ class ProblemCollectorService(
 
         log.info("문제 언어 정보 최신화 완료: 성공=$successCount, 실패=$failCount")
         return successCount
+    }
+
+    /**
+     * DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트한다 (비동기 처리).
+     * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
+     * 작업 진행 상황은 getLanguageUpdateJobStatus()로 조회할 수 있다.
+     *
+     * @return 작업 ID (작업 상태 조회에 사용)
+     */
+    fun updateLanguageBatchAsync(): String {
+        val jobId = UUID.randomUUID().toString()
+        val allProblems = problemRepository.findAll()
+
+        if (allProblems.isEmpty()) {
+            log.info("업데이트할 문제가 없습니다.")
+            val status = LanguageUpdateJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = 0,
+                processedCount = 0,
+                successCount = 0,
+                failCount = 0,
+                startedAt = System.currentTimeMillis(),
+                completedAt = System.currentTimeMillis()
+            )
+            saveJobStatus(status)
+            return jobId
+        }
+
+        // 초기 상태 저장
+        val initialStatus = LanguageUpdateJobStatus(
+            jobId = jobId,
+            status = JobStatus.PENDING,
+            totalCount = allProblems.size,
+            processedCount = 0,
+            successCount = 0,
+            failCount = 0,
+            startedAt = System.currentTimeMillis()
+        )
+        saveJobStatus(initialStatus)
+
+        // 비동기로 작업 실행
+        executeLanguageUpdateAsync(jobId, allProblems)
+
+        return jobId
+    }
+
+    /**
+     * 언어 정보 업데이트 작업 상태를 조회한다.
+     *
+     * @param jobId 작업 ID
+     * @return 작업 상태 (없으면 null)
+     */
+    fun getLanguageUpdateJobStatus(jobId: String): LanguageUpdateJobStatus? {
+        val key = LANGUAGE_UPDATE_JOB_KEY_PREFIX + jobId
+        val json = redisTemplate.opsForValue().get(key) ?: return null
+
+        return try {
+            objectMapper.readValue(json, LanguageUpdateJobStatus::class.java)
+        } catch (e: Exception) {
+            log.error("작업 상태 파싱 실패: jobId=$jobId", e)
+            null
+        }
+    }
+
+    /**
+     * 비동기로 언어 정보 업데이트 작업을 실행한다.
+     */
+    @Async
+    fun executeLanguageUpdateAsync(jobId: String, problems: List<Problem>) {
+        log.info("문제 언어 정보 최신화 시작: jobId=$jobId, totalCount=${problems.size}")
+        
+        var processedCount = 0
+        var successCount = 0
+        var failCount = 0
+        val startedAt = System.currentTimeMillis()
+
+        // 상태를 RUNNING으로 변경
+        updateJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+
+        try {
+            for (problem in problems) {
+                try {
+                    // BOJ 크롤링으로 언어 재판별
+                    val details = bojCrawler.crawlProblemDetails(problem.id.value)
+
+                    if (details == null) {
+                        failCount++
+                        log.warn("문제 언어 정보 업데이트 실패: problemId=${problem.id.value} (크롤링 실패)")
+                    } else {
+                        // language 필드만 업데이트 (기존 데이터 유지)
+                        val updatedProblem = problem.copy(
+                            language = details.language
+                        )
+                        problemRepository.save(updatedProblem)
+                        successCount++
+                        log.debug("문제 언어 정보 업데이트 성공: problemId=${problem.id.value}, language=${details.language}")
+                    }
+
+                    processedCount++
+
+                    // 진행 상황 업데이트 (10개마다 또는 마지막 문제)
+                    if (processedCount % 10 == 0 || processedCount == problems.size) {
+                        updateJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+                    }
+
+                    // Anti-Ban Logic: 2~4초 간격으로 요청
+                    val delay = 2000 + Random.nextInt(2000)
+                    Thread.sleep(delay.toLong())
+                } catch (e: Exception) {
+                    log.error("문제 언어 정보 업데이트 중 예외 발생: problemId=${problem.id.value}, error=${e.message}", e)
+                    failCount++
+                    processedCount++
+                    // 다음 문제로 넘어가기 위해 예외를 잡고 계속 진행
+                }
+            }
+
+            // 완료 상태로 변경
+            val completedAt = System.currentTimeMillis()
+            val finalStatus = LanguageUpdateJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = problems.size,
+                processedCount = processedCount,
+                successCount = successCount,
+                failCount = failCount,
+                startedAt = startedAt,
+                completedAt = completedAt
+            )
+            saveJobStatus(finalStatus)
+
+            log.info("문제 언어 정보 최신화 완료: jobId=$jobId, 성공=$successCount, 실패=$failCount")
+        } catch (e: Exception) {
+            log.error("언어 정보 업데이트 작업 실패: jobId=$jobId", e)
+            val failedStatus = LanguageUpdateJobStatus(
+                jobId = jobId,
+                status = JobStatus.FAILED,
+                totalCount = problems.size,
+                processedCount = processedCount,
+                successCount = successCount,
+                failCount = failCount,
+                startedAt = startedAt,
+                completedAt = System.currentTimeMillis(),
+                errorMessage = e.message
+            )
+            saveJobStatus(failedStatus)
+        }
     }
 
     private fun solvedAcProblemUrl(problemId: Int): String {
