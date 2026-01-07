@@ -140,11 +140,30 @@ class BojCrawlerTest {
         assertThat(result).isEqualTo("ko")
     }
 
+    @Test
+    @DisplayName("다국어 라벨이 없으면 'ko'로 판별된다")
+    fun `다국어 라벨 없으면 ko`() {
+        // given
+        val koreanText = "이 문제는 한국어로 작성된 문제입니다."
+
+        // when
+        val result = testDetectDetailLanguage(koreanText)
+
+        // then
+        assertThat(result).isEqualTo("ko")
+    }
+
     /**
-     * 리플렉션을 사용하여 private detectLanguage 메서드를 테스트합니다.
+     * 리플렉션을 사용하여 private detectDetailLanguage 메서드를 테스트합니다.
      */
     private fun testDetectLanguage(text: String): String {
-        val method = BojCrawler::class.java.getDeclaredMethod("detectLanguage", String::class.java)
+        // detectDetailLanguage는 다국어 라벨이 있을 때만 호출되므로,
+        // 테스트에서는 detectDetailLanguage를 직접 호출합니다.
+        return testDetectDetailLanguage(text)
+    }
+
+    private fun testDetectDetailLanguage(text: String): String {
+        val method = BojCrawler::class.java.getDeclaredMethod("detectDetailLanguage", String::class.java)
         method.isAccessible = true
         return method.invoke(bojCrawler, text) as String
     }

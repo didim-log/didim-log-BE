@@ -30,9 +30,15 @@ class BojCrawler {
             val outputDescriptionHtml = extractOutputDescription(doc)
             val (sampleInputs, sampleOutputs) = extractSampleData(doc)
 
-            // 언어 감지: 문제 설명 텍스트에서 한글 문자 개수 확인
+            // 언어 감지: '다국어' 라벨 확인 후 언어 판별
+            val isMultilingual = checkMultilingualLabel(doc)
             val combinedText = (descriptionHtml ?: "") + (inputDescriptionHtml ?: "") + (outputDescriptionHtml ?: "")
-            val detectedLanguage = detectLanguage(combinedText)
+            val detectedLanguage = if (!isMultilingual) {
+                "ko" // 라벨 없으면 토종 한국어 문제
+            } else {
+                // 라벨 있으면 상세 언어(영어/일어 등) 분석
+                detectDetailLanguage(combinedText)
+            }
 
             ProblemDetails(
                 descriptionHtml = descriptionHtml,
@@ -49,13 +55,56 @@ class BojCrawler {
     }
 
     /**
-     * 텍스트에서 언어를 감지한다.
-     * 다양한 언어(한국어, 영어, 일본어, 중국어 등)를 정확하게 판별한다.
+     * BOJ 페이지에서 '다국어' 라벨이 존재하는지 확인한다.
+     *
+     * @param doc 파싱된 HTML 문서
+     * @return '다국어' 라벨이 있으면 true, 없으면 false
+     */
+    private fun checkMultilingualLabel(doc: Document): Boolean {
+        // 다양한 selector로 라벨 요소 확인
+        val labelSelectors = listOf(
+            ".page-header .label-info",
+            ".problem-label-multilingual",
+            "span.label",
+            ".label-info",
+            "#problem-title ~ .label",
+            ".page-header span",
+            "h1 ~ span"
+        )
+
+        // 각 selector로 찾은 요소들의 텍스트에서 '다국어' 확인
+        for (selector in labelSelectors) {
+            val elements = doc.select(selector)
+            for (element in elements) {
+                val text = element.text()
+                if (text.contains("다국어")) {
+                    return true
+                }
+            }
+        }
+
+        // 추가로 페이지 헤더 영역에서 '다국어' 텍스트 검색
+        val headerElements = doc.select(".page-header, #problem-title, h1")
+        for (element in headerElements) {
+            val text = element.text()
+            if (text.contains("다국어")) {
+                return true
+            }
+        }
+
+        // 마지막으로 페이지 전체에서 '다국어' 텍스트 검색 (최후의 수단)
+        val pageText = doc.text()
+        return pageText.contains("다국어")
+    }
+
+    /**
+     * 텍스트에서 상세 언어를 감지한다.
+     * '다국어' 라벨이 있는 경우에만 호출되며, 다양한 언어(영어, 일본어, 중국어 등)를 정확하게 판별한다.
      *
      * @param text 분석할 텍스트
      * @return "ko" (한국어), "en" (영어), "ja" (일본어), "zh" (중국어), "other" (기타)
      */
-    private fun detectLanguage(text: String): String {
+    private fun detectDetailLanguage(text: String): String {
         if (text.isBlank()) {
             return "ko" // 기본값
         }
