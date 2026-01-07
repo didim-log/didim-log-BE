@@ -50,26 +50,93 @@ class BojCrawler {
 
     /**
      * 텍스트에서 언어를 감지한다.
-     * 한글 문자(Unicode AC00~D7A3)가 5개 미만이면 영어("en"), 그렇지 않으면 한국어("ko")로 판단한다.
+     * 다양한 언어(한국어, 영어, 일본어, 중국어 등)를 정확하게 판별한다.
      *
      * @param text 분석할 텍스트
-     * @return "ko" 또는 "en"
+     * @return "ko" (한국어), "en" (영어), "ja" (일본어), "zh" (중국어), "other" (기타)
      */
     private fun detectLanguage(text: String): String {
         if (text.isBlank()) {
             return "ko" // 기본값
         }
 
-        // 한글 문자 범위: AC00 (가) ~ D7A3 (힣)
-        val koreanCharCount = text.count { char ->
+        var koreanCount = 0      // 한글: AC00 (가) ~ D7A3 (힣)
+        var japaneseCount = 0    // 히라가나: 3040~309F, 가타카나: 30A0~30FF
+        var chineseCount = 0     // 중국어 한자: 4E00~9FFF
+        var englishCount = 0     // 영어: A-Z, a-z
+        var totalLetterCount = 0
+
+        text.forEach { char ->
+            if (!char.isLetter()) return@forEach
+            totalLetterCount++
+
             val codePoint = char.code
-            codePoint in 0xAC00..0xD7A3
+
+            // 한글 판별
+            if (codePoint in 0xAC00..0xD7A3) {
+                koreanCount++
+                return@forEach
+            }
+
+            // 일본어 판별 (히라가나, 가타카나)
+            if (codePoint in 0x3040..0x309F || codePoint in 0x30A0..0x30FF) {
+                japaneseCount++
+                return@forEach
+            }
+
+            // 한자 판별 (일본어/중국어 공통)
+            if (codePoint in 0x4E00..0x9FFF) {
+                // 한자는 일본어와 중국어 모두에서 사용되므로 별도 카운트
+                return@forEach
+            }
+
+            // 영어 판별
+            if (codePoint in 0x0041..0x005A || codePoint in 0x0061..0x007A) {
+                englishCount++
+                return@forEach
+            }
         }
 
-        return if (koreanCharCount < 5) {
-            "en"
-        } else {
-            "ko"
+        // 한자 개수 계산 (일본어/중국어 구분용)
+        val kanjiCount = text.count { char ->
+            val codePoint = char.code
+            codePoint in 0x4E00..0x9FFF
+        }
+
+        // 한자가 있고 히라가나/가타카나가 있으면 일본어로 간주
+        if (kanjiCount > 0 && japaneseCount > 0) {
+            japaneseCount += kanjiCount
+        } else if (kanjiCount > 0) {
+            // 한자만 있고 히라가나/가타카나가 없으면 중국어로 간주
+            chineseCount = kanjiCount
+        }
+
+        if (totalLetterCount == 0) {
+            return "ko" // 기본값
+        }
+
+        // 각 언어별 비율 계산
+        val koreanRatio = koreanCount.toDouble() / totalLetterCount
+        val japaneseRatio = japaneseCount.toDouble() / totalLetterCount
+        val chineseRatio = chineseCount.toDouble() / totalLetterCount
+        val englishRatio = englishCount.toDouble() / totalLetterCount
+
+        // 가장 높은 비율의 언어로 판별 (최소 10% 이상이어야 함)
+        val threshold = 0.1
+
+        // 한국어 우선: 한글이 5개 이상이면 무조건 "ko"
+        if (koreanCount >= 5) {
+            return "ko"
+        }
+
+        return when {
+            koreanRatio >= threshold && koreanRatio >= japaneseRatio &&
+                koreanRatio >= chineseRatio && koreanRatio >= englishRatio -> "ko"
+            japaneseRatio >= threshold && japaneseRatio >= chineseRatio &&
+                japaneseRatio >= englishRatio -> "ja"
+            chineseRatio >= threshold && chineseRatio >= englishRatio -> "zh"
+            englishRatio >= threshold -> "en"
+            else -> "other" // 기타 언어 또는 판별 불가
         }
     }
 

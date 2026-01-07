@@ -105,7 +105,28 @@ class ProblemCollectorControllerTest {
 
         verify(exactly = 1) { problemCollectorService.collectDetailsBatch() }
     }
+
+    @Test
+    @DisplayName("언어 정보 최신화 성공 시 200 OK 및 Response JSON 구조 검증")
+    fun `언어 정보 최신화 성공`() {
+        // given
+        every { problemCollectorService.updateLanguageBatch() } returns 1250
+
+        // when & then
+        mockMvc.perform(
+            post("/api/v1/admin/problems/update-language")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.message").value("문제 언어 정보 최신화가 완료되었습니다."))
+            .andExpect(jsonPath("$.updatedCount").value(1250))
+
+        verify(exactly = 1) { problemCollectorService.updateLanguageBatch() }
+    }
 }
+
+
 
 
 

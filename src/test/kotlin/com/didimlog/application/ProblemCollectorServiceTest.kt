@@ -10,6 +10,7 @@ import com.didimlog.infra.solvedac.SolvedAcTagDisplayName
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.util.*
@@ -122,7 +123,98 @@ class ProblemCollectorServiceTest {
         // then: 저장된 Problem이 영문 태그를 가지고 있는지 확인
         verify(exactly = 1) { problemRepository.save(any<Problem>()) }
     }
+
+    @Test
+    @DisplayName("collectMetadata는 titleKo를 분석하여 언어 필드를 설정한다")
+    fun `collectMetadata는 언어 필드 설정`() {
+        // given
+        val problemId = 1000
+        val response = SolvedAcProblemResponse(
+            problemId = problemId,
+            titleKo = "두 수의 합을 구하는 문제",
+            level = 3,
+            tags = emptyList()
+        )
+        every { solvedAcClient.fetchProblem(problemId) } returns response
+        every { problemRepository.findById(problemId.toString()) } returns Optional.empty()
+
+        // when
+        problemCollectorService.collectMetadata(problemId, problemId)
+
+        // then
+        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("updateLanguageBatch는 모든 문제의 언어 정보를 업데이트한다")
+    fun `updateLanguageBatch는 언어 정보 업데이트`() {
+        // given
+        val problem1 = Problem(
+            id = com.didimlog.domain.valueobject.ProblemId("1000"),
+            title = "Problem 1",
+            category = com.didimlog.domain.enums.ProblemCategory.IMPLEMENTATION,
+            difficulty = com.didimlog.domain.enums.Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        val problem2 = Problem(
+            id = com.didimlog.domain.valueobject.ProblemId("1001"),
+            title = "Problem 2",
+            category = com.didimlog.domain.enums.ProblemCategory.IMPLEMENTATION,
+            difficulty = com.didimlog.domain.enums.Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1001",
+            language = "ko"
+        )
+        val problems = listOf(problem1, problem2)
+
+        every { problemRepository.findAll() } returns problems
+        every {
+            bojCrawler.crawlProblemDetails("1000")
+        } returns com.didimlog.infra.crawler.ProblemDetails(
+            descriptionHtml = "<p>한국어 문제</p>",
+            inputDescriptionHtml = null,
+            outputDescriptionHtml = null,
+            sampleInputs = emptyList(),
+            sampleOutputs = emptyList(),
+            language = "ko"
+        )
+        every {
+            bojCrawler.crawlProblemDetails("1001")
+        } returns com.didimlog.infra.crawler.ProblemDetails(
+            descriptionHtml = "<p>English problem</p>",
+            inputDescriptionHtml = null,
+            outputDescriptionHtml = null,
+            sampleInputs = emptyList(),
+            sampleOutputs = emptyList(),
+            language = "en"
+        )
+        every { problemRepository.save(any<Problem>()) } answers { firstArg() }
+
+        // when
+        val result = problemCollectorService.updateLanguageBatch()
+
+        // then
+        assertThat(result).isEqualTo(2)
+        verify(exactly = 2) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("updateLanguageBatch는 문제가 없으면 0을 반환한다")
+    fun `updateLanguageBatch 문제 없으면 0 반환`() {
+        // given
+        every { problemRepository.findAll() } returns emptyList()
+
+        // when
+        val result = problemCollectorService.updateLanguageBatch()
+
+        // then
+        assertThat(result).isEqualTo(0)
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
 }
+
 
 
 

@@ -2135,6 +2135,7 @@ GET /api/v1/system/status
 | POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 수집하여 DB에 저장합니다. (Upsert 방식) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 메타데이터 수집이 완료되었습니다."<br>- `range` (String): "start-end" 형식의 범위 문자열 | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 상세 정보 크롤링이 완료되었습니다." | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/stats` | DB에 저장된 문제의 총 개수, 최소 문제 ID, 최대 문제 ID를 조회합니다. 관리자가 다음 크롤링 범위를 결정하는 데 사용합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `ProblemStatsResponse`<br><br>**ProblemStatsResponse 구조:**<br>- `totalCount` (Long): 총 문제 수<br>- `minProblemId` (Int, nullable): 최소 문제 ID (문제가 없으면 null)<br>- `maxProblemId` (Int, nullable): 최대 문제 ID (문제가 없으면 null) | JWT Token (ADMIN) |
+|| POST | `/api/v1/admin/problems/update-language` | DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트합니다. 기존 크롤링 데이터는 유지하고 language 필드만 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, Any>`<br><br>**응답 구조:**<br>- `message` (String): "문제 언어 정보 최신화가 완료되었습니다."<br>- `updatedCount` (Int): 업데이트된 문제 수 | JWT Token (ADMIN) |
 
 **예시 요청 (메타데이터 수집):**
 ```http
@@ -2184,6 +2185,20 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "totalCount": 0,
   "minProblemId": null,
   "maxProblemId": null
+}
+```
+
+**예시 요청 (언어 정보 최신화):**
+```http
+POST /api/v1/admin/problems/update-language
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (언어 정보 최신화):**
+```json
+{
+  "message": "문제 언어 정보 최신화가 완료되었습니다.",
+  "updatedCount": 1250
 }
 ```
 
