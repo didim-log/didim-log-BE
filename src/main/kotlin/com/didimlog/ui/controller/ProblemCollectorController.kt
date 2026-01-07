@@ -143,5 +143,43 @@ class ProblemCollectorController(
         val stats = problemCollectorService.getProblemStats()
         return ResponseEntity.ok(stats)
     }
+
+    @Operation(
+        summary = "문제 언어 정보 최신화",
+        description = "DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트합니다. 기존 크롤링 데이터는 유지하고 language 필드만 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "최신화 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류 또는 크롤링 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/update-language")
+    fun updateLanguage(
+        authentication: Authentication
+    ): ResponseEntity<Map<String, Any>> {
+        val updatedCount = problemCollectorService.updateLanguageBatch()
+        return ResponseEntity.ok(
+            mapOf(
+                "message" to "문제 언어 정보 최신화가 완료되었습니다.",
+                "updatedCount" to updatedCount
+            )
+        )
+    }
 }
 

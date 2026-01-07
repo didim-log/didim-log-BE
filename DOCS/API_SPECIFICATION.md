@@ -477,7 +477,7 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/problems/recommend` | 학생의 현재 티어를 기반으로 적절한 난이도의 문제를 추천합니다. **추천 로직:** Solved.ac 사용자 티어 레벨(`tierLevel`, 1=Bronze 5 ...)을 Source of Truth로 사용하여, 해당 레벨에서 -2 ~ +2 범위의 문제 레벨(난이도)을 추천합니다. **UNRATED 사용자 특별 처리:** `tierLevel=0`(Unrated) 사용자는 Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제를 추천받습니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. **태그 별칭 지원:** 축약형 태그(예: "BFS", "DFS", "DP")를 입력하면 자동으로 공식 전체 이름(예: "Breadth-first Search")으로 변환하여 검색합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)` (최소 1개 이상), `@Max(50)` (최대 50개 이하)<br>  - 범위를 벗어나면 400 Bad Request<br>- `category` (String, optional): 문제 카테고리 필터<br>  - **지원 형식:**<br>    - 축약형 태그: "BFS", "DFS", "DP", "MST", "LCA", "KMP", "FFT", "LIS", "LCS" 등<br>    - 공식 전체 이름: "Breadth-first Search", "Depth-first Search", "Dynamic Programming" 등<br>    - Enum 이름: "IMPLEMENTATION", "GRAPH", "BFS", "DFS", "DP" 등<br>  - **자동 변환:** 축약형 태그는 자동으로 공식 전체 이름으로 변환되어 검색됩니다.<br>  - 예: "BFS" → "Breadth-first Search", "DP" → "Dynamic Programming"<br>  - 미지정 시 모든 카테고리에서 추천<br>- `language` (String, optional): 문제 언어 필터<br>  - 가능한 값: "ko" (한국어), "en" (영어)<br>  - 미지정 시 모든 언어에서 추천 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 설명 언어 ("ko" 또는 "en") | JWT Token |
+| GET | `/api/v1/problems/recommend` | 학생의 현재 티어를 기반으로 적절한 난이도의 문제를 추천합니다. **추천 로직:** Solved.ac 사용자 티어 레벨(`tierLevel`, 1=Bronze 5 ...)을 Source of Truth로 사용하여, 해당 레벨에서 -2 ~ +2 범위의 문제 레벨(난이도)을 추천합니다. **UNRATED 사용자 특별 처리:** `tierLevel=0`(Unrated) 사용자는 Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제를 추천받습니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. **태그 별칭 지원:** 축약형 태그(예: "BFS", "DFS", "DP")를 입력하면 자동으로 공식 전체 이름(예: "Breadth-first Search")으로 변환하여 검색합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)` (최소 1개 이상), `@Max(50)` (최대 50개 이하)<br>  - 범위를 벗어나면 400 Bad Request<br>- `category` (String, optional): 문제 카테고리 필터<br>  - **지원 형식:**<br>    - 축약형 태그: "BFS", "DFS", "DP", "MST", "LCA", "KMP", "FFT", "LIS", "LCS" 등<br>    - 공식 전체 이름: "Breadth-first Search", "Depth-first Search", "Dynamic Programming" 등<br>    - Enum 이름: "IMPLEMENTATION", "GRAPH", "BFS", "DFS", "DP" 등<br>  - **자동 변환:** 축약형 태그는 자동으로 공식 전체 이름으로 변환되어 검색됩니다.<br>  - 예: "BFS" → "Breadth-first Search", "DP" → "Dynamic Programming"<br>  - 미지정 시 모든 카테고리에서 추천<br>- `language` (String, optional): 문제 언어 필터<br>  - 가능한 값: "ko" (한국어), "en" (영어), "ja" (일본어), "zh" (중국어), "other" (기타)<br>  - 미지정 시 모든 언어에서 추천<br>  - **언어 판별 로직:** BOJ 페이지의 '다국어' 라벨 유무를 먼저 확인하고, 라벨이 없으면 한국어로 판별하며, 라벨이 있으면 유니코드 기반 상세 언어 분석을 수행합니다. | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 설명 언어 ("ko", "en", "ja", "zh", "other" 중 하나) | JWT Token |
 | GET | `/api/v1/problems/{problemId}` | 문제 ID로 문제 상세 정보를 조회합니다. DB에 상세 정보(HTML 본문)가 없으면 백준 웹사이트에서 실시간으로 크롤링하여 가져온 후 DB에 저장합니다. (Read-Through 전략) | **Path Variables:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Positive` (1 이상) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력 리스트<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력 리스트<br>- `tags` (List<String>): 알고리즘 분류 태그 리스트 | None |
 | GET | `/api/v1/problems/search` | 문제 번호로 문제를 검색합니다. DB에 문제가 없으면 Solved.ac API로 메타데이터를 조회하고 크롤링하여 저장한 후 반환합니다. | **Query Parameters:**<br>- `q` (Long, required): 문제 번호<br>  - 유효성: `@Positive` (1 이상) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력 리스트<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력 리스트<br>- `tags` (List<String>): 알고리즘 분류 태그 리스트 | None |
 
@@ -2135,6 +2135,7 @@ GET /api/v1/system/status
 | POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 수집하여 DB에 저장합니다. (Upsert 방식) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 메타데이터 수집이 완료되었습니다."<br>- `range` (String): "start-end" 형식의 범위 문자열 | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 상세 정보 크롤링이 완료되었습니다." | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/stats` | DB에 저장된 문제의 총 개수, 최소 문제 ID, 최대 문제 ID를 조회합니다. 관리자가 다음 크롤링 범위를 결정하는 데 사용합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `ProblemStatsResponse`<br><br>**ProblemStatsResponse 구조:**<br>- `totalCount` (Long): 총 문제 수<br>- `minProblemId` (Int, nullable): 최소 문제 ID (문제가 없으면 null)<br>- `maxProblemId` (Int, nullable): 최대 문제 ID (문제가 없으면 null) | JWT Token (ADMIN) |
+|| POST | `/api/v1/admin/problems/update-language` | DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트합니다. 기존 크롤링 데이터는 유지하고 language 필드만 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, Any>`<br><br>**응답 구조:**<br>- `message` (String): "문제 언어 정보 최신화가 완료되었습니다."<br>- `updatedCount` (Int): 업데이트된 문제 수 | JWT Token (ADMIN) |
 
 **예시 요청 (메타데이터 수집):**
 ```http
@@ -2184,6 +2185,20 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "totalCount": 0,
   "minProblemId": null,
   "maxProblemId": null
+}
+```
+
+**예시 요청 (언어 정보 최신화):**
+```http
+POST /api/v1/admin/problems/update-language
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (언어 정보 최신화):**
+```json
+{
+  "message": "문제 언어 정보 최신화가 완료되었습니다.",
+  "updatedCount": 1250
 }
 ```
 

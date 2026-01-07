@@ -48,6 +48,9 @@ class ProblemCollectorService(
                 val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
                 val category = ProblemCategoryMapper.determineCategory(tags)
 
+                // titleKo를 분석하여 언어 판별 (정확도는 낮지만 초기값으로 사용)
+                val detectedLanguage = detectLanguageFromTitle(response.titleKo)
+
                 val existingProblem = problemRepository.findById(response.problemId.toString())
                 val problem = existingProblem
                     .map { existing ->
@@ -56,7 +59,8 @@ class ProblemCollectorService(
                             difficulty = difficultyTier,
                             level = response.level,
                             category = category,
-                            tags = tags
+                            tags = tags,
+                            language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
                         )
                     }
                     .orElseGet {
@@ -67,7 +71,8 @@ class ProblemCollectorService(
                             difficulty = difficultyTier,
                             level = response.level,
                             url = solvedAcProblemUrl(response.problemId),
-                            tags = tags
+                            tags = tags,
+                            language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
                         )
                     }
 
@@ -190,6 +195,88 @@ class ProblemCollectorService(
             minProblemId = minProblemId,
             maxProblemId = maxProblemId
         )
+    }
+
+    /**
+     * Solved.ac API 응답의 titleKo를 분석하여 언어를 판별한다.
+     * 정확도는 낮지만 초기값으로 사용하며, 나중에 크롤링 시 재판별된다.
+     *
+     * @param titleKo 제목 (한국어일 수도 있고 다른 언어일 수도 있음)
+     * @return "ko", "en", "ja", "zh", "other" 중 하나
+     */
+    private fun detectLanguageFromTitle(titleKo: String): String {
+        if (titleKo.isBlank()) {
+            return "other" // 제목이 없으면 기타로 분류
+        }
+
+        // 간단한 판별: 한글이 5개 이상이면 "ko", 그렇지 않으면 크롤링 필요
+        val koreanCharCount = titleKo.count { char ->
+            val codePoint = char.code
+            codePoint in 0xAC00..0xD7A3
+        }
+
+        return if (koreanCharCount >= 5) {
+            "ko"
+        } else {
+            // 정확한 언어 판별은 크롤링 시 수행되므로, 여기서는 "other"로 설정
+            "other" // 크롤링 시 재판별됨
+        }
+    }
+
+    /**
+     * DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트한다.
+     * 기존 크롤링 데이터는 유지하고 language 필드만 업데이트한다.
+     * Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둔다.
+     *
+     * @return 업데이트된 문제 수
+     */
+    @Transactional
+    fun updateLanguageBatch(): Int {
+        log.info("문제 언어 정보 최신화 시작")
+        val allProblems = problemRepository.findAll()
+
+        if (allProblems.isEmpty()) {
+            log.info("업데이트할 문제가 없습니다.")
+            return 0
+        }
+
+        log.info("언어 정보 최신화 대상: ${allProblems.size}개")
+        var successCount = 0
+        var failCount = 0
+
+        for (problem in allProblems) {
+            try {
+                // BOJ 크롤링으로 언어 재판별
+                val details = bojCrawler.crawlProblemDetails(problem.id.value)
+
+                if (details == null) {
+                    failCount++
+                    log.warn("문제 언어 정보 업데이트 실패: problemId=${problem.id.value} (크롤링 실패)")
+                    val delay = 2000 + Random.nextInt(2000)
+                    Thread.sleep(delay.toLong())
+                    continue
+                }
+
+                // language 필드만 업데이트 (기존 데이터 유지)
+                val updatedProblem = problem.copy(
+                    language = details.language
+                )
+                problemRepository.save(updatedProblem)
+                successCount++
+                log.debug("문제 언어 정보 업데이트 성공: problemId=${problem.id.value}, language=${details.language}")
+
+                // Anti-Ban Logic: 2~4초 간격으로 요청
+                val delay = 2000 + Random.nextInt(2000)
+                Thread.sleep(delay.toLong())
+            } catch (e: Exception) {
+                log.error("문제 언어 정보 업데이트 중 예외 발생: problemId=${problem.id.value}, error=${e.message}", e)
+                failCount++
+                // 다음 문제로 넘어가기 위해 예외를 잡고 계속 진행
+            }
+        }
+
+        log.info("문제 언어 정보 최신화 완료: 성공=$successCount, 실패=$failCount")
+        return successCount
     }
 
     private fun solvedAcProblemUrl(problemId: Int): String {
