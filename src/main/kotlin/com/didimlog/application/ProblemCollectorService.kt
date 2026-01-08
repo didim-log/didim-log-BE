@@ -117,64 +117,6 @@ class ProblemCollectorService(
     }
 
     /**
-     * DB에서 descriptionHtml이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다 (동기 처리).
-     * Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둔다.
-     * 
-     * @deprecated 대량 문제 처리 시 타임아웃 발생 가능. collectDetailsBatchAsync() 사용 권장.
-     */
-    @Transactional
-    @Deprecated("대량 문제 처리 시 타임아웃 발생 가능. collectDetailsBatchAsync() 사용 권장.")
-    fun collectDetailsBatch() {
-        log.info("문제 상세 정보 크롤링 시작")
-        val problemsWithoutDetails = problemRepository.findByDescriptionHtmlIsNull()
-        
-        if (problemsWithoutDetails.isEmpty()) {
-            log.info("상세 정보가 없는 문제가 없습니다.")
-            return
-        }
-
-        log.info("상세 정보 수집 대상: ${problemsWithoutDetails.size}개")
-        var successCount = 0
-        var failCount = 0
-
-        for (problem in problemsWithoutDetails) {
-            try {
-                val details = bojCrawler.crawlProblemDetails(problem.id.value)
-                
-                if (details == null) {
-                    failCount++
-                    log.warn("문제 상세 정보 크롤링 실패: problemId=${problem.id.value}")
-                    val delay = 2000 + Random.nextInt(2000)
-                    Thread.sleep(delay.toLong())
-                    continue
-                }
-
-                val updatedProblem = problem.copy(
-                    descriptionHtml = details.descriptionHtml,
-                    inputDescriptionHtml = details.inputDescriptionHtml,
-                    outputDescriptionHtml = details.outputDescriptionHtml,
-                    sampleInputs = details.sampleInputs.takeIf { it.isNotEmpty() },
-                    sampleOutputs = details.sampleOutputs.takeIf { it.isNotEmpty() },
-                    language = details.language
-                )
-                problemRepository.save(updatedProblem)
-                successCount++
-                log.debug("문제 상세 정보 수집 성공: problemId=${problem.id.value}")
-
-                // Anti-Ban Logic: 2~4초 간격으로 요청
-                val delay = 2000 + Random.nextInt(2000)
-                Thread.sleep(delay.toLong())
-            } catch (e: Exception) {
-                log.error("문제 상세 정보 수집 중 예외 발생: problemId=${problem.id.value}, error=${e.message}", e)
-                failCount++
-                // 다음 문제로 넘어가기 위해 예외를 잡고 계속 진행
-            }
-        }
-
-        log.info("문제 상세 정보 크롤링 완료: 성공=$successCount, 실패=$failCount")
-    }
-
-    /**
      * DB에서 descriptionHtml이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다 (비동기 처리).
      * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
      * 작업 진행 상황은 getDetailsCollectJobStatus()로 조회할 수 있다.
@@ -460,64 +402,6 @@ class ProblemCollectorService(
             // 정확한 언어 판별은 크롤링 시 수행되므로, 여기서는 "other"로 설정
             "other" // 크롤링 시 재판별됨
         }
-    }
-
-    /**
-     * DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트한다 (동기 처리).
-     * 기존 크롤링 데이터는 유지하고 language 필드만 업데이트한다.
-     * Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둔다.
-     * 
-     * @deprecated 대량 문제 처리 시 타임아웃 발생 가능. updateLanguageBatchAsync() 사용 권장.
-     * @return 업데이트된 문제 수
-     */
-    @Transactional
-    @Deprecated("대량 문제 처리 시 타임아웃 발생 가능. updateLanguageBatchAsync() 사용 권장.")
-    fun updateLanguageBatch(): Int {
-        log.info("문제 언어 정보 최신화 시작")
-        val allProblems = problemRepository.findAll()
-
-        if (allProblems.isEmpty()) {
-            log.info("업데이트할 문제가 없습니다.")
-            return 0
-        }
-
-        log.info("언어 정보 최신화 대상: ${allProblems.size}개")
-        var successCount = 0
-        var failCount = 0
-
-        for (problem in allProblems) {
-            try {
-                // BOJ 크롤링으로 언어 재판별
-                val details = bojCrawler.crawlProblemDetails(problem.id.value)
-
-                if (details == null) {
-                    failCount++
-                    log.warn("문제 언어 정보 업데이트 실패: problemId=${problem.id.value} (크롤링 실패)")
-                    val delay = 2000 + Random.nextInt(2000)
-                    Thread.sleep(delay.toLong())
-                    continue
-                }
-
-                // language 필드만 업데이트 (기존 데이터 유지)
-                val updatedProblem = problem.copy(
-                    language = details.language
-                )
-                problemRepository.save(updatedProblem)
-                successCount++
-                log.debug("문제 언어 정보 업데이트 성공: problemId=${problem.id.value}, language=${details.language}")
-
-                // Anti-Ban Logic: 2~4초 간격으로 요청
-                val delay = 2000 + Random.nextInt(2000)
-                Thread.sleep(delay.toLong())
-            } catch (e: Exception) {
-                log.error("문제 언어 정보 업데이트 중 예외 발생: problemId=${problem.id.value}, error=${e.message}", e)
-                failCount++
-                // 다음 문제로 넘어가기 위해 예외를 잡고 계속 진행
-            }
-        }
-
-        log.info("문제 언어 정보 최신화 완료: 성공=$successCount, 실패=$failCount")
-        return successCount
     }
 
     /**
