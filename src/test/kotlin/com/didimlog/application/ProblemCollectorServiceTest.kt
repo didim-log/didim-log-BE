@@ -1,22 +1,17 @@
 package com.didimlog.application
 
-import com.didimlog.domain.Problem
+import com.didimlog.domain.repository.CrawlerCheckpointRepository
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.solvedac.SolvedAcClient
-import com.didimlog.infra.solvedac.SolvedAcProblemResponse
-import com.didimlog.infra.solvedac.SolvedAcTag
-import com.didimlog.infra.solvedac.SolvedAcTagDisplayName
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Disabled
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.data.redis.core.StringRedisTemplate
-import java.util.*
 
 @DisplayName("ProblemCollectorService 테스트")
 class ProblemCollectorServiceTest {
@@ -26,13 +21,15 @@ class ProblemCollectorServiceTest {
     private val bojCrawler: BojCrawler = mockk(relaxed = true)
     private val redisTemplate: StringRedisTemplate = mockk(relaxed = true)
     private val objectMapper: ObjectMapper = ObjectMapper()
+    private val crawlerCheckpointRepository: CrawlerCheckpointRepository = mockk(relaxed = true)
 
     private val problemCollectorService = ProblemCollectorService(
         solvedAcClient,
         problemRepository,
         bojCrawler,
         redisTemplate,
-        objectMapper
+        objectMapper,
+        crawlerCheckpointRepository
     )
 
     @Test
@@ -157,9 +154,9 @@ class ProblemCollectorServiceTest {
     fun `getDetailsCollectJobStatus는 작업 상태 반환`() {
         // given
         val jobId = "test-job-id"
-        val status = com.didimlog.application.DetailsCollectJobStatus(
+        val status = DetailsCollectJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.COMPLETED,
+            status = JobStatus.COMPLETED,
             totalCount = 100,
             processedCount = 100,
             successCount = 95,
@@ -211,9 +208,9 @@ class ProblemCollectorServiceTest {
     fun `getMetadataCollectJobStatus는 작업 상태 반환`() {
         // given
         val jobId = "test-job-id"
-        val status = com.didimlog.application.MetadataCollectJobStatus(
+        val status = MetadataCollectJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.COMPLETED,
+            status = JobStatus.COMPLETED,
             totalCount = 100,
             processedCount = 100,
             successCount = 95,

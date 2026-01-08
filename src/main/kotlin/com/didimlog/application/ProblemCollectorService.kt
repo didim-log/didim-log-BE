@@ -1,6 +1,9 @@
 package com.didimlog.application
 
+import com.didimlog.domain.CrawlerCheckpoint
 import com.didimlog.domain.Problem
+import com.didimlog.domain.enums.CrawlType
+import com.didimlog.domain.repository.CrawlerCheckpointRepository
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.infra.crawler.BojCrawler
@@ -13,6 +16,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
 import java.time.Duration
+import java.time.LocalDateTime
 import java.util.UUID
 import kotlin.random.Random
 
@@ -20,6 +24,7 @@ import kotlin.random.Random
  * 문제 데이터 수집 서비스
  * Solved.ac API를 통해 메타데이터를 수집하고, BOJ 크롤링을 통해 상세 정보를 수집한다.
  * Rate Limit을 준수하기 위해 크롤링 시 지연 시간을 둔다.
+ * 크롤링 중단 시 checkpoint를 저장하여 재시작 시 이어서 진행할 수 있다.
  */
 @Service
 class ProblemCollectorService(
@@ -27,7 +32,8 @@ class ProblemCollectorService(
     private val problemRepository: ProblemRepository,
     private val bojCrawler: BojCrawler,
     private val redisTemplate: StringRedisTemplate,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val crawlerCheckpointRepository: CrawlerCheckpointRepository
 ) {
 
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
@@ -36,13 +42,15 @@ class ProblemCollectorService(
         private const val LANGUAGE_UPDATE_JOB_KEY_PREFIX = "language:update:job:"
         private const val DETAILS_COLLECT_JOB_KEY_PREFIX = "details:collect:job:"
         private const val METADATA_COLLECT_JOB_KEY_PREFIX = "metadata:collect:job:"
-        private const val JOB_STATUS_TTL_HOURS = 24L // 24시간 후 자동 삭제
+        private const val JOB_STATUS_TTL_HOURS = 24L
+        private const val CHECKPOINT_SAVE_INTERVAL = 10 // 10개마다 checkpoint 저장
     }
 
     /**
      * Solved.ac API를 통해 문제 메타데이터를 수집하여 DB에 저장한다 (비동기 처리).
      * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
      * 작업 진행 상황은 getMetadataCollectJobStatus()로 조회할 수 있다.
+     * checkpoint가 있으면 마지막 처리한 ID부터 이어서 진행한다.
      *
      * @param start 시작 문제 ID
      * @param end 종료 문제 ID (포함)
@@ -50,7 +58,30 @@ class ProblemCollectorService(
      */
     fun collectMetadataAsync(start: Int, end: Int): String {
         val jobId = UUID.randomUUID().toString()
-        val totalCount = end - start + 1
+        
+        // checkpoint 조회: 마지막 처리한 ID부터 이어서 진행
+        val checkpoint = crawlerCheckpointRepository.findByCrawlType(CrawlType.METADATA_COLLECT)
+        val actualStart = checkpoint?.lastCrawledId?.toIntOrNull()?.let { it + 1 } ?: start
+        
+        if (actualStart > end) {
+            log.info("모든 문제가 이미 처리되었습니다. start=$start, end=$end, checkpoint=$actualStart")
+            val initialStatus = MetadataCollectJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = 0,
+                processedCount = 0,
+                successCount = 0,
+                failCount = 0,
+                startProblemId = start,
+                endProblemId = end,
+                startedAt = System.currentTimeMillis(),
+                completedAt = System.currentTimeMillis()
+            )
+            saveMetadataCollectJobStatus(initialStatus)
+            return jobId
+        }
+        
+        val totalCount = end - actualStart + 1
 
         // 초기 상태 저장
         val initialStatus = MetadataCollectJobStatus(
@@ -60,14 +91,14 @@ class ProblemCollectorService(
             processedCount = 0,
             successCount = 0,
             failCount = 0,
-            startProblemId = start,
+            startProblemId = actualStart,
             endProblemId = end,
             startedAt = System.currentTimeMillis()
         )
         saveMetadataCollectJobStatus(initialStatus)
 
         // 비동기로 작업 실행
-        executeMetadataCollectAsync(jobId, start, end)
+        executeMetadataCollectAsync(jobId, actualStart, end)
 
         return jobId
     }
@@ -103,77 +134,32 @@ class ProblemCollectorService(
         var failCount = 0
         val startedAt = System.currentTimeMillis()
 
-        // 상태를 RUNNING으로 변경
         updateMetadataCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
 
         try {
             for (problemId in start..end) {
                 try {
-                    val response = solvedAcClient.fetchProblem(problemId)
-                    val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
-                    
-                    // 태그 추출: 한글 태그를 영문 표준명으로 변환
-                    val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
-                    val category = ProblemCategoryMapper.determineCategory(tags)
-
-                    // titleKo를 분석하여 언어 판별 (정확도는 낮지만 초기값으로 사용)
-                    val detectedLanguage = detectLanguageFromTitle(response.titleKo)
-
-                    val existingProblem = problemRepository.findById(response.problemId.toString())
-                    val problem = existingProblem
-                        .map { existing ->
-                            existing.copy(
-                                title = response.titleKo,
-                                difficulty = difficultyTier,
-                                level = response.level,
-                                category = category,
-                                tags = tags,
-                                language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
-                            )
-                        }
-                        .orElseGet {
-                            Problem(
-                                id = ProblemId(response.problemId.toString()),
-                                title = response.titleKo,
-                                category = category,
-                                difficulty = difficultyTier,
-                                level = response.level,
-                                url = solvedAcProblemUrl(response.problemId),
-                                tags = tags,
-                                language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
-                            )
-                        }
-
-                    problemRepository.save(problem)
+                    processMetadataProblem(problemId)
                     successCount++
-                    log.debug("Problem ${problem.id.value} saved. (Category: ${problem.category})")
                 } catch (e: IllegalStateException) {
-                    // Solved.ac API에서 문제를 찾을 수 없는 경우 (404 등)
-                    if (e.message?.contains("찾을 수 없습니다") == true) {
-                        log.debug("Problem $problemId not found in Solved.ac (skipped)")
-                        failCount++
-                    } else {
-                        log.warn("Failed to collect problem $problemId: ${e.message}")
-                        failCount++
-                    }
+                    handleMetadataException(e, problemId, failCount)
+                    failCount++
                 } catch (e: Exception) {
-                    // 기타 예외 (네트워크 에러 등)
                     log.warn("Failed to collect problem $problemId: ${e.message}")
                     failCount++
                 }
 
                 processedCount++
 
-                // 진행 상황 업데이트 (10개마다 또는 마지막 문제)
-                if (processedCount % 10 == 0 || processedCount == totalCount) {
+                // 진행 상황 및 checkpoint 업데이트 (10개마다 또는 마지막 문제)
+                if (processedCount % CHECKPOINT_SAVE_INTERVAL == 0 || processedCount == totalCount) {
                     updateMetadataCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+                    saveCheckpoint(CrawlType.METADATA_COLLECT, problemId.toString())
                 }
 
-                // Rate Limiting: 0.5초 간격으로 요청
                 Thread.sleep(500)
             }
 
-            // 완료 상태로 변경
             val completedAt = System.currentTimeMillis()
             val finalStatus = MetadataCollectJobStatus(
                 jobId = jobId,
@@ -188,6 +174,9 @@ class ProblemCollectorService(
                 completedAt = completedAt
             )
             saveMetadataCollectJobStatus(finalStatus)
+            
+            // 완료 시 checkpoint 삭제
+            crawlerCheckpointRepository.deleteByCrawlType(CrawlType.METADATA_COLLECT)
 
             log.info("문제 메타데이터 수집 완료: jobId=$jobId, 성공=$successCount, 실패=$failCount")
         } catch (e: Exception) {
@@ -206,6 +195,70 @@ class ProblemCollectorService(
                 errorMessage = e.message
             )
             saveMetadataCollectJobStatus(failedStatus)
+        }
+    }
+
+    private fun processMetadataProblem(problemId: Int) {
+        val response = solvedAcClient.fetchProblem(problemId)
+        val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
+        val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
+        val category = ProblemCategoryMapper.determineCategory(tags)
+        val detectedLanguage = detectLanguageFromTitle(response.titleKo)
+
+        val existingProblem = problemRepository.findById(response.problemId.toString())
+        val problem = existingProblem
+            .map { existing ->
+                existing.copy(
+                    title = response.titleKo,
+                    difficulty = difficultyTier,
+                    level = response.level,
+                    category = category,
+                    tags = tags,
+                    language = detectedLanguage
+                )
+            }
+            .orElseGet {
+                Problem(
+                    id = ProblemId(response.problemId.toString()),
+                    title = response.titleKo,
+                    category = category,
+                    difficulty = difficultyTier,
+                    level = response.level,
+                    url = solvedAcProblemUrl(response.problemId),
+                    tags = tags,
+                    language = detectedLanguage
+                )
+            }
+
+        problemRepository.save(problem)
+        log.debug("Problem ${problem.id.value} saved. (Category: ${problem.category})")
+    }
+
+    private fun handleMetadataException(e: IllegalStateException, problemId: Int, failCount: Int) {
+        if (e.message?.contains("찾을 수 없습니다") == true) {
+            log.debug("Problem $problemId not found in Solved.ac (skipped)")
+            return
+        }
+        log.warn("Failed to collect problem $problemId: ${e.message}")
+    }
+
+    /**
+     * checkpoint를 저장한다.
+     */
+    private fun saveCheckpoint(crawlType: CrawlType, lastCrawledId: String) {
+        try {
+            val existingCheckpoint = crawlerCheckpointRepository.findByCrawlType(crawlType)
+            val checkpoint = existingCheckpoint?.copy(
+                lastCrawledId = lastCrawledId,
+                updatedAt = LocalDateTime.now()
+            ) ?: CrawlerCheckpoint(
+                crawlType = crawlType,
+                lastCrawledId = lastCrawledId,
+                updatedAt = LocalDateTime.now()
+            )
+            crawlerCheckpointRepository.save(checkpoint)
+        } catch (e: Exception) {
+            log.error("Checkpoint 저장 실패: crawlType=$crawlType, lastCrawledId=$lastCrawledId", e)
         }
     }
 
@@ -250,15 +303,41 @@ class ProblemCollectorService(
      * DB에서 descriptionHtml이 null인 문제들의 상세 정보를 크롤링하여 업데이트한다 (비동기 처리).
      * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
      * 작업 진행 상황은 getDetailsCollectJobStatus()로 조회할 수 있다.
+     * checkpoint가 있으면 마지막 처리한 문제 ID부터 이어서 진행한다.
      *
      * @return 작업 ID (작업 상태 조회에 사용)
      */
     fun collectDetailsBatchAsync(): String {
         val jobId = UUID.randomUUID().toString()
-        val problemsWithoutDetails = problemRepository.findByDescriptionHtmlIsNull()
+        val allProblemsWithoutDetails = problemRepository.findByDescriptionHtmlIsNull()
 
-        if (problemsWithoutDetails.isEmpty()) {
+        if (allProblemsWithoutDetails.isEmpty()) {
             log.info("상세 정보가 없는 문제가 없습니다.")
+            val status = DetailsCollectJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = 0,
+                processedCount = 0,
+                successCount = 0,
+                failCount = 0,
+                startedAt = System.currentTimeMillis(),
+                completedAt = System.currentTimeMillis()
+            )
+            saveDetailsCollectJobStatus(status)
+            return jobId
+        }
+
+        // checkpoint 조회: 마지막 처리한 문제 ID부터 이어서 진행
+        val checkpoint = crawlerCheckpointRepository.findByCrawlType(CrawlType.DETAILS_COLLECT)
+        val problemsToProcess = if (checkpoint != null) {
+            val lastCrawledId = checkpoint.lastCrawledId
+            allProblemsWithoutDetails.filter { it.id.value > lastCrawledId }
+        } else {
+            allProblemsWithoutDetails
+        }
+
+        if (problemsToProcess.isEmpty()) {
+            log.info("모든 문제가 이미 처리되었습니다.")
             val status = DetailsCollectJobStatus(
                 jobId = jobId,
                 status = JobStatus.COMPLETED,
@@ -277,7 +356,7 @@ class ProblemCollectorService(
         val initialStatus = DetailsCollectJobStatus(
             jobId = jobId,
             status = JobStatus.PENDING,
-            totalCount = problemsWithoutDetails.size,
+            totalCount = problemsToProcess.size,
             processedCount = 0,
             successCount = 0,
             failCount = 0,
@@ -286,7 +365,7 @@ class ProblemCollectorService(
         saveDetailsCollectJobStatus(initialStatus)
 
         // 비동기로 작업 실행
-        executeDetailsCollectAsync(jobId, problemsWithoutDetails)
+        executeDetailsCollectAsync(jobId, problemsToProcess)
 
         return jobId
     }
@@ -321,50 +400,30 @@ class ProblemCollectorService(
         var failCount = 0
         val startedAt = System.currentTimeMillis()
 
-        // 상태를 RUNNING으로 변경
         updateDetailsCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
 
         try {
             for (problem in problems) {
                 try {
-                    val details = bojCrawler.crawlProblemDetails(problem.id.value)
-
-                    if (details == null) {
-                        failCount++
-                        log.warn("문제 상세 정보 크롤링 실패: problemId=${problem.id.value}")
-                    } else {
-                        val updatedProblem = problem.copy(
-                            descriptionHtml = details.descriptionHtml,
-                            inputDescriptionHtml = details.inputDescriptionHtml,
-                            outputDescriptionHtml = details.outputDescriptionHtml,
-                            sampleInputs = details.sampleInputs.takeIf { it.isNotEmpty() },
-                            sampleOutputs = details.sampleOutputs.takeIf { it.isNotEmpty() },
-                            language = details.language
-                        )
-                        problemRepository.save(updatedProblem)
-                        successCount++
-                        log.debug("문제 상세 정보 수집 성공: problemId=${problem.id.value}")
-                    }
-
-                    processedCount++
-
-                    // 진행 상황 업데이트 (10개마다 또는 마지막 문제)
-                    if (processedCount % 10 == 0 || processedCount == problems.size) {
-                        updateDetailsCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
-                    }
-
-                    // Anti-Ban Logic: 2~4초 간격으로 요청
-                    val delay = 2000 + Random.nextInt(2000)
-                    Thread.sleep(delay.toLong())
+                    processDetailsProblem(problem)
+                    successCount++
                 } catch (e: Exception) {
                     log.error("문제 상세 정보 수집 중 예외 발생: problemId=${problem.id.value}, error=${e.message}", e)
                     failCount++
-                    processedCount++
-                    // 다음 문제로 넘어가기 위해 예외를 잡고 계속 진행
                 }
+
+                processedCount++
+
+                // 진행 상황 및 checkpoint 업데이트 (10개마다 또는 마지막 문제)
+                if (processedCount % CHECKPOINT_SAVE_INTERVAL == 0 || processedCount == problems.size) {
+                    updateDetailsCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+                    saveCheckpoint(CrawlType.DETAILS_COLLECT, problem.id.value)
+                }
+
+                val delay = 2000 + Random.nextInt(2000)
+                Thread.sleep(delay.toLong())
             }
 
-            // 완료 상태로 변경
             val completedAt = System.currentTimeMillis()
             val finalStatus = DetailsCollectJobStatus(
                 jobId = jobId,
@@ -377,6 +436,9 @@ class ProblemCollectorService(
                 completedAt = completedAt
             )
             saveDetailsCollectJobStatus(finalStatus)
+            
+            // 완료 시 checkpoint 삭제
+            crawlerCheckpointRepository.deleteByCrawlType(CrawlType.DETAILS_COLLECT)
 
             log.info("문제 상세 정보 크롤링 완료: jobId=$jobId, 성공=$successCount, 실패=$failCount")
         } catch (e: Exception) {
@@ -394,6 +456,22 @@ class ProblemCollectorService(
             )
             saveDetailsCollectJobStatus(failedStatus)
         }
+    }
+
+    private fun processDetailsProblem(problem: Problem) {
+        val details = bojCrawler.crawlProblemDetails(problem.id.value)
+            ?: throw IllegalStateException("크롤링 실패: problemId=${problem.id.value}")
+
+        val updatedProblem = problem.copy(
+            descriptionHtml = details.descriptionHtml,
+            inputDescriptionHtml = details.inputDescriptionHtml,
+            outputDescriptionHtml = details.outputDescriptionHtml,
+            sampleInputs = details.sampleInputs.takeIf { it.isNotEmpty() },
+            sampleOutputs = details.sampleOutputs.takeIf { it.isNotEmpty() },
+            language = details.language
+        )
+        problemRepository.save(updatedProblem)
+        log.debug("문제 상세 정보 수집 성공: problemId=${problem.id.value}")
     }
 
     /**
@@ -538,18 +616,43 @@ class ProblemCollectorService(
      * DB에 저장된 문제 중 언어 정보가 null이거나 "other"인 문제들의 언어 정보를 재판별하여 업데이트한다 (비동기 처리).
      * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
      * 작업 진행 상황은 getLanguageUpdateJobStatus()로 조회할 수 있다.
+     * checkpoint가 있으면 마지막 처리한 문제 ID부터 이어서 진행한다.
      *
      * @return 작업 ID (작업 상태 조회에 사용)
      */
     fun updateLanguageBatchAsync(): String {
         val jobId = UUID.randomUUID().toString()
-        // 언어 정보가 null이거나 "other"인 문제만 처리 (업데이트 안된 것만)
         val problemsWithNullLanguage = problemRepository.findByLanguageIsNull()
         val problemsWithOtherLanguage = problemRepository.findByLanguage("other")
-        val problemsToUpdate = (problemsWithNullLanguage + problemsWithOtherLanguage).distinctBy { it.id.value }
+        val allProblemsToUpdate = (problemsWithNullLanguage + problemsWithOtherLanguage).distinctBy { it.id.value }
+
+        if (allProblemsToUpdate.isEmpty()) {
+            log.info("업데이트할 문제가 없습니다. (모든 문제의 언어 정보가 이미 설정되어 있습니다.)")
+            val status = LanguageUpdateJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = 0,
+                processedCount = 0,
+                successCount = 0,
+                failCount = 0,
+                startedAt = System.currentTimeMillis(),
+                completedAt = System.currentTimeMillis()
+            )
+            saveJobStatus(status)
+            return jobId
+        }
+
+        // checkpoint 조회: 마지막 처리한 문제 ID부터 이어서 진행
+        val checkpoint = crawlerCheckpointRepository.findByCrawlType(CrawlType.LANGUAGE_UPDATE)
+        val problemsToUpdate = if (checkpoint != null) {
+            val lastCrawledId = checkpoint.lastCrawledId
+            allProblemsToUpdate.filter { it.id.value > lastCrawledId }
+        } else {
+            allProblemsToUpdate
+        }
 
         if (problemsToUpdate.isEmpty()) {
-            log.info("업데이트할 문제가 없습니다. (모든 문제의 언어 정보가 이미 설정되어 있습니다.)")
+            log.info("모든 문제가 이미 처리되었습니다.")
             val status = LanguageUpdateJobStatus(
                 jobId = jobId,
                 status = JobStatus.COMPLETED,
@@ -614,47 +717,30 @@ class ProblemCollectorService(
         var failCount = 0
         val startedAt = System.currentTimeMillis()
 
-        // 상태를 RUNNING으로 변경
         updateJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
 
         try {
             for (problem in problems) {
                 try {
-                    // BOJ 크롤링으로 언어 재판별
-                    val details = bojCrawler.crawlProblemDetails(problem.id.value)
-
-                    if (details == null) {
-                        failCount++
-                        log.warn("문제 언어 정보 업데이트 실패: problemId=${problem.id.value} (크롤링 실패)")
-                    } else {
-                        // language 필드만 업데이트 (기존 데이터 유지)
-                        val updatedProblem = problem.copy(
-                            language = details.language
-                        )
-                        problemRepository.save(updatedProblem)
-                        successCount++
-                        log.debug("문제 언어 정보 업데이트 성공: problemId=${problem.id.value}, language=${details.language}")
-                    }
-
-                    processedCount++
-
-                    // 진행 상황 업데이트 (10개마다 또는 마지막 문제)
-                    if (processedCount % 10 == 0 || processedCount == problems.size) {
-                        updateJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
-                    }
-
-                    // Anti-Ban Logic: 2~4초 간격으로 요청
-                    val delay = 2000 + Random.nextInt(2000)
-                    Thread.sleep(delay.toLong())
+                    processLanguageUpdate(problem)
+                    successCount++
                 } catch (e: Exception) {
                     log.error("문제 언어 정보 업데이트 중 예외 발생: problemId=${problem.id.value}, error=${e.message}", e)
                     failCount++
-                    processedCount++
-                    // 다음 문제로 넘어가기 위해 예외를 잡고 계속 진행
                 }
+
+                processedCount++
+
+                // 진행 상황 및 checkpoint 업데이트 (10개마다 또는 마지막 문제)
+                if (processedCount % CHECKPOINT_SAVE_INTERVAL == 0 || processedCount == problems.size) {
+                    updateJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+                    saveCheckpoint(CrawlType.LANGUAGE_UPDATE, problem.id.value)
+                }
+
+                val delay = 2000 + Random.nextInt(2000)
+                Thread.sleep(delay.toLong())
             }
 
-            // 완료 상태로 변경
             val completedAt = System.currentTimeMillis()
             val finalStatus = LanguageUpdateJobStatus(
                 jobId = jobId,
@@ -667,6 +753,9 @@ class ProblemCollectorService(
                 completedAt = completedAt
             )
             saveJobStatus(finalStatus)
+            
+            // 완료 시 checkpoint 삭제
+            crawlerCheckpointRepository.deleteByCrawlType(CrawlType.LANGUAGE_UPDATE)
 
             log.info("문제 언어 정보 최신화 완료: jobId=$jobId, 성공=$successCount, 실패=$failCount")
         } catch (e: Exception) {
@@ -684,6 +773,15 @@ class ProblemCollectorService(
             )
             saveJobStatus(failedStatus)
         }
+    }
+
+    private fun processLanguageUpdate(problem: Problem) {
+        val details = bojCrawler.crawlProblemDetails(problem.id.value)
+            ?: throw IllegalStateException("크롤링 실패: problemId=${problem.id.value}")
+
+        val updatedProblem = problem.copy(language = details.language)
+        problemRepository.save(updatedProblem)
+        log.debug("문제 언어 정보 업데이트 성공: problemId=${problem.id.value}, language=${details.language}")
     }
 
     private fun solvedAcProblemUrl(problemId: Int): String {
