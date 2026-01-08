@@ -536,7 +536,7 @@ class ProblemCollectorService(
     }
 
     /**
-     * DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트한다 (비동기 처리).
+     * DB에 저장된 문제 중 언어 정보가 null이거나 "other"인 문제들의 언어 정보를 재판별하여 업데이트한다 (비동기 처리).
      * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
      * 작업 진행 상황은 getLanguageUpdateJobStatus()로 조회할 수 있다.
      *
@@ -544,10 +544,13 @@ class ProblemCollectorService(
      */
     fun updateLanguageBatchAsync(): String {
         val jobId = UUID.randomUUID().toString()
-        val allProblems = problemRepository.findAll()
+        // 언어 정보가 null이거나 "other"인 문제만 처리 (업데이트 안된 것만)
+        val problemsWithNullLanguage = problemRepository.findByLanguageIsNull()
+        val problemsWithOtherLanguage = problemRepository.findByLanguage("other")
+        val problemsToUpdate = (problemsWithNullLanguage + problemsWithOtherLanguage).distinctBy { it.id.value }
 
-        if (allProblems.isEmpty()) {
-            log.info("업데이트할 문제가 없습니다.")
+        if (problemsToUpdate.isEmpty()) {
+            log.info("업데이트할 문제가 없습니다. (모든 문제의 언어 정보가 이미 설정되어 있습니다.)")
             val status = LanguageUpdateJobStatus(
                 jobId = jobId,
                 status = JobStatus.COMPLETED,
@@ -562,11 +565,13 @@ class ProblemCollectorService(
             return jobId
         }
 
+        log.info("언어 정보 업데이트 대상: ${problemsToUpdate.size}개 (language가 null이거나 'other'인 문제)")
+
         // 초기 상태 저장
         val initialStatus = LanguageUpdateJobStatus(
             jobId = jobId,
             status = JobStatus.PENDING,
-            totalCount = allProblems.size,
+            totalCount = problemsToUpdate.size,
             processedCount = 0,
             successCount = 0,
             failCount = 0,
@@ -575,7 +580,7 @@ class ProblemCollectorService(
         saveJobStatus(initialStatus)
 
         // 비동기로 작업 실행
-        executeLanguageUpdateAsync(jobId, allProblems)
+        executeLanguageUpdateAsync(jobId, problemsToUpdate)
 
         return jobId
     }

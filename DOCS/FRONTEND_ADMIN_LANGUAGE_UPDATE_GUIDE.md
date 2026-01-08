@@ -26,6 +26,11 @@ POST /api/v1/admin/problems/update-language
 Authorization: Bearer {ADMIN_TOKEN}
 ```
 
+**처리 대상:**
+- 언어 정보가 `null`인 문제
+- 언어 정보가 `"other"`인 문제
+- 이미 언어 정보가 설정된 문제(ko, en, ja, zh)는 **건너뜀**
+
 **요청 예시:**
 ```typescript
 // TypeScript/React 예시
