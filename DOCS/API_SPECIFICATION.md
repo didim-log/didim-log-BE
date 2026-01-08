@@ -2132,35 +2132,124 @@ GET /api/v1/system/status
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 수집하여 DB에 저장합니다. (Upsert 방식) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 메타데이터 수집이 완료되었습니다."<br>- `range` (String): "start-end" 형식의 범위 문자열 | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**응답 구조:**<br>- `message` (String): "문제 상세 정보 크롤링이 완료되었습니다." | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 수집하여 DB에 저장합니다. **비동기 처리:** 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환합니다. 작업 진행 상황은 GET `/api/v1/admin/problems/collect-metadata/status/{jobId}` API로 조회할 수 있습니다. (Upsert 방식) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, Any>`<br><br>**응답 구조:**<br>- `message` (String): "문제 메타데이터 수집 작업이 시작되었습니다."<br>- `jobId` (String): 작업 ID (작업 상태 조회에 사용)<br>- `range` (String): "start-end" 형식의 범위 문자열 | JWT Token (ADMIN) |
+|| GET | `/api/v1/admin/problems/collect-metadata/status/{jobId}` | 문제 메타데이터 수집 작업의 진행 상황을 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `MetadataCollectStatusResponse`<br><br>**MetadataCollectStatusResponse 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 ("PENDING", "RUNNING", "COMPLETED", "FAILED")<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startProblemId` (Int): 시작 문제 ID<br>- `endProblemId` (Int): 종료 문제 ID<br>- `progressPercentage` (Int): 진행률 (0~100)<br>- `estimatedRemainingSeconds` (Long, nullable): 예상 남은 시간 (초)<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지 (실패 시) | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 크롤링하여 업데이트합니다. **업데이트 안된 문제만 처리:** descriptionHtml이 이미 설정된 문제는 건너뜁니다. **비동기 처리:** 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환합니다. 작업 진행 상황은 GET `/api/v1/admin/problems/collect-details/status/{jobId}` API로 조회할 수 있습니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, Any>`<br><br>**응답 구조:**<br>- `message` (String): "문제 상세 정보 크롤링 작업이 시작되었습니다."<br>- `jobId` (String): 작업 ID (작업 상태 조회에 사용) | JWT Token (ADMIN) |
+|| GET | `/api/v1/admin/problems/collect-details/status/{jobId}` | 문제 상세 정보 수집 작업의 진행 상황을 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `DetailsCollectStatusResponse`<br><br>**DetailsCollectStatusResponse 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 ("PENDING", "RUNNING", "COMPLETED", "FAILED")<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `progressPercentage` (Int): 진행률 (0~100)<br>- `estimatedRemainingSeconds` (Long, nullable): 예상 남은 시간 (초)<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지 (실패 시) | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/stats` | DB에 저장된 문제의 총 개수, 최소 문제 ID, 최대 문제 ID를 조회합니다. 관리자가 다음 크롤링 범위를 결정하는 데 사용합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `ProblemStatsResponse`<br><br>**ProblemStatsResponse 구조:**<br>- `totalCount` (Long): 총 문제 수<br>- `minProblemId` (Int, nullable): 최소 문제 ID (문제가 없으면 null)<br>- `maxProblemId` (Int, nullable): 최대 문제 ID (문제가 없으면 null) | JWT Token (ADMIN) |
-|| POST | `/api/v1/admin/problems/update-language` | DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트합니다. 기존 크롤링 데이터는 유지하고 language 필드만 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, Any>`<br><br>**응답 구조:**<br>- `message` (String): "문제 언어 정보 최신화가 완료되었습니다."<br>- `updatedCount` (Int): 업데이트된 문제 수 | JWT Token (ADMIN) |
+|| POST | `/api/v1/admin/problems/update-language` | DB에 저장된 문제 중 언어 정보가 null이거나 "other"인 문제들의 언어 정보를 재판별하여 업데이트합니다. **비동기 처리:** 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환합니다. 작업 진행 상황은 GET `/api/v1/admin/problems/update-language/status/{jobId}` API로 조회할 수 있습니다. 기존 크롤링 데이터는 유지하고 language 필드만 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, Any>`<br><br>**응답 구조:**<br>- `message` (String): "문제 언어 정보 최신화 작업이 시작되었습니다."<br>- `jobId` (String): 작업 ID (작업 상태 조회에 사용) | JWT Token (ADMIN) |
+|| GET | `/api/v1/admin/problems/update-language/status/{jobId}` | 언어 정보 업데이트 작업의 진행 상황을 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `LanguageUpdateStatusResponse`<br><br>**LanguageUpdateStatusResponse 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 ("PENDING", "RUNNING", "COMPLETED", "FAILED")<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `progressPercentage` (Int): 진행률 (0~100)<br>- `estimatedRemainingSeconds` (Long, nullable): 예상 남은 시간 (초)<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지 (실패 시) | JWT Token (ADMIN) |
 
-**예시 요청 (메타데이터 수집):**
+**예시 요청 (메타데이터 수집 시작):**
 ```http
 POST /api/v1/admin/problems/collect-metadata?start=1000&end=1100
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-**예시 응답 (메타데이터 수집):**
+**예시 응답 (메타데이터 수집 시작):**
 ```json
 {
-  "message": "문제 메타데이터 수집이 완료되었습니다.",
+  "message": "문제 메타데이터 수집 작업이 시작되었습니다.",
+  "jobId": "770e8400-e29b-41d4-a716-446655440002",
   "range": "1000-1100"
 }
 ```
 
-**예시 요청 (상세 정보 크롤링):**
+**예시 요청 (작업 상태 조회):**
+```http
+GET /api/v1/admin/problems/collect-metadata/status/770e8400-e29b-41d4-a716-446655440002
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (작업 상태 조회 - 진행 중):**
+```json
+{
+  "jobId": "770e8400-e29b-41d4-a716-446655440002",
+  "status": "RUNNING",
+  "totalCount": 101,
+  "processedCount": 50,
+  "successCount": 48,
+  "failCount": 2,
+  "startProblemId": 1000,
+  "endProblemId": 1100,
+  "progressPercentage": 49,
+  "estimatedRemainingSeconds": 51,
+  "startedAt": 1704067200000,
+  "completedAt": null,
+  "errorMessage": null
+}
+```
+
+**예시 응답 (작업 상태 조회 - 완료):**
+```json
+{
+  "jobId": "770e8400-e29b-41d4-a716-446655440002",
+  "status": "COMPLETED",
+  "totalCount": 101,
+  "processedCount": 101,
+  "successCount": 95,
+  "failCount": 6,
+  "startProblemId": 1000,
+  "endProblemId": 1100,
+  "progressPercentage": 100,
+  "estimatedRemainingSeconds": null,
+  "startedAt": 1704067200000,
+  "completedAt": 1704067251000,
+  "errorMessage": null
+}
+```
+
+**예시 요청 (상세 정보 크롤링 시작):**
 ```http
 POST /api/v1/admin/problems/collect-details
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-**예시 응답 (상세 정보 크롤링):**
+**예시 응답 (상세 정보 크롤링 시작):**
 ```json
 {
-  "message": "문제 상세 정보 크롤링이 완료되었습니다."
+  "message": "문제 상세 정보 크롤링 작업이 시작되었습니다.",
+  "jobId": "660e8400-e29b-41d4-a716-446655440001"
+}
+```
+
+**예시 요청 (작업 상태 조회):**
+```http
+GET /api/v1/admin/problems/collect-details/status/660e8400-e29b-41d4-a716-446655440001
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (작업 상태 조회 - 진행 중):**
+```json
+{
+  "jobId": "660e8400-e29b-41d4-a716-446655440001",
+  "status": "RUNNING",
+  "totalCount": 500,
+  "processedCount": 150,
+  "successCount": 148,
+  "failCount": 2,
+  "progressPercentage": 30,
+  "estimatedRemainingSeconds": 1050,
+  "startedAt": 1704067200000,
+  "completedAt": null,
+  "errorMessage": null
+}
+```
+
+**예시 응답 (작업 상태 조회 - 완료):**
+```json
+{
+  "jobId": "660e8400-e29b-41d4-a716-446655440001",
+  "status": "COMPLETED",
+  "totalCount": 500,
+  "processedCount": 500,
+  "successCount": 490,
+  "failCount": 10,
+  "progressPercentage": 100,
+  "estimatedRemainingSeconds": null,
+  "startedAt": 1704067200000,
+  "completedAt": 1704074400000,
+  "errorMessage": null
 }
 ```
 
@@ -2188,17 +2277,84 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 }
 ```
 
-**예시 요청 (언어 정보 최신화):**
+**예시 요청 (언어 정보 최신화 시작):**
 ```http
 POST /api/v1/admin/problems/update-language
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-**예시 응답 (언어 정보 최신화):**
+**예시 응답 (언어 정보 최신화 시작):**
 ```json
 {
-  "message": "문제 언어 정보 최신화가 완료되었습니다.",
-  "updatedCount": 1250
+  "message": "문제 언어 정보 최신화 작업이 시작되었습니다.",
+  "jobId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**예시 요청 (작업 상태 조회):**
+```http
+GET /api/v1/admin/problems/update-language/status/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (작업 상태 조회 - 진행 중):**
+```json
+{
+  "jobId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "RUNNING",
+  "totalCount": 3400,
+  "processedCount": 150,
+  "successCount": 148,
+  "failCount": 2,
+  "progressPercentage": 4,
+  "estimatedRemainingSeconds": 9750,
+  "startedAt": 1704067200000,
+  "completedAt": null,
+  "errorMessage": null
+}
+```
+
+**예시 응답 (작업 상태 조회 - 완료):**
+```json
+{
+  "jobId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "COMPLETED",
+  "totalCount": 3400,
+  "processedCount": 3400,
+  "successCount": 3350,
+  "failCount": 50,
+  "progressPercentage": 100,
+  "estimatedRemainingSeconds": null,
+  "startedAt": 1704067200000,
+  "completedAt": 1704074400000,
+  "errorMessage": null
+}
+```
+
+**예시 응답 (작업 상태 조회 - 실패):**
+```json
+{
+  "jobId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "FAILED",
+  "totalCount": 3400,
+  "processedCount": 500,
+  "successCount": 495,
+  "failCount": 5,
+  "progressPercentage": 14,
+  "estimatedRemainingSeconds": null,
+  "startedAt": 1704067200000,
+  "completedAt": 1704069000000,
+  "errorMessage": "크롤링 중 예외 발생"
+}
+```
+
+**에러 응답 예시 (작업을 찾을 수 없음):**
+```json
+{
+  "status": 404,
+  "error": "Not Found",
+  "code": "COMMON_RESOURCE_NOT_FOUND",
+  "message": "작업을 찾을 수 없습니다. jobId=invalid-job-id"
 }
 ```
 

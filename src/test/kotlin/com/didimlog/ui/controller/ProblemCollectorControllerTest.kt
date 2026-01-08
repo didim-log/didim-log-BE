@@ -71,7 +71,7 @@ class ProblemCollectorControllerTest {
     @DisplayName("메타데이터 수집 성공 시 200 OK 및 Response JSON 구조 검증")
     fun `메타데이터 수집 성공`() {
         // given
-        every { problemCollectorService.collectMetadata(1, 100) } returns Unit
+        every { problemCollectorService.collectMetadataAsync(1, 100) } returns "test-job-id-metadata"
 
         // when & then
         mockMvc.perform(
@@ -82,17 +82,72 @@ class ProblemCollectorControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.message").value("문제 메타데이터 수집이 완료되었습니다."))
+            .andExpect(jsonPath("$.message").value("문제 메타데이터 수집 작업이 시작되었습니다."))
+            .andExpect(jsonPath("$.jobId").value("test-job-id-metadata"))
             .andExpect(jsonPath("$.range").value("1-100"))
+    }
 
-        verify(exactly = 1) { problemCollectorService.collectMetadata(1, 100) }
+    @Test
+    @DisplayName("문제 메타데이터 수집 작업 상태 조회 성공")
+    fun `문제 메타데이터 수집 작업 상태 조회 성공`() {
+        // given
+        val jobId = "test-job-id-metadata"
+        val status = com.didimlog.application.MetadataCollectJobStatus(
+            jobId = jobId,
+            status = com.didimlog.application.JobStatus.RUNNING,
+            totalCount = 100,
+            processedCount = 50,
+            successCount = 48,
+            failCount = 2,
+            startProblemId = 1,
+            endProblemId = 100,
+            startedAt = 1704067200000,
+            completedAt = null,
+            errorMessage = null
+        )
+        every { problemCollectorService.getMetadataCollectJobStatus(jobId) } returns status
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/collect-metadata/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.jobId").value(jobId))
+            .andExpect(jsonPath("$.status").value("RUNNING"))
+            .andExpect(jsonPath("$.totalCount").value(100))
+            .andExpect(jsonPath("$.processedCount").value(50))
+            .andExpect(jsonPath("$.progressPercentage").value(50))
+            .andExpect(jsonPath("$.startProblemId").value(1))
+            .andExpect(jsonPath("$.endProblemId").value(100))
+
+        verify(exactly = 1) { problemCollectorService.getMetadataCollectJobStatus(jobId) }
+    }
+
+    @Test
+    @DisplayName("문제 메타데이터 수집 작업 상태 조회 - 작업 없음")
+    fun `문제 메타데이터 수집 작업 상태 조회 작업 없음`() {
+        // given
+        val jobId = "non-existent-job-id"
+        every { problemCollectorService.getMetadataCollectJobStatus(jobId) } returns null
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/collect-metadata/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isNotFound())
+
+        verify(exactly = 1) { problemCollectorService.getMetadataCollectJobStatus(jobId) }
     }
 
     @Test
     @DisplayName("상세 정보 크롤링 성공 시 200 OK 및 Response JSON 구조 검증")
     fun `상세 정보 크롤링 성공`() {
         // given
-        every { problemCollectorService.collectDetailsBatch() } returns Unit
+        every { problemCollectorService.collectDetailsBatchAsync() } returns "test-job-id-collect-details"
 
         // when & then
         mockMvc.perform(
@@ -101,16 +156,15 @@ class ProblemCollectorControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.message").value("문제 상세 정보 크롤링이 완료되었습니다."))
-
-        verify(exactly = 1) { problemCollectorService.collectDetailsBatch() }
+            .andExpect(jsonPath("$.message").value("문제 상세 정보 크롤링 작업이 시작되었습니다."))
+            .andExpect(jsonPath("$.jobId").value("test-job-id-collect-details"))
     }
 
     @Test
     @DisplayName("언어 정보 최신화 성공 시 200 OK 및 Response JSON 구조 검증")
     fun `언어 정보 최신화 성공`() {
         // given
-        every { problemCollectorService.updateLanguageBatch() } returns 1250
+        every { problemCollectorService.updateLanguageBatchAsync() } returns "test-job-id-123"
 
         // when & then
         mockMvc.perform(
@@ -119,10 +173,133 @@ class ProblemCollectorControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.message").value("문제 언어 정보 최신화가 완료되었습니다."))
-            .andExpect(jsonPath("$.updatedCount").value(1250))
+            .andExpect(jsonPath("$.message").value("문제 언어 정보 최신화 작업이 시작되었습니다."))
+            .andExpect(jsonPath("$.jobId").value("test-job-id-123"))
 
-        verify(exactly = 1) { problemCollectorService.updateLanguageBatch() }
+        verify(exactly = 1) { problemCollectorService.updateLanguageBatchAsync() }
+    }
+
+    @Test
+    @DisplayName("언어 정보 업데이트 작업 상태 조회 성공")
+    fun `언어 정보 업데이트 작업 상태 조회 성공`() {
+        // given
+        val jobId = "test-job-id-123"
+        val status = com.didimlog.application.LanguageUpdateJobStatus(
+            jobId = jobId,
+            status = com.didimlog.application.JobStatus.RUNNING,
+            totalCount = 3400,
+            processedCount = 150,
+            successCount = 148,
+            failCount = 2,
+            startedAt = 1704067200000,
+            completedAt = null,
+            errorMessage = null
+        )
+        every { problemCollectorService.getLanguageUpdateJobStatus(jobId) } returns status
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/update-language/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.jobId").value(jobId))
+            .andExpect(jsonPath("$.status").value("RUNNING"))
+            .andExpect(jsonPath("$.totalCount").value(3400))
+            .andExpect(jsonPath("$.processedCount").value(150))
+            .andExpect(jsonPath("$.progressPercentage").value(4))
+
+        verify(exactly = 1) { problemCollectorService.getLanguageUpdateJobStatus(jobId) }
+    }
+
+    @Test
+    @DisplayName("언어 정보 업데이트 작업 상태 조회 - 작업 없음")
+    fun `언어 정보 업데이트 작업 상태 조회 작업 없음`() {
+        // given
+        val jobId = "non-existent-job-id"
+        every { problemCollectorService.getLanguageUpdateJobStatus(jobId) } returns null
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/update-language/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isNotFound())
+
+        verify(exactly = 1) { problemCollectorService.getLanguageUpdateJobStatus(jobId) }
+    }
+
+    @Test
+    @DisplayName("문제 상세 정보 크롤링 성공 시 200 OK 및 Response JSON 구조 검증")
+    fun `문제 상세 정보 크롤링 성공`() {
+        // given
+        every { problemCollectorService.collectDetailsBatchAsync() } returns "test-job-id-456"
+
+        // when & then
+        mockMvc.perform(
+            post("/api/v1/admin/problems/collect-details")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.message").value("문제 상세 정보 크롤링 작업이 시작되었습니다."))
+            .andExpect(jsonPath("$.jobId").value("test-job-id-456"))
+
+        verify(exactly = 1) { problemCollectorService.collectDetailsBatchAsync() }
+    }
+
+    @Test
+    @DisplayName("문제 상세 정보 수집 작업 상태 조회 성공")
+    fun `문제 상세 정보 수집 작업 상태 조회 성공`() {
+        // given
+        val jobId = "test-job-id-456"
+        val status = com.didimlog.application.DetailsCollectJobStatus(
+            jobId = jobId,
+            status = com.didimlog.application.JobStatus.RUNNING,
+            totalCount = 100,
+            processedCount = 50,
+            successCount = 48,
+            failCount = 2,
+            startedAt = 1704067200000,
+            completedAt = null,
+            errorMessage = null
+        )
+        every { problemCollectorService.getDetailsCollectJobStatus(jobId) } returns status
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/collect-details/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.jobId").value(jobId))
+            .andExpect(jsonPath("$.status").value("RUNNING"))
+            .andExpect(jsonPath("$.totalCount").value(100))
+            .andExpect(jsonPath("$.processedCount").value(50))
+            .andExpect(jsonPath("$.progressPercentage").value(50))
+
+        verify(exactly = 1) { problemCollectorService.getDetailsCollectJobStatus(jobId) }
+    }
+
+    @Test
+    @DisplayName("문제 상세 정보 수집 작업 상태 조회 - 작업 없음")
+    fun `문제 상세 정보 수집 작업 상태 조회 작업 없음`() {
+        // given
+        val jobId = "non-existent-job-id"
+        every { problemCollectorService.getDetailsCollectJobStatus(jobId) } returns null
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/collect-details/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isNotFound())
+
+        verify(exactly = 1) { problemCollectorService.getDetailsCollectJobStatus(jobId) }
     }
 }
 
