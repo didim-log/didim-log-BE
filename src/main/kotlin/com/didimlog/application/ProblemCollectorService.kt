@@ -36,84 +36,215 @@ class ProblemCollectorService(
     companion object {
         private const val LANGUAGE_UPDATE_JOB_KEY_PREFIX = "language:update:job:"
         private const val DETAILS_COLLECT_JOB_KEY_PREFIX = "details:collect:job:"
+        private const val METADATA_COLLECT_JOB_KEY_PREFIX = "metadata:collect:job:"
         private const val JOB_STATUS_TTL_HOURS = 24L // 24시간 후 자동 삭제
     }
 
     /**
-     * Solved.ac API를 통해 문제 메타데이터를 수집하여 DB에 저장한다 (Upsert).
-     * 문제 ID 범위를 지정하여 일괄 수집할 수 있다.
+     * Solved.ac API를 통해 문제 메타데이터를 수집하여 DB에 저장한다 (비동기 처리).
+     * 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환한다.
+     * 작업 진행 상황은 getMetadataCollectJobStatus()로 조회할 수 있다.
      *
      * @param start 시작 문제 ID
      * @param end 종료 문제 ID (포함)
+     * @return 작업 ID (작업 상태 조회에 사용)
      */
-    @Transactional
-    fun collectMetadata(start: Int, end: Int) {
-        log.info("문제 메타데이터 수집 시작: start=$start, end=$end")
+    fun collectMetadataAsync(start: Int, end: Int): String {
+        val jobId = UUID.randomUUID().toString()
+        val totalCount = end - start + 1
+
+        // 초기 상태 저장
+        val initialStatus = MetadataCollectJobStatus(
+            jobId = jobId,
+            status = JobStatus.PENDING,
+            totalCount = totalCount,
+            processedCount = 0,
+            successCount = 0,
+            failCount = 0,
+            startProblemId = start,
+            endProblemId = end,
+            startedAt = System.currentTimeMillis()
+        )
+        saveMetadataCollectJobStatus(initialStatus)
+
+        // 비동기로 작업 실행
+        executeMetadataCollectAsync(jobId, start, end)
+
+        return jobId
+    }
+
+    /**
+     * 문제 메타데이터 수집 작업 상태를 조회한다.
+     *
+     * @param jobId 작업 ID
+     * @return 작업 상태 (없으면 null)
+     */
+    fun getMetadataCollectJobStatus(jobId: String): MetadataCollectJobStatus? {
+        val key = METADATA_COLLECT_JOB_KEY_PREFIX + jobId
+        val json = redisTemplate.opsForValue().get(key) ?: return null
+
+        return try {
+            objectMapper.readValue(json, MetadataCollectJobStatus::class.java)
+        } catch (e: Exception) {
+            log.error("작업 상태 파싱 실패: jobId=$jobId", e)
+            null
+        }
+    }
+
+    /**
+     * 비동기로 문제 메타데이터 수집 작업을 실행한다.
+     */
+    @Async
+    fun executeMetadataCollectAsync(jobId: String, start: Int, end: Int) {
+        log.info("문제 메타데이터 수집 시작: jobId=$jobId, start=$start, end=$end")
+        val totalCount = end - start + 1
+
+        var processedCount = 0
         var successCount = 0
         var failCount = 0
+        val startedAt = System.currentTimeMillis()
 
-        for (problemId in start..end) {
-            try {
-                val response = solvedAcClient.fetchProblem(problemId)
-                val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
-                
-                // 태그 추출: 한글 태그를 영문 표준명으로 변환
-                val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
-                val category = ProblemCategoryMapper.determineCategory(tags)
+        // 상태를 RUNNING으로 변경
+        updateMetadataCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
 
-                // titleKo를 분석하여 언어 판별 (정확도는 낮지만 초기값으로 사용)
-                val detectedLanguage = detectLanguageFromTitle(response.titleKo)
+        try {
+            for (problemId in start..end) {
+                try {
+                    val response = solvedAcClient.fetchProblem(problemId)
+                    val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
+                    
+                    // 태그 추출: 한글 태그를 영문 표준명으로 변환
+                    val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
+                    val category = ProblemCategoryMapper.determineCategory(tags)
 
-                val existingProblem = problemRepository.findById(response.problemId.toString())
-                val problem = existingProblem
-                    .map { existing ->
-                        existing.copy(
-                            title = response.titleKo,
-                            difficulty = difficultyTier,
-                            level = response.level,
-                            category = category,
-                            tags = tags,
-                            language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
-                        )
+                    // titleKo를 분석하여 언어 판별 (정확도는 낮지만 초기값으로 사용)
+                    val detectedLanguage = detectLanguageFromTitle(response.titleKo)
+
+                    val existingProblem = problemRepository.findById(response.problemId.toString())
+                    val problem = existingProblem
+                        .map { existing ->
+                            existing.copy(
+                                title = response.titleKo,
+                                difficulty = difficultyTier,
+                                level = response.level,
+                                category = category,
+                                tags = tags,
+                                language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
+                            )
+                        }
+                        .orElseGet {
+                            Problem(
+                                id = ProblemId(response.problemId.toString()),
+                                title = response.titleKo,
+                                category = category,
+                                difficulty = difficultyTier,
+                                level = response.level,
+                                url = solvedAcProblemUrl(response.problemId),
+                                tags = tags,
+                                language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
+                            )
+                        }
+
+                    problemRepository.save(problem)
+                    successCount++
+                    log.debug("Problem ${problem.id.value} saved. (Category: ${problem.category})")
+                } catch (e: IllegalStateException) {
+                    // Solved.ac API에서 문제를 찾을 수 없는 경우 (404 등)
+                    if (e.message?.contains("찾을 수 없습니다") == true) {
+                        log.debug("Problem $problemId not found in Solved.ac (skipped)")
+                        failCount++
+                    } else {
+                        log.warn("Failed to collect problem $problemId: ${e.message}")
+                        failCount++
                     }
-                    .orElseGet {
-                        Problem(
-                            id = ProblemId(response.problemId.toString()),
-                            title = response.titleKo,
-                            category = category,
-                            difficulty = difficultyTier,
-                            level = response.level,
-                            url = solvedAcProblemUrl(response.problemId),
-                            tags = tags,
-                            language = detectedLanguage // 언어 필드 추가 (나중에 크롤링 시 재판별됨)
-                        )
-                    }
-
-                problemRepository.save(problem)
-                successCount++
-                log.info("Problem ${problem.id.value} saved. (Category: ${problem.category})")
-            } catch (e: IllegalStateException) {
-                // Solved.ac API에서 문제를 찾을 수 없는 경우 (404 등)
-                if (e.message?.contains("찾을 수 없습니다") == true) {
-                    log.debug("Problem $problemId not found in Solved.ac (skipped)")
+                } catch (e: Exception) {
+                    // 기타 예외 (네트워크 에러 등)
+                    log.warn("Failed to collect problem $problemId: ${e.message}")
                     failCount++
-                    continue
                 }
-                log.warn("Failed to collect problem $problemId: ${e.message}")
-                failCount++
-                // 다음 문제로 넘어가기 (for 루프이므로 자동으로 continue)
-            } catch (e: Exception) {
-                // 기타 예외 (네트워크 에러 등)
-                log.warn("Failed to collect problem $problemId: ${e.message}")
-                failCount++
-                // 다음 문제로 넘어가기 (for 루프이므로 자동으로 continue)
-            }
-            
-            // Rate Limiting: 0.5초 간격으로 요청 (에러 발생 여부와 관계없이 항상 실행)
-            Thread.sleep(500)
-        }
 
-        log.info("문제 메타데이터 수집 완료: 성공=$successCount, 실패=$failCount")
+                processedCount++
+
+                // 진행 상황 업데이트 (10개마다 또는 마지막 문제)
+                if (processedCount % 10 == 0 || processedCount == totalCount) {
+                    updateMetadataCollectJobStatus(jobId, JobStatus.RUNNING, processedCount, successCount, failCount)
+                }
+
+                // Rate Limiting: 0.5초 간격으로 요청
+                Thread.sleep(500)
+            }
+
+            // 완료 상태로 변경
+            val completedAt = System.currentTimeMillis()
+            val finalStatus = MetadataCollectJobStatus(
+                jobId = jobId,
+                status = JobStatus.COMPLETED,
+                totalCount = totalCount,
+                processedCount = processedCount,
+                successCount = successCount,
+                failCount = failCount,
+                startProblemId = start,
+                endProblemId = end,
+                startedAt = startedAt,
+                completedAt = completedAt
+            )
+            saveMetadataCollectJobStatus(finalStatus)
+
+            log.info("문제 메타데이터 수집 완료: jobId=$jobId, 성공=$successCount, 실패=$failCount")
+        } catch (e: Exception) {
+            log.error("문제 메타데이터 수집 작업 실패: jobId=$jobId", e)
+            val failedStatus = MetadataCollectJobStatus(
+                jobId = jobId,
+                status = JobStatus.FAILED,
+                totalCount = totalCount,
+                processedCount = processedCount,
+                successCount = successCount,
+                failCount = failCount,
+                startProblemId = start,
+                endProblemId = end,
+                startedAt = startedAt,
+                completedAt = System.currentTimeMillis(),
+                errorMessage = e.message
+            )
+            saveMetadataCollectJobStatus(failedStatus)
+        }
+    }
+
+    /**
+     * 문제 메타데이터 수집 작업 상태를 Redis에 저장한다.
+     */
+    private fun saveMetadataCollectJobStatus(status: MetadataCollectJobStatus) {
+        val key = METADATA_COLLECT_JOB_KEY_PREFIX + status.jobId
+        try {
+            val json = objectMapper.writeValueAsString(status)
+            redisTemplate.opsForValue().set(
+                key,
+                json,
+                Duration.ofHours(JOB_STATUS_TTL_HOURS)
+            )
+        } catch (e: Exception) {
+            log.error("작업 상태 저장 실패: jobId=${status.jobId}", e)
+        }
+    }
+
+    /**
+     * 문제 메타데이터 수집 작업 상태를 업데이트한다.
+     */
+    private fun updateMetadataCollectJobStatus(
+        jobId: String,
+        status: JobStatus,
+        processedCount: Int,
+        successCount: Int,
+        failCount: Int
+    ) {
+        val currentStatus = getMetadataCollectJobStatus(jobId) ?: return
+        val updatedStatus = currentStatus.copy(
+            status = status,
+            processedCount = processedCount,
+            successCount = successCount,
+            failCount = failCount
+        )
+        saveMetadataCollectJobStatus(updatedStatus)
     }
 
     /**

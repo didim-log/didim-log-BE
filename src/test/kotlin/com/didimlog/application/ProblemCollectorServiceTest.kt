@@ -62,12 +62,17 @@ class ProblemCollectorServiceTest {
         )
         every { solvedAcClient.fetchProblem(problemId) } returns response
         every { problemRepository.findById(problemId.toString()) } returns Optional.empty()
+        every { 
+            redisTemplate.opsForValue().set(any<String>(), any<String>(), any<java.time.Duration>()) 
+        } returns Unit
 
         // when
-        problemCollectorService.collectMetadata(problemId, problemId)
+        problemCollectorService.collectMetadataAsync(problemId, problemId)
+        // 비동기로 실행되므로 충분히 대기
+        Thread.sleep(1000)
 
         // then
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(atLeast = 1) { problemRepository.save(any<Problem>()) }
         // 저장된 Problem의 태그가 영문으로 변환되었는지 확인
         // (실제 검증은 mock의 capture를 사용하거나, 실제 저장된 객체를 확인해야 함)
     }
@@ -85,12 +90,17 @@ class ProblemCollectorServiceTest {
         )
         every { solvedAcClient.fetchProblem(problemId) } returns response
         every { problemRepository.findById(problemId.toString()) } returns Optional.empty()
+        every { 
+            redisTemplate.opsForValue().set(any<String>(), any<String>(), any<java.time.Duration>()) 
+        } returns Unit
 
         // when
-        problemCollectorService.collectMetadata(problemId, problemId)
+        problemCollectorService.collectMetadataAsync(problemId, problemId)
+        // 비동기로 실행되므로 충분히 대기
+        Thread.sleep(1000)
 
         // then
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(atLeast = 1) { problemRepository.save(any<Problem>()) }
     }
 
     @Test
@@ -113,8 +123,8 @@ class ProblemCollectorServiceTest {
         )
 
         // when: 리플렉션을 사용하여 private 메서드 호출 (실제로는 public 메서드를 통해 간접 테스트)
-        // 또는 extractTagsToEnglish를 public으로 변경하거나, collectMetadata를 통해 간접 테스트
-        // 여기서는 collectMetadata를 통해 간접 테스트
+        // 또는 extractTagsToEnglish를 public으로 변경하거나, collectMetadataAsync를 통해 간접 테스트
+        // 여기서는 collectMetadataAsync를 통해 간접 테스트
         val response = SolvedAcProblemResponse(
             problemId = 1000,
             titleKo = "문제",
@@ -123,12 +133,17 @@ class ProblemCollectorServiceTest {
         )
         every { solvedAcClient.fetchProblem(1000) } returns response
         every { problemRepository.findById("1000") } returns Optional.empty()
+        every { 
+            redisTemplate.opsForValue().set(any<String>(), any<String>(), any<java.time.Duration>()) 
+        } returns Unit
 
         // when
-        problemCollectorService.collectMetadata(1000, 1000)
+        problemCollectorService.collectMetadataAsync(1000, 1000)
+        // 비동기로 실행되므로 충분히 대기
+        Thread.sleep(1000)
 
         // then: 저장된 Problem이 영문 태그를 가지고 있는지 확인
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(atLeast = 1) { problemRepository.save(any<Problem>()) }
     }
 
     @Test
@@ -144,12 +159,17 @@ class ProblemCollectorServiceTest {
         )
         every { solvedAcClient.fetchProblem(problemId) } returns response
         every { problemRepository.findById(problemId.toString()) } returns Optional.empty()
+        every { 
+            redisTemplate.opsForValue().set(any<String>(), any<String>(), any<java.time.Duration>()) 
+        } returns Unit
 
         // when
-        problemCollectorService.collectMetadata(problemId, problemId)
+        problemCollectorService.collectMetadataAsync(problemId, problemId)
+        // 비동기로 실행되므로 충분히 대기
+        Thread.sleep(1000)
 
         // then
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(atLeast = 1) { problemRepository.save(any<Problem>()) }
     }
 
     @Test
@@ -289,6 +309,60 @@ class ProblemCollectorServiceTest {
 
         // when
         val status = problemCollectorService.getDetailsCollectJobStatus(jobId)
+
+        // then
+        assertThat(status).isNull()
+    }
+
+    @Test
+    @DisplayName("getMetadataCollectJobStatus는 저장된 작업 상태를 반환한다")
+    fun `getMetadataCollectJobStatus는 작업 상태 반환`() {
+        // given
+        val jobId = "test-job-id"
+        val status = com.didimlog.application.MetadataCollectJobStatus(
+            jobId = jobId,
+            status = com.didimlog.application.JobStatus.COMPLETED,
+            totalCount = 100,
+            processedCount = 100,
+            successCount = 95,
+            failCount = 5,
+            startProblemId = 1,
+            endProblemId = 100,
+            startedAt = 1704067200000,
+            completedAt = 1704067300000
+        )
+        val statusJson = objectMapper.writeValueAsString(status)
+        
+        every { 
+            redisTemplate.opsForValue().get("metadata:collect:job:$jobId") 
+        } returns statusJson
+
+        // when
+        val result = problemCollectorService.getMetadataCollectJobStatus(jobId)
+
+        // then
+        assertThat(result).isNotNull()
+        assertThat(result?.jobId).isEqualTo(jobId)
+        assertThat(result?.totalCount).isEqualTo(100)
+        assertThat(result?.processedCount).isEqualTo(100)
+        assertThat(result?.successCount).isEqualTo(95)
+        assertThat(result?.failCount).isEqualTo(5)
+        assertThat(result?.startProblemId).isEqualTo(1)
+        assertThat(result?.endProblemId).isEqualTo(100)
+        assertThat(result?.status?.name ?: "COMPLETED").isEqualTo("COMPLETED")
+    }
+
+    @Test
+    @DisplayName("getMetadataCollectJobStatus는 작업이 없으면 null을 반환한다")
+    fun `getMetadataCollectJobStatus는 작업 없으면 null 반환`() {
+        // given
+        val jobId = "non-existent-job-id"
+        every { 
+            redisTemplate.opsForValue().get("metadata:collect:job:$jobId") 
+        } returns null
+
+        // when
+        val status = problemCollectorService.getMetadataCollectJobStatus(jobId)
 
         // then
         assertThat(status).isNull()

@@ -71,7 +71,7 @@ class ProblemCollectorControllerTest {
     @DisplayName("메타데이터 수집 성공 시 200 OK 및 Response JSON 구조 검증")
     fun `메타데이터 수집 성공`() {
         // given
-        every { problemCollectorService.collectMetadata(1, 100) } returns Unit
+        every { problemCollectorService.collectMetadataAsync(1, 100) } returns "test-job-id-metadata"
 
         // when & then
         mockMvc.perform(
@@ -82,10 +82,65 @@ class ProblemCollectorControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.message").value("문제 메타데이터 수집이 완료되었습니다."))
+            .andExpect(jsonPath("$.message").value("문제 메타데이터 수집 작업이 시작되었습니다."))
+            .andExpect(jsonPath("$.jobId").value("test-job-id-metadata"))
             .andExpect(jsonPath("$.range").value("1-100"))
+    }
 
-        verify(exactly = 1) { problemCollectorService.collectMetadata(1, 100) }
+    @Test
+    @DisplayName("문제 메타데이터 수집 작업 상태 조회 성공")
+    fun `문제 메타데이터 수집 작업 상태 조회 성공`() {
+        // given
+        val jobId = "test-job-id-metadata"
+        val status = com.didimlog.application.MetadataCollectJobStatus(
+            jobId = jobId,
+            status = com.didimlog.application.JobStatus.RUNNING,
+            totalCount = 100,
+            processedCount = 50,
+            successCount = 48,
+            failCount = 2,
+            startProblemId = 1,
+            endProblemId = 100,
+            startedAt = 1704067200000,
+            completedAt = null,
+            errorMessage = null
+        )
+        every { problemCollectorService.getMetadataCollectJobStatus(jobId) } returns status
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/collect-metadata/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.jobId").value(jobId))
+            .andExpect(jsonPath("$.status").value("RUNNING"))
+            .andExpect(jsonPath("$.totalCount").value(100))
+            .andExpect(jsonPath("$.processedCount").value(50))
+            .andExpect(jsonPath("$.progressPercentage").value(50))
+            .andExpect(jsonPath("$.startProblemId").value(1))
+            .andExpect(jsonPath("$.endProblemId").value(100))
+
+        verify(exactly = 1) { problemCollectorService.getMetadataCollectJobStatus(jobId) }
+    }
+
+    @Test
+    @DisplayName("문제 메타데이터 수집 작업 상태 조회 - 작업 없음")
+    fun `문제 메타데이터 수집 작업 상태 조회 작업 없음`() {
+        // given
+        val jobId = "non-existent-job-id"
+        every { problemCollectorService.getMetadataCollectJobStatus(jobId) } returns null
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/collect-metadata/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isNotFound())
+
+        verify(exactly = 1) { problemCollectorService.getMetadataCollectJobStatus(jobId) }
     }
 
     @Test
