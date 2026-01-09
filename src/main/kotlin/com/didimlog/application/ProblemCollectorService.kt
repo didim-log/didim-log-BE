@@ -142,7 +142,7 @@ class ProblemCollectorService(
                     processMetadataProblem(problemId)
                     successCount++
                 } catch (e: IllegalStateException) {
-                    handleMetadataException(e, problemId, failCount)
+                    handleMetadataException(e, problemId)
                     failCount++
                 } catch (e: Exception) {
                     log.warn("Failed to collect problem $problemId: ${e.message}")
@@ -234,12 +234,22 @@ class ProblemCollectorService(
         log.debug("Problem ${problem.id.value} saved. (Category: ${problem.category})")
     }
 
-    private fun handleMetadataException(e: IllegalStateException, problemId: Int, failCount: Int) {
+    private fun handleMetadataException(e: IllegalStateException, problemId: Int) {
         if (e.message?.contains("찾을 수 없습니다") == true) {
             log.debug("Problem $problemId not found in Solved.ac (skipped)")
             return
         }
         log.warn("Failed to collect problem $problemId: ${e.message}")
+    }
+
+    /**
+     * checkpoint를 조회한다.
+     *
+     * @param crawlType 크롤링 타입
+     * @return checkpoint (없으면 null)
+     */
+    fun getCheckpoint(crawlType: CrawlType): CrawlerCheckpoint? {
+        return crawlerCheckpointRepository.findByCrawlType(crawlType)
     }
 
     /**
@@ -263,10 +273,10 @@ class ProblemCollectorService(
     }
 
     /**
-     * 문제 메타데이터 수집 작업 상태를 Redis에 저장한다.
+     * 작업 상태를 Redis에 저장한다.
      */
-    private fun saveMetadataCollectJobStatus(status: MetadataCollectJobStatus) {
-        val key = METADATA_COLLECT_JOB_KEY_PREFIX + status.jobId
+    private fun saveJobStatusToRedis(keyPrefix: String, jobId: String, status: Any) {
+        val key = keyPrefix + jobId
         try {
             val json = objectMapper.writeValueAsString(status)
             redisTemplate.opsForValue().set(
@@ -275,8 +285,15 @@ class ProblemCollectorService(
                 Duration.ofHours(JOB_STATUS_TTL_HOURS)
             )
         } catch (e: Exception) {
-            log.error("작업 상태 저장 실패: jobId=${status.jobId}", e)
+            log.error("작업 상태 저장 실패: jobId=$jobId", e)
         }
+    }
+
+    /**
+     * 문제 메타데이터 수집 작업 상태를 Redis에 저장한다.
+     */
+    private fun saveMetadataCollectJobStatus(status: MetadataCollectJobStatus) {
+        saveJobStatusToRedis(METADATA_COLLECT_JOB_KEY_PREFIX, status.jobId, status)
     }
 
     /**
@@ -478,34 +495,14 @@ class ProblemCollectorService(
      * 언어 업데이트 작업 상태를 Redis에 저장한다.
      */
     private fun saveJobStatus(status: LanguageUpdateJobStatus) {
-        val key = LANGUAGE_UPDATE_JOB_KEY_PREFIX + status.jobId
-        try {
-            val json = objectMapper.writeValueAsString(status)
-            redisTemplate.opsForValue().set(
-                key,
-                json,
-                Duration.ofHours(JOB_STATUS_TTL_HOURS)
-            )
-        } catch (e: Exception) {
-            log.error("작업 상태 저장 실패: jobId=${status.jobId}", e)
-        }
+        saveJobStatusToRedis(LANGUAGE_UPDATE_JOB_KEY_PREFIX, status.jobId, status)
     }
 
     /**
      * 문제 상세 정보 수집 작업 상태를 Redis에 저장한다.
      */
     private fun saveDetailsCollectJobStatus(status: DetailsCollectJobStatus) {
-        val key = DETAILS_COLLECT_JOB_KEY_PREFIX + status.jobId
-        try {
-            val json = objectMapper.writeValueAsString(status)
-            redisTemplate.opsForValue().set(
-                key,
-                json,
-                Duration.ofHours(JOB_STATUS_TTL_HOURS)
-            )
-        } catch (e: Exception) {
-            log.error("작업 상태 저장 실패: jobId=${status.jobId}", e)
-        }
+        saveJobStatusToRedis(DETAILS_COLLECT_JOB_KEY_PREFIX, status.jobId, status)
     }
 
     /**
@@ -579,10 +576,37 @@ class ProblemCollectorService(
             }
             .maxOrNull()
         
+        // descriptionHtml이 null인 문제의 최소 ID
+        val minNullDescriptionHtmlProblemId = problemRepository.findByDescriptionHtmlIsNull()
+            .mapNotNull { problem ->
+                try {
+                    problem.id.value.toInt()
+                } catch (e: NumberFormatException) {
+                    null
+                }
+            }
+            .minOrNull()
+        
+        // language가 null이거나 "other"인 문제의 최소 ID
+        val nullLanguageProblems = problemRepository.findByLanguageIsNull()
+        val otherLanguageProblems = problemRepository.findByLanguage("other")
+        val minNullLanguageProblemId = (nullLanguageProblems + otherLanguageProblems)
+            .distinct()
+            .mapNotNull { problem ->
+                try {
+                    problem.id.value.toInt()
+                } catch (e: NumberFormatException) {
+                    null
+                }
+            }
+            .minOrNull()
+        
         return com.didimlog.ui.dto.ProblemStatsResponse(
             totalCount = totalCount,
             minProblemId = minProblemId,
-            maxProblemId = maxProblemId
+            maxProblemId = maxProblemId,
+            minNullDescriptionHtmlProblemId = minNullDescriptionHtmlProblemId,
+            minNullLanguageProblemId = minNullLanguageProblemId
         )
     }
 

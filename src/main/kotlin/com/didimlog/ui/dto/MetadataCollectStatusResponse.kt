@@ -16,6 +16,7 @@ data class MetadataCollectStatusResponse(
     val estimatedRemainingSeconds: Long?,
     val startedAt: Long,
     val completedAt: Long?,
-    val errorMessage: String?
+    val errorMessage: String?,
+    val lastCheckpointId: Int? // 실패 시 재시작할 수 있도록 마지막 checkpoint ID
 )
 
