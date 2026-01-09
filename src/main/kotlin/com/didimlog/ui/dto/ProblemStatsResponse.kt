@@ -7,7 +7,9 @@ package com.didimlog.ui.dto
 data class ProblemStatsResponse(
     val totalCount: Long,
     val minProblemId: Int?,
-    val maxProblemId: Int?
+    val maxProblemId: Int?,
+    val minNullDescriptionHtmlProblemId: Int?,
+    val minNullLanguageProblemId: Int?
 )
 
 

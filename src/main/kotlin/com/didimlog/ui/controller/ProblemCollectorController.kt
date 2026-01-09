@@ -115,6 +115,10 @@ class ProblemCollectorController(
         val status = problemCollectorService.getMetadataCollectJobStatus(jobId)
             ?: return ResponseEntity.notFound().build()
 
+        // 실패 시 재시작을 위한 checkpoint 정보 조회
+        val checkpoint = problemCollectorService.getCheckpoint(com.didimlog.domain.enums.CrawlType.METADATA_COLLECT)
+        val lastCheckpointId = checkpoint?.lastCrawledId?.toIntOrNull()
+
         val response = com.didimlog.ui.dto.MetadataCollectStatusResponse(
             jobId = status.jobId,
             status = status.status.name,
@@ -128,7 +132,8 @@ class ProblemCollectorController(
             estimatedRemainingSeconds = status.estimatedRemainingSeconds,
             startedAt = status.startedAt,
             completedAt = status.completedAt,
-            errorMessage = status.errorMessage
+            errorMessage = status.errorMessage,
+            lastCheckpointId = lastCheckpointId
         )
 
         return ResponseEntity.ok(response)
@@ -207,6 +212,10 @@ class ProblemCollectorController(
         val status = problemCollectorService.getDetailsCollectJobStatus(jobId)
             ?: return ResponseEntity.notFound().build()
 
+        // 실패 시 재시작을 위한 checkpoint 정보 조회
+        val checkpoint = problemCollectorService.getCheckpoint(com.didimlog.domain.enums.CrawlType.DETAILS_COLLECT)
+        val lastCheckpointId = checkpoint?.lastCrawledId
+
         val response = com.didimlog.ui.dto.DetailsCollectStatusResponse(
             jobId = status.jobId,
             status = status.status.name,
@@ -218,7 +227,8 @@ class ProblemCollectorController(
             estimatedRemainingSeconds = status.estimatedRemainingSeconds,
             startedAt = status.startedAt,
             completedAt = status.completedAt,
-            errorMessage = status.errorMessage
+            errorMessage = status.errorMessage,
+            lastCheckpointId = lastCheckpointId
         )
 
         return ResponseEntity.ok(response)
@@ -325,6 +335,10 @@ class ProblemCollectorController(
         val status = problemCollectorService.getLanguageUpdateJobStatus(jobId)
             ?: return ResponseEntity.notFound().build()
 
+        // 실패 시 재시작을 위한 checkpoint 정보 조회
+        val checkpoint = problemCollectorService.getCheckpoint(com.didimlog.domain.enums.CrawlType.LANGUAGE_UPDATE)
+        val lastCheckpointId = checkpoint?.lastCrawledId
+
         val response = com.didimlog.ui.dto.LanguageUpdateStatusResponse(
             jobId = status.jobId,
             status = status.status.name,
@@ -336,7 +350,8 @@ class ProblemCollectorController(
             estimatedRemainingSeconds = status.estimatedRemainingSeconds,
             startedAt = status.startedAt,
             completedAt = status.completedAt,
-            errorMessage = status.errorMessage
+            errorMessage = status.errorMessage,
+            lastCheckpointId = lastCheckpointId
         )
 
         return ResponseEntity.ok(response)
