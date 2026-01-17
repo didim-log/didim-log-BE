@@ -4,10 +4,10 @@ import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.template.SectionPreset
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
-import com.didimlog.domain.template.SectionPreset
 import com.didimlog.ui.dto.TemplatePreviewRequest
 import com.didimlog.ui.dto.TemplatePresetResponse
 import com.didimlog.ui.dto.TemplateRequest
