@@ -34,7 +34,7 @@ class TemplateInitializer(
         }
 
         val simpleContent = """
-# 🏆 {{problemTitle}}
+# 🏆 {{problemTitle}} (⏱️ {{timeTaken}})
 
 ## 💡 핵심 로직
 

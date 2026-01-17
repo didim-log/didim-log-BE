@@ -2,10 +2,13 @@ package com.didimlog.application.template
 
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.domain.template.Template
+import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
@@ -18,7 +21,8 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class TemplateService(
     private val templateRepository: TemplateRepository,
-    private val problemService: ProblemService
+    private val problemService: ProblemService,
+    private val studentRepository: StudentRepository
 ) {
 
     /**
@@ -256,18 +260,21 @@ class TemplateService(
      * - {{tier}}: 티어 (예: GOLD_3)
      * - {{language}}: 문제 설명 언어 (예: ko, en)
      * - {{link}}: 문제 링크
+     * - {{timeTaken}}: 풀이 소요 시간 (예: "3분 14초", "30초", 기록 없으면 "-")
      *
      * @param templateId 템플릿 ID
      * @param problemId 문제 ID
+     * @param studentId 학생 ID (timeTaken 조회용)
      * @return 렌더링된 템플릿 내용
      * @throws BusinessException 템플릿 또는 문제를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun renderTemplate(templateId: String, problemId: Long): String {
+    fun renderTemplate(templateId: String, problemId: Long, studentId: String): String {
         val template = getTemplate(templateId)
         val problem = getProblem(problemId)
+        val timeTaken = getTimeTaken(studentId, problemId)
         
-        return renderContent(template.content, problem)
+        return renderContent(template.content, problem, timeTaken)
     }
 
     /**
@@ -275,9 +282,10 @@ class TemplateService(
      *
      * @param content 템플릿 내용
      * @param problem 문제 정보
+     * @param timeTaken 풀이 소요 시간 (기록 없으면 "-")
      * @return 렌더링된 내용
      */
-    private fun renderContent(content: String, problem: Problem): String {
+    private fun renderContent(content: String, problem: Problem, timeTaken: String = "-"): String {
         var rendered = content
         
         rendered = rendered.replace("{{problemId}}", problem.id.value)
@@ -285,6 +293,7 @@ class TemplateService(
         rendered = rendered.replace("{{tier}}", problem.difficulty.name)
         rendered = rendered.replace("{{language}}", problem.language)
         rendered = rendered.replace("{{link}}", problem.url)
+        rendered = rendered.replace("{{timeTaken}}", timeTaken)
         
         return rendered
     }
@@ -313,5 +322,57 @@ class TemplateService(
      */
     private fun getProblem(problemId: Long): Problem {
         return problemService.getProblemDetail(problemId)
+    }
+
+    /**
+     * 학생의 특정 문제 풀이 시간을 조회한다.
+     *
+     * @param studentId 학생 ID
+     * @param problemId 문제 ID
+     * @return 포맷팅된 풀이 시간 ("X분 Y초", "X초", 또는 "-")
+     */
+    private fun getTimeTaken(studentId: String, problemId: Long): String {
+        val student = getStudent(studentId)
+        val problemIdVo = ProblemId(problemId.toString())
+        val solution = student.solutions.findByProblemId(problemIdVo)
+        
+        if (solution == null) {
+            return "-"
+        }
+        
+        return formatTimeTaken(solution.timeTaken.value)
+    }
+
+    /**
+     * 학생을 조회한다.
+     *
+     * @param studentId 학생 ID
+     * @return 학생
+     * @throws BusinessException 학생을 찾을 수 없는 경우
+     */
+    private fun getStudent(studentId: String): Student {
+        return studentRepository.findById(studentId)
+            .orElseThrow { BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. id=$studentId") }
+    }
+
+    /**
+     * 풀이 시간(초)을 "X분 Y초" 또는 "X초" 형식으로 포맷팅한다.
+     *
+     * @param seconds 풀이 시간(초)
+     * @return 포맷팅된 시간 문자열 (예: "3분 14초", "30초")
+     */
+    private fun formatTimeTaken(seconds: Long): String {
+        if (seconds < 60) {
+            return "${seconds}초"
+        }
+        
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        
+        if (remainingSeconds == 0L) {
+            return "${minutes}분"
+        }
+        
+        return "${minutes}분 ${remainingSeconds}초"
     }
 }

@@ -1285,6 +1285,7 @@ Content-Type: application/json
 - `{{tier}}`: 티어명 (예: "BRONZE", "GOLD")
 - `{{language}}`: 문제 설명 언어 (예: "ko", "en")
 - `{{link}}`: 문제 링크 (예: "https://www.acmicpc.net/problem/1000")
+- `{{timeTaken}}`: 풀이 소요 시간 (예: "3분 14초", "30초", 기록 없으면 "-")
 
 **예시 요청 (템플릿 목록 조회):**
 ```http

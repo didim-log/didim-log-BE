@@ -151,6 +151,7 @@ class TemplateController(
     )
     @GetMapping("/{id}/render")
     fun renderTemplate(
+        authentication: Authentication,
         @Parameter(description = "템플릿 ID")
         @PathVariable id: String,
         @Parameter(description = "문제 ID", required = true)
@@ -158,7 +159,9 @@ class TemplateController(
         @Min(value = 1, message = "문제 ID는 1 이상이어야 합니다.")
         problemId: Long
     ): ResponseEntity<TemplateRenderResponse> {
-        val renderedContent = templateService.renderTemplate(id, problemId)
+        val student = getStudentFromAuthentication(authentication)
+        val studentId = getStudentId(student)
+        val renderedContent = templateService.renderTemplate(id, problemId, studentId)
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }

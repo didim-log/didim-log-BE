@@ -2,13 +2,23 @@ package com.didimlog.application.template
 
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
+import com.didimlog.domain.Student
+import com.didimlog.domain.Solution
+import com.didimlog.domain.Solutions
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.domain.template.Template
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.domain.valueobject.TimeTakenSeconds
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
@@ -25,7 +35,8 @@ class TemplateServiceTest {
 
     private val templateRepository: TemplateRepository = mockk()
     private val problemService: ProblemService = mockk()
-    private val service = TemplateService(templateRepository, problemService)
+    private val studentRepository: StudentRepository = mockk()
+    private val service = TemplateService(templateRepository, problemService, studentRepository)
 
     private val studentId = "student1"
     private val templateId = "template1"
@@ -469,6 +480,7 @@ class TemplateServiceTest {
                 티어: {{tier}}
                 언어: {{language}}
                 링크: {{link}}
+                소요 시간: {{timeTaken}}
             """.trimIndent(),
             type = TemplateOwnershipType.CUSTOM,
             isDefaultSuccess = false,
@@ -483,12 +495,26 @@ class TemplateServiceTest {
             url = "https://www.acmicpc.net/problem/1000",
             language = "ko"
         )
+        val solution = Solution(
+            problemId = ProblemId("1000"),
+            timeTaken = TimeTakenSeconds(194L),
+            result = ProblemResult.SUCCESS
+        )
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            currentTier = Tier.BRONZE,
+            solutions = Solutions().apply { add(solution) }
+        )
         
         every { templateRepository.findById(templateId) } returns Optional.of(template)
         every { problemService.getProblemDetail(problemId) } returns problem
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
 
         // when
-        val result = service.renderTemplate(templateId, problemId)
+        val result = service.renderTemplate(templateId, problemId, studentId)
 
         // then
         assertThat(result).contains("문제 ID: 1000")
@@ -496,8 +522,60 @@ class TemplateServiceTest {
         assertThat(result).contains("티어: BRONZE")
         assertThat(result).contains("언어: ko")
         assertThat(result).contains("링크: https://www.acmicpc.net/problem/1000")
+        assertThat(result).contains("소요 시간: 3분 14초")
         verify { templateRepository.findById(templateId) }
         verify { problemService.getProblemDetail(problemId) }
+        verify { studentRepository.findById(studentId) }
+    }
+
+    @Test
+    @DisplayName("템플릿을 렌더링한다 - 풀이 기록이 없는 경우")
+    fun `템플릿 렌더링 - 풀이 기록 없음`() {
+        // given
+        val problemId = 1000L
+        val template = Template(
+            id = templateId,
+            studentId = studentId,
+            title = "템플릿",
+            content = """
+                문제 ID: {{problemId}}
+                소요 시간: {{timeTaken}}
+            """.trimIndent(),
+            type = TemplateOwnershipType.CUSTOM,
+            isDefaultSuccess = false,
+            isDefaultFail = false
+        )
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            currentTier = Tier.BRONZE,
+            solutions = Solutions()
+        )
+        
+        every { templateRepository.findById(templateId) } returns Optional.of(template)
+        every { problemService.getProblemDetail(problemId) } returns problem
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+
+        // when
+        val result = service.renderTemplate(templateId, problemId, studentId)
+
+        // then
+        assertThat(result).contains("문제 ID: 1000")
+        assertThat(result).contains("소요 시간: -")
+        verify { templateRepository.findById(templateId) }
+        verify { problemService.getProblemDetail(problemId) }
+        verify { studentRepository.findById(studentId) }
     }
 
     @Test
