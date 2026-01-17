@@ -37,7 +37,7 @@ object CodeLanguageDetector {
                 "companion object", "object ", "sealed class", "enum class", "when (",
                 "?.", "!!", "let {", "apply {", "run {", "also {", "use {",
                 "import kotlin", "kotlinx.", "listOf(", "mapOf(", "setOf(",
-                "println(" // Kotlin의 println도 Kotlin 특유 키워드로 인정
+                "println(", "fun ", ": Int", ": String", ": Boolean", "= " // Kotlin 함수 시그니처 패턴
             ),
             weight = 1
         ),
