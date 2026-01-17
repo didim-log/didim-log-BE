@@ -95,7 +95,7 @@ class StaticTemplateControllerTest {
             ```
         """.trimIndent()
 
-        every { staticTemplateService.generateRetrospectiveTemplate(any(), any(), any(), any()) } returns expectedTemplate
+        every { staticTemplateService.generateRetrospectiveTemplate(any(), any(), any(), any(), any(), any()) } returns expectedTemplate
 
         val body = mapOf(
             "code" to "def solve(a, b):\n    return a + b",
@@ -143,7 +143,7 @@ class StaticTemplateControllerTest {
             ```
         """.trimIndent()
 
-        every { staticTemplateService.generateRetrospectiveTemplate(any(), any(), any(), any()) } returns expectedTemplate
+        every { staticTemplateService.generateRetrospectiveTemplate(any(), any(), any(), any(), any(), any()) } returns expectedTemplate
 
         val body = mapOf(
             "code" to "def solve(): pass",

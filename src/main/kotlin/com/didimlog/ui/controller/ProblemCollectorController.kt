@@ -1,7 +1,11 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.application.DetailsCollectJobStatus
+import com.didimlog.application.LanguageUpdateJobStatus
+import com.didimlog.application.MetadataCollectJobStatus
 import com.didimlog.application.ProblemCollectorService
-import com.didimlog.ui.dto.ProblemStatsResponse
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -15,12 +19,13 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Admin", description = "문제 데이터 수집 관련 API (관리자용)")
+@Tag(name = "Admin - Problem Collection", description = "문제 데이터 수집 관련 API (관리자 전용)")
 @RestController
 @RequestMapping("/api/v1/admin/problems")
 @Validated
@@ -30,12 +35,12 @@ class ProblemCollectorController(
 
     @Operation(
         summary = "문제 메타데이터 수집 (비동기)",
-        description = "Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 수집하여 DB에 저장합니다. 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환합니다. 작업 진행 상황은 GET /api/v1/admin/problems/collect-metadata/status/{jobId} API로 조회할 수 있습니다. (Upsert 방식)",
+        description = "Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 비동기로 수집하여 DB에 저장합니다. (Upsert 방식) 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "작업 시작 성공 (작업 ID 반환)"),
+            ApiResponse(responseCode = "200", description = "수집 성공"),
             ApiResponse(
                 responseCode = "400",
                 description = "유효하지 않은 start/end 값",
@@ -53,7 +58,7 @@ class ProblemCollectorController(
             ),
             ApiResponse(
                 responseCode = "500",
-                description = "서버 내부 오류",
+                description = "서버 내부 오류 또는 외부 API 연동 실패",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -69,7 +74,7 @@ class ProblemCollectorController(
         @RequestParam
         @Positive(message = "종료 문제 ID는 1 이상이어야 합니다.")
         end: Int
-    ): ResponseEntity<Map<String, Any>> {
+    ): ResponseEntity<Map<String, String>> {
         val jobId = problemCollectorService.collectMetadataAsync(start, end)
         return ResponseEntity.ok(
             mapOf(
@@ -82,7 +87,7 @@ class ProblemCollectorController(
 
     @Operation(
         summary = "문제 메타데이터 수집 작업 상태 조회",
-        description = "문제 메타데이터 수집 작업의 진행 상황을 조회합니다.",
+        description = "문제 메타데이터 수집 작업의 진행 상태를 조회합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -106,47 +111,24 @@ class ProblemCollectorController(
         ]
     )
     @GetMapping("/collect-metadata/status/{jobId}")
-    fun getMetadataCollectStatus(
+    fun getMetadataCollectJobStatus(
         authentication: Authentication,
         @Parameter(description = "작업 ID", required = true)
-        @org.springframework.web.bind.annotation.PathVariable
-        jobId: String
-    ): ResponseEntity<com.didimlog.ui.dto.MetadataCollectStatusResponse> {
+        @PathVariable jobId: String
+    ): ResponseEntity<MetadataCollectJobStatus> {
         val status = problemCollectorService.getMetadataCollectJobStatus(jobId)
-            ?: return ResponseEntity.notFound().build()
-
-        // 실패 시 재시작을 위한 checkpoint 정보 조회
-        val checkpoint = problemCollectorService.getCheckpoint(com.didimlog.domain.enums.CrawlType.METADATA_COLLECT)
-        val lastCheckpointId = checkpoint?.lastCrawledId?.toIntOrNull()
-
-        val response = com.didimlog.ui.dto.MetadataCollectStatusResponse(
-            jobId = status.jobId,
-            status = status.status.name,
-            totalCount = status.totalCount,
-            processedCount = status.processedCount,
-            successCount = status.successCount,
-            failCount = status.failCount,
-            startProblemId = status.startProblemId,
-            endProblemId = status.endProblemId,
-            progressPercentage = status.progressPercentage,
-            estimatedRemainingSeconds = status.estimatedRemainingSeconds,
-            startedAt = status.startedAt,
-            completedAt = status.completedAt,
-            errorMessage = status.errorMessage,
-            lastCheckpointId = lastCheckpointId
-        )
-
-        return ResponseEntity.ok(response)
+            ?: throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
+        return ResponseEntity.ok(status)
     }
 
     @Operation(
         summary = "문제 상세 정보 크롤링 (비동기)",
-        description = "DB에서 description이 null인 문제들의 상세 정보를 BOJ 사이트에서 크롤링하여 업데이트합니다. 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환합니다. 작업 진행 상황은 GET /api/v1/admin/problems/collect-details/status API로 조회할 수 있습니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다.",
+        description = "DB에서 description이 null인 문제들의 상세 정보를 BOJ 사이트에서 비동기로 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "작업 시작 성공 (작업 ID 반환)"),
+            ApiResponse(responseCode = "200", description = "수집 성공"),
             ApiResponse(
                 responseCode = "401",
                 description = "인증 필요",
@@ -159,7 +141,7 @@ class ProblemCollectorController(
             ),
             ApiResponse(
                 responseCode = "500",
-                description = "서버 내부 오류",
+                description = "서버 내부 오류 또는 크롤링 실패",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -167,7 +149,7 @@ class ProblemCollectorController(
     @PostMapping("/collect-details")
     fun collectDetails(
         authentication: Authentication
-    ): ResponseEntity<Map<String, Any>> {
+    ): ResponseEntity<Map<String, String>> {
         val jobId = problemCollectorService.collectDetailsBatchAsync()
         return ResponseEntity.ok(
             mapOf(
@@ -179,7 +161,7 @@ class ProblemCollectorController(
 
     @Operation(
         summary = "문제 상세 정보 수집 작업 상태 조회",
-        description = "문제 상세 정보 수집 작업의 진행 상황을 조회합니다.",
+        description = "문제 상세 정보 수집 작업의 진행 상태를 조회합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -203,73 +185,24 @@ class ProblemCollectorController(
         ]
     )
     @GetMapping("/collect-details/status/{jobId}")
-    fun getDetailsCollectStatus(
+    fun getDetailsCollectJobStatus(
         authentication: Authentication,
         @Parameter(description = "작업 ID", required = true)
-        @org.springframework.web.bind.annotation.PathVariable
-        jobId: String
-    ): ResponseEntity<com.didimlog.ui.dto.DetailsCollectStatusResponse> {
+        @PathVariable jobId: String
+    ): ResponseEntity<DetailsCollectJobStatus> {
         val status = problemCollectorService.getDetailsCollectJobStatus(jobId)
-            ?: return ResponseEntity.notFound().build()
-
-        // 실패 시 재시작을 위한 checkpoint 정보 조회
-        val checkpoint = problemCollectorService.getCheckpoint(com.didimlog.domain.enums.CrawlType.DETAILS_COLLECT)
-        val lastCheckpointId = checkpoint?.lastCrawledId
-
-        val response = com.didimlog.ui.dto.DetailsCollectStatusResponse(
-            jobId = status.jobId,
-            status = status.status.name,
-            totalCount = status.totalCount,
-            processedCount = status.processedCount,
-            successCount = status.successCount,
-            failCount = status.failCount,
-            progressPercentage = status.progressPercentage,
-            estimatedRemainingSeconds = status.estimatedRemainingSeconds,
-            startedAt = status.startedAt,
-            completedAt = status.completedAt,
-            errorMessage = status.errorMessage,
-            lastCheckpointId = lastCheckpointId
-        )
-
-        return ResponseEntity.ok(response)
-    }
-
-    @Operation(
-        summary = "문제 통계 조회",
-        description = "DB에 저장된 문제의 총 개수, 최소 문제 ID, 최대 문제 ID를 조회합니다. 관리자가 다음 크롤링 범위를 결정하는 데 사용합니다.",
-        security = [SecurityRequirement(name = "Authorization")]
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "조회 성공"),
-            ApiResponse(
-                responseCode = "401",
-                description = "인증 필요",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            ),
-            ApiResponse(
-                responseCode = "403",
-                description = "ADMIN 권한 필요",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
-    @GetMapping("/stats")
-    fun getProblemStats(
-        authentication: Authentication
-    ): ResponseEntity<ProblemStatsResponse> {
-        val stats = problemCollectorService.getProblemStats()
-        return ResponseEntity.ok(stats)
+            ?: throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
+        return ResponseEntity.ok(status)
     }
 
     @Operation(
         summary = "문제 언어 정보 최신화 (비동기)",
-        description = "DB에 저장된 모든 문제의 언어 정보를 재판별하여 업데이트합니다. 작업을 백그라운드에서 실행하고 즉시 작업 ID를 반환합니다. 작업 진행 상황은 GET /api/v1/admin/problems/update-language/status API로 조회할 수 있습니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다.",
+        description = "DB에서 언어 정보가 null인 문제들의 언어 정보를 비동기로 업데이트합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "작업 시작 성공 (작업 ID 반환)"),
+            ApiResponse(responseCode = "200", description = "작업 시작 성공"),
             ApiResponse(
                 responseCode = "401",
                 description = "인증 필요",
@@ -290,7 +223,7 @@ class ProblemCollectorController(
     @PostMapping("/update-language")
     fun updateLanguage(
         authentication: Authentication
-    ): ResponseEntity<Map<String, Any>> {
+    ): ResponseEntity<Map<String, String>> {
         val jobId = problemCollectorService.updateLanguageBatchAsync()
         return ResponseEntity.ok(
             mapOf(
@@ -302,7 +235,7 @@ class ProblemCollectorController(
 
     @Operation(
         summary = "언어 정보 업데이트 작업 상태 조회",
-        description = "언어 정보 업데이트 작업의 진행 상황을 조회합니다.",
+        description = "언어 정보 업데이트 작업의 진행 상태를 조회합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -326,35 +259,14 @@ class ProblemCollectorController(
         ]
     )
     @GetMapping("/update-language/status/{jobId}")
-    fun getLanguageUpdateStatus(
+    fun getLanguageUpdateJobStatus(
         authentication: Authentication,
         @Parameter(description = "작업 ID", required = true)
-        @org.springframework.web.bind.annotation.PathVariable
-        jobId: String
-    ): ResponseEntity<com.didimlog.ui.dto.LanguageUpdateStatusResponse> {
+        @PathVariable jobId: String
+    ): ResponseEntity<LanguageUpdateJobStatus> {
         val status = problemCollectorService.getLanguageUpdateJobStatus(jobId)
-            ?: return ResponseEntity.notFound().build()
-
-        // 실패 시 재시작을 위한 checkpoint 정보 조회
-        val checkpoint = problemCollectorService.getCheckpoint(com.didimlog.domain.enums.CrawlType.LANGUAGE_UPDATE)
-        val lastCheckpointId = checkpoint?.lastCrawledId
-
-        val response = com.didimlog.ui.dto.LanguageUpdateStatusResponse(
-            jobId = status.jobId,
-            status = status.status.name,
-            totalCount = status.totalCount,
-            processedCount = status.processedCount,
-            successCount = status.successCount,
-            failCount = status.failCount,
-            progressPercentage = status.progressPercentage,
-            estimatedRemainingSeconds = status.estimatedRemainingSeconds,
-            startedAt = status.startedAt,
-            completedAt = status.completedAt,
-            errorMessage = status.errorMessage,
-            lastCheckpointId = lastCheckpointId
-        )
-
-        return ResponseEntity.ok(response)
+            ?: throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
+        return ResponseEntity.ok(status)
     }
 }
 

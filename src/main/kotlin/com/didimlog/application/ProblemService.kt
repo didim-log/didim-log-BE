@@ -111,8 +111,7 @@ class ProblemService(
                     inputDescriptionHtml = crawledDetails.inputDescriptionHtml,
                     outputDescriptionHtml = crawledDetails.outputDescriptionHtml,
                     sampleInputs = crawledDetails.sampleInputs.takeIf { it.isNotEmpty() },
-                    sampleOutputs = crawledDetails.sampleOutputs.takeIf { it.isNotEmpty() },
-                    language = crawledDetails.language
+                    sampleOutputs = crawledDetails.sampleOutputs.takeIf { it.isNotEmpty() }
                 )
                 return problemRepository.save(updatedProblem)
             }
