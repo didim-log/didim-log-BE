@@ -13,6 +13,14 @@ import org.springframework.web.servlet.HandlerInterceptor
 /**
  * 유지보수 모드 인터셉터
  * 유지보수 모드가 활성화되어 있을 때, ADMIN 권한이 없는 요청을 차단한다.
+ * 
+ * 허용되는 요청:
+ * - 공개 API (GET /api/v1/notices, GET /api/v1/system/status)
+ * - 로그인 API (POST /api/v1/auth/login, POST /api/v1/auth/super-admin)
+ * - ADMIN 권한을 가진 사용자의 모든 요청
+ * 
+ * 주의: 이 인터셉터는 DispatcherServlet 이후에 실행되므로,
+ * JwtAuthenticationFilter가 먼저 실행되어 SecurityContext에 인증 정보가 설정된 후에 실행됩니다.
  */
 @Component
 class MaintenanceModeInterceptor(
@@ -49,7 +57,24 @@ class MaintenanceModeInterceptor(
     private fun isPublicApi(request: HttpServletRequest): Boolean {
         val path = request.requestURI
         val method = request.method
-        return method == "GET" && (path.startsWith("/api/v1/notices") || path.startsWith("/api/v1/system/status"))
+        
+        if (method == "GET" && isPublicGetPath(path)) {
+            return true
+        }
+        
+        if (method == "POST" && isPublicPostPath(path)) {
+            return true
+        }
+        
+        return false
+    }
+    
+    private fun isPublicGetPath(path: String): Boolean {
+        return path.startsWith("/api/v1/notices") || path.startsWith("/api/v1/system/status")
+    }
+    
+    private fun isPublicPostPath(path: String): Boolean {
+        return path == "/api/v1/auth/login" || path == "/api/v1/auth/super-admin"
     }
 
     private fun isAdminUser(): Boolean {

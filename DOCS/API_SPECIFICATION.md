@@ -1594,6 +1594,28 @@ JWT 토큰 기반 인증을 지원합니다.
 - 관리자 (ADMIN): 모든 API 접근 가능 + `/api/v1/admin/**` 전용 API 접근 가능
 - 게스트 (GUEST): 제한된 API만 접근 가능 (소셜 로그인만 완료한 상태)
 
+### 유지보수 모드 (Maintenance Mode)
+서버 점검 중에도 관리자가 로그인하여 유지보수 모드를 해제할 수 있도록 설계되었습니다.
+
+**유지보수 모드 활성화 시:**
+- 일반 사용자의 대부분의 API 요청이 `503 Service Unavailable`로 차단됩니다.
+- 다음 API는 유지보수 모드에서도 접근 가능합니다:
+  - `GET /api/v1/notices`: 공지사항 조회 (점검 공지 확인용)
+  - `GET /api/v1/system/status`: 시스템 상태 조회
+  - `POST /api/v1/auth/login`: 로그인 (관리자 로그인을 위해 필수)
+  - `POST /api/v1/auth/super-admin`: 슈퍼 관리자 생성
+- ADMIN 권한을 가진 사용자는 유지보수 모드에서도 모든 API에 접근 가능합니다.
+
+**유지보수 모드 에러 응답:**
+```json
+{
+  "status": 503,
+  "error": "Service Unavailable",
+  "code": "MAINTENANCE_MODE",
+  "message": "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."
+}
+```
+
 ### 에러 응답 형식
 모든 예외 발생 시 아래의 통일된 JSON 포맷으로 응답합니다:
 ```json
@@ -1626,6 +1648,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `FEEDBACK_NOT_FOUND` (404): 피드백을 찾을 수 없음
 - `TEMPLATE_NOT_FOUND` (404): 템플릿을 찾을 수 없음
 - `TEMPLATE_CANNOT_DELETE_SYSTEM` (403): 시스템 템플릿은 삭제할 수 없음
+- `MAINTENANCE_MODE` (503): 서비스가 일시적으로 점검 중
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
 
 **예시 에러 응답:**
