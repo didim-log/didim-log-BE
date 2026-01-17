@@ -31,19 +31,26 @@ interface TemplateRepository : MongoRepository<Template, String> {
     fun findByType(type: TemplateOwnershipType): List<Template>
 
     /**
-     * 특정 학생의 기본 템플릿을 조회한다.
+     * 특정 학생의 성공용 기본 템플릿을 조회한다.
      *
      * @param studentId 학생 ID
-     * @return 기본 템플릿 (없으면 null)
+     * @return 성공용 기본 템플릿 (없으면 null)
      */
-    fun findByStudentIdAndIsDefaultTrue(studentId: String): Template?
+    fun findByStudentIdAndIsDefaultSuccessTrue(studentId: String): Template?
 
     /**
-     * 특정 학생의 모든 기본 템플릿을 조회한다.
-     * 기본값 설정 시 기존 기본 템플릿을 찾기 위해 사용한다.
+     * 특정 학생의 실패용 기본 템플릿을 조회한다.
      *
      * @param studentId 학생 ID
-     * @return 기본 템플릿 목록
+     * @return 실패용 기본 템플릿 (없으면 null)
      */
-    fun findAllByStudentIdAndIsDefaultTrue(studentId: String): List<Template>
+    fun findByStudentIdAndIsDefaultFailTrue(studentId: String): Template?
+
+    /**
+     * 특정 학생의 모든 템플릿을 조회한다.
+     *
+     * @param studentId 학생 ID
+     * @return 템플릿 목록
+     */
+    fun findAllByStudentId(studentId: String): List<Template>
 }

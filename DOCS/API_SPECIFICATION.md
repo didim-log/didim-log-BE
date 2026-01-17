@@ -1267,12 +1267,14 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/templates` | 인증된 사용자의 커스텀 템플릿과 시스템 기본 템플릿 목록을 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateResponse>`<br><br>**TemplateResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `content` (String): 템플릿 내용 (마크다운 원본)<br>- `type` (String): 템플릿 타입 ("SYSTEM", "CUSTOM")<br>- `isDefault` (Boolean): 사용자의 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
+| GET | `/api/v1/templates` | 인증된 사용자의 커스텀 템플릿과 시스템 기본 템플릿 목록을 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateResponse>`<br><br>**TemplateResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `content` (String): 템플릿 내용 (마크다운 원본)<br>- `type` (String): 템플릿 타입 ("SYSTEM", "CUSTOM")<br>- `isDefaultSuccess` (Boolean): 성공용 기본 템플릿 여부<br>- `isDefaultFail` (Boolean): 실패용 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
+| GET | `/api/v1/templates/presets` | 커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplatePresetResponse>`<br><br>**TemplatePresetResponse 구조:**<br>- `title` (String): 섹션 제목 (예: "🔑 핵심 로직")<br>- `guide` (String): 섹션 작성 가이드 (툴팁용)<br>- `category` (String): 섹션 카테고리 ("SUCCESS", "FAIL", "COMMON") | JWT Token |
 | POST | `/api/v1/templates/preview` | 템플릿을 저장하지 않고 미리보기로 렌더링합니다. 매크로 변수를 실제 문제 데이터로 치환하여 결과를 반환합니다. 템플릿 작성 중 매크로가 올바르게 변환되는지 확인할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplatePreviewRequest`<br>- `templateContent` (String, required): 미리보기할 템플릿 내용<br>  - 유효성: `@NotBlank`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)` | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
 | GET | `/api/v1/templates/{id}/render` | 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 매크로 변수를 실제 문제 데이터로 치환합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)` | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
 | POST | `/api/v1/templates` | 새로운 커스텀 템플릿을 생성합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용 (마크다운, 매크로 포함)<br>  - 유효성: `@NotBlank`, 최소 10자, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
 | PUT | `/api/v1/templates/{id}` | 커스텀 템플릿을 수정합니다. 시스템 템플릿은 수정할 수 없습니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용<br>  - 유효성: `@NotBlank`, 최소 10자, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
-| PUT | `/api/v1/templates/{id}/default` | 특정 템플릿을 기본값으로 설정합니다. 기존 기본 템플릿은 자동으로 해제됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
+| PUT | `/api/v1/templates/{id}/default` | 특정 템플릿을 성공 또는 실패용 기본값으로 설정합니다. 기존 기본 템플릿은 자동으로 해제됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `category` (String, required): 템플릿 카테고리 ("SUCCESS" 또는 "FAIL")<br>  - `SUCCESS`: 성공용 기본 템플릿으로 설정<br>  - `FAIL`: 실패용 기본 템플릿으로 설정 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
+| GET | `/api/v1/templates/default` | 성공 또는 실패용 기본 템플릿을 조회합니다. 사용자가 설정한 기본 템플릿이 없으면 시스템 기본 템플릿을 반환합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `category` (String, required): 템플릿 카테고리 ("SUCCESS" 또는 "FAIL")<br>  - `SUCCESS`: 성공용 기본 템플릿 조회<br>  - `FAIL`: 실패용 기본 템플릿 조회 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
 | DELETE | `/api/v1/templates/{id}` | 커스텀 템플릿을 삭제합니다. 시스템 템플릿은 삭제할 수 없습니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID | `204 No Content` (응답 본문 없음) | JWT Token |
 
 **템플릿 매크로 변수:**
@@ -1283,6 +1285,7 @@ Content-Type: application/json
 - `{{tier}}`: 티어명 (예: "BRONZE", "GOLD")
 - `{{language}}`: 문제 설명 언어 (예: "ko", "en")
 - `{{link}}`: 문제 링크 (예: "https://www.acmicpc.net/problem/1000")
+- `{{timeTaken}}`: 풀이 소요 시간 (예: "3분 14초", "30초", 기록 없으면 "-")
 
 **예시 요청 (템플릿 목록 조회):**
 ```http
@@ -1299,7 +1302,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "title": "나만의 템플릿",
     "content": "# {{problemTitle}}\n\n문제 ID: {{problemId}}",
     "type": "CUSTOM",
-    "isDefault": true,
+    "isDefaultSuccess": true,
+    "isDefaultFail": false,
     "createdAt": "2024-01-15T10:30:00",
     "updatedAt": "2024-01-15T10:30:00"
   },
@@ -1309,7 +1313,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "title": "Simple(요약)",
     "content": "# {{problemTitle}}\n\n## 핵심 로직",
     "type": "SYSTEM",
-    "isDefault": false,
+    "isDefaultSuccess": true,
+    "isDefaultFail": false,
     "createdAt": "2024-01-01T00:00:00",
     "updatedAt": "2024-01-01T00:00:00"
   }
@@ -1336,9 +1341,79 @@ Content-Type: application/json
   "title": "나만의 템플릿",
   "content": "# {{problemTitle}}\n\n문제 ID: {{problemId}}\n\n## 핵심 로직\n- 여기에 로직을 작성하세요.",
   "type": "CUSTOM",
-  "isDefault": false,
+  "isDefaultSuccess": false,
+  "isDefaultFail": false,
   "createdAt": "2024-01-15T10:30:00",
   "updatedAt": "2024-01-15T10:30:00"
+}
+```
+
+**예시 요청 (템플릿 기본값 설정 - 성공용):**
+```http
+PUT /api/v1/templates/template-1/default?category=SUCCESS
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (템플릿 기본값 설정 - 실패용):**
+```http
+PUT /api/v1/templates/template-1/default?category=FAIL
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (템플릿 기본값 설정):**
+```json
+{
+  "id": "template-1",
+  "studentId": "student-123",
+  "title": "나만의 템플릿",
+  "content": "# {{problemTitle}}\n\n문제 ID: {{problemId}}",
+  "type": "CUSTOM",
+  "isDefaultSuccess": true,
+  "isDefaultFail": false,
+  "createdAt": "2024-01-15T10:30:00",
+  "updatedAt": "2024-01-15T10:30:00"
+}
+```
+
+**예시 요청 (기본 템플릿 조회 - 성공용):**
+```http
+GET /api/v1/templates/default?category=SUCCESS
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (기본 템플릿 조회 - 실패용):**
+```http
+GET /api/v1/templates/default?category=FAIL
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (기본 템플릿 조회 - 사용자 기본 템플릿이 있는 경우):**
+```json
+{
+  "id": "template-1",
+  "studentId": "student-123",
+  "title": "나만의 템플릿",
+  "content": "# {{problemTitle}}\n\n문제 ID: {{problemId}}",
+  "type": "CUSTOM",
+  "isDefaultSuccess": true,
+  "isDefaultFail": false,
+  "createdAt": "2024-01-15T10:30:00",
+  "updatedAt": "2024-01-15T10:30:00"
+}
+```
+
+**예시 응답 (기본 템플릿 조회 - 시스템 기본 템플릿 반환):**
+```json
+{
+  "id": "template-system-1",
+  "studentId": null,
+  "title": "Simple(요약)",
+  "content": "# {{problemTitle}}\n\n## 핵심 로직",
+  "type": "SYSTEM",
+  "isDefaultSuccess": true,
+  "isDefaultFail": false,
+  "createdAt": "2024-01-01T00:00:00",
+  "updatedAt": "2024-01-01T00:00:00"
 }
 ```
 
@@ -1372,6 +1447,83 @@ Content-Type: application/json
 {
   "renderedContent": "# A+B\n\n문제 ID: 1000"
 }
+```
+
+**예시 요청 (섹션 프리셋 목록 조회):**
+```http
+GET /api/v1/templates/presets
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (섹션 프리셋 목록 조회):**
+```json
+[
+  {
+    "title": "🔑 핵심 로직",
+    "guide": "이 문제의 가장 중요한 점화식이나 아이디어는 무엇인가요?",
+    "category": "SUCCESS"
+  },
+  {
+    "title": "⏱️ 복잡도 분석",
+    "guide": "시간 복잡도와 공간 복잡도를 분석해보세요. (예: O(N), O(1))",
+    "category": "SUCCESS"
+  },
+  {
+    "title": "✨ 리팩토링 포인트",
+    "guide": "더 깔끔하게 작성할 수 있었던 변수명이나 함수 분리 포인트를 적어보세요.",
+    "category": "SUCCESS"
+  },
+  {
+    "title": "🆚 다른 풀이 비교",
+    "guide": "현재 풀이와 다른 접근 방법(DFS vs BFS 등)을 비교해보세요.",
+    "category": "SUCCESS"
+  },
+  {
+    "title": "🛠️ 사용한 자료구조",
+    "guide": "왜 HashMap 대신 TreeMap을 썼는지 등 자료구조 선택 이유를 설명하세요.",
+    "category": "SUCCESS"
+  },
+  {
+    "title": "🧐 실패 원인",
+    "guide": "문제를 풀지 못한 주요 원인은 무엇인가요? (엣지 케이스, 로직 오류 등)",
+    "category": "FAIL"
+  },
+  {
+    "title": "📚 부족했던 개념",
+    "guide": "부족했던 알고리즘 개념이나 자료구조를 적어보세요.",
+    "category": "FAIL"
+  },
+  {
+    "title": "🐛 디버깅 과정",
+    "guide": "어떤 입력값에서 문제가 발생했는지, 어떻게 추적했는지 기록하세요.",
+    "category": "FAIL"
+  },
+  {
+    "title": "🧪 반례",
+    "guide": "내 코드가 틀리는 결정적인 입력값을 찾아보세요.",
+    "category": "FAIL"
+  },
+  {
+    "title": "🔧 다음 시도 계획",
+    "guide": "다시 풀 때 꼭 체크할 리스트를 작성하세요.",
+    "category": "FAIL"
+  },
+  {
+    "title": "📝 문제 요약",
+    "guide": "문제의 요구사항을 한 줄로 요약하세요.",
+    "category": "COMMON"
+  },
+  {
+    "title": "🔗 참고 자료",
+    "guide": "도움받은 블로그 링크나 공식 문서를 정리하세요.",
+    "category": "COMMON"
+  },
+  {
+    "title": "💬 오늘의 한마디",
+    "guide": "이 문제를 풀며 느낀 점을 자유롭게 적어보세요.",
+    "category": "COMMON"
+  }
+]
 ```
 
 **에러 응답 예시 (템플릿을 찾을 수 없음):**

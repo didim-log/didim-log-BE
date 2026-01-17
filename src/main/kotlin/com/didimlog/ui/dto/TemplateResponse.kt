@@ -12,7 +12,8 @@ data class TemplateResponse(
     val title: String,
     val content: String,
     val type: String, // SYSTEM, CUSTOM
-    val isDefault: Boolean,
+    val isDefaultSuccess: Boolean,
+    val isDefaultFail: Boolean,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime
 ) {
@@ -24,7 +25,8 @@ data class TemplateResponse(
                 title = template.title,
                 content = template.content,
                 type = template.type.name,
-                isDefault = template.isDefault,
+                isDefaultSuccess = template.isDefaultSuccess,
+                isDefaultFail = template.isDefaultFail,
                 createdAt = template.createdAt,
                 updatedAt = template.updatedAt
             )
@@ -39,11 +41,24 @@ data class TemplateRenderResponse(
     val renderedContent: String
 )
 
-
-
-
-
-
+/**
+ * 템플릿 섹션 프리셋 응답 DTO
+ */
+data class TemplatePresetResponse(
+    val title: String,
+    val guide: String,
+    val category: String
+) {
+    companion object {
+        fun from(preset: com.didimlog.domain.template.SectionPreset): TemplatePresetResponse {
+            return TemplatePresetResponse(
+                title = preset.title,
+                guide = preset.guide,
+                category = preset.category.name
+            )
+        }
+    }
+}
 
 
 

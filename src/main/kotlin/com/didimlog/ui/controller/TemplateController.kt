@@ -2,11 +2,14 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.template.SectionPreset
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.TemplatePreviewRequest
+import com.didimlog.ui.dto.TemplatePresetResponse
 import com.didimlog.ui.dto.TemplateRequest
 import com.didimlog.ui.dto.TemplateRenderResponse
 import com.didimlog.ui.dto.TemplateResponse
@@ -64,6 +67,27 @@ class TemplateController(
         val templates = templateService.getTemplates(studentId)
         val response = templates.map { TemplateResponse.from(it) }
         return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "섹션 프리셋 목록 조회",
+        description = "커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/presets")
+    fun getSectionPresets(): ResponseEntity<List<TemplatePresetResponse>> {
+        val presets = SectionPreset.values().map { TemplatePresetResponse.from(it) }
+        return ResponseEntity.ok(presets)
     }
 
     @Operation(
@@ -127,6 +151,7 @@ class TemplateController(
     )
     @GetMapping("/{id}/render")
     fun renderTemplate(
+        authentication: Authentication,
         @Parameter(description = "템플릿 ID")
         @PathVariable id: String,
         @Parameter(description = "문제 ID", required = true)
@@ -134,7 +159,9 @@ class TemplateController(
         @Min(value = 1, message = "문제 ID는 1 이상이어야 합니다.")
         problemId: Long
     ): ResponseEntity<TemplateRenderResponse> {
-        val renderedContent = templateService.renderTemplate(id, problemId)
+        val student = getStudentFromAuthentication(authentication)
+        val studentId = getStudentId(student)
+        val renderedContent = templateService.renderTemplate(id, problemId, studentId)
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }
@@ -217,12 +244,17 @@ class TemplateController(
 
     @Operation(
         summary = "템플릿 기본값 설정",
-        description = "특정 템플릿을 기본값으로 설정합니다. 기존 기본 템플릿은 자동으로 해제됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
+        description = "특정 템플릿을 성공 또는 실패용 기본값으로 설정합니다. 기존 기본 템플릿은 자동으로 해제됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "200", description = "설정 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 카테고리 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
             ApiResponse(
                 responseCode = "401",
                 description = "인증 필요",
@@ -241,14 +273,54 @@ class TemplateController(
         ]
     )
     @PutMapping("/{id}/default")
-    fun setAsDefault(
+    fun setDefaultTemplate(
         authentication: Authentication,
         @Parameter(description = "템플릿 ID")
-        @PathVariable id: String
+        @PathVariable id: String,
+        @Parameter(description = "템플릿 카테고리 (SUCCESS 또는 FAIL)", required = true)
+        @RequestParam category: String
+    ): ResponseEntity<TemplateResponse> {
+        val templateCategory = validateCategory(category)
+        val template = templateService.setDefaultTemplate(id, templateCategory)
+        val response = TemplateResponse.from(template)
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "기본 템플릿 조회",
+        description = "성공 또는 실패용 기본 템플릿을 조회합니다. 사용자가 설정한 기본 템플릿이 없으면 시스템 기본 템플릿을 반환합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 카테고리 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "기본 템플릿을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/default")
+    fun getDefaultTemplate(
+        authentication: Authentication,
+        @Parameter(description = "템플릿 카테고리 (SUCCESS 또는 FAIL)", required = true)
+        @RequestParam category: String
     ): ResponseEntity<TemplateResponse> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val template = templateService.setAsDefault(id, studentId)
+        val templateCategory = validateCategory(category)
+        val template = templateService.getDefaultTemplate(templateCategory, studentId)
         val response = TemplateResponse.from(template)
         return ResponseEntity.ok(response)
     }
@@ -304,5 +376,23 @@ class TemplateController(
     private fun getStudentId(student: Student): String {
         return student.id
             ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=${student.bojId?.value}")
+    }
+
+    /**
+     * 카테고리 문자열을 검증하고 TemplateCategory Enum으로 변환한다.
+     *
+     * @param category 카테고리 문자열
+     * @return TemplateCategory Enum
+     * @throws BusinessException 유효하지 않은 카테고리인 경우
+     */
+    private fun validateCategory(category: String): TemplateCategory {
+        return try {
+            TemplateCategory.valueOf(category.uppercase())
+        } catch (e: IllegalArgumentException) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "유효하지 않은 카테고리입니다. category=$category (SUCCESS 또는 FAIL을 사용하세요)"
+            )
+        }
     }
 }

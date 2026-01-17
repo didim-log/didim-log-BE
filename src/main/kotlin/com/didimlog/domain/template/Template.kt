@@ -15,7 +15,8 @@ import java.time.LocalDateTime
  * @property title 템플릿 이름
  * @property content 템플릿 내용 (마크다운, 매크로 포함)
  * @property type 템플릿 소유권 타입 (SYSTEM, CUSTOM)
- * @property isDefault 사용자의 기본 템플릿 여부
+ * @property isDefaultSuccess 성공용 기본 템플릿 여부
+ * @property isDefaultFail 실패용 기본 템플릿 여부
  */
 @Document(collection = "templates")
 data class Template(
@@ -25,7 +26,8 @@ data class Template(
     val title: String,
     val content: String,
     val type: TemplateOwnershipType,
-    val isDefault: Boolean = false,
+    val isDefaultSuccess: Boolean = false,
+    val isDefaultFail: Boolean = false,
     @CreatedDate
     val createdAt: LocalDateTime = LocalDateTime.now(),
     @LastModifiedDate
@@ -38,7 +40,6 @@ data class Template(
         require(content.length <= 10000) { "템플릿 내용은 10000자 이하여야 합니다." }
         if (type == TemplateOwnershipType.SYSTEM) {
             require(studentId == null) { "시스템 템플릿은 소유자를 가질 수 없습니다." }
-            require(!isDefault) { "시스템 템플릿은 기본 템플릿으로 설정할 수 없습니다." }
         }
         if (type == TemplateOwnershipType.CUSTOM) {
             require(studentId != null) { "커스텀 템플릿은 소유자가 필요합니다." }
@@ -71,24 +72,45 @@ data class Template(
     }
 
     /**
-     * 템플릿을 기본값으로 설정한다.
+     * 템플릿을 성공용 기본값으로 설정한다.
      *
-     * @return 기본값으로 설정된 템플릿
+     * @return 성공용 기본값으로 설정된 템플릿
      */
-    fun setAsDefault(): Template {
+    fun setAsDefaultSuccess(): Template {
         if (type == TemplateOwnershipType.SYSTEM) {
             throw IllegalArgumentException("시스템 템플릿은 기본 템플릿으로 설정할 수 없습니다.")
         }
-        return copy(isDefault = true, updatedAt = LocalDateTime.now())
+        return copy(isDefaultSuccess = true, updatedAt = LocalDateTime.now())
     }
 
     /**
-     * 템플릿의 기본값을 해제한다.
+     * 템플릿의 성공용 기본값을 해제한다.
      *
-     * @return 기본값 해제된 템플릿
+     * @return 성공용 기본값 해제된 템플릿
      */
-    fun unsetDefault(): Template {
-        return copy(isDefault = false, updatedAt = LocalDateTime.now())
+    fun unsetDefaultSuccess(): Template {
+        return copy(isDefaultSuccess = false, updatedAt = LocalDateTime.now())
+    }
+
+    /**
+     * 템플릿을 실패용 기본값으로 설정한다.
+     *
+     * @return 실패용 기본값으로 설정된 템플릿
+     */
+    fun setAsDefaultFail(): Template {
+        if (type == TemplateOwnershipType.SYSTEM) {
+            throw IllegalArgumentException("시스템 템플릿은 기본 템플릿으로 설정할 수 없습니다.")
+        }
+        return copy(isDefaultFail = true, updatedAt = LocalDateTime.now())
+    }
+
+    /**
+     * 템플릿의 실패용 기본값을 해제한다.
+     *
+     * @return 실패용 기본값 해제된 템플릿
+     */
+    fun unsetDefaultFail(): Template {
+        return copy(isDefaultFail = false, updatedAt = LocalDateTime.now())
     }
 
     /**

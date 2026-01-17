@@ -49,4 +49,16 @@ class Solutions(
         items.removeAll { it.problemId == problemId }
         return items.size < initialSize
     }
+
+    /**
+     * 특정 문제 ID에 해당하는 풀이 기록을 조회한다.
+     * 최신 풀이 기록(가장 최근에 추가된 것)을 반환한다.
+     *
+     * @param problemId 조회할 문제 ID
+     * @return 해당 문제 ID의 최신 Solution 또는 null
+     */
+    fun findByProblemId(problemId: com.didimlog.domain.valueobject.ProblemId): Solution? {
+        return items.filter { it.problemId == problemId }
+            .maxByOrNull { it.solvedAt }
+    }
 }
