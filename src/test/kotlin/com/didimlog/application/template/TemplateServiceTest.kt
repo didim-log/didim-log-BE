@@ -8,14 +8,12 @@ import com.didimlog.domain.Solutions
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.domain.template.Template
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
