@@ -289,9 +289,10 @@ class StaticTemplateServiceTest {
         every { problemService.getProblemDetail(1000L) } returns problem
 
         // when - Python 코드 (templateType 파라미터 없이 호출하면 기본값 SIMPLE)
+        // Python의 고유 키워드(def, return)를 포함하여 점수 확보
         val pythonResult = service.generateRetrospectiveTemplate(
             problemId = "1000",
-            code = "def solve():\n    pass",
+            code = "def solve(a, b):\n    return a + b",
             isSuccess = true
         )
 
@@ -299,9 +300,10 @@ class StaticTemplateServiceTest {
         assertThat(pythonResult).contains("```python")
 
         // when - Java 코드
+        // Java의 고유 키워드(public class, public static void main, System.out.println)를 포함하여 점수 확보
         val javaResult = service.generateRetrospectiveTemplate(
             problemId = "1000",
-            code = "public class Solution {\n    public static void main(String[] args) {}\n}",
+            code = "public class Solution {\n    public static void main(String[] args) {\n        System.out.println(\"Hello\");\n    }\n}",
             isSuccess = true
         )
 
@@ -309,9 +311,10 @@ class StaticTemplateServiceTest {
         assertThat(javaResult).contains("```java")
 
         // when - Kotlin 코드
+        // Kotlin의 고유 키워드(fun, val, println)를 포함하여 점수 확보
         val kotlinResult = service.generateRetrospectiveTemplate(
             problemId = "1000",
-            code = "fun solve(): Int = 0",
+            code = "fun main() {\n    val result = 10\n    println(result)\n}",
             isSuccess = true
         )
 
