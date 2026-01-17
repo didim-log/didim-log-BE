@@ -41,6 +41,25 @@ data class TemplateRenderResponse(
     val renderedContent: String
 )
 
+/**
+ * 템플릿 섹션 프리셋 응답 DTO
+ */
+data class TemplatePresetResponse(
+    val title: String,
+    val guide: String,
+    val category: String
+) {
+    companion object {
+        fun from(preset: com.didimlog.domain.template.SectionPreset): TemplatePresetResponse {
+            return TemplatePresetResponse(
+                title = preset.title,
+                guide = preset.guide,
+                category = preset.category.name
+            )
+        }
+    }
+}
+
 
 
 

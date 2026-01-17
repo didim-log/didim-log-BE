@@ -7,7 +7,9 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.domain.template.SectionPreset
 import com.didimlog.ui.dto.TemplatePreviewRequest
+import com.didimlog.ui.dto.TemplatePresetResponse
 import com.didimlog.ui.dto.TemplateRequest
 import com.didimlog.ui.dto.TemplateRenderResponse
 import com.didimlog.ui.dto.TemplateResponse
@@ -65,6 +67,27 @@ class TemplateController(
         val templates = templateService.getTemplates(studentId)
         val response = templates.map { TemplateResponse.from(it) }
         return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "섹션 프리셋 목록 조회",
+        description = "커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/presets")
+    fun getSectionPresets(): ResponseEntity<List<TemplatePresetResponse>> {
+        val presets = SectionPreset.values().map { TemplatePresetResponse.from(it) }
+        return ResponseEntity.ok(presets)
     }
 
     @Operation(
