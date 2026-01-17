@@ -42,7 +42,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Retrospective", description = "회고 관련 API")
+@Tag(name = "Retrospective", description = "회고 작성 및 조회 관련 API")
 @RestController
 @RequestMapping("/api/v1/retrospectives")
 @org.springframework.validation.annotation.Validated
@@ -342,7 +342,11 @@ class RetrospectiveController(
 
     @Operation(
         summary = "정적 회고 템플릿 생성",
-        description = "AI 서비스 없이 정적 템플릿을 생성하여 반환합니다. 문제 카테고리, 사용자 코드, 에러 메시지(실패 시)를 포함한 기본 템플릿을 제공합니다."
+        description = "회고 작성을 위한 정적 마크다운 템플릿을 생성하여 반환합니다. " +
+                "templateType 파라미터로 SIMPLE(요약) 또는 DETAIL(상세) 템플릿을 선택할 수 있습니다. " +
+                "기본값은 SIMPLE이며, SIMPLE은 핵심 로직과 배운 점만 포함하는 간단한 양식이고, " +
+                "DETAIL은 5단계 구조(접근 방법, 복잡도, 리팩토링, 비교, 다음 액션)를 포함하는 상세한 양식입니다. " +
+                "문제 정보, 사용자 코드, 에러 메시지(실패 시), 풀이 소요 시간을 포함합니다."
     )
     @ApiResponses(
         value = [
@@ -361,16 +365,19 @@ class RetrospectiveController(
     )
     @PostMapping("/template/static")
     fun generateStaticTemplate(
+        @Parameter(description = "템플릿 생성 요청 (templateType: SIMPLE 또는 DETAIL, 기본값: SIMPLE)", required = true)
         @RequestBody
         @Valid
         request: StaticTemplateRequest
     ): ResponseEntity<TemplateResponse> {
+        val templateType = request.templateType ?: com.didimlog.domain.enums.TemplateType.SIMPLE
         val template = staticTemplateService.generateRetrospectiveTemplate(
             problemId = request.problemId,
             code = request.code,
             isSuccess = request.isSuccess,
             errorMessage = request.errorMessage,
-            solveTime = request.solveTime
+            solveTime = request.solveTime,
+            templateType = templateType
         )
         val response = TemplateResponse(template = template)
         return ResponseEntity.ok(response)

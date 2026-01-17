@@ -3,6 +3,7 @@ package com.didimlog.application.template
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.TemplateType
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.CodeLanguageDetector
@@ -36,6 +37,7 @@ class StaticTemplateService(
      * @param isSuccess 풀이 성공 여부
      * @param errorMessage 에러 메시지 (실패 시, nullable)
      * @param solveTime 풀이 소요 시간 (선택, nullable)
+     * @param templateType 템플릿 타입 (기본값: SIMPLE)
      * @return 생성된 마크다운 문자열
      */
     fun generateRetrospectiveTemplate(
@@ -43,7 +45,8 @@ class StaticTemplateService(
         code: String,
         isSuccess: Boolean,
         errorMessage: String? = null,
-        solveTime: String? = null
+        solveTime: String? = null,
+        templateType: TemplateType = TemplateType.SIMPLE
     ): String {
         if (code.isBlank()) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "code는 비어 있을 수 없습니다.")
@@ -56,7 +59,7 @@ class StaticTemplateService(
         val codeLanguage = CodeLanguageDetector.detect(code) // 대문자: "PYTHON", "JAVA", etc.
         val markdownLanguage = toMarkdownLanguage(codeLanguage) // 소문자: "python", "java", etc.
 
-        return createTemplate(problem, codeLanguage, markdownLanguage, code, isSuccess, errorMessage, solveTime)
+        return createTemplate(problem, codeLanguage, markdownLanguage, code, isSuccess, errorMessage, solveTime, templateType)
     }
 
     /**
@@ -79,123 +82,27 @@ class StaticTemplateService(
         code: String,
         isSuccess: Boolean,
         errorMessage: String?,
-        solveTime: String?
+        solveTime: String?,
+        templateType: TemplateType
     ): String {
+        val title = "[백준/BOJ] ${problem.id.value}번 ${problem.title} ($codeLanguage)"
+        
         if (isSuccess) {
-            return generateSuccessTemplate(problem, codeLanguage, markdownLanguage, code, solveTime)
+            return when (templateType) {
+                TemplateType.SIMPLE -> RetrospectiveTemplates.generateSimpleSuccess(title, markdownLanguage, code, solveTime)
+                TemplateType.DETAIL -> {
+                    val keywords = formatKeywords(buildProblemKeywords(problem))
+                    RetrospectiveTemplates.generateDetailSuccess(title, keywords, markdownLanguage, code, solveTime)
+                }
+            }
         }
         val message = errorMessage ?: DEFAULT_ERROR_MESSAGE
-        return generateFailureTemplate(problem, codeLanguage, markdownLanguage, code, message, solveTime)
-    }
-
-    /**
-     * 성공 회고 정적 템플릿을 생성한다.
-     * RETROSPECTIVE_STANDARDS.md의 "성공 회고" 구조를 준수한다.
-     * - 1~5 모두 사용자가 작성하는 목차를 제공한다.
-     */
-    private fun generateSuccessTemplate(problem: Problem, codeLanguage: String, markdownLanguage: String, code: String, solveTime: String?): String {
-        val title = "[백준/BOJ] ${problem.id.value}번 ${problem.title} ($codeLanguage)"
-        val keywords = buildProblemKeywords(problem)
-        return buildString {
-            appendLine("# 🏆 $title 해결 회고")
-            appendLine()
-            if (solveTime != null && solveTime.isNotBlank()) {
-                appendLine("⏱️ **풀이 소요 시간:** $solveTime")
-                appendLine()
+        return when (templateType) {
+            TemplateType.SIMPLE -> RetrospectiveTemplates.generateSimpleFailure(title, markdownLanguage, code, message, solveTime)
+            TemplateType.DETAIL -> {
+                val keywords = formatKeywords(buildProblemKeywords(problem))
+                RetrospectiveTemplates.generateDetailFailure(title, keywords, markdownLanguage, code, message, solveTime)
             }
-            appendLine("## 🔑 학습 키워드")
-            appendLine()
-            appendLine(formatKeywords(keywords))
-            appendLine()
-            appendLine("## 1. 접근 방법 (Approach)")
-            appendLine()
-            appendLine("- 문제를 해결하기 위해 어떤 알고리즘이나 자료구조를 선택했나요?")
-            appendLine("- 풀이의 핵심 로직을 한 줄로 요약해 보세요.")
-            appendLine()
-            appendLine("## 2. 복잡도 분석 (Complexity)")
-            appendLine()
-            appendLine("- 시간 복잡도: O(?)")
-            appendLine("- 공간 복잡도: O(?)")
-            appendLine()
-            appendLine("## 3. 리팩토링 포인트 (Refactoring)")
-            appendLine()
-            appendLine("- 개선할 수 있는 변수/함수명, 중복 제거, 로직 단순화 포인트를 적어보세요.")
-            appendLine()
-            appendLine("## 4. 다른 풀이와 비교 (Comparison)")
-            appendLine()
-            appendLine("- 다른 사람의 풀이(또는 표준 풀이)와 비교해서 내 풀이의 장단점을 정리해보세요.")
-            appendLine()
-            appendLine("## 5. 다음 액션 (Next)")
-            appendLine()
-            appendLine("- 다음에 같은 유형을 만나면 어떤 점을 더 잘할지 한 줄로 적어보세요.")
-            appendLine()
-            appendLine("## 제출한 코드")
-            appendLine()
-            appendLine("```$markdownLanguage")
-            append(code)
-            appendLine()
-            appendLine("```")
-            appendLine()
-            appendLine("---")
-            appendLine("Generated by DidimLog")
-        }
-    }
-
-    /**
-     * 실패 회고 정적 템플릿을 생성한다.
-     * RETROSPECTIVE_STANDARDS.md의 "실패 회고" 구조를 준수한다.
-     * - 1~5 모두 사용자가 작성하는 목차를 제공한다.
-     */
-    private fun generateFailureTemplate(problem: Problem, codeLanguage: String, markdownLanguage: String, code: String, errorMessage: String, solveTime: String?): String {
-        val title = "[백준/BOJ] ${problem.id.value}번 ${problem.title} ($codeLanguage)"
-        val keywords = buildProblemKeywords(problem)
-        return buildString {
-            appendLine("# 💥 $title 오답 노트")
-            appendLine()
-            if (solveTime != null && solveTime.isNotBlank()) {
-                appendLine("⏱️ **풀이 소요 시간:** $solveTime")
-                appendLine()
-            }
-            appendLine("## 🔑 학습 키워드")
-            appendLine()
-            appendLine(formatKeywords(keywords))
-            appendLine()
-            appendLine("## 1. 실패 현상 (Symptom)")
-            appendLine()
-            appendLine("- 어떤 종류의 에러가 발생했나요? (시간 초과, 메모리 초과, 틀렸습니다, 런타임 에러)")
-            appendLine("- 테스트 케이스 중 통과하지 못한 예시가 있나요?")
-            appendLine()
-            appendLine("## 2. 나의 접근 (My Attempt)")
-            appendLine()
-            appendLine("- 어떤 로직으로 풀려고 시도했나요?")
-            appendLine()
-            appendLine("## 3. 원인 추정 (Root Cause)")
-            appendLine()
-            appendLine("- 왜 실패했다고 생각하나요? (논리/구현/복잡도/입출력 등)")
-            appendLine()
-            appendLine("## 4. 반례/재현 케이스 (Counter Example)")
-            appendLine()
-            appendLine("- 내 코드를 깨뜨리는 입력을 적어보세요.")
-            appendLine()
-            appendLine("## 5. 다음 시도 계획 (Next)")
-            appendLine()
-            appendLine("- 다음 시도에서 바꿀 점을 체크리스트로 적어보세요.")
-            appendLine()
-            appendLine("## 제출한 코드")
-            appendLine()
-            appendLine("```$markdownLanguage")
-            append(code)
-            appendLine()
-            appendLine("```")
-            appendLine()
-            appendLine("## 에러 로그")
-            appendLine()
-            appendLine("```text")
-            appendLine(errorMessage)
-            appendLine("```")
-            appendLine()
-            appendLine("---")
-            appendLine("Generated by DidimLog")
         }
     }
 

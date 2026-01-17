@@ -3,6 +3,7 @@ package com.didimlog.application.template
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.TemplateType
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
@@ -21,45 +22,8 @@ class StaticTemplateServiceTest {
     private val service = StaticTemplateService(problemService)
 
     @Test
-    @DisplayName("성공 회고 정적 템플릿을 생성한다")
-    fun `성공 회고 템플릿 생성`() {
-        // given
-        val problem = Problem(
-            id = ProblemId("1000"),
-            title = "A+B",
-            category = ProblemCategory.IMPLEMENTATION,
-            difficulty = Tier.BRONZE,
-            level = 3,
-            url = "https://www.acmicpc.net/problem/1000",
-            descriptionHtml = "<p>두 정수 A와 B를 입력받은 다음, A+B를 출력하는 프로그램을 작성하시오.</p>"
-        )
-
-        every { problemService.getProblemDetail(1000L) } returns problem
-
-        // when
-        val result = service.generateRetrospectiveTemplate(
-            problemId = "1000",
-            code = "def solve(a, b):\n    return a + b",
-            isSuccess = true
-        )
-
-        // then
-        assertThat(result).contains("# 🏆 [백준/BOJ] 1000번 A+B (PYTHON) 해결 회고")
-        assertThat(result).contains("## 🔑 학습 키워드")
-        assertThat(result).contains("- 구현")
-        assertThat(result).contains("## 1. 접근 방법 (Approach)")
-        assertThat(result).contains("## 2. 복잡도 분석 (Complexity)")
-        assertThat(result).contains("## 제출한 코드")
-        assertThat(result).contains("def solve(a, b):")
-        assertThat(result).contains("```python")
-        assertThat(result).contains("## 3. 리팩토링 포인트 (Refactoring)")
-        assertThat(result).contains("## 4. 다른 풀이와 비교 (Comparison)")
-        assertThat(result).contains("## 5. 다음 액션 (Next)")
-    }
-
-    @Test
-    @DisplayName("풀이 시간이 포함된 성공 회고 템플릿을 생성한다")
-    fun `풀이 시간 포함 성공 회고 템플릿 생성`() {
+    @DisplayName("성공 회고 정적 템플릿을 생성한다 (DETAIL)")
+    fun `성공 회고 템플릿 생성 - DETAIL`() {
         // given
         val problem = Problem(
             id = ProblemId("1000"),
@@ -78,17 +42,128 @@ class StaticTemplateServiceTest {
             problemId = "1000",
             code = "def solve(a, b):\n    return a + b",
             isSuccess = true,
+            templateType = TemplateType.DETAIL
+        )
+
+        // then
+        assertThat(result).contains("# 🏆 [백준/BOJ] 1000번 A+B (PYTHON) 해결 회고")
+        assertThat(result).contains("## 🔑 학습 키워드")
+        assertThat(result).contains("- 구현")
+        assertThat(result).contains("## 1. 접근 방법 (Approach)")
+        assertThat(result).contains("## 2. 복잡도 분석 (Complexity)")
+        assertThat(result).contains("## 제출한 코드")
+        assertThat(result).contains("def solve(a, b):")
+        assertThat(result).contains("```python")
+        assertThat(result).contains("## 3. 리팩토링 포인트 (Refactoring)")
+        assertThat(result).contains("## 4. 다른 풀이와 비교 (Comparison)")
+        assertThat(result).contains("## 5. 다음 액션 (Next)")
+    }
+
+    @Test
+    @DisplayName("간단한 성공 회고 템플릿을 생성한다 (SIMPLE)")
+    fun `간단한 성공 회고 템플릿 생성 - SIMPLE`() {
+        // given
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            descriptionHtml = "<p>두 정수 A와 B를 입력받은 다음, A+B를 출력하는 프로그램을 작성하시오.</p>"
+        )
+
+        every { problemService.getProblemDetail(1000L) } returns problem
+
+        // when
+        val result = service.generateRetrospectiveTemplate(
+            problemId = "1000",
+            code = "def solve(a, b):\n    return a + b",
+            isSuccess = true,
+            templateType = TemplateType.SIMPLE
+        )
+
+        // then
+        assertThat(result).contains("# 🏆 [백준/BOJ] 1000번 A+B (PYTHON)")
+        assertThat(result).doesNotContain("# 🏆 [백준/BOJ] 1000번 A+B (PYTHON) 해결 회고")
+        assertThat(result).contains("## 🔑 핵심 로직 (Key Logic)")
+        assertThat(result).contains("## 💡 오늘의 배움 (Learnings)")
+        assertThat(result).contains("## 제출한 코드")
+        assertThat(result).contains("def solve(a, b):")
+        assertThat(result).contains("```python")
+        assertThat(result).doesNotContain("## 🔑 학습 키워드")
+        assertThat(result).doesNotContain("## 1. 접근 방법 (Approach)")
+        assertThat(result).doesNotContain("## 2. 복잡도 분석 (Complexity)")
+    }
+
+    @Test
+    @DisplayName("풀이 시간이 포함된 성공 회고 템플릿을 생성한다 (SIMPLE 기본값)")
+    fun `풀이 시간 포함 성공 회고 템플릿 생성 - SIMPLE 기본값`() {
+        // given
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            descriptionHtml = "<p>두 정수 A와 B를 입력받은 다음, A+B를 출력하는 프로그램을 작성하시오.</p>"
+        )
+
+        every { problemService.getProblemDetail(1000L) } returns problem
+
+        // when (templateType 파라미터 없이 호출하면 기본값 SIMPLE)
+        val result = service.generateRetrospectiveTemplate(
+            problemId = "1000",
+            code = "def solve(a, b):\n    return a + b",
+            isSuccess = true,
             solveTime = "15m 30s"
         )
 
         // then
         assertThat(result).contains("⏱️ **풀이 소요 시간:** 15m 30s")
-        assertThat(result).contains("# 🏆 [백준/BOJ] 1000번 A+B (PYTHON) 해결 회고")
+        assertThat(result).contains("# 🏆 [백준/BOJ] 1000번 A+B (PYTHON)")
+        assertThat(result).contains("## 🔑 핵심 로직 (Key Logic)")
+        assertThat(result).contains("## 💡 오늘의 배움 (Learnings)")
     }
 
     @Test
-    @DisplayName("풀이 시간이 포함된 실패 회고 템플릿을 생성한다")
-    fun `풀이 시간 포함 실패 회고 템플릿 생성`() {
+    @DisplayName("풀이 시간이 포함된 실패 회고 템플릿을 생성한다 (SIMPLE 기본값)")
+    fun `풀이 시간 포함 실패 회고 템플릿 생성 - SIMPLE 기본값`() {
+        // given
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.DP,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            descriptionHtml = "<p>두 정수 A와 B를 입력받은 다음, A+B를 출력하는 프로그램을 작성하시오.</p>"
+        )
+
+        every { problemService.getProblemDetail(1000L) } returns problem
+
+        // when (templateType 파라미터 없이 호출하면 기본값 SIMPLE)
+        val result = service.generateRetrospectiveTemplate(
+            problemId = "1000",
+            code = "def solve(): pass",
+            isSuccess = false,
+            errorMessage = "IndexError: list index out of range",
+            solveTime = "20m 15s"
+        )
+
+        // then
+        assertThat(result).contains("⏱️ **풀이 소요 시간:** 20m 15s")
+        assertThat(result).contains("# 💥 [백준/BOJ] 1000번 A+B (PYTHON)")
+        assertThat(result).contains("## 🔑 핵심 로직 (Key Logic)")
+        assertThat(result).contains("## 💡 오늘의 배움 (Learnings)")
+        assertThat(result).contains("## 에러 로그")
+        assertThat(result).doesNotContain("# 💥 [백준/BOJ] 1000번 A+B (PYTHON) 오답 노트")
+    }
+
+    @Test
+    @DisplayName("간단한 실패 회고 템플릿을 생성한다 (SIMPLE)")
+    fun `간단한 실패 회고 템플릿 생성 - SIMPLE`() {
         // given
         val problem = Problem(
             id = ProblemId("1000"),
@@ -108,17 +183,26 @@ class StaticTemplateServiceTest {
             code = "def solve(): pass",
             isSuccess = false,
             errorMessage = "IndexError: list index out of range",
-            solveTime = "20m 15s"
+            templateType = TemplateType.SIMPLE
         )
 
         // then
-        assertThat(result).contains("⏱️ **풀이 소요 시간:** 20m 15s")
-        assertThat(result).contains("# 💥 [백준/BOJ] 1000번 A+B (PYTHON) 오답 노트")
+        assertThat(result).contains("# 💥 [백준/BOJ] 1000번 A+B (PYTHON)")
+        assertThat(result).contains("## 🔑 핵심 로직 (Key Logic)")
+        assertThat(result).contains("## 💡 오늘의 배움 (Learnings)")
+        assertThat(result).contains("## 제출한 코드")
+        assertThat(result).contains("def solve(): pass")
+        assertThat(result).contains("```python")
+        assertThat(result).contains("## 에러 로그")
+        assertThat(result).contains("IndexError: list index out of range")
+        assertThat(result).doesNotContain("## 🔑 학습 키워드")
+        assertThat(result).doesNotContain("## 1. 실패 현상 (Symptom)")
+        assertThat(result).doesNotContain("## 2. 나의 접근 (My Attempt)")
     }
 
     @Test
-    @DisplayName("실패 회고 정적 템플릿을 생성한다")
-    fun `실패 회고 템플릿 생성`() {
+    @DisplayName("실패 회고 정적 템플릿을 생성한다 (DETAIL)")
+    fun `실패 회고 템플릿 생성 - DETAIL`() {
         // given
         val problem = Problem(
             id = ProblemId("1000"),
@@ -137,7 +221,8 @@ class StaticTemplateServiceTest {
             problemId = "1000",
             code = "def solve(): pass",
             isSuccess = false,
-            errorMessage = "IndexError: list index out of range"
+            errorMessage = "IndexError: list index out of range",
+            templateType = TemplateType.DETAIL
         )
 
         // then
@@ -157,8 +242,8 @@ class StaticTemplateServiceTest {
     }
 
     @Test
-    @DisplayName("에러 메시지가 null일 때 기본 메시지를 사용한다")
-    fun `에러 메시지 null 처리`() {
+    @DisplayName("에러 메시지가 null일 때 기본 메시지를 사용한다 (SIMPLE 기본값)")
+    fun `에러 메시지 null 처리 - SIMPLE 기본값`() {
         // given
         val problem = Problem(
             id = ProblemId("1000"),
@@ -172,7 +257,7 @@ class StaticTemplateServiceTest {
 
         every { problemService.getProblemDetail(1000L) } returns problem
 
-        // when
+        // when (templateType 파라미터 없이 호출하면 기본값 SIMPLE)
         val result = service.generateRetrospectiveTemplate(
             problemId = "1000",
             code = "code",
@@ -183,11 +268,13 @@ class StaticTemplateServiceTest {
         // then
         assertThat(result).contains("에러 로그를 확인할 수 없습니다.")
         assertThat(result).contains("## 에러 로그")
+        assertThat(result).contains("## 🔑 핵심 로직 (Key Logic)")
+        assertThat(result).contains("## 💡 오늘의 배움 (Learnings)")
     }
 
     @Test
-    @DisplayName("코드 언어를 올바르게 감지한다")
-    fun `코드 언어 감지`() {
+    @DisplayName("코드 언어를 올바르게 감지한다 (SIMPLE 기본값)")
+    fun `코드 언어 감지 - SIMPLE 기본값`() {
         // given
         val problem = Problem(
             id = ProblemId("1000"),
@@ -201,10 +288,11 @@ class StaticTemplateServiceTest {
 
         every { problemService.getProblemDetail(1000L) } returns problem
 
-        // when - Python 코드
+        // when - Python 코드 (templateType 파라미터 없이 호출하면 기본값 SIMPLE)
+        // Python의 고유 키워드(def, return)를 포함하여 점수 확보
         val pythonResult = service.generateRetrospectiveTemplate(
             problemId = "1000",
-            code = "def solve():\n    pass",
+            code = "def solve(a, b):\n    return a + b",
             isSuccess = true
         )
 
@@ -212,9 +300,10 @@ class StaticTemplateServiceTest {
         assertThat(pythonResult).contains("```python")
 
         // when - Java 코드
+        // Java의 고유 키워드(public class, public static void main, System.out.println)를 포함하여 점수 확보
         val javaResult = service.generateRetrospectiveTemplate(
             problemId = "1000",
-            code = "public class Solution {\n    public static void main(String[] args) {}\n}",
+            code = "public class Solution {\n    public static void main(String[] args) {\n        System.out.println(\"Hello\");\n    }\n}",
             isSuccess = true
         )
 
@@ -222,9 +311,10 @@ class StaticTemplateServiceTest {
         assertThat(javaResult).contains("```java")
 
         // when - Kotlin 코드
+        // Kotlin의 고유 키워드(fun, val, println)를 포함하여 점수 확보
         val kotlinResult = service.generateRetrospectiveTemplate(
             problemId = "1000",
-            code = "fun solve(): Int = 0",
+            code = "fun main() {\n    val result = 10\n    println(result)\n}",
             isSuccess = true
         )
 
