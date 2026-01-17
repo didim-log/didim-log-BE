@@ -13,8 +13,6 @@ import com.didimlog.ui.dto.RetrospectivePageResponse
 import com.didimlog.ui.dto.RetrospectiveRequest
 import com.didimlog.ui.dto.RetrospectiveResponse
 import com.didimlog.ui.dto.TemplateResponse
-import com.didimlog.application.template.StaticTemplateService
-import com.didimlog.ui.dto.StaticTemplateRequest
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -48,7 +46,6 @@ import org.springframework.web.bind.annotation.RestController
 @org.springframework.validation.annotation.Validated
 class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
-    private val staticTemplateService: StaticTemplateService,
     private val studentRepository: StudentRepository
 ) {
 
@@ -338,49 +335,6 @@ class RetrospectiveController(
         // 소유권 검증 포함된 삭제
         retrospectiveService.deleteRetrospective(retrospectiveId, studentId)
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
-    }
-
-    @Operation(
-        summary = "정적 회고 템플릿 생성",
-        description = "회고 작성을 위한 정적 마크다운 템플릿을 생성하여 반환합니다. " +
-                "templateType 파라미터로 SIMPLE(요약) 또는 DETAIL(상세) 템플릿을 선택할 수 있습니다. " +
-                "기본값은 SIMPLE이며, SIMPLE은 핵심 로직과 배운 점만 포함하는 간단한 양식이고, " +
-                "DETAIL은 5단계 구조(접근 방법, 복잡도, 리팩토링, 비교, 다음 액션)를 포함하는 상세한 양식입니다. " +
-                "문제 정보, 사용자 코드, 에러 메시지(실패 시), 풀이 소요 시간을 포함합니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "템플릿 생성 성공"),
-            ApiResponse(
-                responseCode = "400",
-                description = "요청 값 검증 실패",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            ),
-            ApiResponse(
-                responseCode = "404",
-                description = "문제를 찾을 수 없음",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
-    @PostMapping("/template/static")
-    fun generateStaticTemplate(
-        @Parameter(description = "템플릿 생성 요청 (templateType: SIMPLE 또는 DETAIL, 기본값: SIMPLE)", required = true)
-        @RequestBody
-        @Valid
-        request: StaticTemplateRequest
-    ): ResponseEntity<TemplateResponse> {
-        val templateType = request.templateType ?: com.didimlog.domain.enums.TemplateType.SIMPLE
-        val template = staticTemplateService.generateRetrospectiveTemplate(
-            problemId = request.problemId,
-            code = request.code,
-            isSuccess = request.isSuccess,
-            errorMessage = request.errorMessage,
-            solveTime = request.solveTime,
-            templateType = templateType
-        )
-        val response = TemplateResponse(template = template)
-        return ResponseEntity.ok(response)
     }
 
     @Operation(

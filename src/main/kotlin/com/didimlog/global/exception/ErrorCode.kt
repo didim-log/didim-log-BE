@@ -21,6 +21,7 @@ enum class ErrorCode(
 
     // 403 Forbidden
     ACCESS_DENIED(403, "ACCESS_DENIED", "접근 권한이 없습니다."),
+    TEMPLATE_CANNOT_DELETE_SYSTEM(403, "TEMPLATE_CANNOT_DELETE_SYSTEM", "시스템 템플릿은 삭제할 수 없습니다."),
 
     // 503 Service Unavailable
     MAINTENANCE_MODE(503, "MAINTENANCE_MODE", "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."),
@@ -34,6 +35,7 @@ enum class ErrorCode(
     RETROSPECTIVE_NOT_FOUND(404, "RETROSPECTIVE_NOT_FOUND", "회고를 찾을 수 없습니다."),
     QUOTE_NOT_FOUND(404, "QUOTE_NOT_FOUND", "명언을 찾을 수 없습니다."),
     FEEDBACK_NOT_FOUND(404, "FEEDBACK_NOT_FOUND", "피드백을 찾을 수 없습니다."),
+    TEMPLATE_NOT_FOUND(404, "TEMPLATE_NOT_FOUND", "템플릿을 찾을 수 없습니다."),
 
     // 409 Conflict
     DUPLICATE_BOJ_ID(409, "DUPLICATE_BOJ_ID", "이미 가입된 백준 아이디입니다."),
