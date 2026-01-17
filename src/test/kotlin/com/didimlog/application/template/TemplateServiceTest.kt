@@ -3,6 +3,7 @@ package com.didimlog.application.template
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.TemplateRepository
@@ -39,7 +40,8 @@ class TemplateServiceTest {
             title = "Simple(요약)",
             content = "시스템 템플릿 내용",
             type = TemplateOwnershipType.SYSTEM,
-            isDefault = false
+            isDefaultSuccess = true,
+            isDefaultFail = false
         )
         val customTemplate = Template(
             id = "custom1",
@@ -47,7 +49,8 @@ class TemplateServiceTest {
             title = "나만의 템플릿",
             content = "커스텀 템플릿 내용",
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         
         every { 
@@ -73,7 +76,8 @@ class TemplateServiceTest {
             title = "나만의 템플릿",
             content = "템플릿 내용",
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         every { templateRepository.findById(templateId) } returns Optional.of(template)
 
@@ -110,7 +114,8 @@ class TemplateServiceTest {
             title = title,
             content = content,
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         
         every { templateRepository.save(any<Template>()) } returns template
@@ -124,7 +129,8 @@ class TemplateServiceTest {
         assertThat(result.title).isEqualTo(title)
         assertThat(result.content).isEqualTo(content)
         assertThat(result.type).isEqualTo(TemplateOwnershipType.CUSTOM)
-        assertThat(result.isDefault).isFalse()
+        assertThat(result.isDefaultSuccess).isFalse()
+        assertThat(result.isDefaultFail).isFalse()
         verify { templateRepository.save(any<Template>()) }
     }
 
@@ -138,7 +144,8 @@ class TemplateServiceTest {
             title = "기존 제목",
             content = "기존 내용",
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         val newTitle = "새 제목"
         val newContent = "새 내용"
@@ -166,7 +173,8 @@ class TemplateServiceTest {
             title = "시스템 템플릿",
             content = "시스템 내용",
             type = TemplateOwnershipType.SYSTEM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         
         every { templateRepository.findById(templateId) } returns Optional.of(systemTemplate)
@@ -191,7 +199,8 @@ class TemplateServiceTest {
             title = "나만의 템플릿",
             content = "템플릿 내용",
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         
         every { templateRepository.findById(templateId) } returns Optional.of(template)
@@ -215,7 +224,8 @@ class TemplateServiceTest {
             title = "나만의 템플릿",
             content = "템플릿 내용",
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         
         every { templateRepository.findById(templateId) } returns Optional.of(template)
@@ -239,7 +249,8 @@ class TemplateServiceTest {
             title = "시스템 템플릿",
             content = "시스템 내용",
             type = TemplateOwnershipType.SYSTEM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         
         every { templateRepository.findById(templateId) } returns Optional.of(systemTemplate)
@@ -252,8 +263,8 @@ class TemplateServiceTest {
     }
 
     @Test
-    @DisplayName("템플릿을 기본값으로 설정한다")
-    fun `템플릿 기본값 설정`() {
+    @DisplayName("템플릿을 성공용 기본값으로 설정한다")
+    fun `템플릿 성공용 기본값 설정`() {
         // given
         val existingDefaultTemplate = Template(
             id = "existingDefault",
@@ -261,7 +272,8 @@ class TemplateServiceTest {
             title = "기존 기본 템플릿",
             content = "기존 내용",
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = true
+            isDefaultSuccess = true,
+            isDefaultFail = false
         )
         val newDefaultTemplate = Template(
             id = templateId,
@@ -269,23 +281,177 @@ class TemplateServiceTest {
             title = "새 기본 템플릿",
             content = "새 내용",
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         
         every { templateRepository.findById(templateId) } returns Optional.of(newDefaultTemplate)
         every { 
-            templateRepository.findAllByStudentIdAndIsDefaultTrue(studentId) 
-        } returns listOf(existingDefaultTemplate)
+            templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId) 
+        } returns existingDefaultTemplate
         every { templateRepository.save(any<Template>()) } answers { firstArg() }
 
         // when
-        val result = service.setAsDefault(templateId, studentId)
+        val result = service.setDefaultTemplate(templateId, TemplateCategory.SUCCESS)
 
         // then
-        assertThat(result.isDefault).isTrue()
+        assertThat(result.isDefaultSuccess).isTrue()
+        assertThat(result.isDefaultFail).isFalse()
         verify { templateRepository.findById(templateId) }
-        verify { templateRepository.findAllByStudentIdAndIsDefaultTrue(studentId) }
+        verify { templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId) }
         verify(exactly = 2) { templateRepository.save(any<Template>()) }
+    }
+
+    @Test
+    @DisplayName("템플릿을 실패용 기본값으로 설정한다")
+    fun `템플릿 실패용 기본값 설정`() {
+        // given
+        val existingDefaultTemplate = Template(
+            id = "existingDefault",
+            studentId = studentId,
+            title = "기존 기본 템플릿",
+            content = "기존 내용",
+            type = TemplateOwnershipType.CUSTOM,
+            isDefaultSuccess = false,
+            isDefaultFail = true
+        )
+        val newDefaultTemplate = Template(
+            id = templateId,
+            studentId = studentId,
+            title = "새 기본 템플릿",
+            content = "새 내용",
+            type = TemplateOwnershipType.CUSTOM,
+            isDefaultSuccess = false,
+            isDefaultFail = false
+        )
+        
+        every { templateRepository.findById(templateId) } returns Optional.of(newDefaultTemplate)
+        every { 
+            templateRepository.findByStudentIdAndIsDefaultFailTrue(studentId) 
+        } returns existingDefaultTemplate
+        every { templateRepository.save(any<Template>()) } answers { firstArg() }
+
+        // when
+        val result = service.setDefaultTemplate(templateId, TemplateCategory.FAIL)
+
+        // then
+        assertThat(result.isDefaultSuccess).isFalse()
+        assertThat(result.isDefaultFail).isTrue()
+        verify { templateRepository.findById(templateId) }
+        verify { templateRepository.findByStudentIdAndIsDefaultFailTrue(studentId) }
+        verify(exactly = 2) { templateRepository.save(any<Template>()) }
+    }
+
+    @Test
+    @DisplayName("시스템 템플릿은 기본값으로 설정할 수 없다")
+    fun `템플릿 기본값 설정 실패 - 시스템 템플릿`() {
+        // given
+        val systemTemplate = Template(
+            id = templateId,
+            studentId = null,
+            title = "시스템 템플릿",
+            content = "시스템 내용",
+            type = TemplateOwnershipType.SYSTEM,
+            isDefaultSuccess = false,
+            isDefaultFail = false
+        )
+        
+        every { templateRepository.findById(templateId) } returns Optional.of(systemTemplate)
+
+        // when & then
+        assertThatThrownBy { 
+            service.setDefaultTemplate(templateId, TemplateCategory.SUCCESS) 
+        }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("시스템 템플릿은 기본 템플릿으로 설정할 수 없습니다")
+        verify { templateRepository.findById(templateId) }
+    }
+
+    @Test
+    @DisplayName("기본 템플릿을 조회한다 - 사용자 기본 템플릿이 있는 경우")
+    fun `기본 템플릿 조회 - 사용자 기본 템플릿`() {
+        // given
+        val userDefaultTemplate = Template(
+            id = templateId,
+            studentId = studentId,
+            title = "사용자 기본 템플릿",
+            content = "기본 내용",
+            type = TemplateOwnershipType.CUSTOM,
+            isDefaultSuccess = true,
+            isDefaultFail = false
+        )
+        
+        every { 
+            templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId) 
+        } returns userDefaultTemplate
+
+        // when
+        val result = service.getDefaultTemplate(TemplateCategory.SUCCESS, studentId)
+
+        // then
+        assertThat(result).isEqualTo(userDefaultTemplate)
+        assertThat(result.isDefaultSuccess).isTrue()
+        verify { templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId) }
+    }
+
+    @Test
+    @DisplayName("기본 템플릿을 조회한다 - 시스템 기본 템플릿을 fallback으로 사용")
+    fun `기본 템플릿 조회 - 시스템 기본 템플릿`() {
+        // given
+        val systemTemplate = Template(
+            id = "system1",
+            studentId = null,
+            title = "Simple(요약)",
+            content = "시스템 내용",
+            type = TemplateOwnershipType.SYSTEM,
+            isDefaultSuccess = true,
+            isDefaultFail = false
+        )
+        
+        every { 
+            templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId) 
+        } returns null
+        every { 
+            templateRepository.findByType(TemplateOwnershipType.SYSTEM) 
+        } returns listOf(systemTemplate)
+
+        // when
+        val result = service.getDefaultTemplate(TemplateCategory.SUCCESS, studentId)
+
+        // then
+        assertThat(result).isEqualTo(systemTemplate)
+        verify { templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId) }
+        verify { templateRepository.findByType(TemplateOwnershipType.SYSTEM) }
+    }
+
+    @Test
+    @DisplayName("실패용 기본 템플릿을 조회한다 - 시스템 기본 템플릿을 fallback으로 사용")
+    fun `실패용 기본 템플릿 조회 - 시스템 기본 템플릿`() {
+        // given
+        val systemTemplate = Template(
+            id = "system1",
+            studentId = null,
+            title = "Detail(상세)",
+            content = "시스템 내용",
+            type = TemplateOwnershipType.SYSTEM,
+            isDefaultSuccess = false,
+            isDefaultFail = true
+        )
+        
+        every { 
+            templateRepository.findByStudentIdAndIsDefaultFailTrue(studentId) 
+        } returns null
+        every { 
+            templateRepository.findByType(TemplateOwnershipType.SYSTEM) 
+        } returns listOf(systemTemplate)
+
+        // when
+        val result = service.getDefaultTemplate(TemplateCategory.FAIL, studentId)
+
+        // then
+        assertThat(result).isEqualTo(systemTemplate)
+        verify { templateRepository.findByStudentIdAndIsDefaultFailTrue(studentId) }
+        verify { templateRepository.findByType(TemplateOwnershipType.SYSTEM) }
     }
 
     @Test
@@ -305,7 +471,8 @@ class TemplateServiceTest {
                 링크: {{link}}
             """.trimIndent(),
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         val problem = Problem(
             id = ProblemId("1000"),

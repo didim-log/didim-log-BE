@@ -12,7 +12,8 @@ data class TemplateResponse(
     val title: String,
     val content: String,
     val type: String, // SYSTEM, CUSTOM
-    val isDefault: Boolean,
+    val isDefaultSuccess: Boolean,
+    val isDefaultFail: Boolean,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime
 ) {
@@ -24,7 +25,8 @@ data class TemplateResponse(
                 title = template.title,
                 content = template.content,
                 type = template.type.name,
-                isDefault = template.isDefault,
+                isDefaultSuccess = template.isDefaultSuccess,
+                isDefaultFail = template.isDefaultFail,
                 createdAt = template.createdAt,
                 updatedAt = template.updatedAt
             )

@@ -2,6 +2,7 @@ package com.didimlog.application.template
 
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.domain.template.Template
@@ -59,7 +60,8 @@ class TemplateService(
             title = title,
             content = content,
             type = TemplateOwnershipType.CUSTOM,
-            isDefault = false
+            isDefaultSuccess = false,
+            isDefaultFail = false
         )
         return templateRepository.save(template)
     }
@@ -111,25 +113,137 @@ class TemplateService(
      * 기존 기본 템플릿은 자동으로 해제된다.
      *
      * @param templateId 템플릿 ID
-     * @param studentId 학생 ID (소유권 검증용)
+     * @param category 템플릿 카테고리 (SUCCESS 또는 FAIL)
      * @return 기본값으로 설정된 템플릿
      * @throws BusinessException 템플릿을 찾을 수 없거나 소유자가 아닌 경우
      */
     @Transactional
-    fun setAsDefault(templateId: String, studentId: String): Template {
+    fun setDefaultTemplate(templateId: String, category: TemplateCategory): Template {
         val template = getTemplate(templateId)
-        template.validateOwner(studentId)
+        validateTemplateOwnership(template)
         
-        val existingDefaultTemplates = templateRepository.findAllByStudentIdAndIsDefaultTrue(studentId)
-        existingDefaultTemplates.forEach { existingTemplate ->
-            if (existingTemplate.id != templateId) {
-                val unsetTemplate = existingTemplate.unsetDefault()
-                templateRepository.save(unsetTemplate)
-            }
+        val studentId = getStudentIdFromTemplate(template)
+        
+        if (category == TemplateCategory.SUCCESS) {
+            unsetExistingDefaultSuccess(studentId, templateId)
+            val updatedTemplate = template.setAsDefaultSuccess()
+            return templateRepository.save(updatedTemplate)
         }
         
-        val updatedTemplate = template.setAsDefault()
+        unsetExistingDefaultFail(studentId, templateId)
+        val updatedTemplate = template.setAsDefaultFail()
         return templateRepository.save(updatedTemplate)
+    }
+
+    /**
+     * 카테고리별 기본 템플릿을 조회한다.
+     * 사용자가 설정한 기본 템플릿이 없으면 시스템 템플릿을 반환한다.
+     *
+     * @param category 템플릿 카테고리 (SUCCESS 또는 FAIL)
+     * @param studentId 학생 ID
+     * @return 기본 템플릿
+     * @throws BusinessException 기본 템플릿을 찾을 수 없는 경우
+     */
+    @Transactional(readOnly = true)
+    fun getDefaultTemplate(category: TemplateCategory, studentId: String): Template {
+        if (category == TemplateCategory.SUCCESS) {
+            val userDefault = templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId)
+            if (userDefault != null) {
+                return userDefault
+            }
+            return getSystemDefaultSuccessTemplate()
+        }
+        
+        val userDefault = templateRepository.findByStudentIdAndIsDefaultFailTrue(studentId)
+        if (userDefault != null) {
+            return userDefault
+        }
+        return getSystemDefaultFailTemplate()
+    }
+
+    /**
+     * 템플릿 소유권을 검증한다.
+     * SYSTEM 템플릿은 기본값으로 설정할 수 없다.
+     *
+     * @param template 템플릿
+     * @throws IllegalArgumentException 시스템 템플릿인 경우
+     */
+    private fun validateTemplateOwnership(template: Template) {
+        if (template.type == TemplateOwnershipType.SYSTEM) {
+            throw IllegalArgumentException("시스템 템플릿은 기본 템플릿으로 설정할 수 없습니다.")
+        }
+    }
+
+    /**
+     * 템플릿에서 학생 ID를 추출한다.
+     *
+     * @param template 템플릿
+     * @return 학생 ID
+     * @throws IllegalArgumentException 템플릿에 학생 ID가 없는 경우
+     */
+    private fun getStudentIdFromTemplate(template: Template): String {
+        return template.studentId
+            ?: throw IllegalArgumentException("커스텀 템플릿은 소유자가 필요합니다.")
+    }
+
+    /**
+     * 기존 성공용 기본 템플릿을 해제한다.
+     *
+     * @param studentId 학생 ID
+     * @param excludeTemplateId 제외할 템플릿 ID
+     */
+    private fun unsetExistingDefaultSuccess(studentId: String, excludeTemplateId: String) {
+        val existingDefault = templateRepository.findByStudentIdAndIsDefaultSuccessTrue(studentId)
+        if (existingDefault != null && existingDefault.id != excludeTemplateId) {
+            val unsetTemplate = existingDefault.unsetDefaultSuccess()
+            templateRepository.save(unsetTemplate)
+        }
+    }
+
+    /**
+     * 기존 실패용 기본 템플릿을 해제한다.
+     *
+     * @param studentId 학생 ID
+     * @param excludeTemplateId 제외할 템플릿 ID
+     */
+    private fun unsetExistingDefaultFail(studentId: String, excludeTemplateId: String) {
+        val existingDefault = templateRepository.findByStudentIdAndIsDefaultFailTrue(studentId)
+        if (existingDefault != null && existingDefault.id != excludeTemplateId) {
+            val unsetTemplate = existingDefault.unsetDefaultFail()
+            templateRepository.save(unsetTemplate)
+        }
+    }
+
+    /**
+     * 시스템 기본 성공 템플릿을 조회한다.
+     * Simple 템플릿을 기본 성공 템플릿으로 사용한다.
+     *
+     * @return 시스템 기본 성공 템플릿
+     * @throws BusinessException 템플릿을 찾을 수 없는 경우
+     */
+    private fun getSystemDefaultSuccessTemplate(): Template {
+        val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
+        return systemTemplates.firstOrNull { it.title == "Simple(요약)" }
+            ?: throw BusinessException(
+                ErrorCode.TEMPLATE_NOT_FOUND,
+                "시스템 기본 성공 템플릿을 찾을 수 없습니다."
+            )
+    }
+
+    /**
+     * 시스템 기본 실패 템플릿을 조회한다.
+     * Detail 템플릿을 기본 실패 템플릿으로 사용한다.
+     *
+     * @return 시스템 기본 실패 템플릿
+     * @throws BusinessException 템플릿을 찾을 수 없는 경우
+     */
+    private fun getSystemDefaultFailTemplate(): Template {
+        val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
+        return systemTemplates.firstOrNull { it.title == "Detail(상세)" }
+            ?: throw BusinessException(
+                ErrorCode.TEMPLATE_NOT_FOUND,
+                "시스템 기본 실패 템플릿을 찾을 수 없습니다."
+            )
     }
 
     /**
