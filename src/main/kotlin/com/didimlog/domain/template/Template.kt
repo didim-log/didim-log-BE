@@ -15,8 +15,8 @@ import java.time.LocalDateTime
  * @property title 템플릿 이름
  * @property content 템플릿 내용 (마크다운, 매크로 포함)
  * @property type 템플릿 소유권 타입 (SYSTEM, CUSTOM)
- * @property isDefaultSuccess 성공용 기본 템플릿 여부
- * @property isDefaultFail 실패용 기본 템플릿 여부
+ * @property isDefaultSuccess 성공용 기본 템플릿 여부 (Deprecated: Use Student entity's defaultSuccessTemplateId instead)
+ * @property isDefaultFail 실패용 기본 템플릿 여부 (Deprecated: Use Student entity's defaultFailTemplateId instead)
  */
 @Document(collection = "templates")
 data class Template(
@@ -26,7 +26,9 @@ data class Template(
     val title: String,
     val content: String,
     val type: TemplateOwnershipType,
+    @Deprecated("Use Student entity's defaultSuccessTemplateId instead. TODO: Drop this column in future migration.")
     val isDefaultSuccess: Boolean = false,
+    @Deprecated("Use Student entity's defaultFailTemplateId instead. TODO: Drop this column in future migration.")
     val isDefaultFail: Boolean = false,
     @CreatedDate
     val createdAt: LocalDateTime = LocalDateTime.now(),
@@ -73,9 +75,11 @@ data class Template(
 
     /**
      * 템플릿을 성공용 기본값으로 설정한다.
-     *
+     * 
+     * @deprecated 이제 기본 템플릿은 Student 엔티티가 관리합니다. TemplateService.setDefaultTemplate을 사용하세요.
      * @return 성공용 기본값으로 설정된 템플릿
      */
+    @Deprecated("Use Student entity's defaultSuccessTemplateId instead. This method is no longer used in business logic.")
     fun setAsDefaultSuccess(): Template {
         if (type == TemplateOwnershipType.SYSTEM) {
             throw IllegalArgumentException("시스템 템플릿은 기본 템플릿으로 설정할 수 없습니다.")
@@ -85,18 +89,22 @@ data class Template(
 
     /**
      * 템플릿의 성공용 기본값을 해제한다.
-     *
+     * 
+     * @deprecated 이제 기본 템플릿은 Student 엔티티가 관리합니다. 이 메서드는 더 이상 사용되지 않습니다.
      * @return 성공용 기본값 해제된 템플릿
      */
+    @Deprecated("Use Student entity's defaultSuccessTemplateId instead. This method is no longer used in business logic.")
     fun unsetDefaultSuccess(): Template {
         return copy(isDefaultSuccess = false, updatedAt = LocalDateTime.now())
     }
 
     /**
      * 템플릿을 실패용 기본값으로 설정한다.
-     *
+     * 
+     * @deprecated 이제 기본 템플릿은 Student 엔티티가 관리합니다. TemplateService.setDefaultTemplate을 사용하세요.
      * @return 실패용 기본값으로 설정된 템플릿
      */
+    @Deprecated("Use Student entity's defaultFailTemplateId instead. This method is no longer used in business logic.")
     fun setAsDefaultFail(): Template {
         if (type == TemplateOwnershipType.SYSTEM) {
             throw IllegalArgumentException("시스템 템플릿은 기본 템플릿으로 설정할 수 없습니다.")
@@ -106,9 +114,11 @@ data class Template(
 
     /**
      * 템플릿의 실패용 기본값을 해제한다.
-     *
+     * 
+     * @deprecated 이제 기본 템플릿은 Student 엔티티가 관리합니다. 이 메서드는 더 이상 사용되지 않습니다.
      * @return 실패용 기본값 해제된 템플릿
      */
+    @Deprecated("Use Student entity's defaultFailTemplateId instead. This method is no longer used in business logic.")
     fun unsetDefaultFail(): Template {
         return copy(isDefaultFail = false, updatedAt = LocalDateTime.now())
     }

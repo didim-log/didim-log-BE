@@ -49,6 +49,8 @@ data class Student(
     val lastSolvedAt: LocalDate? = null, // 마지막으로 문제를 푼 날짜
     val primaryLanguage: PrimaryLanguage? = null, // 주로 사용하는 프로그래밍 언어 (nullable: 기존 사용자 호환성)
     val isOnboardingFinished: Boolean = false, // 온보딩 투어 완료 여부
+    val defaultSuccessTemplateId: String? = null, // 기본 성공 템플릿 ID (nullable: 시스템 기본값 사용)
+    val defaultFailTemplateId: String? = null, // 기본 실패 템플릿 ID (nullable: 시스템 기본값 사용)
     @Indexed
     val createdAt: LocalDateTime = LocalDateTime.now() // 회원 가입 일시
 ) {
@@ -72,6 +74,9 @@ data class Student(
      * @param consecutiveSolveDays 연속 풀이 일수
      * @param lastSolvedAt 마지막으로 문제를 푼 날짜
      * @param primaryLanguage 주로 사용하는 프로그래밍 언어 (nullable)
+     * @param isOnboardingFinished 온보딩 투어 완료 여부
+     * @param defaultSuccessTemplateId 기본 성공 템플릿 ID (nullable)
+     * @param defaultFailTemplateId 기본 실패 템플릿 ID (nullable)
      * @param createdAt 회원 가입 일시 (nullable: 기존 사용자 호환성)
      */
     @PersistenceCreator
@@ -94,6 +99,8 @@ data class Student(
         lastSolvedAt: LocalDate?,
         primaryLanguage: PrimaryLanguage?,
         isOnboardingFinished: Boolean?,
+        defaultSuccessTemplateId: String?,
+        defaultFailTemplateId: String?,
         createdAt: LocalDateTime?
     ) : this(
         id = id,
@@ -114,6 +121,8 @@ data class Student(
         lastSolvedAt = lastSolvedAt,
         primaryLanguage = primaryLanguage,
         isOnboardingFinished = isOnboardingFinished ?: false,
+        defaultSuccessTemplateId = defaultSuccessTemplateId,
+        defaultFailTemplateId = defaultFailTemplateId,
         createdAt = createdAt ?: LocalDateTime.now()
     )
 

@@ -1268,7 +1268,7 @@ Content-Type: application/json
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/templates` | 인증된 사용자의 커스텀 템플릿과 시스템 기본 템플릿 목록을 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateResponse>`<br><br>**TemplateResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `content` (String): 템플릿 내용 (마크다운 원본)<br>- `type` (String): 템플릿 타입 ("SYSTEM", "CUSTOM")<br>- `isDefaultSuccess` (Boolean): 성공용 기본 템플릿 여부<br>- `isDefaultFail` (Boolean): 실패용 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
-| GET | `/api/v1/templates/presets` | 커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplatePresetResponse>`<br><br>**TemplatePresetResponse 구조:**<br>- `title` (String): 섹션 제목 (예: "🔑 핵심 로직")<br>- `guide` (String): 섹션 작성 가이드 (툴팁용)<br>- `category` (String): 섹션 카테고리 ("SUCCESS", "FAIL", "COMMON") | JWT Token |
+| GET | `/api/v1/templates/presets` | 커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplatePresetResponse>`<br><br>**TemplatePresetResponse 구조:**<br>- `label` (String): 섹션 제목 (버튼에 표시될 이름, 예: "💡 핵심 로직")<br>- `markdownContent` (String): 삽입될 마크다운 내용 (이모지 포함, 예: "## 💡 핵심 로직\n\n")<br>- `category` (String): 섹션 카테고리 ("SUCCESS", "FAIL", "COMMON")<br>- `tooltip` (String): 섹션 작성 가이드 (툴팁용) | JWT Token |
 | POST | `/api/v1/templates/preview` | 템플릿을 저장하지 않고 미리보기로 렌더링합니다. 매크로 변수를 실제 문제 데이터로 치환하여 결과를 반환합니다. 템플릿 작성 중 매크로가 올바르게 변환되는지 확인할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplatePreviewRequest`<br>- `templateContent` (String, required): 미리보기할 템플릿 내용<br>  - 유효성: `@NotBlank`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)` | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
 | GET | `/api/v1/templates/{id}/render` | 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 매크로 변수를 실제 문제 데이터로 치환합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)` | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
 | POST | `/api/v1/templates` | 새로운 커스텀 템플릿을 생성합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용 (마크다운, 매크로 포함)<br>  - 유효성: `@NotBlank`, 최소 10자, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
@@ -1459,69 +1459,70 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```json
 [
   {
-    "title": "🔑 핵심 로직",
-    "guide": "이 문제의 가장 중요한 점화식이나 아이디어는 무엇인가요?",
-    "category": "SUCCESS"
+    "label": "💡 핵심 로직",
+    "markdownContent": "## 💡 핵심 로직\n\n",
+    "category": "SUCCESS",
+    "tooltip": "이 문제의 가장 중요한 점화식이나 접근법은 무엇인가요?"
   },
   {
-    "title": "⏱️ 복잡도 분석",
-    "guide": "시간 복잡도와 공간 복잡도를 분석해보세요. (예: O(N), O(1))",
-    "category": "SUCCESS"
+    "label": "⏱️ 복잡도 분석",
+    "markdownContent": "## ⏱️ 복잡도 분석\n\n",
+    "category": "SUCCESS",
+    "tooltip": "시간 복잡도와 공간 복잡도를 분석해보세요. (예: O(N), O(1))"
   },
   {
-    "title": "✨ 리팩토링 포인트",
-    "guide": "더 깔끔하게 작성할 수 있었던 변수명이나 함수 분리 포인트를 적어보세요.",
-    "category": "SUCCESS"
+    "label": "🛠️ 사용한 자료구조",
+    "markdownContent": "## 🛠️ 사용한 자료구조\n\n",
+    "category": "SUCCESS",
+    "tooltip": "왜 HashMap 대신 TreeMap을 썼는지 등 자료구조 선택 이유를 설명하세요."
   },
   {
-    "title": "🆚 다른 풀이 비교",
-    "guide": "현재 풀이와 다른 접근 방법(DFS vs BFS 등)을 비교해보세요.",
-    "category": "SUCCESS"
+    "label": "🆚 다른 풀이 비교",
+    "markdownContent": "## 🆚 다른 풀이 비교\n\n",
+    "category": "SUCCESS",
+    "tooltip": "현재 풀이와 다른 접근 방법(DFS vs BFS 등)을 비교해보세요."
   },
   {
-    "title": "🛠️ 사용한 자료구조",
-    "guide": "왜 HashMap 대신 TreeMap을 썼는지 등 자료구조 선택 이유를 설명하세요.",
-    "category": "SUCCESS"
+    "label": "✨ 리팩토링 포인트",
+    "markdownContent": "## ✨ 리팩토링 포인트\n\n",
+    "category": "SUCCESS",
+    "tooltip": "더 깔끔하게 작성할 수 있었던 변수명이나 함수 분리 포인트를 적어보세요."
   },
   {
-    "title": "🧐 실패 원인",
-    "guide": "문제를 풀지 못한 주요 원인은 무엇인가요? (엣지 케이스, 로직 오류 등)",
-    "category": "FAIL"
+    "label": "🧐 실패 원인",
+    "markdownContent": "## 🧐 실패 원인\n\n",
+    "category": "FAIL",
+    "tooltip": "문제를 풀지 못한 주요 원인은 무엇인가요? (논리 오류, 구현 실수, 지식 부족 등)"
   },
   {
-    "title": "📚 부족했던 개념",
-    "guide": "부족했던 알고리즘 개념이나 자료구조를 적어보세요.",
-    "category": "FAIL"
+    "label": "🧪 반례",
+    "markdownContent": "## 🧪 반례\n\n",
+    "category": "FAIL",
+    "tooltip": "내 코드가 틀리는 결정적인 입력값을 찾아보세요."
   },
   {
-    "title": "🐛 디버깅 과정",
-    "guide": "어떤 입력값에서 문제가 발생했는지, 어떻게 추적했는지 기록하세요.",
-    "category": "FAIL"
+    "label": "🐛 디버깅 로그",
+    "markdownContent": "## 🐛 디버깅 로그\n\n",
+    "category": "FAIL",
+    "tooltip": "어떤 입력값에서 문제가 발생했는지, 어떻게 추적했는지 기록하세요."
   },
   {
-    "title": "🧪 반례",
-    "guide": "내 코드가 틀리는 결정적인 입력값을 찾아보세요.",
-    "category": "FAIL"
+    "label": "🔧 다음 시도 계획",
+    "markdownContent": "## 🔧 다음 시도 계획\n\n",
+    "category": "FAIL",
+    "tooltip": "다시 풀 때 꼭 체크할 리스트를 작성하세요."
   },
   {
-    "title": "🔧 다음 시도 계획",
-    "guide": "다시 풀 때 꼭 체크할 리스트를 작성하세요.",
-    "category": "FAIL"
+    "label": "🔗 참고 자료",
+    "markdownContent": "## 🔗 참고 자료\n\n",
+    "category": "COMMON",
+    "tooltip": "도움받은 블로그 링크나 공식 문서를 정리하세요."
   },
   {
-    "title": "📝 문제 요약",
-    "guide": "문제의 요구사항을 한 줄로 요약하세요.",
-    "category": "COMMON"
-  },
-  {
-    "title": "🔗 참고 자료",
-    "guide": "도움받은 블로그 링크나 공식 문서를 정리하세요.",
-    "category": "COMMON"
-  },
-  {
-    "title": "💬 오늘의 한마디",
-    "guide": "이 문제를 풀며 느낀 점을 자유롭게 적어보세요.",
-    "category": "COMMON"
+    "label": "💬 오늘의 한마디",
+    "markdownContent": "## 💬 오늘의 한마디\n\n",
+    "category": "COMMON",
+    "tooltip": "이 문제를 풀며 느낀 점을 자유롭게 적어보세요."
   }
 ]
 ```
