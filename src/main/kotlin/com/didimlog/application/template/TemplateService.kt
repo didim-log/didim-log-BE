@@ -3,6 +3,7 @@ package com.didimlog.application.template
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.repository.StudentRepository
@@ -170,7 +171,6 @@ class TemplateService(
         return getSystemDefaultFailTemplate()
     }
 
-
     /**
      * 시스템 기본 성공 템플릿을 조회한다.
      * Simple 템플릿을 기본 성공 템플릿으로 사용한다.
@@ -324,9 +324,9 @@ class TemplateService(
         }
         
         return when (solution.result) {
-            com.didimlog.domain.enums.ProblemResult.SUCCESS -> "해결"
-            com.didimlog.domain.enums.ProblemResult.FAIL,
-            com.didimlog.domain.enums.ProblemResult.TIME_OVER -> "미해결"
+            ProblemResult.SUCCESS -> "해결"
+            ProblemResult.FAIL,
+            ProblemResult.TIME_OVER -> "미해결"
         }
     }
 
