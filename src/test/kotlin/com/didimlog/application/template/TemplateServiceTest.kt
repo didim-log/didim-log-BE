@@ -549,7 +549,7 @@ class TemplateServiceTest {
         assertThat(result).contains("문제 ID: 1000")
         assertThat(result).contains("제목: A+B")
         assertThat(result).contains("티어: BRONZE")
-        assertThat(result).contains("언어: ko")
+        assertThat(result).contains("언어: KO")
         assertThat(result).contains("링크: https://www.acmicpc.net/problem/1000")
         assertThat(result).contains("소요 시간: 3분 14초")
         verify { templateRepository.findById(templateId) }
@@ -638,7 +638,7 @@ class TemplateServiceTest {
         assertThat(result).contains("문제 ID: 1000")
         assertThat(result).contains("제목: A+B")
         assertThat(result).contains("티어: BRONZE")
-        assertThat(result).contains("언어: ko")
+        assertThat(result).contains("언어: KO")
         assertThat(result).contains("링크: https://www.acmicpc.net/problem/1000")
         verify { problemService.getProblemDetail(problemId) }
         verify(exactly = 0) { templateRepository.findById(any()) }

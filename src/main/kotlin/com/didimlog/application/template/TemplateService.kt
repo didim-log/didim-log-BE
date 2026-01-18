@@ -211,9 +211,11 @@ class TemplateService(
      * - {{problemId}}: 문제 ID
      * - {{problemTitle}}: 문제 제목
      * - {{tier}}: 티어 (예: GOLD_3)
-     * - {{language}}: 문제 설명 언어 (예: ko, en)
+     * - {{language}}: 문제 설명 언어를 대문자로 변환 (예: "ko" -> "KO", "en" -> "EN")
      * - {{link}}: 문제 링크
      * - {{timeTaken}}: 풀이 소요 시간 (예: "3분 14초", "30초", 기록 없으면 "-")
+     * - {{result}}: 풀이 결과 (예: "해결", "미해결", 기록이 없으면 "해결/미해결")
+     * - {{site}}: 문제 출처 사이트 이름 (예: "백준/BOJ")
      *
      * @param templateId 템플릿 ID
      * @param problemId 문제 ID
@@ -226,8 +228,9 @@ class TemplateService(
         val template = getTemplate(templateId)
         val problem = getProblem(problemId)
         val timeTaken = getTimeTaken(studentId, problemId)
+        val result = getProblemResult(studentId, problemId)
         
-        return renderContent(template.content, problem, timeTaken)
+        return renderContent(template.content, problem, timeTaken, result)
     }
 
     /**
@@ -236,17 +239,25 @@ class TemplateService(
      * @param content 템플릿 내용
      * @param problem 문제 정보
      * @param timeTaken 풀이 소요 시간 (기록 없으면 "-")
+     * @param result 풀이 결과 ("해결", "미해결", 또는 "해결/미해결")
      * @return 렌더링된 내용
      */
-    private fun renderContent(content: String, problem: Problem, timeTaken: String = "-"): String {
+    private fun renderContent(
+        content: String,
+        problem: Problem,
+        timeTaken: String = "-",
+        result: String = "해결/미해결"
+    ): String {
         var rendered = content
         
         rendered = rendered.replace("{{problemId}}", problem.id.value)
         rendered = rendered.replace("{{problemTitle}}", problem.title)
         rendered = rendered.replace("{{tier}}", problem.difficulty.name)
-        rendered = rendered.replace("{{language}}", problem.language)
+        rendered = rendered.replace("{{language}}", problem.language.uppercase())
         rendered = rendered.replace("{{link}}", problem.url)
         rendered = rendered.replace("{{timeTaken}}", timeTaken)
+        rendered = rendered.replace("{{result}}", result)
+        rendered = rendered.replace("{{site}}", "백준/BOJ")
         
         return rendered
     }
@@ -294,6 +305,29 @@ class TemplateService(
         }
         
         return formatTimeTaken(solution.timeTaken.value)
+    }
+
+    /**
+     * 학생의 특정 문제 풀이 결과를 조회하여 템플릿 매크로용 문자열로 변환한다.
+     *
+     * @param studentId 학생 ID
+     * @param problemId 문제 ID
+     * @return 풀이 결과 문자열 ("해결", "미해결", 또는 "해결/미해결")
+     */
+    private fun getProblemResult(studentId: String, problemId: Long): String {
+        val student = getStudent(studentId)
+        val problemIdVo = ProblemId(problemId.toString())
+        val solution = student.solutions.findByProblemId(problemIdVo)
+        
+        if (solution == null) {
+            return "해결/미해결"
+        }
+        
+        return when (solution.result) {
+            com.didimlog.domain.enums.ProblemResult.SUCCESS -> "해결"
+            com.didimlog.domain.enums.ProblemResult.FAIL,
+            com.didimlog.domain.enums.ProblemResult.TIME_OVER -> "미해결"
+        }
     }
 
     /**

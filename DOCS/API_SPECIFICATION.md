@@ -1283,9 +1283,11 @@ Content-Type: application/json
 - `{{problemId}}`: 문제 ID (예: "1000")
 - `{{problemTitle}}`: 문제 제목 (예: "A+B")
 - `{{tier}}`: 티어명 (예: "BRONZE", "GOLD")
-- `{{language}}`: 문제 설명 언어 (예: "ko", "en")
+- `{{language}}`: 문제 설명 언어를 대문자로 변환 (예: "ko" -> "KO", "en" -> "EN")
 - `{{link}}`: 문제 링크 (예: "https://www.acmicpc.net/problem/1000")
 - `{{timeTaken}}`: 풀이 소요 시간 (예: "3분 14초", "30초", 기록 없으면 "-")
+- `{{result}}`: 풀이 결과 (예: "해결", "미해결", 기록이 없으면 "해결/미해결")
+- `{{site}}`: 문제 출처 사이트 이름 (예: "백준/BOJ")
 
 **예시 요청 (템플릿 목록 조회):**
 ```http
