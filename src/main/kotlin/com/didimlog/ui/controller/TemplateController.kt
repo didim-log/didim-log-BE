@@ -280,8 +280,10 @@ class TemplateController(
         @Parameter(description = "템플릿 카테고리 (SUCCESS 또는 FAIL)", required = true)
         @RequestParam category: String
     ): ResponseEntity<TemplateResponse> {
+        val student = getStudentFromAuthentication(authentication)
+        val studentId = getStudentId(student)
         val templateCategory = validateCategory(category)
-        val template = templateService.setDefaultTemplate(id, templateCategory)
+        val template = templateService.setDefaultTemplate(id, templateCategory, studentId)
         val response = TemplateResponse.from(template)
         return ResponseEntity.ok(response)
     }
