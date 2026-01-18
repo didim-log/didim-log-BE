@@ -48,7 +48,8 @@ data class TemplatePresetResponse(
     val label: String,
     val markdownContent: String,
     val category: String,
-    val tooltip: String
+    val tooltip: String,
+    val contentGuide: String?
 ) {
     companion object {
         fun from(preset: com.didimlog.domain.template.SectionPreset): TemplatePresetResponse {
@@ -56,7 +57,8 @@ data class TemplatePresetResponse(
                 label = preset.title,
                 markdownContent = preset.markdownContent,
                 category = preset.category.name,
-                tooltip = preset.guide
+                tooltip = preset.guide,
+                contentGuide = preset.contentGuide
             )
         }
     }
