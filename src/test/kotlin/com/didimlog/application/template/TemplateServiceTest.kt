@@ -675,12 +675,50 @@ class TemplateServiceTest {
         every { problemService.getProblemDetail(problemId) } returns problem
 
         // when
-        val result = service.previewTemplate(templateContent, problemId, "KOTLIN")
+        val result = service.previewTemplate(templateContent, problemId, "KOTLIN", null)
 
         // then
         assertThat(result).contains("```kotlin")
         assertThat(result).contains("문제 언어: KO")
         assertThat(result).doesNotContain("```KO")
+        verify { problemService.getProblemDetail(problemId) }
+    }
+
+    @Test
+    @DisplayName("코드가 제공되면 CodeLanguageDetector로 자동 감지하여 언어 태그를 치환한다")
+    fun `코드에서 언어 자동 감지`() {
+        // given
+        val problemId = 1000L
+        val templateContent = """
+            ```{{language}}
+            fun main() {
+                println("Hello")
+            }
+            ```
+        """.trimIndent()
+        val kotlinCode = """
+            fun main() {
+                val name = "Kotlin"
+                println("Hello, ${'$'}name")
+            }
+        """.trimIndent()
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        
+        every { problemService.getProblemDetail(problemId) } returns problem
+
+        // when
+        val result = service.previewTemplate(templateContent, problemId, null, kotlinCode)
+
+        // then
+        assertThat(result).contains("```kotlin")
         verify { problemService.getProblemDetail(problemId) }
     }
 
@@ -707,7 +745,7 @@ class TemplateServiceTest {
         every { problemService.getProblemDetail(problemId) } returns problem
 
         // when
-        val result = service.previewTemplate(templateContent, problemId, null)
+        val result = service.previewTemplate(templateContent, problemId, null, null)
 
         // then
         assertThat(result).contains("```text")
@@ -737,7 +775,7 @@ class TemplateServiceTest {
         every { problemService.getProblemDetail(problemId) } returns problem
 
         // when
-        val result = service.previewTemplate(templateContent, problemId, "INVALID_LANG")
+        val result = service.previewTemplate(templateContent, problemId, "INVALID_LANG", null)
 
         // then
         assertThat(result).contains("```text")

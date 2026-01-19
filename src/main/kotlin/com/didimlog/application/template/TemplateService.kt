@@ -7,6 +7,7 @@ import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
+import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.domain.template.Template
@@ -221,17 +222,28 @@ class TemplateService(
      * @param templateId 템플릿 ID
      * @param problemId 문제 ID
      * @param studentId 학생 ID (timeTaken 조회용)
+     * @param programmingLanguage 프로그래밍 언어 코드 (선택사항, 제공되지 않으면 코드에서 자동 감지)
+     * @param code 제출한 코드 (선택사항, programmingLanguage가 없을 때 언어 감지에 사용)
      * @return 렌더링된 템플릿 내용
      * @throws BusinessException 템플릿 또는 문제를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun renderTemplate(templateId: String, problemId: Long, studentId: String, programmingLanguage: String? = null): String {
+    fun renderTemplate(
+        templateId: String,
+        problemId: Long,
+        studentId: String,
+        programmingLanguage: String? = null,
+        code: String? = null
+    ): String {
         val template = getTemplate(templateId)
         val problem = getProblem(problemId)
         val timeTaken = getTimeTaken(studentId, problemId)
         val result = getProblemResult(studentId, problemId)
         
-        return renderContent(template.content, problem, timeTaken, result, programmingLanguage)
+        // 프로그래밍 언어가 제공되지 않았고 코드가 있으면 자동 감지
+        val detectedLanguage = programmingLanguage ?: detectLanguageFromCode(code)
+        
+        return renderContent(template.content, problem, timeTaken, result, detectedLanguage)
     }
 
     /**
@@ -302,14 +314,38 @@ class TemplateService(
      *
      * @param templateContent 템플릿 내용 (매크로 포함)
      * @param problemId 문제 ID
-     * @param programmingLanguage 프로그래밍 언어 코드 (선택사항)
+     * @param programmingLanguage 프로그래밍 언어 코드 (선택사항, 제공되지 않으면 코드에서 자동 감지)
+     * @param code 제출한 코드 (선택사항, programmingLanguage가 없을 때 언어 감지에 사용)
      * @return 렌더링된 템플릿 내용
      * @throws BusinessException 문제를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun previewTemplate(templateContent: String, problemId: Long, programmingLanguage: String? = null): String {
+    fun previewTemplate(
+        templateContent: String,
+        problemId: Long,
+        programmingLanguage: String? = null,
+        code: String? = null
+    ): String {
         val problem = getProblem(problemId)
-        return renderContent(templateContent, problem, programmingLanguage = programmingLanguage)
+        
+        // 프로그래밍 언어가 제공되지 않았고 코드가 있으면 자동 감지
+        val detectedLanguage = programmingLanguage ?: detectLanguageFromCode(code)
+        
+        return renderContent(templateContent, problem, programmingLanguage = detectedLanguage)
+    }
+
+    /**
+     * 코드에서 프로그래밍 언어를 자동 감지한다.
+     * CodeLanguageDetector를 사용하여 가중치 기반 언어 감지를 수행한다.
+     *
+     * @param code 제출한 코드
+     * @return 감지된 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON"), 코드가 없으면 null
+     */
+    private fun detectLanguageFromCode(code: String?): String? {
+        if (code == null || code.isBlank()) {
+            return null
+        }
+        return CodeLanguageDetector.detect(code)
     }
 
     /**

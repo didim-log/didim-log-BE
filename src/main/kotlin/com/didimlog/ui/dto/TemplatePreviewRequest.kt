@@ -17,7 +17,14 @@ data class TemplatePreviewRequest(
      * 프로그래밍 언어 코드 (선택사항)
      * 코드 블록의 언어 태그로 사용됩니다.
      * 예: "JAVA", "KOTLIN", "PYTHON", "CPP" 등
-     * 기본값: "TEXT"
+     * 제공되지 않으면 code 필드에서 자동 감지됩니다.
      */
-    val programmingLanguage: String? = null
+    val programmingLanguage: String? = null,
+
+    /**
+     * 제출한 코드 (선택사항)
+     * programmingLanguage가 제공되지 않을 때 언어 자동 감지에 사용됩니다.
+     * CodeLanguageDetector를 사용하여 가중치 기반 언어 감지를 수행합니다.
+     */
+    val code: String? = null
 )
