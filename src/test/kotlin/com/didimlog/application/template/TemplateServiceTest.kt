@@ -643,4 +643,104 @@ class TemplateServiceTest {
         verify { problemService.getProblemDetail(problemId) }
         verify(exactly = 0) { templateRepository.findById(any()) }
     }
+
+    @Test
+    @DisplayName("코드 블록 내의 {{language}}는 프로그래밍 언어로 치환된다")
+    fun `코드 블록 언어 태그 치환`() {
+        // given
+        val problemId = 1000L
+        val templateContent = """
+            # {{problemTitle}}
+            
+            ## 제출한 코드
+            
+            ```{{language}}
+            fun main() {
+                println("Hello")
+            }
+            ```
+            
+            문제 언어: {{language}}
+        """.trimIndent()
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        
+        every { problemService.getProblemDetail(problemId) } returns problem
+
+        // when
+        val result = service.previewTemplate(templateContent, problemId, "KOTLIN")
+
+        // then
+        assertThat(result).contains("```kotlin")
+        assertThat(result).contains("문제 언어: KO")
+        assertThat(result).doesNotContain("```KO")
+        verify { problemService.getProblemDetail(problemId) }
+    }
+
+    @Test
+    @DisplayName("프로그래밍 언어가 없으면 코드 블록은 text로 치환된다")
+    fun `코드 블록 기본값`() {
+        // given
+        val problemId = 1000L
+        val templateContent = """
+            ```{{language}}
+            코드
+            ```
+        """.trimIndent()
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        
+        every { problemService.getProblemDetail(problemId) } returns problem
+
+        // when
+        val result = service.previewTemplate(templateContent, problemId, null)
+
+        // then
+        assertThat(result).contains("```text")
+        verify { problemService.getProblemDetail(problemId) }
+    }
+
+    @Test
+    @DisplayName("유효하지 않은 프로그래밍 언어 코드는 text로 치환된다")
+    fun `유효하지 않은 언어 코드 처리`() {
+        // given
+        val problemId = 1000L
+        val templateContent = """
+            ```{{language}}
+            코드
+            ```
+        """.trimIndent()
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        
+        every { problemService.getProblemDetail(problemId) } returns problem
+
+        // when
+        val result = service.previewTemplate(templateContent, problemId, "INVALID_LANG")
+
+        // then
+        assertThat(result).contains("```text")
+        verify { problemService.getProblemDetail(problemId) }
+    }
 }

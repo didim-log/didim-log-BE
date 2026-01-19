@@ -11,5 +11,13 @@ data class TemplatePreviewRequest(
     val templateContent: String,
 
     @field:NotNull(message = "문제 ID는 필수입니다.")
-    val problemId: Long
+    val problemId: Long,
+
+    /**
+     * 프로그래밍 언어 코드 (선택사항)
+     * 코드 블록의 언어 태그로 사용됩니다.
+     * 예: "JAVA", "KOTLIN", "PYTHON", "CPP" 등
+     * 기본값: "TEXT"
+     */
+    val programmingLanguage: String? = null
 )

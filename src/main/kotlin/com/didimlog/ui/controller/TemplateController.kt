@@ -119,7 +119,11 @@ class TemplateController(
     fun previewTemplate(
         @Valid @RequestBody request: TemplatePreviewRequest
     ): ResponseEntity<TemplateRenderResponse> {
-        val renderedContent = templateService.previewTemplate(request.templateContent, request.problemId)
+        val renderedContent = templateService.previewTemplate(
+            request.templateContent,
+            request.problemId,
+            request.programmingLanguage
+        )
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }
@@ -157,11 +161,14 @@ class TemplateController(
         @Parameter(description = "문제 ID", required = true)
         @RequestParam
         @Min(value = 1, message = "문제 ID는 1 이상이어야 합니다.")
-        problemId: Long
+        problemId: Long,
+        @Parameter(description = "프로그래밍 언어 코드 (선택사항, 예: JAVA, KOTLIN, PYTHON)")
+        @RequestParam(required = false)
+        programmingLanguage: String?
     ): ResponseEntity<TemplateRenderResponse> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val renderedContent = templateService.renderTemplate(id, problemId, studentId)
+        val renderedContent = templateService.renderTemplate(id, problemId, studentId, programmingLanguage)
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }

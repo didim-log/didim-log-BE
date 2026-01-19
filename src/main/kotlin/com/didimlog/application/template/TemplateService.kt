@@ -3,6 +3,7 @@ package com.didimlog.application.template
 import com.didimlog.application.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
@@ -224,32 +225,44 @@ class TemplateService(
      * @throws BusinessException 템플릿 또는 문제를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun renderTemplate(templateId: String, problemId: Long, studentId: String): String {
+    fun renderTemplate(templateId: String, problemId: Long, studentId: String, programmingLanguage: String? = null): String {
         val template = getTemplate(templateId)
         val problem = getProblem(problemId)
         val timeTaken = getTimeTaken(studentId, problemId)
         val result = getProblemResult(studentId, problemId)
         
-        return renderContent(template.content, problem, timeTaken, result)
+        return renderContent(template.content, problem, timeTaken, result, programmingLanguage)
     }
 
     /**
      * 템플릿 내용을 렌더링한다.
+     * 코드 블록 내의 {{language}}는 프로그래밍 언어로 치환하고,
+     * 일반 텍스트의 {{language}}는 문제 설명 언어로 치환한다.
      *
      * @param content 템플릿 내용
      * @param problem 문제 정보
      * @param timeTaken 풀이 소요 시간 (기록 없으면 "-")
      * @param result 풀이 결과 ("해결", "미해결", 또는 "해결/미해결")
+     * @param programmingLanguage 프로그래밍 언어 코드 (선택사항, 기본값: "TEXT")
      * @return 렌더링된 내용
      */
     private fun renderContent(
         content: String,
         problem: Problem,
         timeTaken: String = "-",
-        result: String = "해결/미해결"
+        result: String = "해결/미해결",
+        programmingLanguage: String? = null
     ): String {
         var rendered = content
         
+        // 코드 블록 내의 {{language}}를 프로그래밍 언어로 먼저 치환
+        val codeBlockPattern = Regex("```\\{\\{language\\}\\}(\\n|$)")
+        val programmingLangTag = convertToMarkdownLanguageTag(programmingLanguage)
+        rendered = codeBlockPattern.replace(rendered) { matchResult ->
+            "```$programmingLangTag${matchResult.groupValues[1]}"
+        }
+        
+        // 일반 텍스트의 {{language}}는 문제 설명 언어로 치환
         rendered = rendered.replace("{{problemId}}", problem.id.value)
         rendered = rendered.replace("{{problemTitle}}", problem.title)
         rendered = rendered.replace("{{tier}}", problem.difficulty.name)
@@ -263,18 +276,40 @@ class TemplateService(
     }
 
     /**
+     * 프로그래밍 언어 코드를 마크다운 코드 블록 태그로 변환한다.
+     * 대문자 Enum 값(예: "JAVA", "KOTLIN")을 소문자 마크다운 태그(예: "java", "kotlin")로 변환한다.
+     *
+     * @param programmingLanguage 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON")
+     * @return 마크다운 코드 블록 태그 (예: "java", "kotlin", "python"), 기본값: "text"
+     */
+    private fun convertToMarkdownLanguageTag(programmingLanguage: String?): String {
+        if (programmingLanguage == null) {
+            return "text"
+        }
+        
+        return try {
+            val language = PrimaryLanguage.valueOf(programmingLanguage.uppercase())
+            language.value
+        } catch (e: IllegalArgumentException) {
+            // 유효하지 않은 언어 코드인 경우 기본값 반환
+            "text"
+        }
+    }
+
+    /**
      * 템플릿 내용을 미리보기로 렌더링한다.
      * DB에 저장하지 않고, 메모리 상에서만 매크로 치환을 수행한다.
      *
      * @param templateContent 템플릿 내용 (매크로 포함)
      * @param problemId 문제 ID
+     * @param programmingLanguage 프로그래밍 언어 코드 (선택사항)
      * @return 렌더링된 템플릿 내용
      * @throws BusinessException 문제를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun previewTemplate(templateContent: String, problemId: Long): String {
+    fun previewTemplate(templateContent: String, problemId: Long, programmingLanguage: String? = null): String {
         val problem = getProblem(problemId)
-        return renderContent(templateContent, problem)
+        return renderContent(templateContent, problem, programmingLanguage = programmingLanguage)
     }
 
     /**
