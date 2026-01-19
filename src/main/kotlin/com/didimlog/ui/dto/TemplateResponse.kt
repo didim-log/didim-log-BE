@@ -43,21 +43,22 @@ data class TemplateRenderResponse(
 
 /**
  * 템플릿 섹션 프리셋 응답 DTO
+ * 프론트엔드와의 호환성을 위해 API 명세서 기준 필드명 사용
  */
 data class TemplatePresetResponse(
-    val label: String,
-    val markdownContent: String,
+    val title: String,
+    val guide: String,
     val category: String,
-    val tooltip: String,
+    val markdownContent: String,
     val contentGuide: String?
 ) {
     companion object {
         fun from(preset: com.didimlog.domain.template.SectionPreset): TemplatePresetResponse {
             return TemplatePresetResponse(
-                label = preset.title,
-                markdownContent = preset.markdownContent,
+                title = preset.title,
+                guide = preset.guide,
                 category = preset.category.name,
-                tooltip = preset.guide,
+                markdownContent = preset.markdownContent,
                 contentGuide = preset.contentGuide
             )
         }
