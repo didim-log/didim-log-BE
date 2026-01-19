@@ -467,7 +467,7 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. | **Query Parameters:**<br>- `studentId` (String, required): 학생 ID<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그 | None |
+| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간 (예: "15m 30s")<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID (JWT 토큰에서 자동 추출)<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `updatedAt` (LocalDateTime): 수정 일시<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
 | GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
@@ -476,7 +476,8 @@ Content-Type: application/json
 
 **예시 요청 (회고 작성 - 성공 케이스):**
 ```http
-POST /api/v1/retrospectives?studentId=student-123&problemId=1000
+POST /api/v1/retrospectives?problemId=1000
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Content-Type: application/json
 
 {
@@ -489,7 +490,8 @@ Content-Type: application/json
 
 **예시 요청 (회고 작성 - 실패 케이스):**
 ```http
-POST /api/v1/retrospectives?studentId=student-123&problemId=1000
+POST /api/v1/retrospectives?problemId=1000
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Content-Type: application/json
 
 {
@@ -502,7 +504,8 @@ Content-Type: application/json
 
 **예시 요청 (회고 작성 - 최소 필수 필드만):**
 ```http
-POST /api/v1/retrospectives?studentId=student-123&problemId=1000
+POST /api/v1/retrospectives?problemId=1000
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Content-Type: application/json
 
 {
@@ -1268,7 +1271,7 @@ Content-Type: application/json
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/templates` | 인증된 사용자의 커스텀 템플릿과 시스템 기본 템플릿 목록을 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateResponse>`<br><br>**TemplateResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `content` (String): 템플릿 내용 (마크다운 원본)<br>- `type` (String): 템플릿 타입 ("SYSTEM", "CUSTOM")<br>- `isDefaultSuccess` (Boolean): 성공용 기본 템플릿 여부<br>- `isDefaultFail` (Boolean): 실패용 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
-| GET | `/api/v1/templates/presets` | 커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다. 프론트엔드에서 섹션 추가 시 가이드 질문(코칭 질문)을 함께 넣을지 선택할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplatePresetResponse>`<br><br>**TemplatePresetResponse 구조:**<br>- `label` (String): 섹션 제목 (버튼에 표시될 이름, 예: "💡 핵심 로직")<br>- `markdownContent` (String): 삽입될 마크다운 내용 (이모지 포함, 예: "## 💡 핵심 로직\n\n")<br>- `category` (String): 섹션 카테고리 ("SUCCESS", "FAIL", "COMMON")<br>- `tooltip` (String): 섹션 작성 가이드 (툴팁용)<br>- `contentGuide` (String, nullable): 본문에 삽입될 가이드 질문(코칭 질문) (선택적으로 사용) | JWT Token |
+| GET | `/api/v1/templates/presets` | 커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다. 프론트엔드에서 섹션 추가 시 가이드 질문(코칭 질문)을 함께 넣을지 선택할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplatePresetResponse>`<br><br>**TemplatePresetResponse 구조:**<br>- `title` (String): 섹션 제목 (버튼에 표시될 이름, 예: "💡 핵심 로직")<br>- `guide` (String): 섹션 작성 가이드 (툴팁용, 예: "이 문제의 가장 중요한 점화식이나 접근법은 무엇인가요?")<br>- `category` (String): 섹션 카테고리 ("SUCCESS", "FAIL", "COMMON")<br>- `markdownContent` (String): 삽입될 마크다운 내용 (이모지 포함, 예: "## 💡 핵심 로직\n\n")<br>- `contentGuide` (String, nullable): 본문에 삽입될 가이드 질문(코칭 질문) (선택적으로 사용) | JWT Token |
 | POST | `/api/v1/templates/preview` | 템플릿을 저장하지 않고 미리보기로 렌더링합니다. 매크로 변수를 실제 문제 데이터로 치환하여 결과를 반환합니다. 템플릿 작성 중 매크로가 올바르게 변환되는지 확인할 수 있습니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환됩니다. `programmingLanguage`가 제공되지 않으면 `code` 필드에서 CodeLanguageDetector를 사용하여 자동 감지됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplatePreviewRequest`<br>- `templateContent` (String, required): 미리보기할 템플릿 내용<br>  - 유효성: `@NotBlank`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 필드에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
 | GET | `/api/v1/templates/{id}/render` | 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 매크로 변수를 실제 문제 데이터로 치환합니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환됩니다. `programmingLanguage`가 제공되지 않으면 `code` 파라미터에서 CodeLanguageDetector를 사용하여 자동 감지됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 파라미터에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
 | POST | `/api/v1/templates` | 새로운 커스텀 템플릿을 생성합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용 (마크다운, 매크로 포함)<br>  - 유효성: `@NotBlank`, 최소 10자, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
@@ -1473,80 +1476,80 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```json
 [
   {
-    "label": "💡 핵심 로직",
-    "markdownContent": "## 💡 핵심 로직\n\n",
+    "title": "💡 핵심 로직",
+    "guide": "이 문제의 가장 중요한 점화식이나 접근법은 무엇인가요?",
     "category": "SUCCESS",
-    "tooltip": "이 문제의 가장 중요한 점화식이나 접근법은 무엇인가요?",
+    "markdownContent": "## 💡 핵심 로직\n\n",
     "contentGuide": "- 문제를 해결하기 위해 어떤 알고리즘이나 자료구조를 선택했나요?\n- 풀이의 핵심 공식을 적어보세요."
   },
   {
-    "label": "⏱️ 복잡도 분석",
-    "markdownContent": "## ⏱️ 복잡도 분석\n\n",
+    "title": "⏱️ 복잡도 분석",
+    "guide": "시간 복잡도와 공간 복잡도를 분석해보세요. (예: O(N), O(1))",
     "category": "SUCCESS",
-    "tooltip": "시간 복잡도와 공간 복잡도를 분석해보세요. (예: O(N), O(1))",
+    "markdownContent": "## ⏱️ 복잡도 분석\n\n",
     "contentGuide": "- 시간 복잡도: O(?)\n- 공간 복잡도: O(?)\n- 각 단계별 연산 횟수를 분석해보세요."
   },
   {
-    "label": "🛠️ 사용한 자료구조",
-    "markdownContent": "## 🛠️ 사용한 자료구조\n\n",
+    "title": "🛠️ 사용한 자료구조",
+    "guide": "왜 HashMap 대신 TreeMap을 썼는지 등 자료구조 선택 이유를 설명하세요.",
     "category": "SUCCESS",
-    "tooltip": "왜 HashMap 대신 TreeMap을 썼는지 등 자료구조 선택 이유를 설명하세요.",
+    "markdownContent": "## 🛠️ 사용한 자료구조\n\n",
     "contentGuide": "- 어떤 자료구조를 선택했고, 왜 그 자료구조가 적합한가요?\n- 다른 자료구조를 사용했다면 어떻게 달라졌을까요?"
   },
   {
-    "label": "🆚 다른 풀이 비교",
-    "markdownContent": "## 🆚 다른 풀이 비교\n\n",
+    "title": "🆚 다른 풀이 비교",
+    "guide": "현재 풀이와 다른 접근 방법(DFS vs BFS 등)을 비교해보세요.",
     "category": "SUCCESS",
-    "tooltip": "현재 풀이와 다른 접근 방법(DFS vs BFS 등)을 비교해보세요.",
+    "markdownContent": "## 🆚 다른 풀이 비교\n\n",
     "contentGuide": "- 다른 접근 방법은 무엇이 있나요? (DFS vs BFS, 그리디 vs DP 등)\n- 각 방법의 장단점은 무엇인가요?"
   },
   {
-    "label": "✨ 리팩토링 포인트",
-    "markdownContent": "## ✨ 리팩토링 포인트\n\n",
+    "title": "✨ 리팩토링 포인트",
+    "guide": "더 깔끔하게 작성할 수 있었던 변수명이나 함수 분리 포인트를 적어보세요.",
     "category": "SUCCESS",
-    "tooltip": "더 깔끔하게 작성할 수 있었던 변수명이나 함수 분리 포인트를 적어보세요.",
+    "markdownContent": "## ✨ 리팩토링 포인트\n\n",
     "contentGuide": "- 개선할 수 있는 변수명이나 함수명은 무엇인가요?\n- 코드 중복을 줄이기 위한 리팩토링 포인트는 무엇인가요?"
   },
   {
-    "label": "🧐 실패 원인",
-    "markdownContent": "## 🧐 실패 원인\n\n",
+    "title": "🧐 실패 원인",
+    "guide": "문제를 풀지 못한 주요 원인은 무엇인가요? (논리 오류, 구현 실수, 지식 부족 등)",
     "category": "FAIL",
-    "tooltip": "문제를 풀지 못한 주요 원인은 무엇인가요? (논리 오류, 구현 실수, 지식 부족 등)",
+    "markdownContent": "## 🧐 실패 원인\n\n",
     "contentGuide": "- 어떤 종류의 에러가 발생했나요? (시간 초과, 메모리 초과 등)\n- 로직의 어느 부분이 잘못되었나요?"
   },
   {
-    "label": "🧪 반례",
-    "markdownContent": "## 🧪 반례\n\n",
+    "title": "🧪 반례",
+    "guide": "내 코드가 틀리는 결정적인 입력값을 찾아보세요.",
     "category": "FAIL",
-    "tooltip": "내 코드가 틀리는 결정적인 입력값을 찾아보세요.",
+    "markdownContent": "## 🧪 반례\n\n",
     "contentGuide": "- 내 코드를 깨뜨리는 입력값은 무엇인가요?\n- 왜 그 입력값에서 문제가 발생했나요?"
   },
   {
-    "label": "🐛 디버깅 로그",
-    "markdownContent": "## 🐛 디버깅 로그\n\n",
+    "title": "🐛 디버깅 로그",
+    "guide": "어떤 입력값에서 문제가 발생했는지, 어떻게 추적했는지 기록하세요.",
     "category": "FAIL",
-    "tooltip": "어떤 입력값에서 문제가 발생했는지, 어떻게 추적했는지 기록하세요.",
+    "markdownContent": "## 🐛 디버깅 로그\n\n",
     "contentGuide": "- 어떤 입력값에서 문제가 발생했나요?\n- 디버깅 과정에서 발견한 패턴은 무엇인가요?"
   },
   {
-    "label": "🔧 다음 시도 계획",
-    "markdownContent": "## 🔧 다음 시도 계획\n\n",
+    "title": "🔧 다음 시도 계획",
+    "guide": "다시 풀 때 꼭 체크할 리스트를 작성하세요.",
     "category": "FAIL",
-    "tooltip": "다시 풀 때 꼭 체크할 리스트를 작성하세요.",
+    "markdownContent": "## 🔧 다음 시도 계획\n\n",
     "contentGuide": "- 다음에 다시 풀 때 바꿀 점은 무엇인가요?\n- 체크해야 할 엣지 케이스는 무엇인가요?"
   },
   {
-    "label": "🔗 참고 자료",
-    "markdownContent": "## 🔗 참고 자료\n\n",
+    "title": "🔗 참고 자료",
+    "guide": "도움받은 블로그 링크나 공식 문서를 정리하세요.",
     "category": "COMMON",
-    "tooltip": "도움받은 블로그 링크나 공식 문서를 정리하세요.",
+    "markdownContent": "## 🔗 참고 자료\n\n",
     "contentGuide": "- 참고한 블로그 링크나 공식 문서를 기록하세요."
   },
   {
-    "label": "💬 오늘의 한마디",
-    "markdownContent": "## 💬 오늘의 한마디\n\n",
+    "title": "💬 오늘의 한마디",
+    "guide": "이 문제를 풀며 느낀 점을 자유롭게 적어보세요.",
     "category": "COMMON",
-    "tooltip": "이 문제를 풀며 느낀 점을 자유롭게 적어보세요.",
+    "markdownContent": "## 💬 오늘의 한마디\n\n",
     "contentGuide": null
   }
 ]
