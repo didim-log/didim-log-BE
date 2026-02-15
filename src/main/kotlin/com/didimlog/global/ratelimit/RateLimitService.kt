@@ -66,16 +66,7 @@ class RateLimitService(
      */
     fun getTtlSeconds(key: String): Long? {
         val redisKey = "$RATE_LIMIT_PREFIX$key"
-        val ttl = redisTemplate.getExpire(redisKey, TimeUnit.SECONDS) ?: return null
+        val ttl = redisTemplate.getExpire(redisKey, TimeUnit.SECONDS)
         return if (ttl > 0) ttl else null
     }
 }
-
-
-
-
-
-
-
-
-

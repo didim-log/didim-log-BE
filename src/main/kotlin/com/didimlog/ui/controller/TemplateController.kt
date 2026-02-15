@@ -459,10 +459,7 @@ class TemplateController(
      * @throws BusinessException 유효하지 않은 카테고리인 경우
      */
     private fun validateCategory(category: String): TemplateCategory {
-        val normalized = when (category.trim().uppercase()) {
-            "FAILURE" -> "FAIL"
-            else -> category.trim().uppercase()
-        }
+        val normalized = category.trim().uppercase()
         return try {
             TemplateCategory.valueOf(normalized)
         } catch (e: IllegalArgumentException) {
