@@ -20,6 +20,21 @@
 - [ProblemCollectorController](#problemcollectorcontroller)
 - [FeedbackController](#feedbackcontroller)
 - [TemplateController](#templatecontroller)
+- [Swagger 카테고리 통합 기준](#swagger-카테고리-통합-기준)
+
+---
+
+## Swagger 카테고리 통합 기준
+
+Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
+
+- `Auth`: 인증/인가
+- `Template`: 회고 템플릿 관리/렌더링
+- `Retrospective`: 회고 CRUD/검색
+- `Problem`, `Study`, `Statistics`, `Ranking`, `Dashboard`: 학습/분석 기능
+- `Admin`: 관리자 기능 전체(회원/로그/문제수집/시스템제어/감사로그 포함)
+- `System`: 공개 시스템 상태 조회
+- `Member`, `Student`, `Notice`, `Feedback`, `Quote`: 도메인별 기능
 
 ---
 
@@ -1268,6 +1283,9 @@ Content-Type: application/json
 
 회고 템플릿 관리 관련 API를 제공합니다. 사용자는 자신만의 커스텀 템플릿을 생성하고 관리할 수 있으며, 템플릿에 매크로 변수를 사용하여 문제 정보를 동적으로 치환할 수 있습니다.
 
+> 최신 정책: 프론트엔드는 아래 `TemplateController` 엔드포인트만 사용합니다.  
+> `POST /api/v1/retrospectives/template/static` 같은 정적 템플릿 전용 API는 제공하지 않습니다.
+
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/templates` | 인증된 사용자의 커스텀 템플릿과 시스템 기본 템플릿 목록을 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateResponse>`<br><br>**TemplateResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `content` (String): 템플릿 내용 (마크다운 원본)<br>- `type` (String): 템플릿 타입 ("SYSTEM", "CUSTOM")<br>- `isDefaultSuccess` (Boolean): 성공용 기본 템플릿 여부<br>- `isDefaultFail` (Boolean): 실패용 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
@@ -1773,4 +1791,3 @@ API 문서는 Swagger UI를 통해 확인할 수 있습니다:
 ```
 http://localhost:8080/swagger-ui.html
 ```
-
