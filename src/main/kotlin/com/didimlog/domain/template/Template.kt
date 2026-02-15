@@ -4,6 +4,7 @@ import com.didimlog.domain.enums.TemplateOwnershipType
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.LastModifiedDate
+import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 import java.time.LocalDateTime
 
@@ -22,9 +23,11 @@ import java.time.LocalDateTime
 data class Template(
     @Id
     val id: String? = null,
+    @Indexed
     val studentId: String? = null,
     val title: String,
     val content: String,
+    @Indexed
     val type: TemplateOwnershipType,
     @Deprecated("Use Student entity's defaultSuccessTemplateId instead. TODO: Drop this column in future migration.")
     val isDefaultSuccess: Boolean = false,

@@ -4,6 +4,8 @@ import com.didimlog.domain.enums.ProblemCategory
 import java.time.LocalDateTime
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.index.CompoundIndex
+import org.springframework.data.mongodb.core.index.CompoundIndexes
+import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 
 /**
@@ -12,25 +14,35 @@ import org.springframework.data.mongodb.core.mapping.Document
  */
 @Document(collection = "retrospectives")
 @CompoundIndex(name = "uniq_student_problem", def = "{'studentId': 1, 'problemId': 1}", unique = true)
+@CompoundIndexes(
+    CompoundIndex(name = "idx_retro_student_created", def = "{'studentId': 1, 'createdAt': -1}")
+)
 data class Retrospective(
     @Id
     val id: String? = null,
+    @Indexed
     val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
+    @Indexed
     val problemId: String,
     val content: String,
     val summary: String? = null, // 한 줄 요약
+    @Indexed
     val createdAt: LocalDateTime = LocalDateTime.now(),
+    @Indexed
     val isBookmarked: Boolean = false,
+    @Indexed
     val mainCategory: ProblemCategory? = null,
     /**
      * 해당 회고가 성공한 풀이인지 실패한 풀이인지 저장
      * 사용자가 직접 선택한 결과임을 명시한다.
      */
+    @Indexed
     val solutionResult: com.didimlog.domain.enums.ProblemResult? = null,
     /**
      * 사용자가 직접 선택한 풀이 전략(알고리즘) 태그
      * 예: "BruteForce", "Greedy" 등
      */
+    @Indexed
     val solvedCategory: String? = null,
     /**
      * 풀이 소요 시간 (예: "15m 30s" 또는 초 단위 문자열)

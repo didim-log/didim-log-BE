@@ -35,6 +35,7 @@ data class Student(
     @Indexed
     val providerId: String, // 소셜 로그인 제공자의 사용자 ID
     val email: String? = null, // 이메일 (소셜 로그인 제공자가 제공하는 경우)
+    @Indexed
     val bojId: BojId? = null, // BOJ ID (BOJ 인증을 완료한 경우에만 존재)
     val password: String? = null, // BCrypt로 암호화된 비밀번호 (BOJ 로그인 사용자만 사용)
     @Indexed
