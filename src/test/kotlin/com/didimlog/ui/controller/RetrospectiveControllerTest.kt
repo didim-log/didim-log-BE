@@ -7,6 +7,7 @@ import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -22,6 +23,7 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.BeforeEach
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.context.TestConfiguration
@@ -59,6 +61,9 @@ class RetrospectiveControllerTest {
     private lateinit var studentRepository: StudentRepository
 
     @Autowired
+    private lateinit var problemRepository: ProblemRepository
+
+    @Autowired
     private lateinit var objectMapper: ObjectMapper
 
     @TestConfiguration
@@ -68,6 +73,9 @@ class RetrospectiveControllerTest {
 
         @Bean
         fun studentRepository(): StudentRepository = mockk(relaxed = true)
+
+        @Bean
+        fun problemRepository(): ProblemRepository = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -83,6 +91,12 @@ class RetrospectiveControllerTest {
 
         @Bean
         fun rateLimitInterceptor(): com.didimlog.global.ratelimit.RateLimitInterceptor = mockk(relaxed = true)
+    }
+
+    @BeforeEach
+    fun setUp() {
+        every { problemRepository.findById(any()) } returns java.util.Optional.empty()
+        every { problemRepository.findAllById(any<Iterable<String>>()) } returns emptyList()
     }
 
     @Test
@@ -443,4 +457,3 @@ class RetrospectiveControllerTest {
         )
     }
 }
-

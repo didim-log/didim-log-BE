@@ -4,6 +4,7 @@ import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
@@ -47,7 +48,8 @@ import org.springframework.web.bind.annotation.RestController
 @org.springframework.validation.annotation.Validated
 class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
-    private val studentRepository: StudentRepository
+    private val studentRepository: StudentRepository,
+    private val problemRepository: ProblemRepository
 ) {
     companion object {
         private val ALLOWED_SORT_FIELDS = setOf("createdAt", "problemId", "isBookmarked")
@@ -112,7 +114,11 @@ class RetrospectiveController(
             solvedCategory = request.solvedCategory,
             solveTime = request.solveTime
         )
-        val response = RetrospectiveResponse.from(retrospective, studentId)
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -197,7 +203,8 @@ class RetrospectiveController(
             studentId = studentId
         )
         val pageResult = retrospectiveService.searchRetrospectives(condition, pageable)
-        return RetrospectivePageResponse.from(pageResult, studentId)
+        val problemTitles = resolveProblemTitleMap(pageResult.content.map { it.problemId })
+        return RetrospectivePageResponse.from(pageResult, studentId, problemTitles)
     }
 
     @Operation(
@@ -228,7 +235,11 @@ class RetrospectiveController(
             ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
 
         val retrospective = retrospectiveService.getRetrospective(retrospectiveId, studentId)
-        val response = RetrospectiveResponse.from(retrospective, studentId)
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -322,6 +333,20 @@ class RetrospectiveController(
             }
     }
 
+    private fun resolveProblemTitle(problemId: String): String? {
+        return problemRepository.findById(problemId)
+            .map { it.title }
+            .orElse(null)
+    }
+
+    private fun resolveProblemTitleMap(problemIds: List<String>): Map<String, String> {
+        if (problemIds.isEmpty()) {
+            return emptyMap()
+        }
+        return problemRepository.findAllById(problemIds.distinct())
+            .associate { it.id.value to it.title }
+    }
+
 
     @Operation(
         summary = "회고 삭제",
@@ -411,7 +436,11 @@ class RetrospectiveController(
             solvedCategory = request.solvedCategory,
             solveTime = request.solveTime
         )
-        val response = RetrospectiveResponse.from(retrospective, studentId)
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
         return ResponseEntity.ok(response)
     }
 }

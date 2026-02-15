@@ -89,6 +89,7 @@ class RankingControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$").isArray)
             .andExpect(jsonPath("$[0].rank").value(1))
+            .andExpect(jsonPath("$[0].studentId").value("student1"))
             .andExpect(jsonPath("$[0].retrospectiveCount").value(10))
             .andExpect(jsonPath("$[0].nickname").value("user1"))
             .andExpect(jsonPath("$[0].tier").exists())
