@@ -3,6 +3,7 @@ package com.didimlog.domain
 import com.didimlog.domain.enums.ProblemCategory
 import java.time.LocalDateTime
 import org.springframework.data.annotation.Id
+import org.springframework.data.mongodb.core.index.CompoundIndex
 import org.springframework.data.mongodb.core.mapping.Document
 
 /**
@@ -10,6 +11,7 @@ import org.springframework.data.mongodb.core.mapping.Document
  * 대용량 텍스트이므로 별도 컬렉션으로 분리한다.
  */
 @Document(collection = "retrospectives")
+@CompoundIndex(name = "uniq_student_problem", def = "{'studentId': 1, 'problemId': 1}", unique = true)
 data class Retrospective(
     @Id
     val id: String? = null,
