@@ -22,6 +22,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import org.springframework.data.domain.PageRequest
@@ -165,6 +166,8 @@ class RetrospectiveController(
 
         @Parameter(description = "페이지 크기", required = false)
         @RequestParam(defaultValue = "10")
+        @Min(value = 1, message = "페이지 크기는 1 이상이어야 합니다.")
+        @Max(value = 100, message = "페이지 크기는 100 이하여야 합니다.")
         size: Int,
 
         @Parameter(description = "정렬 기준 (예: createdAt,desc 또는 createdAt,asc)", required = false)

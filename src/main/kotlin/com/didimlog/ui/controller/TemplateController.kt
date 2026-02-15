@@ -12,6 +12,7 @@ import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.TemplatePreviewRequest
 import com.didimlog.ui.dto.TemplatePresetResponse
 import com.didimlog.ui.dto.TemplateRequest
+import com.didimlog.ui.dto.TemplateRenderRequest
 import com.didimlog.ui.dto.TemplateRenderResponse
 import com.didimlog.ui.dto.TemplateResponse
 import com.didimlog.ui.dto.TemplateSummaryResponse
@@ -213,6 +214,51 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val renderedContent = templateService.renderTemplate(id, problemId, studentId, programmingLanguage, code)
+        val response = TemplateRenderResponse(renderedContent = renderedContent)
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "템플릿 렌더링 (POST)",
+        description = "저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. GET 렌더링과 동일 동작이며 긴 code payload 전송을 위해 POST를 지원합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "렌더링 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "템플릿 또는 문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/{id}/render")
+    fun renderTemplatePost(
+        authentication: Authentication,
+        @Parameter(description = "템플릿 ID")
+        @PathVariable id: String,
+        @Valid @RequestBody request: TemplateRenderRequest
+    ): ResponseEntity<TemplateRenderResponse> {
+        val student = getStudentFromAuthentication(authentication)
+        val studentId = getStudentId(student)
+        val renderedContent = templateService.renderTemplate(
+            id,
+            request.problemId,
+            studentId,
+            request.programmingLanguage,
+            request.code
+        )
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }
