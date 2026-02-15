@@ -21,7 +21,7 @@
 
 ## 제거/비권장
 - `POST /api/v1/retrospectives/template/static` 정적 템플릿 전용 API는 현재 정책에서 사용하지 않습니다.
-- `FAILURE` 카테고리 문자열은 레거시 호환 용도였으며, 프론트/백엔드 모두 `FAIL`만 사용합니다.
+- 템플릿 기본값 category는 `SUCCESS` 또는 `FAIL`만 지원합니다.
 
 ## Swagger 카테고리 정책
 - 관리 기능은 `Admin`으로 통합합니다.
