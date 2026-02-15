@@ -48,6 +48,9 @@ class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
     private val studentRepository: StudentRepository
 ) {
+    companion object {
+        private val ALLOWED_SORT_FIELDS = setOf("createdAt", "problemId", "isBookmarked")
+    }
 
     @Operation(
         summary = "회고 작성",
@@ -265,7 +268,8 @@ class RetrospectiveController(
         }
 
         val direction = resolveSortDirection(parts[1])
-        val sortObj = Sort.by(direction, parts[0])
+        val field = resolveSortField(parts[0])
+        val sortObj = Sort.by(direction, field)
         return PageRequest.of(page - 1, size, sortObj)
     }
 
@@ -274,6 +278,14 @@ class RetrospectiveController(
             return Sort.Direction.ASC
         }
         return Sort.Direction.DESC
+    }
+
+    private fun resolveSortField(raw: String): String {
+        val field = raw.trim()
+        if (field in ALLOWED_SORT_FIELDS) {
+            return field
+        }
+        return "createdAt"
     }
 
     private fun parseProblemCategory(raw: String): ProblemCategory {
