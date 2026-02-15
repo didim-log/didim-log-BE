@@ -132,6 +132,9 @@ class TemplateService(
     @Transactional
     fun setDefaultTemplate(templateId: String, category: TemplateCategory, studentId: String): Template {
         val template = getTemplate(templateId)
+        if (template.type == TemplateOwnershipType.CUSTOM) {
+            template.validateOwner(studentId)
+        }
         val student = getStudent(studentId)
         
         val updatedStudent = if (category == TemplateCategory.SUCCESS) {
@@ -356,7 +359,8 @@ class TemplateService(
      * @throws BusinessException 문제를 찾을 수 없는 경우
      */
     private fun getProblem(problemId: Long): Problem {
-        return problemService.getProblemDetail(problemId)
+        // 템플릿 렌더링은 문제 메타데이터만 필요하므로 크롤링 없는 경량 조회를 사용한다.
+        return problemService.getProblemMeta(problemId)
     }
 
     /**

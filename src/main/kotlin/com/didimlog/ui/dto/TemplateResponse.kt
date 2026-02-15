@@ -18,15 +18,56 @@ data class TemplateResponse(
     val updatedAt: LocalDateTime
 ) {
     companion object {
-        fun from(template: Template): TemplateResponse {
+        fun from(
+            template: Template,
+            defaultSuccessTemplateId: String? = null,
+            defaultFailTemplateId: String? = null
+        ): TemplateResponse {
+            val templateId = template.id ?: ""
             return TemplateResponse(
-                id = template.id ?: "",
+                id = templateId,
                 studentId = template.studentId,
                 title = template.title,
                 content = template.content,
                 type = template.type.name,
-                isDefaultSuccess = template.isDefaultSuccess,
-                isDefaultFail = template.isDefaultFail,
+                // 기본 템플릿 상태는 Student 엔티티의 default*TemplateId를 Source of Truth로 사용한다.
+                isDefaultSuccess = defaultSuccessTemplateId != null && defaultSuccessTemplateId == templateId,
+                isDefaultFail = defaultFailTemplateId != null && defaultFailTemplateId == templateId,
+                createdAt = template.createdAt,
+                updatedAt = template.updatedAt
+            )
+        }
+    }
+}
+
+/**
+ * 템플릿 목록 요약 응답 DTO
+ * 목록 화면의 초기 로딩 성능을 위해 content 필드를 제외한다.
+ */
+data class TemplateSummaryResponse(
+    val id: String,
+    val studentId: String?,
+    val title: String,
+    val type: String, // SYSTEM, CUSTOM
+    val isDefaultSuccess: Boolean,
+    val isDefaultFail: Boolean,
+    val createdAt: LocalDateTime,
+    val updatedAt: LocalDateTime
+) {
+    companion object {
+        fun from(
+            template: Template,
+            defaultSuccessTemplateId: String? = null,
+            defaultFailTemplateId: String? = null
+        ): TemplateSummaryResponse {
+            val templateId = template.id ?: ""
+            return TemplateSummaryResponse(
+                id = templateId,
+                studentId = template.studentId,
+                title = template.title,
+                type = template.type.name,
+                isDefaultSuccess = defaultSuccessTemplateId != null && defaultSuccessTemplateId == templateId,
+                isDefaultFail = defaultFailTemplateId != null && defaultFailTemplateId == templateId,
                 createdAt = template.createdAt,
                 updatedAt = template.updatedAt
             )
@@ -64,7 +105,5 @@ data class TemplatePresetResponse(
         }
     }
 }
-
-
 
 

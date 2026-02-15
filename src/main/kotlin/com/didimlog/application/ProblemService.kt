@@ -74,7 +74,7 @@ class ProblemService(
         val existingProblem = problemRepository.findById(problemIdVo.value)
 
         if (existingProblem.isEmpty) {
-            return createProblemFromSolvedAc(problemId.toInt())
+            return createProblemFromSolvedAc(problemId.toInt(), includeDetails = true)
         }
 
         val problem = existingProblem.get()
@@ -82,7 +82,20 @@ class ProblemService(
         return problemWithDetails
     }
 
-    private fun createProblemFromSolvedAc(problemId: Int): Problem {
+    /**
+     * 문제 메타데이터를 조회한다.
+     * 상세 HTML 크롤링은 수행하지 않으므로 템플릿 렌더/미리보기 등 저지연 경로에서 사용한다.
+     */
+    fun getProblemMeta(problemId: Long): Problem {
+        val problemIdVo = ProblemId(problemId.toString())
+        val existingProblem = problemRepository.findById(problemIdVo.value)
+        if (existingProblem.isPresent) {
+            return existingProblem.get()
+        }
+        return createProblemFromSolvedAc(problemId.toInt(), includeDetails = false)
+    }
+
+    private fun createProblemFromSolvedAc(problemId: Int, includeDetails: Boolean): Problem {
         val response = solvedAcClient.fetchProblem(problemId)
         val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
         val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
@@ -99,6 +112,9 @@ class ProblemService(
         )
 
         val savedProblem = problemRepository.save(problem)
+        if (!includeDetails) {
+            return savedProblem
+        }
         return enrichProblemWithDetails(savedProblem, problemId.toString())
     }
 

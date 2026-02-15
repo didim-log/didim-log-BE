@@ -3,6 +3,7 @@ package com.didimlog.ui.controller
 import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.TemplateCategory
+import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.template.SectionPreset
 import com.didimlog.domain.valueobject.BojId
@@ -13,6 +14,7 @@ import com.didimlog.ui.dto.TemplatePresetResponse
 import com.didimlog.ui.dto.TemplateRequest
 import com.didimlog.ui.dto.TemplateRenderResponse
 import com.didimlog.ui.dto.TemplateResponse
+import com.didimlog.ui.dto.TemplateSummaryResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -65,7 +67,45 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val templates = templateService.getTemplates(studentId)
-        val response = templates.map { TemplateResponse.from(it) }
+        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student, templates)
+        val response = templates.map {
+            TemplateResponse.from(
+                template = it,
+                defaultSuccessTemplateId = defaultSuccessTemplateId,
+                defaultFailTemplateId = defaultFailTemplateId
+            )
+        }
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "템플릿 목록 요약 조회",
+        description = "템플릿 목록의 요약 정보만 조회합니다(content 제외). 목록 초기 로딩 성능 최적화 용도로 사용합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/summaries")
+    fun getTemplateSummaries(authentication: Authentication): ResponseEntity<List<TemplateSummaryResponse>> {
+        val student = getStudentFromAuthentication(authentication)
+        val studentId = getStudentId(student)
+        val templates = templateService.getTemplates(studentId)
+        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student, templates)
+        val response = templates.map {
+            TemplateSummaryResponse.from(
+                template = it,
+                defaultSuccessTemplateId = defaultSuccessTemplateId,
+                defaultFailTemplateId = defaultFailTemplateId
+            )
+        }
         return ResponseEntity.ok(response)
     }
 
@@ -205,7 +245,11 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val template = templateService.createTemplate(studentId, request.title, request.content)
-        val response = TemplateResponse.from(template)
+        val response = TemplateResponse.from(
+            template = template,
+            defaultSuccessTemplateId = student.defaultSuccessTemplateId,
+            defaultFailTemplateId = student.defaultFailTemplateId
+        )
         return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
@@ -249,7 +293,11 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val template = templateService.updateTemplate(id, studentId, request.title, request.content)
-        val response = TemplateResponse.from(template)
+        val response = TemplateResponse.from(
+            template = template,
+            defaultSuccessTemplateId = student.defaultSuccessTemplateId,
+            defaultFailTemplateId = student.defaultFailTemplateId
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -295,7 +343,13 @@ class TemplateController(
         val studentId = getStudentId(student)
         val templateCategory = validateCategory(category)
         val template = templateService.setDefaultTemplate(id, templateCategory, studentId)
-        val response = TemplateResponse.from(template)
+        val updatedSuccessTemplateId = if (templateCategory == TemplateCategory.SUCCESS) id else student.defaultSuccessTemplateId
+        val updatedFailTemplateId = if (templateCategory == TemplateCategory.FAIL) id else student.defaultFailTemplateId
+        val response = TemplateResponse.from(
+            template = template,
+            defaultSuccessTemplateId = updatedSuccessTemplateId,
+            defaultFailTemplateId = updatedFailTemplateId
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -334,7 +388,13 @@ class TemplateController(
         val studentId = getStudentId(student)
         val templateCategory = validateCategory(category)
         val template = templateService.getDefaultTemplate(templateCategory, studentId)
-        val response = TemplateResponse.from(template)
+        val defaultSuccessTemplateId = if (templateCategory == TemplateCategory.SUCCESS) template.id else student.defaultSuccessTemplateId
+        val defaultFailTemplateId = if (templateCategory == TemplateCategory.FAIL) template.id else student.defaultFailTemplateId
+        val response = TemplateResponse.from(
+            template = template,
+            defaultSuccessTemplateId = defaultSuccessTemplateId,
+            defaultFailTemplateId = defaultFailTemplateId
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -399,13 +459,25 @@ class TemplateController(
      * @throws BusinessException 유효하지 않은 카테고리인 경우
      */
     private fun validateCategory(category: String): TemplateCategory {
+        val normalized = when (category.trim().uppercase()) {
+            "FAILURE" -> "FAIL"
+            else -> category.trim().uppercase()
+        }
         return try {
-            TemplateCategory.valueOf(category.uppercase())
+            TemplateCategory.valueOf(normalized)
         } catch (e: IllegalArgumentException) {
             throw BusinessException(
                 ErrorCode.COMMON_INVALID_INPUT,
                 "유효하지 않은 카테고리입니다. category=$category (SUCCESS 또는 FAIL을 사용하세요)"
             )
         }
+    }
+
+    private fun resolveDefaultTemplateIds(student: Student, templates: List<com.didimlog.domain.template.Template>): Pair<String?, String?> {
+        val successTemplateId = student.defaultSuccessTemplateId
+            ?: templates.firstOrNull { it.type == TemplateOwnershipType.SYSTEM && it.title == "Simple(요약)" }?.id
+        val failTemplateId = student.defaultFailTemplateId
+            ?: templates.firstOrNull { it.type == TemplateOwnershipType.SYSTEM && it.title == "Detail(상세)" }?.id
+        return successTemplateId to failTemplateId
     }
 }
