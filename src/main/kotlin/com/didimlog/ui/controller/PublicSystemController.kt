@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Public System", description = "공개 시스템 상태 API (인증 불필요)")
+@Tag(name = "System", description = "시스템 상태 조회 API (인증 불필요)")
 @RestController
 @RequestMapping("/api/v1/system")
 class PublicSystemController(
@@ -48,4 +48,3 @@ class PublicSystemController(
         return "서버 점검 중입니다. 잠시 후 다시 시도해주세요."
     }
 }
-

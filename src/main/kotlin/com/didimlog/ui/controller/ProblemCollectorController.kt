@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Admin - Problem Collection", description = "문제 데이터 수집 관련 API (관리자 전용)")
+@Tag(name = "Admin", description = "관리자 문제 수집/관리 API (ADMIN 권한 필요)")
 @RestController
 @RequestMapping("/api/v1/admin/problems")
 @Validated
@@ -269,4 +269,3 @@ class ProblemCollectorController(
         return ResponseEntity.ok(status)
     }
 }
-

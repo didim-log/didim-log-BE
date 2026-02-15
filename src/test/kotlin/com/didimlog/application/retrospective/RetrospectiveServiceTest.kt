@@ -22,6 +22,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.dao.DuplicateKeyException
 import java.util.Optional
 
 @DisplayName("RetrospectiveService 테스트")
@@ -148,6 +149,59 @@ class RetrospectiveServiceTest {
         assertThat(result.solvedCategory).isEqualTo("Greedy")
         assertThat(result.solveTime).isEqualTo("20m 15s")
         verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
+    }
+
+    @Test
+    @DisplayName("writeRetrospective는 동시 생성 충돌 시 기존 회고를 수정으로 수렴한다")
+    fun `동시 생성 충돌 시 기존 회고로 수렴`() {
+        // given
+        val studentId = "student-id"
+        val problemId = "1000"
+        val content = "동시 요청 시에도 중복 생성 없이 최종 회고가 유지되어야 합니다."
+        val summary = "동시성 테스트"
+
+        val student = createStudent(id = studentId)
+        val problem = Problem(
+            id = ProblemId(problemId),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/$problemId"
+        )
+        val existingRetrospective = Retrospective(
+            id = "retrospective-id",
+            studentId = studentId,
+            problemId = problemId,
+            content = "기존 회고 내용입니다.",
+            summary = "기존 요약"
+        )
+
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { problemRepository.findById(problemId) } returns Optional.of(problem)
+        every { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) } returnsMany listOf(
+            null,
+            existingRetrospective
+        )
+        every { retrospectiveRepository.save(any<Retrospective>()) } throws DuplicateKeyException("duplicate key") andThen
+            existingRetrospective.updateContent(content, summary)
+
+        // when
+        val result = retrospectiveService.writeRetrospective(
+            studentId = studentId,
+            problemId = problemId,
+            content = content,
+            summary = summary,
+            solutionResult = com.didimlog.domain.enums.ProblemResult.SUCCESS,
+            solvedCategory = "DFS",
+            solveTime = "10m"
+        )
+
+        // then
+        assertThat(result.content).isEqualTo(content)
+        assertThat(result.summary).isEqualTo(summary)
+        verify(exactly = 2) { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) }
+        verify(exactly = 2) { retrospectiveRepository.save(any<Retrospective>()) }
     }
 
     @Test
@@ -398,4 +452,3 @@ class RetrospectiveServiceTest {
     }
 
 }
-

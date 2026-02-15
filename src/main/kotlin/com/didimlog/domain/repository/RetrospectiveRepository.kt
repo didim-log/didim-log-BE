@@ -41,4 +41,6 @@ interface RetrospectiveRepository : MongoRepository<Retrospective, String>, Retr
      * @return 회고 개수
      */
     fun countByCreatedAtBefore(dateTime: LocalDateTime): Long
+
+    fun countByCreatedAtBetween(startDate: LocalDateTime, endDate: LocalDateTime): Long
 }

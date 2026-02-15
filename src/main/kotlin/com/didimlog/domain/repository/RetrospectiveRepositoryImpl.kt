@@ -119,10 +119,11 @@ class RetrospectiveRepositoryImpl(
 
         // 키워드 검색 (내용 또는 문제 ID)
         if (!condition.keyword.isNullOrBlank()) {
+            val escapedKeyword = Regex.escape(condition.keyword.trim())
             criteriaList.add(
                 Criteria().orOperator(
-                    Criteria("content").regex(condition.keyword, "i"),
-                    Criteria("problemId").regex(condition.keyword, "i")
+                    Criteria("content").regex(escapedKeyword, "i"),
+                    Criteria("problemId").regex(escapedKeyword, "i")
                 )
             )
         }
@@ -135,7 +136,8 @@ class RetrospectiveRepositoryImpl(
         // 풀이 전략 태그 필터 (부분 일치 검색)
         if (!condition.solvedCategory.isNullOrBlank()) {
             // solvedCategory 필드에 검색어가 포함되어 있는지 확인 (대소문자 구분 없음)
-            criteriaList.add(Criteria("solvedCategory").regex(condition.solvedCategory, "i"))
+            val escapedSolvedCategory = Regex.escape(condition.solvedCategory.trim())
+            criteriaList.add(Criteria("solvedCategory").regex(escapedSolvedCategory, "i"))
         }
 
         // 북마크 필터

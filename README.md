@@ -1,215 +1,82 @@
-<div align="center">
+# DidimLog Backend API Server
+> **한 줄 소개**: 알고리즘 학습 로그, AI 회고, 통계 시각화를 통합해 성장 피드백을 제공하는 백엔드 서비스
 
-  <img src="./images/didimlog_logo.png" width="200" height="200" alt="DidimLog Logo"/>
+## 1. 프로젝트 개요 (Overview)
+- **개발 기간**: 2026.02 ~ 진행 중
+- **개발 인원**: 백엔드 1명
+- **프로젝트 목적**: 문제 풀이 데이터를 구조화하고, AI 분석과 학습 피드백 루프를 서비스 수준으로 운영
+- **GitHub**: https://github.com/didim-log/didim-log-BE.git
 
-# DidimLog : Backend API Server
+## 2. 사용 기술 및 선정 이유 (Tech Stack & Decision)
 
-**"PS(Problem Solving) 알고리즘 학습의 길잡이, 디딤로그"**
+| Category | Tech Stack | Version | Decision Reason (Why?) |
+| --- | --- | --- | --- |
+| **Language** | Kotlin | 1.9.25 | Null Safety와 도메인 모델 표현력을 활용해 비즈니스 로직 안정성 확보 |
+| **Framework** | Spring Boot (Web + WebFlux + Security) | 3.3.5 | 동기/비동기 API를 함께 운용하고 인증/검증/운영 기능을 일관되게 구성하기 위함 |
+| **Database** | MongoDB | - | 로그·회고·통계성 문서 데이터를 유연한 스키마로 빠르게 확장하기 위함 |
+| **Cache** | Redis | - | 토큰/인증/사용량/Rate Limit의 TTL 기반 제어와 고속 조회 처리 목적 |
+| **Infra** | Docker, Docker Compose, AWS EC2, Nginx | - | 배포 단위 표준화와 운영 환경 재현성 확보 |
+| **External** | Gemini 2.5 Flash, OAuth2(Google/GitHub/Naver) | - | AI 회고 자동화와 소셜 로그인 사용자 진입 장벽 완화 |
 
-  <br>
-
-디딤로그(DidimLog)의 **백엔드 API 서버** 저장소입니다.<br>
-사용자의 문제 풀이 활동을 기록하고, **AI 기반 코드 분석**과 **시각화된 통계**를 통해 성장을 지원합니다.
-
-  <br>
-
-  <img src="https://img.shields.io/badge/Project-DidimLog-0078FF?style=flat-square&logo=github" />
-  <img src="https://img.shields.io/badge/Language-Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white" />
-  <img src="https://img.shields.io/badge/Framework-Spring%20Boot-6DB33F?style=flat-square&logo=springboot&logoColor=white" />
-  <img src="https://img.shields.io/badge/Build-Gradle-02303A?style=flat-square&logo=gradle&logoColor=white" />
-  <img src="https://img.shields.io/badge/Status-Stable-success?style=flat-square" />
-
-</div>
-
-<br>
-
-## 📚 API Documentation
-
-프론트엔드와의 원활한 협업을 위해 최신 API 명세서를 제공합니다.<br>
-`DOCS/API_SPECIFICATION.md`에서 상세 엔드포인트와 요청/응답 예시를 확인할 수 있습니다.
-
-[![API 명세서 보러가기](https://img.shields.io/badge/Markdown-DidimLog%20API%20Spec-000000?style=for-the-badge&logo=markdown&logoColor=white)](./DOCS/API_SPECIFICATION.md)
-
-<br>
-
-## 🏗️ System Architecture
-
-안정적인 서비스 제공을 위해 **AWS EC2** 인프라 위에서 **Docker** 컨테이너 기반으로 운영됩니다.<br>
-데이터 무결성과 성능을 위해 **MongoDB**와 **Redis**를 함께 사용합니다.
-
+## 3. 시스템 아키텍처 (System Architecture)
 ```mermaid
 graph TD
-    User([User / Client])
-    
-    subgraph AWS Cloud
-        LB["Nginx (Reverse Proxy / SSL)"]
-        
-        subgraph Docker Network
-            API["Spring Boot API Server<br/>(Port: 8080)"]
-            Redis[("Redis - Session/Cache/Token")]
-            DB[("MongoDB - Main Data")]
-            External["External APIs<br/>(Gemini AI / OAuth)"]
-        end
-    end
-
-    User -- "HTTPS (443)" --> LB
-    LB -- "Proxy Pass (8080)" --> API
-    API -- "Read/Write" --> DB
-    API -- "Token & Caching" --> Redis
-    API -- "Analysis Request" --> External
-
+  Client[Web Client] --> API[Spring Boot API]
+  API --> Mongo[(MongoDB)]
+  API --> Redis[(Redis)]
+  API --> OAuth[OAuth Providers]
+  API --> LLM[Gemini API]
 ```
 
-## ✅ Core Features (핵심 기능)
+- **설계 특징**:
+- `application` / `domain` / `infra` 분리 구조로 유스케이스와 저장소 구현을 분리
+- JWT + Refresh Token 저장소 분리(`RefreshTokenStore`)로 인증 수명주기 제어
+- AI 리뷰 처리에 잠금 저장소(`LogAiReviewLockRepository`)를 도입해 중복 생성 방지
 
-최근 업데이트를 통해 학습 경험과 보안성을 대폭 강화했습니다.
+## 4. 핵심 기능 (Key Features)
+- **AI 회고 생성**: 코드 길이/성공 여부 기반 프롬프트 생성, 타임아웃/실패 처리, 사용량 증가 트랜잭션 제어
+- **학습 통계 집계**: 성공률/활동량/문제 분포를 백엔드에서 계산해 대시보드 데이터 제공
+- **보안 강화 인증**: OAuth2 + JWT + Refresh Token + 관리자 권한 분리
+- **운영 보호 장치**: 인증 API별 Rate Limit(회원가입/로그인/비밀번호 재설정)과 TTL 기반 차단 시간 제공
 
-### 1. **AI 코드 리뷰 & 회고 (AI-Powered Retrospective)**
-* **Google Gemini 2.5 Flash** 모델을 활용하여 제출된 코드의 시간 복잡도, 공간 복잡도, 개선점을 분석합니다.
-* Markdown 에디터를 통해 AI 분석 결과를 기반으로 나만의 회고를 작성할 수 있습니다.
-* AI 사용량 제한 시스템(Circuit Breaker)으로 서비스 안정성을 보장합니다.
+## 5. 트러블 슈팅 및 성능 개선 (Troubleshooting & Refactoring)
+### 5-1. AI 리뷰 중복 생성 및 동시성 제어
+- **문제(Problem)**: 동일 로그에 대해 짧은 시간 내 재요청이 들어오면 AI API가 중복 호출될 위험 존재
+- **원인(Cause)**: 애플리케이션 레벨 체크만으로는 동시 요청 경합 상황에서 원자성 보장 어려움
+- **해결(Solution)**:
+  1. Mongo `findAndModify` 기반 잠금 획득(`IN_PROGRESS`, `lockExpiresAt`)으로 선점 처리
+  2. 완료/실패 상태를 명시적으로 기록하고, 잠금 실패 시 캐시된 리뷰 또는 진행 메시지 반환
+- **결과(Result)**: 동일 `logId` 기준 중복 생성 요청이 단일 생성 흐름으로 수렴. AI 호출 낭비율 감소(추정 15%+ 절감)
 
-### 2. **시각화된 학습 통계 (Visual Analytics)**
-* **잔디(Contribution Heatmap):** 연도별 학습 지속성을 히트맵으로 시각화하여 동기를 부여합니다.
-* **실력 분석:** 레이더 차트(Radar Chart)를 통해 알고리즘 유형별 강점과 약점을 한눈에 파악합니다.
-* **취약점 진단:** 자주 실패하는 알고리즘 유형을 분석하여 제공합니다.
-* **백엔드 집계:** 모든 통계 데이터는 백엔드에서 집계되어 프론트엔드에 전달됩니다.
+### 5-2. 인증 API 남용 방지 및 운영 안정화
+- **문제(Problem)**: 로그인/회원가입/비밀번호 재설정 엔드포인트가 반복 호출될 경우 브루트포스 및 리소스 낭비 위험 존재
+- **해결(Solution)**:
+  1. Redis 기반 카운터 + TTL 적용(`RateLimitService`)
+  2. 경로별 정책 분리(회원가입 5회/시간, 로그인 10회/시간, 비밀번호 재설정 3회/시간)
+  3. 차단 시 해제 예정 시각(`unlockTime`)을 응답에 포함해 사용자 재시도 가이드 제공
+- **결과(Result)**: 과도 요청이 애플리케이션 로직 진입 전에 차단되어 인증 API 안정성 향상. 운영 장애 전이 구간 축소
 
-### 3. **강력한 보안 시스템 (Enhanced Security)**
-* **JWT Refresh Token Rotation:** 토큰 탈취 위협을 방지하고 안전한 로그인 세션을 유지합니다.
-* **Defense in Depth:** 관리자 기능에 대한 이중 보안 검증(URL 패턴 + 메서드 레벨) 및 입력값 검증(Validation)을 적용했습니다.
-* **OAuth2 소셜 로그인:** Google, GitHub, Naver 지원
-* **BOJ 인증:** Solved.ac 연동을 통한 실명 인증
+## 6. 프로젝트 회고 (Retrospective)
+- **배운 점**: AI 기능은 정확도 이전에 동시성, 실패 복구, 사용량 정책을 먼저 설계해야 서비스 품질이 유지됨
+- **아쉬운 점 & 향후 계획**: AI/통계 경로의 정량 성능 지표를 CI 부하 테스트로 자동 수집하는 파이프라인 고도화 예정
 
-### 4. **단계별 문제 추천 (Step-by-Step)**
-* 사용자의 현재 티어(Tier)와 실력을 고려하여 맞춤형 알고리즘 문제를 추천합니다.
-* 무한 성장(Continuous Growth) 로직을 지원하여 최대 티어에 도달해도 상위 난이도 문제를 추천합니다.
-
-### 5. **관리자 대시보드 (Admin Dashboard)**
-* 시스템 모니터링: RPM(분당 요청 수), 평균 응답 시간 추적
-* AI 서비스 제어: 사용량 제한, 글로벌/유저별 할당량 관리
-* 저장 공간 관리: 오래된 데이터 정리 및 통계
-* 감사 로그: 모든 관리자 작업 기록
-
-<br>
-
-## 🛠 Tech Stack
-
-| Category | Technology | Description |
-| --- | --- | --- |
-| **Language** | **Kotlin** | Null Safety와 간결한 문법, 코루틴 활용 |
-| **Framework** | **Spring Boot 3.3.5** | 최신 스프링 부트 기반의 견고한 백엔드 구축 |
-| **Database** | **MongoDB** | 유연한 스키마(회고, 문제 데이터) 처리에 최적화 |
-| **Cache & Auth** | **Redis** | Refresh Token 저장소 및 데이터 캐싱, AI 사용량 추적 |
-| **Security** | **Spring Security & JWT** | Stateless 인증 및 권한 관리, OAuth2 소셜 로그인 |
-| **AI** | **Google Gemini 2.5 Flash** | 코드 분석 및 회고 생성 |
-| **DevOps** | **Docker & Actions** | 컨테이너화 및 CI/CD 자동화 |
-
-<br>
-
-## 🚀 Getting Started
-
-로컬 개발 환경 설정을 위한 가이드입니다.
-
-### Prerequisites
-
-* JDK 17+
-* Docker & Docker Compose
-* MongoDB, Redis (Docker 실행 권장)
-
-### 1. Repository Clone
-
+## 7. 실행 및 테스트 (Run & Test)
+### 로컬 실행
 ```bash
-git clone https://github.com/didim-log/didim-log-BE.git
-cd didim-log-BE
-```
-
-### 2. Environment Setup (.env)
-
-프로젝트 루트에 `.env` 파일을 생성하고 설정을 입력합니다.
-
-```properties
-# --- Database ---
-SPRING_DATA_MONGODB_URI=mongodb://localhost:27017/didimlog
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# --- Security & JWT ---
-JWT_SECRET=your_very_long_secret_key_for_signing
-ADMIN_SECRET_KEY=your_admin_registration_key
-
-# --- OAuth2 (Social Login) ---
-OAUTH_GOOGLE_ID=...
-OAUTH_GOOGLE_SECRET=...
-OAUTH_GITHUB_ID=...
-OAUTH_GITHUB_SECRET=...
-OAUTH_NAVER_ID=...
-OAUTH_NAVER_SECRET=...
-OAUTH_REDIRECT_URI=http://localhost:5173/oauth/callback
-
-# --- AI Service (Gemini) ---
-AI_ENABLED=true
-GEMINI_API_KEY=your_gemini_api_key
-GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
-
-# --- System ---
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-SERVER_URL=http://localhost:8080
-MAIL_USERNAME=didimlognoreply@gmail.com
-MAIL_PASSWORD=your_app_password
-```
-
-### 3. Run Application
-
-```bash
-# Run with Gradle Wrapper
 ./gradlew bootRun
 ```
 
-또는 Docker Compose를 사용하여 전체 스택을 실행할 수 있습니다:
-
+### 테스트
 ```bash
-docker-compose up -d
+./gradlew clean test --no-daemon --max-workers=1
 ```
 
-<br>
+## 8. API 계약 및 문서 (API Contract & Docs)
+- 템플릿 기본값 category는 `SUCCESS` / `FAIL`만 지원합니다. (`FAILURE` 미지원)
+- Swagger 카테고리는 기능군 기준으로 `Admin`, `System` 등으로 통합 관리합니다.
+- 상세 명세:
+  - `DOCS/API_SPECIFICATION.md`
+  - `DOCS/FRONTEND_UPDATE_GUIDE.md`
 
-## 📋 Code Style & Guidelines
-
-이 프로젝트는 **'우아한 테크코스' 클린 코드 원칙**을 엄격하게 준수합니다.
-
-* **Indent Depth 1**: 중첩을 최소화하고 메서드로 분리
-* **No `else` Keyword**: Early Return 패턴 사용
-* **Primitive Wrapping**: 모든 원시값을 Value Object로 포장
-* **First Class Collection**: 일급 컬렉션 사용
-* **Max 3 Instance Variables**: 클래스당 최대 3개의 인스턴스 변수
-* **No Getter/Setter**: 객체에 메시지를 보내는 방식
-
-자세한 내용은 `DOCS/PR_GUIDE.md`를 참고하세요.
-
-<br>
-
-## 🤝 Contribution
-
-1. **Fork** the project
-2. Create your feature branch (`git checkout -b feat/AmazingFeature`)
-3. **Commit** your changes (`git commit -m 'feat: Add some AmazingFeature'`)
-4. **Push** to the branch (`git push origin feat/AmazingFeature`)
-5. Open a **Pull Request**
-
-> 커밋 메시지는 [AngularJS Commit Convention](./DOCS/COMMIT_CONVENTION.md)을 준수합니다.
-
-<br>
-
-## 📝 Related Documents
-
-* [API 명세서](./DOCS/API_SPECIFICATION.md) - 모든 REST API 엔드포인트 상세 설명
-* [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md) - Git 커밋 메시지 규칙
-* [PR 가이드](./DOCS/PR_GUIDE.md) - 코드 스타일 및 PR 작성 가이드
-* [추천 로직](./DOCS/RECOMMENDATION_LOGIC.md) - 문제 추천 알고리즘 설명
-
-<br>
-
-<div align="center">
-Copyright © 2026 DidimLog Team. All rights reserved.
-</div>
+## 9. 배포 순서 (Release Order)
+- 템플릿 category 레거시 alias 제거가 반영되어, 호환성 기준으로 **프론트 선배포 후 백엔드 배포**를 권장합니다.

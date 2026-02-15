@@ -4,6 +4,7 @@ import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.ProblemId
 import org.springframework.data.annotation.Id
+import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 
 /**
@@ -29,8 +30,10 @@ data class Problem(
     @Id
     val id: ProblemId,
     val title: String,
+    @Indexed
     val category: ProblemCategory,
     val difficulty: Tier,
+    @Indexed
     val level: Int,
     val url: String,
     val description: String? = null,
@@ -42,7 +45,9 @@ data class Problem(
     val outputDescriptionHtml: String? = null,
     val sampleInputs: List<String>? = null,
     val sampleOutputs: List<String>? = null,
+    @Indexed
     val tags: List<String> = emptyList(),
+    @Indexed
     val language: String = "ko"
 ) {
     init {

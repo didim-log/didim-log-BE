@@ -9,10 +9,17 @@ import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.Id
+import org.springframework.data.mongodb.core.index.CompoundIndex
+import org.springframework.data.mongodb.core.index.CompoundIndexes
+import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 import java.time.LocalDateTime
 
 @Document(collection = "logs")
+@CompoundIndexes(
+    CompoundIndex(name = "idx_log_boj_created", def = "{'bojId.value': 1, 'createdAt': -1}"),
+    CompoundIndex(name = "idx_log_aireview_created", def = "{'aiReviewStatus': 1, 'createdAt': -1}")
+)
 data class Log(
     @Id
     val id: String? = null,
@@ -22,6 +29,7 @@ data class Log(
     val bojId: BojId? = null,
     val isSuccess: Boolean? = null, // 풀이 성공 여부 (null: 미제출, true: 성공, false: 실패)
     @CreatedDate
+    @Indexed
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val aiReview: AiReview? = null,
     val aiReviewStatus: AiReviewStatus? = null,
@@ -44,5 +52,4 @@ data class Log(
         )
     }
 }
-
 

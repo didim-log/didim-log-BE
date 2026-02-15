@@ -9,6 +9,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
@@ -70,7 +71,17 @@ class RetrospectiveService(
             solvedCategory = solvedCategory,
             solveTime = solveTime
         )
-        return retrospectiveRepository.save(newRetrospective)
+        return try {
+            retrospectiveRepository.save(newRetrospective)
+        } catch (_: DuplicateKeyException) {
+            // 동시 요청으로 유니크 인덱스 충돌이 난 경우 기존 문서를 다시 조회해 update 경로로 수렴시킨다.
+            val concurrentRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
+                ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "중복 회고 생성이 감지되었습니다.")
+            val updatedRetrospective = concurrentRetrospective
+                .updateContent(content, summary)
+                .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
+            retrospectiveRepository.save(updatedRetrospective)
+        }
     }
 
     /**
