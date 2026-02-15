@@ -487,7 +487,6 @@ Content-Type: application/json
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
 | DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `204 No Content` (응답 본문 없음) | None |
-| GET | `/api/v1/retrospectives/template` | 문제 정보를 바탕으로 회고 작성용 마크다운 템플릿을 생성합니다. resultType(SUCCESS/FAIL)에 따라 다른 템플릿이 생성됩니다. | **Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br>- `resultType` (ProblemResult, required): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - SUCCESS: 성공 템플릿 (핵심 접근, 시간/공간 복잡도, 개선할 점)<br>  - FAIL/TIME_OVER: 실패 템플릿 (실패 원인, 부족했던 개념, 다음 시도 계획) | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>- `template` (String): 마크다운 형식의 템플릿 문자열 | None |
 
 **예시 요청 (회고 작성 - 성공 케이스):**
 ```http
@@ -616,31 +615,6 @@ DELETE /api/v1/retrospectives/retrospective-123
 ```http
 HTTP/1.1 204 No Content
 ```
-
-**예시 요청 (템플릿 생성 - 성공 케이스):**
-```http
-GET /api/v1/retrospectives/template?problemId=1000&resultType=SUCCESS
-```
-
-**예시 응답 (템플릿 생성 - 성공 케이스):**
-```json
-{
-  "template": "# 🏆 A+B 해결 회고\n\n## 💡 핵심 접근 (Key Idea)\n\n<!-- 여기에 문제 해결의 핵심 접근 방법을 작성하세요 -->\n\n## ⏱️ 시간/공간 복잡도\n\n<!-- 여기에 시간 복잡도와 공간 복잡도를 작성하세요 -->\n\n## ✨ 개선할 점\n\n<!-- 여기에 더 나은 풀이 방법이나 개선할 점을 작성하세요 -->\n"
-}
-```
-
-**예시 요청 (템플릿 생성 - 실패 케이스):**
-```http
-GET /api/v1/retrospectives/template?problemId=1000&resultType=FAIL
-```
-
-**예시 응답 (템플릿 생성 - 실패 케이스):**
-```json
-{
-  "template": "# 💥 A+B 오답 노트\n\n## 🧐 실패 원인 (Why?)\n\n<!-- 여기에 문제를 풀지 못한 원인을 작성하세요 -->\n\n## 📚 부족했던 개념\n\n<!-- 여기에 부족했던 알고리즘 개념이나 자료구조를 작성하세요 -->\n\n## 🔧 다음 시도 계획\n\n<!-- 여기에 다음에 다시 시도할 때의 계획을 작성하세요 -->\n"
-}
-```
-
 
 ---
 
@@ -1284,7 +1258,7 @@ Content-Type: application/json
 회고 템플릿 관리 관련 API를 제공합니다. 사용자는 자신만의 커스텀 템플릿을 생성하고 관리할 수 있으며, 템플릿에 매크로 변수를 사용하여 문제 정보를 동적으로 치환할 수 있습니다.
 
 > 최신 정책: 프론트엔드는 아래 `TemplateController` 엔드포인트만 사용합니다.  
-> `POST /api/v1/retrospectives/template/static` 같은 정적 템플릿 전용 API는 제공하지 않습니다.
+> `/api/v1/retrospectives/template` 및 `POST /api/v1/retrospectives/template/static` 같은 회고 템플릿 전용 API는 제공하지 않습니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
