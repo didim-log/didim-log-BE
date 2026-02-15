@@ -1,9 +1,9 @@
-# DidimLog Backend
-> **한 줄 소개**: 알고리즘 학습 로그, AI 회고, 통계 시각화를 통합한 Kotlin/Spring 기반 백엔드 플랫폼
+# DidimLog Backend API Server
+> **한 줄 소개**: 알고리즘 학습 로그, AI 회고, 통계 시각화를 통합해 성장 피드백을 제공하는 백엔드 서비스
 
 ## 1. 프로젝트 개요 (Overview)
 - **개발 기간**: 2026.02 ~ 진행 중
-- **개발 인원**: 백엔드 중심 개발
+- **개발 인원**: 백엔드 1명
 - **프로젝트 목적**: 문제 풀이 데이터를 구조화하고, AI 분석과 학습 피드백 루프를 서비스 수준으로 운영
 - **GitHub**: https://github.com/didim-log/didim-log-BE.git
 
