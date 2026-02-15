@@ -92,9 +92,11 @@ class RetrospectiveService(
      * @throws IllegalArgumentException 회고를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun getRetrospective(retrospectiveId: String): Retrospective {
-        return retrospectiveRepository.findById(retrospectiveId)
-            .orElseThrow { BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND, "회고를 찾을 수 없습니다. id=$retrospectiveId") }
+    fun getRetrospective(retrospectiveId: String, studentId: String): Retrospective {
+        val retrospective = findRetrospectiveOrThrow(retrospectiveId)
+        val student = getStudent(studentId)
+        validateOwnerOrThrow(retrospective, student)
+        return retrospective
     }
 
     /**
@@ -121,10 +123,7 @@ class RetrospectiveService(
         solvedCategory: String? = null,
         solveTime: String? = null
     ): Retrospective {
-        val retrospective = getRetrospective(retrospectiveId)
-        val student = getStudent(studentId)
-
-        validateOwnerOrThrow(retrospective, student)
+        val retrospective = getRetrospective(retrospectiveId, studentId)
 
         val updatedRetrospective = retrospective
             .updateContent(content, summary)
@@ -143,10 +142,8 @@ class RetrospectiveService(
      */
     @Transactional
     fun deleteRetrospective(retrospectiveId: String, studentId: String): Retrospective {
-        val retrospective = getRetrospective(retrospectiveId)
         val student = getStudent(studentId)
-
-        validateOwnerOrThrow(retrospective, student)
+        val retrospective = getRetrospective(retrospectiveId, studentId)
 
         // 회고 삭제 시 해당 문제의 풀이 기록(Solution)도 함께 삭제
         val problemId = ProblemId(retrospective.problemId)
@@ -190,17 +187,9 @@ class RetrospectiveService(
         return retrospectiveRepository.search(condition, pageable)
     }
 
-    /**
-     * 회고의 북마크 상태를 토글한다.
-     *
-     * @param retrospectiveId 회고 ID
-     * @return 변경된 북마크 상태
-     * @throws IllegalArgumentException 회고를 찾을 수 없는 경우
-     */
     @Transactional
-    fun toggleBookmark(retrospectiveId: String): Boolean {
-        val retrospective = retrospectiveRepository.findById(retrospectiveId)
-            .orElseThrow { BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND, "회고를 찾을 수 없습니다. id=$retrospectiveId") }
+    fun toggleBookmark(retrospectiveId: String, studentId: String): Boolean {
+        val retrospective = getRetrospective(retrospectiveId, studentId)
         
         val updatedRetrospective = retrospective.toggleBookmark()
         retrospectiveRepository.save(updatedRetrospective)
@@ -210,6 +199,11 @@ class RetrospectiveService(
 
     private fun validateProblemExists(problemId: String) {
         findProblemOrThrow(problemId)
+    }
+
+    private fun findRetrospectiveOrThrow(retrospectiveId: String): Retrospective {
+        return retrospectiveRepository.findById(retrospectiveId)
+            .orElseThrow { BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND, "회고를 찾을 수 없습니다. id=$retrospectiveId") }
     }
 
     private fun findProblemOrThrow(problemId: String): Problem {

@@ -482,11 +482,11 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간 (예: "15m 30s")<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID (JWT 토큰에서 자동 추출)<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
-| GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
-| GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
-| POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
-| DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `204 No Content` (응답 본문 없음) | None |
+| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, required): 한 줄 요약<br>  - 유효성: `@NotBlank`, `@Size(max=200)`<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, optional): 풀이 전략 태그 (`@Size(max=50)`)<br>- `solveTime` (String, optional): 풀이 소요 시간 (`@Size(max=50)`) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 회고 소유 학생 ID<br>- `isOwner` (Boolean): 현재 요청 사용자의 소유 여부<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과<br>- `solvedCategory` (String, nullable): 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
+| GET | `/api/v1/retrospectives` | 인증 사용자의 회고 목록을 조회합니다. 키워드, 카테고리, 북마크, 정렬, 페이징 필터를 지원합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br><br>**Query Parameters:**<br>- `keyword` (String, optional): 내용/문제 ID 검색어<br>- `category` (String, optional): 카테고리 필터<br>- `solvedCategory` (String, optional): 풀이 전략 태그(부분 일치)<br>- `isBookmarked` (Boolean, optional): 북마크 필터<br>- `page` (Int, optional, default: 1): `@Min(1)`<br>- `size` (Int, optional, default: 10): `@Min(1)`, `@Max(100)`<br>- `sort` (String, optional): 예 `createdAt,desc` | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>)<br>- `totalElements` (Long)<br>- `totalPages` (Int)<br>- `currentPage` (Int)<br>- `size` (Int)<br>- `hasNext` (Boolean)<br>- `hasPrevious` (Boolean) | JWT Token |
+| GET | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `RetrospectiveResponse` | JWT Token |
+| POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 인증 사용자의 소유 회고 북마크 상태를 토글합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `BookmarkToggleResponse`<br>- `isBookmarked` (Boolean) | JWT Token |
+| DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 삭제합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `204 No Content` | JWT Token |
 
 **예시 요청 (회고 작성 - 성공 케이스):**
 ```http
@@ -532,6 +532,7 @@ Content-Type: application/json
 {
   "id": "retrospective-123",
   "studentId": "student-123",
+  "isOwner": true,
   "problemId": "1000",
   "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
   "summary": "두 수의 합을 구하는 기본 구현 문제",
@@ -575,6 +576,7 @@ GET /api/v1/retrospectives?sort=createdAt,asc&page=1&size=10
     {
       "id": "retrospective-123",
       "studentId": "student-123",
+      "isOwner": true,
       "problemId": "1000",
       "content": "이 문제는 DFS를 사용해서 풀었습니다.",
       "summary": "DFS를 활용한 그래프 탐색 문제",
@@ -597,6 +599,7 @@ GET /api/v1/retrospectives?sort=createdAt,asc&page=1&size=10
 **예시 요청 (북마크 토글):**
 ```http
 POST /api/v1/retrospectives/retrospective-123/bookmark
+Authorization: Bearer <token>
 ```
 
 **예시 응답 (북마크 토글):**
@@ -609,6 +612,7 @@ POST /api/v1/retrospectives/retrospective-123/bookmark
 **예시 요청 (회고 삭제):**
 ```http
 DELETE /api/v1/retrospectives/retrospective-123
+Authorization: Bearer <token>
 ```
 
 **예시 응답 (회고 삭제):**
@@ -797,7 +801,7 @@ GET /api/v1/quotes/random
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/statistics` | 학생의 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 12개월간의 월별 잔디 데이터<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `totalSolvedCount` (Int): 누적 풀이 수<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수 | JWT Token |
+| GET | `/api/v1/statistics` | 인증 사용자의 통계 정보를 조회합니다. 최근 365일 히트맵(회고 생성일 기준), 누적 풀이/회고/실패, 평균 풀이 시간, 성공률, 카테고리/약점 통계를 반환합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 365일 활동 히트맵 (회고 기준)<br>- `totalSolved` (Int): 누적 성공 문제 수(고유 문제 기준)<br>- `totalRetrospectives` (Long): 누적 회고 수<br>- `totalFailures` (Long): 실패/시간초과 회고 수<br>- `averageSolveTime` (Double): 평균 풀이 시간(초)<br>- `successRate` (Double): 성공률(%)<br>- `categoryStats` (List<CategoryStatResponse>): 성공 카테고리 통계<br>- `weaknessStats` (List<CategoryStatResponse>): 실패 카테고리 통계<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식)<br>- `count` (Int): 해당 날짜 문제 수<br>- `problemIds` (List<String>): 해당 날짜 문제 ID 목록 | JWT Token |
 
 **예시 요청:**
 ```http
@@ -811,19 +815,26 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "monthlyHeatmap": [
     {
       "date": "2024-01-15",
-      "count": 3
+      "count": 3,
+      "problemIds": ["1000", "1001", "1002"]
     },
     {
       "date": "2024-01-16",
-      "count": 2
-    },
-    {
-      "date": "2024-01-17",
-      "count": 1
+      "count": 2,
+      "problemIds": ["10869", "2557"]
     }
   ],
-  "categoryDistribution": {},
-  "totalSolvedCount": 150
+  "totalSolved": 150,
+  "totalRetrospectives": 180,
+  "totalFailures": 30,
+  "averageSolveTime": 842.5,
+  "successRate": 83.3,
+  "categoryStats": [
+    { "category": "DP", "count": 42 }
+  ],
+  "weaknessStats": [
+    { "category": "Greedy", "count": 12 }
+  ]
 }
 ```
 

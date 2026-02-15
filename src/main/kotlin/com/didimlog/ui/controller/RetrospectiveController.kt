@@ -112,7 +112,7 @@ class RetrospectiveController(
             solvedCategory = request.solvedCategory,
             solveTime = request.solveTime
         )
-        val response = RetrospectiveResponse.from(retrospective)
+        val response = RetrospectiveResponse.from(retrospective, studentId)
         return ResponseEntity.ok(response)
     }
 
@@ -138,7 +138,7 @@ class RetrospectiveController(
     )
     @GetMapping
     fun getRetrospectives(
-        authentication: Authentication?,
+        authentication: Authentication,
         @Parameter(description = "검색 키워드 (제목 또는 내용)", required = false)
         @RequestParam(required = false)
         keyword: String?,
@@ -155,10 +155,6 @@ class RetrospectiveController(
         @RequestParam(required = false)
         isBookmarked: Boolean?,
 
-        @Parameter(description = "학생 ID (인증된 사용자는 무시되고 자신의 ID가 사용됨)", required = false)
-        @RequestParam(required = false)
-        studentId: String?,
-
         @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
         @RequestParam(defaultValue = "1")
         @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
@@ -174,15 +170,11 @@ class RetrospectiveController(
         @RequestParam(required = false)
         sort: String?
     ): ResponseEntity<RetrospectivePageResponse> {
-        // 인증된 사용자의 경우, 자신의 studentId만 조회 가능하도록 제한
-        if (authentication == null) {
-            val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
-            return ResponseEntity.ok(response)
-        }
-
         val bojId = authentication.name
         val currentStudent = getStudentByBojId(bojId)
-        val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, currentStudent.id, page, size, sort)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
         return ResponseEntity.ok(response)
     }
 
@@ -191,7 +183,7 @@ class RetrospectiveController(
         category: String?,
         solvedCategory: String?,
         isBookmarked: Boolean?,
-        studentId: String?,
+        studentId: String,
         page: Int,
         size: Int,
         sort: String?
@@ -205,7 +197,7 @@ class RetrospectiveController(
             studentId = studentId
         )
         val pageResult = retrospectiveService.searchRetrospectives(condition, pageable)
-        return RetrospectivePageResponse.from(pageResult)
+        return RetrospectivePageResponse.from(pageResult, studentId)
     }
 
     @Operation(
@@ -224,13 +216,19 @@ class RetrospectiveController(
     )
     @GetMapping("/{retrospectiveId}")
     fun getRetrospective(
+        authentication: Authentication,
         @Parameter(description = "회고 ID", required = true)
         @PathVariable
         @NotBlank(message = "회고 ID는 필수입니다.")
         retrospectiveId: String
     ): ResponseEntity<RetrospectiveResponse> {
-        val retrospective = retrospectiveService.getRetrospective(retrospectiveId)
-        val response = RetrospectiveResponse.from(retrospective)
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        val retrospective = retrospectiveService.getRetrospective(retrospectiveId, studentId)
+        val response = RetrospectiveResponse.from(retrospective, studentId)
         return ResponseEntity.ok(response)
     }
 
@@ -250,12 +248,18 @@ class RetrospectiveController(
     )
     @PostMapping("/{retrospectiveId}/bookmark")
     fun toggleBookmark(
+        authentication: Authentication,
         @Parameter(description = "회고 ID", required = true)
         @PathVariable
         @NotBlank(message = "회고 ID는 필수입니다.")
         retrospectiveId: String
     ): ResponseEntity<BookmarkToggleResponse> {
-        val isBookmarked = retrospectiveService.toggleBookmark(retrospectiveId)
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        val isBookmarked = retrospectiveService.toggleBookmark(retrospectiveId, studentId)
         val response = BookmarkToggleResponse(isBookmarked = isBookmarked)
         return ResponseEntity.ok(response)
     }
@@ -407,7 +411,7 @@ class RetrospectiveController(
             solvedCategory = request.solvedCategory,
             solveTime = request.solveTime
         )
-        val response = RetrospectiveResponse.from(retrospective)
+        val response = RetrospectiveResponse.from(retrospective, studentId)
         return ResponseEntity.ok(response)
     }
 }

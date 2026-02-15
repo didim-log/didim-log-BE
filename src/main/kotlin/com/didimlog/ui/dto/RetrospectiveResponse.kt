@@ -9,6 +9,7 @@ import java.time.LocalDateTime
 data class RetrospectiveResponse(
     val id: String, // Retrospective 엔티티의 DB ID (@Id 필드)
     val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
+    val isOwner: Boolean,
     val problemId: String,
     val content: String,
     val summary: String?, // 한 줄 요약
@@ -20,10 +21,11 @@ data class RetrospectiveResponse(
     val solveTime: String? // 풀이 소요 시간
 ) {
     companion object {
-        fun from(retrospective: Retrospective): RetrospectiveResponse {
+        fun from(retrospective: Retrospective, requesterStudentId: String? = null): RetrospectiveResponse {
             return RetrospectiveResponse(
                 id = retrospective.id ?: "",
                 studentId = retrospective.studentId,
+                isOwner = requesterStudentId != null && retrospective.studentId == requesterStudentId,
                 problemId = retrospective.problemId,
                 content = retrospective.content,
                 summary = retrospective.summary,
