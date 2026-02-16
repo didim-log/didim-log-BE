@@ -36,6 +36,7 @@ class ProblemCollectorService(
     companion object {
         private const val METADATA_COLLECT_JOB_KEY_PREFIX = "metadata:collect:job:"
         private const val DETAILS_COLLECT_JOB_KEY_PREFIX = "details:collect:job:"
+        private const val DETAILS_REFRESH_JOB_KEY_PREFIX = "details:refresh:job:"
         private const val LANGUAGE_UPDATE_JOB_KEY_PREFIX = "language:update:job:"
         private const val JOB_TTL_SECONDS = 86400L // 24시간
     }
@@ -258,6 +259,53 @@ class ProblemCollectorService(
             objectMapper.readValue(json, DetailsCollectJobStatus::class.java)
         } catch (e: Exception) {
             log.warn("Failed to deserialize DetailsCollectJobStatus from Redis: jobId=$jobId, error=${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * DB의 기존 문제 상세 정보를 강제로 다시 크롤링(갱신)하는 비동기 작업을 시작한다.
+     * start/end를 지정하면 해당 문제 ID 범위만 갱신한다.
+     *
+     * @param start 시작 문제 ID (nullable)
+     * @param end 종료 문제 ID (nullable)
+     * @return 작업 ID
+     */
+    fun refreshDetailsBatchAsync(start: Int? = null, end: Int? = null): String {
+        val jobId = UUID.randomUUID().toString()
+        val targetProblems = filterProblemsByRange(problemRepository.findAll(), start, end)
+        val totalCount = targetProblems.size
+
+        val status = DetailsCollectJobStatus(
+            jobId = jobId,
+            status = JobStatus.PENDING,
+            totalCount = totalCount,
+            processedCount = 0,
+            successCount = 0,
+            failCount = 0,
+            startedAt = System.currentTimeMillis(),
+            completedAt = null,
+            errorMessage = null
+        )
+        saveJobStatus("$DETAILS_REFRESH_JOB_KEY_PREFIX$jobId", status)
+        refreshDetailsBatchAsyncInternal(jobId, targetProblems)
+        return jobId
+    }
+
+    /**
+     * 문제 상세 정보 재수집(강제 갱신) 작업 상태를 조회한다.
+     *
+     * @param jobId 작업 ID
+     * @return 작업 상태 (작업이 없으면 null)
+     */
+    fun getDetailsRefreshJobStatus(jobId: String): DetailsCollectJobStatus? {
+        val key = "$DETAILS_REFRESH_JOB_KEY_PREFIX$jobId"
+        val json = redisTemplate.opsForValue().get(key) ?: return null
+
+        return try {
+            objectMapper.readValue(json, DetailsCollectJobStatus::class.java)
+        } catch (e: Exception) {
+            log.warn("Failed to deserialize DetailsRefreshJobStatus from Redis: jobId=$jobId, error=${e.message}", e)
             null
         }
     }
@@ -489,6 +537,116 @@ class ProblemCollectorService(
     }
 
     @Async
+    private fun refreshDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
+        val key = "$DETAILS_REFRESH_JOB_KEY_PREFIX$jobId"
+
+        if (targetProblems.isEmpty()) {
+            updateJobStatus<DetailsCollectJobStatus>(key) { current ->
+                current?.copy(
+                    status = JobStatus.COMPLETED,
+                    completedAt = System.currentTimeMillis()
+                )
+            }
+            return
+        }
+
+        var processedCount = 0
+        var successCount = 0
+        var failCount = 0
+
+        try {
+            updateJobStatus<DetailsCollectJobStatus>(key) { current ->
+                current?.copy(status = JobStatus.RUNNING) ?: return@updateJobStatus null
+            }
+
+            for (problem in targetProblems) {
+                try {
+                    val details = bojCrawler.crawlProblemDetails(problem.id.value)
+                    if (details == null) {
+                        failCount++
+                        processedCount++
+                        updateJobStatus<DetailsCollectJobStatus>(key) { current ->
+                            current?.copy(
+                                processedCount = processedCount,
+                                successCount = successCount,
+                                failCount = failCount
+                            )
+                        }
+                        val delay = 2000 + Random.nextInt(2000)
+                        Thread.sleep(delay.toLong())
+                        continue
+                    }
+
+                    val detectedLanguage = ProblemLanguageDetector.detectFromTexts(
+                        listOf(
+                            problem.title,
+                            details.descriptionHtml,
+                            details.inputDescriptionHtml,
+                            details.outputDescriptionHtml,
+                            details.sampleInputs.joinToString("\n"),
+                            details.sampleOutputs.joinToString("\n")
+                        )
+                    )
+                    val nextLanguage = detectedLanguage ?: problem.language
+
+                    val updatedProblem = problem.copy(
+                        descriptionHtml = details.descriptionHtml,
+                        inputDescriptionHtml = details.inputDescriptionHtml,
+                        outputDescriptionHtml = details.outputDescriptionHtml,
+                        sampleInputs = details.sampleInputs,
+                        sampleOutputs = details.sampleOutputs,
+                        language = nextLanguage
+                    )
+                    problemRepository.save(updatedProblem)
+                    successCount++
+                    processedCount++
+
+                    updateJobStatus<DetailsCollectJobStatus>(key) { current ->
+                        current?.copy(
+                            processedCount = processedCount,
+                            successCount = successCount,
+                            failCount = failCount
+                        )
+                    }
+
+                    val delay = 2000 + Random.nextInt(2000)
+                    Thread.sleep(delay.toLong())
+                } catch (e: Exception) {
+                    log.error("Failed to refresh details for problem: problemId=${problem.id.value}, error=${e.message}", e)
+                    failCount++
+                    processedCount++
+                    updateJobStatus<DetailsCollectJobStatus>(key) { current ->
+                        current?.copy(
+                            processedCount = processedCount,
+                            successCount = successCount,
+                            failCount = failCount
+                        )
+                    }
+                }
+            }
+
+            updateJobStatus<DetailsCollectJobStatus>(key) { current ->
+                current?.copy(
+                    status = JobStatus.COMPLETED,
+                    processedCount = processedCount,
+                    successCount = successCount,
+                    failCount = failCount,
+                    completedAt = System.currentTimeMillis()
+                )
+            }
+        } catch (e: Exception) {
+            log.error("Details refresh job failed: jobId=$jobId, error=${e.message}", e)
+            updateJobStatus<DetailsCollectJobStatus>(key) { current ->
+                current?.copy(
+                    status = JobStatus.FAILED,
+                    errorMessage = e.message,
+                    completedAt = System.currentTimeMillis()
+                )
+            }
+        }
+    }
+
+    @Async
     private fun updateLanguageBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         val key = "$LANGUAGE_UPDATE_JOB_KEY_PREFIX$jobId"
 
@@ -596,5 +754,20 @@ class ProblemCollectorService(
 
     private fun solvedAcProblemUrl(problemId: Int): String {
         return "https://www.acmicpc.net/problem/$problemId"
+    }
+
+    private fun filterProblemsByRange(
+        problems: List<Problem>,
+        start: Int?,
+        end: Int?
+    ): List<Problem> {
+        if (start == null || end == null) {
+            return problems
+        }
+
+        return problems.filter { problem ->
+            val numericProblemId = problem.id.value.toIntOrNull() ?: return@filter false
+            numericProblemId in start..end
+        }
     }
 }
