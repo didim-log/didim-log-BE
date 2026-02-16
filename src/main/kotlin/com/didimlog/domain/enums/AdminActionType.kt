@@ -10,6 +10,7 @@ enum class AdminActionType {
     NOTICE_DELETE,
     AI_SERVICE_TOGGLE,
     AI_LIMITS_UPDATE,
+    AI_REVIEW_POLICY_UPDATE,
     USER_DELETE,
     USER_UPDATE,
     QUOTE_CREATE,
@@ -18,7 +19,6 @@ enum class AdminActionType {
     FEEDBACK_DELETE,
     MAINTENANCE_MODE_TOGGLE
 }
-
 
 
 

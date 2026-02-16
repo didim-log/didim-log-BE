@@ -85,7 +85,8 @@ class LogController(
         summary = "AI 한 줄 리뷰 생성/조회",
         description = "로그 엔티티에서 코드와 언어를 자동으로 추출하여 AI 한 줄 리뷰를 생성하거나 조회합니다. " +
                 "캐시가 있으면 즉시 반환하고, 최초 요청은 비동기 작업을 등록한 뒤 202 Accepted를 반환합니다. " +
-                "코드가 2000자를 초과하면 자동으로 잘라서 분석합니다."
+                "코드가 2000자를 초과하면 자동으로 잘라서 분석합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
@@ -97,6 +98,16 @@ class LogController(
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "본인 로그가 아닌 경우 접근 거부",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
                 responseCode = "503",
                 description = "AI 생성 실패 또는 타임아웃",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
@@ -105,11 +116,15 @@ class LogController(
     )
     @PostMapping("/{logId}/ai-review")
     fun requestAiReview(
+        @Parameter(hidden = true)
+        authentication: Authentication?,
         @PathVariable
         @NotBlank(message = "로그 ID는 필수입니다.")
         logId: String
     ): ResponseEntity<AiReviewResponse> {
-        val result = aiReviewService.requestOneLineReviewAsync(logId)
+        val requesterBojId = authentication?.name
+            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        val result = aiReviewService.requestOneLineReviewAsync(logId, requesterBojId)
         val response = AiReviewResponse(
             review = result.review,
             cached = result.cached,
@@ -202,4 +217,3 @@ class LogController(
         )
     }
 }
-

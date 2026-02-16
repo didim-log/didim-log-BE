@@ -7,6 +7,7 @@ import com.didimlog.domain.enums.AdminActionType
 import com.didimlog.global.system.MaintenanceModeService
 import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.ui.dto.AiLimitsUpdateRequest
+import com.didimlog.ui.dto.AiReviewPolicyUpdateRequest
 import com.didimlog.ui.dto.AiStatusResponse
 import com.didimlog.ui.dto.AiStatusUpdateRequest
 import com.didimlog.ui.dto.MaintenanceModeRequest
@@ -158,6 +159,50 @@ class AdminSystemController(
     }
 
     @Operation(
+        summary = "AI 리뷰 요청 정책 업데이트",
+        description = "AI 리뷰 요청 시 BOJ 연동 사용자를 필수로 요구할지 설정합니다. ADMIN 권한이 필요합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "정책 업데이트 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/ai-review-policy")
+    fun updateAiReviewPolicy(
+        @Valid @RequestBody request: AiReviewPolicyUpdateRequest,
+        authentication: Authentication,
+        httpServletRequest: HttpServletRequest
+    ): ResponseEntity<AiStatusResponse> {
+        aiUsageService.setRequireBojForAiReview(request.requireBojForAiReview)
+        val status = aiUsageService.getStatus()
+
+        val adminId = authentication.name
+        val ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+        val action = AdminActionType.AI_REVIEW_POLICY_UPDATE
+        val details = "AI 리뷰 정책 업데이트: requireBojForAiReview=${request.requireBojForAiReview}"
+        adminAuditService.logAction(adminId, action, details, ipAddress)
+
+        return ResponseEntity.ok(createAiStatusResponse(status))
+    }
+
+    @Operation(
         summary = "저장 공간 통계 조회",
         description = "회고 데이터의 저장 공간 사용량 통계를 조회합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
@@ -244,7 +289,8 @@ class AdminSystemController(
             isEnabled = status.isEnabled,
             todayGlobalUsage = status.todayGlobalUsage,
             globalLimit = status.globalLimit,
-            userLimit = status.userLimit
+            userLimit = status.userLimit,
+            requireBojForAiReview = status.requireBojForAiReview
         )
     }
 
@@ -341,4 +387,3 @@ class AdminSystemController(
         return dateTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
     }
 }
-

@@ -44,6 +44,9 @@ class SystemControllerTest {
     private lateinit var maintenanceModeService: MaintenanceModeService
 
     @Autowired
+    private lateinit var aiUsageService: AiUsageService
+
+    @Autowired
     private lateinit var adminAuditService: AdminAuditService
 
     @Autowired
@@ -183,6 +186,32 @@ class SystemControllerTest {
             .andExpect(status().isInternalServerError)
             .andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
     }
+
+    @Test
+    @DisplayName("AI 리뷰 정책 업데이트 시 200 OK 및 정책 값 반환")
+    fun `ai 리뷰 정책 업데이트 성공`() {
+        val request = mapOf("requireBojForAiReview" to true)
+        every { aiUsageService.setRequireBojForAiReview(true) } returns Unit
+        every { aiUsageService.getStatus() } returns AiUsageService.AiStatus(
+            isEnabled = true,
+            todayGlobalUsage = 0,
+            globalLimit = 1000,
+            userLimit = 5,
+            requireBojForAiReview = true
+        )
+
+        mockMvc.perform(
+            post("/api/v1/admin/system/ai-review-policy")
+                .with(csrf())
+                .principal(UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.requireBojForAiReview").value(true))
+
+        verify(exactly = 1) { aiUsageService.setRequireBojForAiReview(true) }
+    }
 }
 
 @DisplayName("PublicSystemController 테스트")
@@ -278,4 +307,3 @@ class PublicSystemControllerTest {
         verify(exactly = 1) { maintenanceModeService.getMaintenanceConfig() }
     }
 }
-

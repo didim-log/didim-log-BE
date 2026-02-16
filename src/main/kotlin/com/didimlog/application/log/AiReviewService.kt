@@ -5,6 +5,7 @@ import com.didimlog.domain.repository.LogRepository
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.AiGenerationTimeoutException
 import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.infra.ai.AiApiClient
 import org.slf4j.LoggerFactory
@@ -56,7 +57,7 @@ class AiReviewService(
     }
 
     @Transactional
-    fun requestOneLineReviewAsync(logId: String): AiReviewResult {
+    fun requestOneLineReviewAsync(logId: String, requesterBojId: String): AiReviewResult {
         val logEntity = findLogOrThrow(logId)
 
         val cachedReview = logEntity.aiReviewTextOrNull()
@@ -75,16 +76,42 @@ class AiReviewService(
             return handleLockNotAcquired(logId, now)
         }
 
-        val userId = logEntity.bojId?.value
         try {
-            checkAvailability(userId)
+            val logOwnerBojId = logEntity.bojId?.value
+            val usageUserId = resolveUsageUserId(requesterBojId, logOwnerBojId)
+            checkAvailability(usageUserId)
+            scheduleAiReviewGeneration(logId, code, logEntity.isSuccess, usageUserId)
         } catch (e: BusinessException) {
             logAiReviewLockRepository.markFailed(logId)
             throw e
         }
 
-        scheduleAiReviewGeneration(logId, code, logEntity.isSuccess, userId)
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
+    }
+
+    private fun resolveUsageUserId(requesterBojId: String, logOwnerBojId: String?): String {
+        if (requesterBojId.isBlank()) {
+            throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        }
+
+        if (logOwnerBojId == null) {
+            if (aiUsageService.isRequireBojForAiReview()) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "BOJ 연동이 완료된 로그에서만 AI 리뷰를 요청할 수 있습니다."
+                )
+            }
+            return requesterBojId
+        }
+
+        if (requesterBojId != logOwnerBojId) {
+            throw BusinessException(
+                ErrorCode.ACCESS_DENIED,
+                "본인이 작성한 로그에 대해서만 AI 리뷰를 요청할 수 있습니다."
+            )
+        }
+
+        return logOwnerBojId
     }
 
     private fun checkAvailability(userId: String?) {

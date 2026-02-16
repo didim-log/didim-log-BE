@@ -14,6 +14,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.core.task.TaskExecutor
@@ -162,11 +163,38 @@ class AiReviewServiceTest {
             review = "ok"
         )
 
-        val result = aiReviewService.requestOneLineReviewAsync(logId)
+        every { aiUsageService.isRequireBojForAiReview() } returns false
+        val result = aiReviewService.requestOneLineReviewAsync(logId, "user123")
 
         assertThat(result.inProgress).isTrue()
         assertThat(result.cached).isFalse()
         verify(exactly = 1) { aiApiClient.requestOneLineReview(any(), any()) }
         verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
+    }
+
+    @Test
+    @DisplayName("비동기 요청 시 다른 사용자의 로그를 요청하면 접근 거부한다")
+    fun `async request forbidden for different owner`() {
+        val logId = "log-6"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("0123456789"),
+            aiReview = null,
+            bojId = com.didimlog.domain.valueobject.BojId("owner123")
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
+        every { lockRepository.markFailed(logId) } returns true
+
+        assertThatThrownBy {
+            aiReviewService.requestOneLineReviewAsync(logId, "attacker")
+        }
+            .isInstanceOf(com.didimlog.global.exception.BusinessException::class.java)
+            .hasMessageContaining("본인이 작성한 로그")
+
+        verify(exactly = 1) { lockRepository.markFailed(logId) }
+        verify { aiApiClient wasNot Called }
     }
 }

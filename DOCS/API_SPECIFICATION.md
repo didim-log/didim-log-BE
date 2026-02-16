@@ -1771,7 +1771,7 @@ JWT 토큰 기반 인증을 지원합니다.
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/logs` | 코딩 로그를 생성합니다. | **Request Body:** `LogCreateRequest`<br>- `title` (String, required)<br>- `content` (String, required, max 5000)<br>- `code` (String, required, max 5000)<br>- `isSuccess` (Boolean, optional) | `LogResponse`<br>- `id` (String) | JWT(Optional) |
-| POST | `/api/v1/logs/{logId}/ai-review` | AI 한 줄 리뷰를 요청합니다. 캐시가 있으면 즉시 `200`, 캐시가 없으면 비동기 작업을 등록하고 `202`를 반환합니다. 동일 API를 다시 호출하면 완료 후 캐시 결과를 받을 수 있습니다. | **Path Variable:** `logId` (String, required) | `AiReviewResponse`<br>- `review` (String)<br>- `cached` (Boolean)<br>- `inProgress` (Boolean) | None |
+| POST | `/api/v1/logs/{logId}/ai-review` | AI 한 줄 리뷰를 요청합니다. 캐시가 있으면 즉시 `200`, 캐시가 없으면 비동기 작업을 등록하고 `202`를 반환합니다. 동일 API를 다시 호출하면 완료 후 캐시 결과를 받을 수 있습니다. | **Path Variable:** `logId` (String, required) | `AiReviewResponse`<br>- `review` (String)<br>- `cached` (Boolean)<br>- `inProgress` (Boolean) | JWT |
 | POST | `/api/v1/logs/{logId}/feedback` | AI 리뷰 피드백(LIKE/DISLIKE)을 저장합니다. | **Path Variable:** `logId` (String, required)<br>**Request Body:** `LogFeedbackRequest`<br>- `status` (LIKE/DISLIKE, required)<br>- `reason` (String, optional) | `{ \"message\": \"피드백이 제출되었습니다.\" }` | JWT |
 | GET | `/api/v1/logs/ai-usage/me` | 내 AI 일일 사용량/잔여량/서비스 활성화 여부를 조회합니다. | 없음 | `AiUsageResponse`<br>- `limit` (Int)<br>- `usage` (Int)<br>- `remaining` (Int)<br>- `isServiceEnabled` (Boolean) | JWT |
 
@@ -1781,13 +1781,21 @@ JWT 토큰 기반 인증을 지원합니다.
 - `202 Accepted`: 리뷰 생성 작업이 접수되어 진행 중 (`cached=false`, `inProgress=true`)
 - `429 Too Many Requests`: 사용자 일일 제한 초과(`AI_USER_LIMIT_EXCEEDED`) 또는 일시적 혼잡(`AI_SERVICE_BUSY`)
 - `503 Service Unavailable`: 전역 제한 초과(`AI_GLOBAL_LIMIT_EXCEEDED`) 또는 서비스 비활성화(`AI_SERVICE_DISABLED`)
+- `403 Forbidden`: 본인 로그가 아닌 경우(`ACCESS_DENIED`)
 
 ### 운영 기본값 (환경 변수로 변경 가능)
 
 - 사용자 일일 제한: 5회 (`AI_CONFIG:LIMIT:USER`)
 - 전역 일일 제한: 1000회 (`AI_CONFIG:LIMIT:GLOBAL`)
+- 로그 `bojId`가 없는 경우 기본적으로 AI 리뷰 요청 차단 (`AI_CONFIG:REQUIRE_BOJ_FOR_AI_REVIEW=true`)
 - AI 호출 타임아웃: connect/read/response 10초 기본값
 - AI 비동기 워커: core 2, max 4, queue 200
+
+### 관리자 정책 제어 API
+
+- `POST /api/v1/admin/system/ai-review-policy`
+  - Request Body: `{"requireBojForAiReview": true|false}`
+  - 설명: `true`면 BOJ 연동이 없는 로그의 AI 리뷰 요청을 차단합니다. (기본값 `true`)
 
 ---
 

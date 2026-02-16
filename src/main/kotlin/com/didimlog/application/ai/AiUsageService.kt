@@ -23,6 +23,7 @@ class AiUsageService(
         private const val CONFIG_GLOBAL_LIMIT = "AI_CONFIG:LIMIT:GLOBAL"
         private const val CONFIG_USER_LIMIT = "AI_CONFIG:LIMIT:USER"
         private const val CONFIG_ENABLED = "AI_SERVICE:ENABLED"
+        private const val CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW = "AI_CONFIG:REQUIRE_BOJ_FOR_AI_REVIEW"
         private const val USAGE_GLOBAL_PREFIX = "AI_USAGE:GLOBAL:"
         private const val USAGE_USER_PREFIX = "AI_USAGE:USER:"
 
@@ -30,6 +31,7 @@ class AiUsageService(
         private const val DEFAULT_GLOBAL_LIMIT = 1000
         private const val DEFAULT_USER_LIMIT = 5
         private const val DEFAULT_ENABLED = true
+        private const val DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW = true
 
         private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
     }
@@ -120,6 +122,16 @@ class AiUsageService(
     }
 
     /**
+     * AI 리뷰 요청 시 BOJ 연동 사용자를 필수로 요구할지 설정합니다.
+     *
+     * @param required true면 BOJ 연동 사용자만 AI 리뷰 요청 가능
+     */
+    fun setRequireBojForAiReview(required: Boolean) {
+        redisTemplate.opsForValue().set(CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW, required.toString())
+        log.info("AI 리뷰 BOJ 연동 필수 정책 변경: required=$required")
+    }
+
+    /**
      * AI 사용량 제한을 업데이트합니다.
      *
      * @param globalLimit 전역 일일 제한
@@ -141,14 +153,24 @@ class AiUsageService(
         val globalLimit = getGlobalLimit()
         val userLimit = getUserLimit()
         val todayGlobalUsage = getTodayGlobalUsage()
+        val requireBojForAiReview = isRequireBojForAiReview()
 
         return AiStatus(
             isEnabled = isEnabled,
             todayGlobalUsage = todayGlobalUsage,
             globalLimit = globalLimit,
             userLimit = userLimit,
+            requireBojForAiReview = requireBojForAiReview,
             todayUserUsage = null // 사용자별 사용량은 사용자 ID가 필요하므로 null
         )
+    }
+
+    /**
+     * AI 리뷰 요청 시 BOJ 연동 사용자를 필수로 요구하는지 조회합니다.
+     */
+    fun isRequireBojForAiReview(): Boolean {
+        val value = redisTemplate.opsForValue().get(CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW)
+        return value?.toBoolean() ?: DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW
     }
 
     /**
@@ -246,8 +268,8 @@ class AiUsageService(
         val todayGlobalUsage: Int,
         val globalLimit: Int,
         val userLimit: Int,
+        val requireBojForAiReview: Boolean = DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW,
         val todayUserUsage: Int? = null
     )
 }
-
 

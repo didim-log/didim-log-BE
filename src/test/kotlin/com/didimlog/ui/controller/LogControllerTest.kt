@@ -150,14 +150,23 @@ class LogControllerTest {
     @DisplayName("AI 리뷰 생성 시작 시 202 Accepted 를 반환한다")
     fun `ai 리뷰 생성 시작`() {
         every {
-            aiReviewService.requestOneLineReviewAsync("log-1")
+            aiReviewService.requestOneLineReviewAsync("log-1", "user123")
         } returns com.didimlog.application.log.AiReviewResult(
             review = "AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요.",
             cached = false,
             inProgress = true
         )
 
-        mockMvc.perform(post("/api/v1/logs/log-1/ai-review"))
+        val authentication = UsernamePasswordAuthenticationToken(
+            "user123",
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_USER"))
+        )
+
+        mockMvc.perform(
+            post("/api/v1/logs/log-1/ai-review")
+                .principal(authentication)
+        )
             .andExpect(status().isAccepted)
             .andExpect(jsonPath("$.cached").value(false))
             .andExpect(jsonPath("$.inProgress").value(true))
