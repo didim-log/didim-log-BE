@@ -412,7 +412,8 @@ AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_STANDARDS.md` 기반으�
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/problems/recommend` | 학생의 현재 티어보다 한 단계 높은 난이도(UserLevel + 1 ~ +2)의 문제 중, 아직 풀지 않은 문제를 추천합니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 1): 추천할 문제 개수<br>  - 유효성: `@Positive` (1 이상)<br>- `category` (String, optional): 문제 카테고리 필터<br>  - 예: "IMPLEMENTATION", "GRAPH", "DP" 등<br>  - 미지정 시 모든 카테고리에서 추천 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 문제 카테고리<br>- `difficulty` (String): 난이도 티어명 (예: "BRONZE", "SILVER")<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL | JWT Token |
+| GET | `/api/v1/problems/recommend` | 학생의 현재 티어 범위(-2~+2)에서 아직 풀지 않은 문제를 추천합니다. `category`/`language` 필터를 지원하며, `language=ko`는 본문/입출력/제목 기반 strict 필터를 적용합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)`, `@Max(50)`<br>- `category` (String, optional): 문제 카테고리 필터<br>  - 축약형/Enum/영문 정식명 모두 허용 (예: `BFS`, `IMPLEMENTATION`, `Graph Theory`)<br>- `language` (String, optional): 문제 언어 필터 (`ko` 또는 `en`)<br>  - `ko`: 영어 본문 문제를 제외하는 strict 필터 적용 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 대표 카테고리(영문 표준명)<br>- `primaryCategory` (String): 프론트 표시용 대표 전략 카테고리(Enum 이름, 예: `BFS`, `DP`)<br>- `secondaryCategories` (List<String>): 보조 전략 카테고리(Enum 이름 리스트)<br>- `normalizedTags` (List<String>): 정규화된 태그(Enum 이름 리스트)<br>- `difficulty` (String): 난이도 티어명 (예: `BRONZE`, `SILVER`)<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 언어 (`ko`/`en`) | JWT Token |
+| GET | `/api/v1/problems/{problemId}` | 문제 상세 정보를 조회합니다. DB에 상세 정보가 없으면 크롤링으로 보강 후 반환합니다. | **Path Variables:**<br>- `problemId` (Long, required): 문제 ID (`@Positive`) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 대표 카테고리(영문 표준명)<br>- `primaryCategory` (String): 대표 전략 카테고리(Enum 이름)<br>- `secondaryCategories` (List<String>): 보조 전략 카테고리(Enum 이름 리스트)<br>- `normalizedTags` (List<String>): 정규화된 태그(Enum 이름 리스트)<br>- `difficulty` (String): 난이도 티어명<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력<br>- `tags` (List<String>): 원본 태그(영문 표준명)<br>- `language` (String): 문제 언어 (`ko`/`en`) | None |
 
 **예시 요청 (기본 추천):**
 ```http
@@ -426,26 +427,67 @@ GET /api/v1/problems/recommend?count=5&category=IMPLEMENTATION
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
+**예시 요청 (한국어 strict 필터):**
+```http
+GET /api/v1/problems/recommend?category=DFS&language=ko&count=10
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
 **예시 응답:**
 ```json
 [
   {
     "id": "1000",
     "title": "A+B",
-    "category": "IMPLEMENTATION",
+    "category": "Implementation",
+    "primaryCategory": "IMPLEMENTATION",
+    "secondaryCategories": [],
+    "normalizedTags": ["IMPLEMENTATION"],
     "difficulty": "BRONZE",
     "difficultyLevel": 3,
-    "url": "https://www.acmicpc.net/problem/1000"
+    "url": "https://www.acmicpc.net/problem/1000",
+    "language": "ko"
   },
   {
     "id": "1001",
     "title": "A-B",
-    "category": "IMPLEMENTATION",
+    "category": "Implementation",
+    "primaryCategory": "IMPLEMENTATION",
+    "secondaryCategories": [],
+    "normalizedTags": ["IMPLEMENTATION"],
     "difficulty": "BRONZE",
     "difficultyLevel": 3,
-    "url": "https://www.acmicpc.net/problem/1001"
+    "url": "https://www.acmicpc.net/problem/1001",
+    "language": "ko"
   }
 ]
+```
+
+**예시 요청 (문제 상세 조회):**
+```http
+GET /api/v1/problems/1000
+```
+
+**예시 응답 (문제 상세 조회):**
+```json
+{
+  "id": "1000",
+  "title": "A+B",
+  "category": "Implementation",
+  "primaryCategory": "IMPLEMENTATION",
+  "secondaryCategories": [],
+  "normalizedTags": ["IMPLEMENTATION"],
+  "difficulty": "BRONZE",
+  "difficultyLevel": 3,
+  "url": "https://www.acmicpc.net/problem/1000",
+  "descriptionHtml": "<p>두 정수 A와 B를 입력받은 다음...</p>",
+  "inputDescriptionHtml": "<p>첫째 줄에 A와 B가 주어진다.</p>",
+  "outputDescriptionHtml": "<p>첫째 줄에 A+B를 출력한다.</p>",
+  "sampleInputs": ["1 2"],
+  "sampleOutputs": ["3"],
+  "tags": ["Implementation"],
+  "language": "ko"
+}
 ```
 
 ---
@@ -491,7 +533,7 @@ Content-Type: application/json
 | POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, required): 한 줄 요약<br>  - 유효성: `@NotBlank`, `@Size(max=200)`<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, optional): 풀이 전략 태그 (`@Size(max=50)`)<br>- `solveTime` (String, optional): 풀이 소요 시간 (`@Size(max=50)`) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 회고 소유 학생 ID<br>- `isOwner` (Boolean): 현재 요청 사용자의 소유 여부<br>- `problemId` (String): 문제 ID<br>- `problemTitle` (String, nullable): 문제 제목 (리스트/카드 렌더링 최적화용)<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과<br>- `solvedCategory` (String, nullable): 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
 | GET | `/api/v1/retrospectives` | 인증 사용자의 회고 목록을 조회합니다. 키워드, 카테고리, 북마크, 정렬, 페이징 필터를 지원합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br><br>**Query Parameters:**<br>- `keyword` (String, optional): 내용/문제 ID 검색어<br>- `category` (String, optional): 카테고리 필터<br>- `solvedCategory` (String, optional): 풀이 전략 태그(부분 일치)<br>- `isBookmarked` (Boolean, optional): 북마크 필터<br>- `page` (Int, optional, default: 1): `@Min(1)`<br>- `size` (Int, optional, default: 10): `@Min(1)`, `@Max(100)`<br>- `sort` (String, optional): 예 `createdAt,desc` | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>)<br>- `totalElements` (Long)<br>- `totalPages` (Int)<br>- `currentPage` (Int)<br>- `size` (Int)<br>- `hasNext` (Boolean)<br>- `hasPrevious` (Boolean) | JWT Token |
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `RetrospectiveResponse` | JWT Token |
-| GET | `/api/v1/retrospectives/template` | 결과 타입에 맞는 기본 템플릿을 렌더링해 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID (`@Positive`)<br>- `resultType` (ProblemResult, required): SUCCESS/FAIL/TIME_OVER | `RetrospectiveTemplateResponse`<br>- `template` (String) | JWT Token |
+| GET | `/api/v1/retrospectives/template` | 결과 타입에 맞는 기본 템플릿을 렌더링해 조회합니다. 서버 기본 선택 규칙: `SUCCESS`는 성공 기본 템플릿, `FAIL`/`TIME_OVER`는 실패 기본 템플릿을 사용하며, 사용자 기본값이 없거나 깨진 경우 시스템 기본 템플릿으로 fallback 합니다. 문제 메타 조회 실패 시에도 최소 문제 정보로 렌더링된 문자열을 반환합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID (`@Positive`)<br>- `resultType` (ProblemResult, required): SUCCESS/FAIL/TIME_OVER | `RetrospectiveTemplateResponse`<br>- `template` (String) | JWT Token |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 인증 사용자의 소유 회고 북마크 상태를 토글합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `BookmarkToggleResponse`<br>- `isBookmarked` (Boolean) | JWT Token |
 | DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 삭제합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `204 No Content` | JWT Token |
 
@@ -1136,7 +1178,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## ProblemCollectorController
 
-문제 데이터 수집 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다. 모든 작업은 비동기로 실행되며, 작업 ID를 통해 작업 상태를 조회할 수 있습니다.
+문제 데이터 수집 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다. 모든 작업은 비동기로 실행되며, 작업 ID를 통해 작업 상태를 조회할 수 있습니다. 상태 조회 응답은 항상 `totalCount`, `processedCount`, `progressPercentage`를 포함하며 `processedCount <= totalCount`를 보장합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
@@ -1145,7 +1187,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | GET | `/api/v1/admin/problems/collect-metadata/status/{jobId}` | 문제 메타데이터 수집 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `MetadataCollectJobStatus`<br><br>**MetadataCollectJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startProblemId` (Int): 시작 문제 ID<br>- `endProblemId` (Int): 종료 문제 ID<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 비동기로 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 상세 정보 크롤링 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용) | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/collect-details/status/{jobId}` | 문제 상세 정보 수집 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `DetailsCollectJobStatus`<br><br>**DetailsCollectJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/update-language` | DB에서 언어 정보가 null인 문제들의 언어 정보를 비동기로 업데이트합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 언어 정보 최신화 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용) | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/update-language` | DB의 전체 문제를 대상으로 본문/입출력/제목 기반 언어 판별을 재수행하여 언어 정보를 보정합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 언어 정보 최신화 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용) | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/update-language/status/{jobId}` | 언어 정보 업데이트 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `LanguageUpdateJobStatus`<br><br>**LanguageUpdateJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
 
 **예시 요청 (메타데이터 수집):**
@@ -1282,9 +1324,10 @@ Content-Type: application/json
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/templates` | 인증된 사용자의 커스텀 템플릿과 시스템 기본 템플릿 목록을 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateResponse>`<br><br>**TemplateResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `content` (String): 템플릿 내용 (마크다운 원본)<br>- `type` (String): 템플릿 타입 ("SYSTEM", "CUSTOM")<br>- `isDefaultSuccess` (Boolean): 성공용 기본 템플릿 여부<br>- `isDefaultFail` (Boolean): 실패용 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
+| GET | `/api/v1/templates/summaries` | 템플릿 목록 요약을 조회합니다(content 제외). 항상 시스템 템플릿 + 사용자 커스텀 템플릿을 함께 반환하며, `isDefaultSuccess`/`isDefaultFail`은 사용자 기본값이 비정상인 경우에도 시스템 fallback 기준으로 계산됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateSummaryResponse>`<br><br>**TemplateSummaryResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `type` (String): 템플릿 타입 (`SYSTEM`, `CUSTOM`)<br>- `isDefaultSuccess` (Boolean): 성공 기본 템플릿 여부<br>- `isDefaultFail` (Boolean): 실패 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
 | GET | `/api/v1/templates/presets` | 커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다. 프론트엔드에서 섹션 추가 시 가이드 질문(코칭 질문)을 함께 넣을지 선택할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplatePresetResponse>`<br><br>**TemplatePresetResponse 구조:**<br>- `title` (String): 섹션 제목 (버튼에 표시될 이름, 예: "💡 핵심 로직")<br>- `guide` (String): 섹션 작성 가이드 (툴팁용, 예: "이 문제의 가장 중요한 점화식이나 접근법은 무엇인가요?")<br>- `category` (String): 섹션 카테고리 ("SUCCESS", "FAIL", "COMMON")<br>- `markdownContent` (String): 삽입될 마크다운 내용 (이모지 포함, 예: "## 💡 핵심 로직\n\n")<br>- `contentGuide` (String, nullable): 본문에 삽입될 가이드 질문(코칭 질문) (선택적으로 사용) | JWT Token |
-| POST | `/api/v1/templates/preview` | 템플릿을 저장하지 않고 미리보기로 렌더링합니다. 매크로 변수를 실제 문제 데이터로 치환하여 결과를 반환합니다. 템플릿 작성 중 매크로가 올바르게 변환되는지 확인할 수 있습니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환됩니다. `programmingLanguage`가 제공되지 않으면 `code` 필드에서 CodeLanguageDetector를 사용하여 자동 감지됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplatePreviewRequest`<br>- `templateContent` (String, required): 미리보기할 템플릿 내용<br>  - 유효성: `@NotBlank`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 필드에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
-| POST | `/api/v1/templates/{id}/render` | 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 긴 코드 payload 전송을 위해 POST body를 기본 경로로 사용합니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환됩니다. `programmingLanguage`가 제공되지 않으면 `code` 필드에서 CodeLanguageDetector를 사용하여 자동 감지됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Request Body:**<br>`TemplateRenderRequest`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 필드에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
+| POST | `/api/v1/templates/preview` | 템플릿을 저장하지 않고 미리보기로 렌더링합니다. 매크로 변수를 실제 문제 데이터로 치환합니다. 문제 메타가 DB에 없는 경우에도 최소 문제 정보로 fallback 렌더링하여 빈 응답/500을 방지합니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환되며, `programmingLanguage`가 없으면 `code`에서 자동 감지합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplatePreviewRequest`<br>- `templateContent` (String, required): 미리보기할 템플릿 내용<br>  - 유효성: `@NotBlank`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 필드에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
+| POST | `/api/v1/templates/{id}/render` | 저장된 템플릿을 문제 데이터와 결합해 렌더링합니다. 긴 코드 payload 전송을 위해 POST body를 기본 경로로 사용합니다. 렌더링 경로는 외부 API를 직접 호출하지 않고 DB 우선 + fallback 문제 정보로 처리하여 지연/실패를 줄입니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Request Body:**<br>`TemplateRenderRequest`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 필드에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
 | GET | `/api/v1/templates/{id}/render` | (레거시 호환) 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 신규 클라이언트는 POST 사용을 권장합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional)<br>- `code` (String, optional) | `TemplateRenderResponse` | JWT Token |
 | POST | `/api/v1/templates` | 새로운 커스텀 템플릿을 생성합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용 (마크다운, 매크로 포함)<br>  - 유효성: `@NotBlank`, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
 | PUT | `/api/v1/templates/{id}` | 커스텀 템플릿을 수정합니다. 시스템 템플릿은 수정할 수 없습니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용<br>  - 유효성: `@NotBlank`, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
@@ -1319,6 +1362,12 @@ Content-Type: application/json
 **예시 요청 (템플릿 목록 조회):**
 ```http
 GET /api/v1/templates
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 요청 (템플릿 요약 목록 조회):**
+```http
+GET /api/v1/templates/summaries
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 

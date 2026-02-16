@@ -95,6 +95,15 @@ class ProblemService(
         return createProblemFromSolvedAc(problemId.toInt(), includeDetails = false)
     }
 
+    /**
+     * DB에 저장된 문제 메타데이터만 조회한다.
+     * 외부 API 호출/크롤링은 수행하지 않는다.
+     */
+    fun getProblemMetaIfExists(problemId: Long): Problem? {
+        val problemIdVo = ProblemId(problemId.toString())
+        return problemRepository.findById(problemIdVo.value).orElse(null)
+    }
+
     private fun createProblemFromSolvedAc(problemId: Int, includeDetails: Boolean): Problem {
         val response = solvedAcClient.fetchProblem(problemId)
         val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)

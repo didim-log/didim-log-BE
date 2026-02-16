@@ -519,6 +519,43 @@ class TemplateServiceTest {
     }
 
     @Test
+    @DisplayName("사용자 기본 템플릿 ID가 유효하지 않으면 시스템 기본 템플릿으로 fallback 한다")
+    fun `기본 템플릿 조회 - 깨진 사용자 기본 템플릿 ID fallback`() {
+        // given
+        val brokenTemplateId = "missing-template"
+        val systemTemplate = Template(
+            id = "system-success",
+            studentId = null,
+            title = "Simple(요약)",
+            content = "시스템 내용",
+            type = TemplateOwnershipType.SYSTEM,
+            isDefaultSuccess = true,
+            isDefaultFail = false
+        )
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            currentTier = Tier.BRONZE,
+            defaultSuccessTemplateId = brokenTemplateId
+        )
+
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { templateRepository.findById(brokenTemplateId) } returns Optional.empty()
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns listOf(systemTemplate)
+
+        // when
+        val result = service.getDefaultTemplate(TemplateCategory.SUCCESS, studentId)
+
+        // then
+        assertThat(result).isEqualTo(systemTemplate)
+        verify { studentRepository.findById(studentId) }
+        verify { templateRepository.findById(brokenTemplateId) }
+        verify { templateRepository.findByType(TemplateOwnershipType.SYSTEM) }
+    }
+
+    @Test
     @DisplayName("템플릿을 렌더링한다")
     fun `템플릿 렌더링`() {
         // given
@@ -563,7 +600,7 @@ class TemplateServiceTest {
         )
         
         every { templateRepository.findById(templateId) } returns Optional.of(template)
-        every { problemService.getProblemMeta(problemId) } returns problem
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
         every { studentRepository.findById(studentId) } returns Optional.of(student)
 
         // when
@@ -577,8 +614,49 @@ class TemplateServiceTest {
         assertThat(result).contains("링크: https://www.acmicpc.net/problem/1000")
         assertThat(result).contains("소요 시간: 3분 14초")
         verify { templateRepository.findById(templateId) }
-        verify { problemService.getProblemMeta(problemId) }
+        verify { problemService.getProblemMetaIfExists(problemId) }
         verify { studentRepository.findById(studentId) }
+    }
+
+    @Test
+    @DisplayName("문제 메타가 없어도 템플릿 렌더링은 fallback 문제 정보로 성공한다")
+    fun `템플릿 렌더링 - 문제 메타 fallback`() {
+        // given
+        val problemId = 1000L
+        val template = Template(
+            id = templateId,
+            studentId = studentId,
+            title = "템플릿",
+            content = """
+                문제 ID: {{problemId}}
+                제목: {{problemTitle}}
+                링크: {{link}}
+            """.trimIndent(),
+            type = TemplateOwnershipType.CUSTOM,
+            isDefaultSuccess = false,
+            isDefaultFail = false
+        )
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            currentTier = Tier.BRONZE,
+            solutions = Solutions()
+        )
+
+        every { templateRepository.findById(templateId) } returns Optional.of(template)
+        every { problemService.getProblemMetaIfExists(problemId) } returns null
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+
+        // when
+        val result = service.renderTemplate(templateId, problemId, studentId)
+
+        // then
+        assertThat(result).contains("문제 ID: 1000")
+        assertThat(result).contains("제목: 문제 1000")
+        assertThat(result).contains("링크: https://www.acmicpc.net/problem/1000")
+        verify { problemService.getProblemMetaIfExists(problemId) }
     }
 
     @Test
@@ -617,7 +695,7 @@ class TemplateServiceTest {
         )
         
         every { templateRepository.findById(templateId) } returns Optional.of(template)
-        every { problemService.getProblemMeta(problemId) } returns problem
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
         every { studentRepository.findById(studentId) } returns Optional.of(student)
 
         // when
@@ -627,7 +705,7 @@ class TemplateServiceTest {
         assertThat(result).contains("문제 ID: 1000")
         assertThat(result).contains("소요 시간: -")
         verify { templateRepository.findById(templateId) }
-        verify { problemService.getProblemMeta(problemId) }
+        verify { problemService.getProblemMetaIfExists(problemId) }
         verify { studentRepository.findById(studentId) }
     }
 
@@ -653,7 +731,7 @@ class TemplateServiceTest {
             language = "ko"
         )
         
-        every { problemService.getProblemMeta(problemId) } returns problem
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
 
         // when
         val result = service.previewTemplate(templateContent, problemId)
@@ -664,7 +742,7 @@ class TemplateServiceTest {
         assertThat(result).contains("티어: BRONZE")
         assertThat(result).contains("언어: KO")
         assertThat(result).contains("링크: https://www.acmicpc.net/problem/1000")
-        verify { problemService.getProblemMeta(problemId) }
+        verify { problemService.getProblemMetaIfExists(problemId) }
         verify(exactly = 0) { templateRepository.findById(any()) }
     }
 
@@ -696,7 +774,7 @@ class TemplateServiceTest {
             language = "ko"
         )
         
-        every { problemService.getProblemMeta(problemId) } returns problem
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
 
         // when
         val result = service.previewTemplate(templateContent, problemId, "KOTLIN", null)
@@ -705,7 +783,7 @@ class TemplateServiceTest {
         assertThat(result).contains("```kotlin")
         assertThat(result).contains("문제 언어: KO")
         assertThat(result).doesNotContain("```KO")
-        verify { problemService.getProblemMeta(problemId) }
+        verify { problemService.getProblemMetaIfExists(problemId) }
     }
 
     @Test
@@ -736,14 +814,14 @@ class TemplateServiceTest {
             language = "ko"
         )
         
-        every { problemService.getProblemMeta(problemId) } returns problem
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
 
         // when
         val result = service.previewTemplate(templateContent, problemId, null, kotlinCode)
 
         // then
         assertThat(result).contains("```kotlin")
-        verify { problemService.getProblemMeta(problemId) }
+        verify { problemService.getProblemMetaIfExists(problemId) }
     }
 
     @Test
@@ -766,14 +844,14 @@ class TemplateServiceTest {
             language = "ko"
         )
         
-        every { problemService.getProblemMeta(problemId) } returns problem
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
 
         // when
         val result = service.previewTemplate(templateContent, problemId, null, null)
 
         // then
         assertThat(result).contains("```text")
-        verify { problemService.getProblemMeta(problemId) }
+        verify { problemService.getProblemMetaIfExists(problemId) }
     }
 
     @Test
@@ -796,13 +874,13 @@ class TemplateServiceTest {
             language = "ko"
         )
         
-        every { problemService.getProblemMeta(problemId) } returns problem
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
 
         // when
         val result = service.previewTemplate(templateContent, problemId, "INVALID_LANG", null)
 
         // then
         assertThat(result).contains("```text")
-        verify { problemService.getProblemMeta(problemId) }
+        verify { problemService.getProblemMetaIfExists(problemId) }
     }
 }

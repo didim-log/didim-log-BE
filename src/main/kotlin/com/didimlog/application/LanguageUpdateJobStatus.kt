@@ -15,16 +15,19 @@ data class LanguageUpdateJobStatus(
     val errorMessage: String? = null
 ) {
     val progressPercentage: Int
-        get() = if (totalCount > 0) {
-            (processedCount * 100 / totalCount).coerceAtMost(100)
-        } else {
-            0
+        get() {
+            val safeTotal = totalCount.coerceAtLeast(0)
+            val safeProcessed = processedCount.coerceIn(0, safeTotal)
+            if (safeTotal == 0) {
+                return if (status == JobStatus.COMPLETED) 100 else 0
+            }
+            return (safeProcessed * 100 / safeTotal).coerceIn(0, 100)
         }
 
     val estimatedRemainingSeconds: Long?
-        get() = if (status == JobStatus.RUNNING && processedCount > 0) {
+        get() = if (status == JobStatus.RUNNING && processedCount > 0 && totalCount > 0) {
             val avgTimePerProblem = 3L // 평균 3초 (2~4초 범위)
-            val remaining = totalCount - processedCount
+            val remaining = (totalCount - processedCount).coerceAtLeast(0)
             remaining * avgTimePerProblem
         } else {
             null
@@ -37,4 +40,3 @@ enum class JobStatus {
     COMPLETED,  // 완료
     FAILED      // 실패
 }
-

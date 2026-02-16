@@ -226,7 +226,7 @@ class ProblemCollectorController(
 
     @Operation(
         summary = "문제 언어 정보 최신화 (비동기)",
-        description = "DB에서 언어 정보가 null인 문제들의 언어 정보를 비동기로 업데이트합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
+        description = "DB의 전체 문제를 대상으로 본문/입출력/제목 기반 언어 판별을 다시 수행해 언어 정보를 보정합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(

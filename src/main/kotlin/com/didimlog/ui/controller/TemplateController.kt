@@ -152,11 +152,6 @@ class TemplateController(
                 responseCode = "401",
                 description = "인증 필요",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            ),
-            ApiResponse(
-                responseCode = "404",
-                description = "문제를 찾을 수 없음",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
     )
@@ -194,7 +189,7 @@ class TemplateController(
             ),
             ApiResponse(
                 responseCode = "404",
-                description = "템플릿 또는 문제를 찾을 수 없음",
+                description = "템플릿을 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -242,7 +237,7 @@ class TemplateController(
             ),
             ApiResponse(
                 responseCode = "404",
-                description = "템플릿 또는 문제를 찾을 수 없음",
+                description = "템플릿을 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]

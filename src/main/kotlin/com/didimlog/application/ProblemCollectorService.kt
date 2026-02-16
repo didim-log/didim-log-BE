@@ -1,5 +1,6 @@
 package com.didimlog.application
 
+import com.didimlog.application.utils.ProblemLanguageDetector
 import com.didimlog.domain.Problem
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.valueobject.ProblemId
@@ -238,7 +239,7 @@ class ProblemCollectorService(
             errorMessage = null
         )
         saveJobStatus("$DETAILS_COLLECT_JOB_KEY_PREFIX$jobId", status)
-        collectDetailsBatchAsyncInternal(jobId)
+        collectDetailsBatchAsyncInternal(jobId, problemsWithoutDetails)
         return jobId
     }
 
@@ -269,8 +270,8 @@ class ProblemCollectorService(
      */
     fun updateLanguageBatchAsync(): String {
         val jobId = UUID.randomUUID().toString()
-        val problemsWithoutLanguage = problemRepository.findByLanguageIsNull()
-        val totalCount = problemsWithoutLanguage.size
+        val allProblems = problemRepository.findAll()
+        val totalCount = allProblems.size
 
         val status = LanguageUpdateJobStatus(
             jobId = jobId,
@@ -284,7 +285,7 @@ class ProblemCollectorService(
             errorMessage = null
         )
         saveJobStatus("$LANGUAGE_UPDATE_JOB_KEY_PREFIX$jobId", status)
-        updateLanguageBatchAsyncInternal(jobId)
+        updateLanguageBatchAsyncInternal(jobId, allProblems)
         return jobId
     }
 
@@ -396,11 +397,10 @@ class ProblemCollectorService(
     }
 
     @Async
-    private fun collectDetailsBatchAsyncInternal(jobId: String) {
+    private fun collectDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         val key = "$DETAILS_COLLECT_JOB_KEY_PREFIX$jobId"
-        val problemsWithoutDetails = problemRepository.findByDescriptionHtmlIsNull()
 
-        if (problemsWithoutDetails.isEmpty()) {
+        if (targetProblems.isEmpty()) {
             updateJobStatus<DetailsCollectJobStatus>(key) { current ->
                 current?.copy(
                     status = JobStatus.COMPLETED,
@@ -419,7 +419,7 @@ class ProblemCollectorService(
                 current?.copy(status = JobStatus.RUNNING) ?: return@updateJobStatus null
             }
 
-            for (problem in problemsWithoutDetails) {
+            for (problem in targetProblems) {
                 try {
                     val details = bojCrawler.crawlProblemDetails(problem.id.value)
 
@@ -489,11 +489,10 @@ class ProblemCollectorService(
     }
 
     @Async
-    private fun updateLanguageBatchAsyncInternal(jobId: String) {
+    private fun updateLanguageBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         val key = "$LANGUAGE_UPDATE_JOB_KEY_PREFIX$jobId"
-        val problemsWithoutLanguage = problemRepository.findByLanguageIsNull()
 
-        if (problemsWithoutLanguage.isEmpty()) {
+        if (targetProblems.isEmpty()) {
             updateJobStatus<LanguageUpdateJobStatus>(key) { current ->
                 current?.copy(
                     status = JobStatus.COMPLETED,
@@ -512,11 +511,16 @@ class ProblemCollectorService(
                 current?.copy(status = JobStatus.RUNNING) ?: return@updateJobStatus null
             }
 
-            for (problem in problemsWithoutLanguage) {
+            for (problem in targetProblems) {
                 try {
-                    // 언어 정보 업데이트 로직 (간단히 "ko"로 설정)
-                    val updatedProblem = problem.copy(language = "ko")
-                    problemRepository.save(updatedProblem)
+                    val detectedLanguage = ProblemLanguageDetector.detect(problem)
+                    val nextLanguage = detectedLanguage ?: problem.language
+
+                    if (!problem.language.equals(nextLanguage, ignoreCase = true)) {
+                        val updatedProblem = problem.copy(language = nextLanguage)
+                        problemRepository.save(updatedProblem)
+                    }
+
                     successCount++
                     processedCount++
 

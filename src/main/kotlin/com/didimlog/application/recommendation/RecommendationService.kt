@@ -1,5 +1,6 @@
 package com.didimlog.application.recommendation
 
+import com.didimlog.application.utils.ProblemLanguageDetector
 import com.didimlog.application.utils.TagUtils
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
@@ -109,10 +110,48 @@ class RecommendationService(
         
         // language 필터 적용
         return if (language != null) {
-            problems.filter { it.language == language }
+            applyLanguageFilter(problems, language)
         } else {
             problems
         }
+    }
+
+    /**
+     * 언어 필터를 적용한다.
+     *
+     * language=ko 인 경우에는 저장된 language 필드뿐 아니라 본문/제목 기반 판별 결과를 함께 확인해
+     * 오판정된 영어 문제가 내려가지 않도록 strict 하게 필터링한다.
+     */
+    private fun applyLanguageFilter(problems: List<Problem>, language: String): List<Problem> {
+        val normalizedLanguage = language.trim().lowercase()
+
+        return when (normalizedLanguage) {
+            "ko" -> problems.filter { isStrictKoreanProblem(it) }
+            "en" -> problems.filter { isStrictEnglishProblem(it) }
+            else -> problems.filter { it.language.equals(normalizedLanguage, ignoreCase = true) }
+        }
+    }
+
+    private fun isStrictKoreanProblem(problem: Problem): Boolean {
+        val detected = ProblemLanguageDetector.detect(problem)
+        if (detected == "en") {
+            return false
+        }
+        if (detected == "ko") {
+            return true
+        }
+        return problem.language.equals("ko", ignoreCase = true)
+    }
+
+    private fun isStrictEnglishProblem(problem: Problem): Boolean {
+        val detected = ProblemLanguageDetector.detect(problem)
+        if (detected == "ko") {
+            return false
+        }
+        if (detected == "en") {
+            return true
+        }
+        return problem.language.equals("en", ignoreCase = true)
     }
 
     private fun filterUnsolvedProblems(

@@ -1,5 +1,6 @@
 package com.didimlog.ui.dto
 
+import com.didimlog.application.utils.ProblemCategoryViewResolver
 import com.didimlog.domain.Problem
 
 /**
@@ -10,6 +11,9 @@ data class ProblemDetailResponse(
     val id: String,
     val title: String,
     val category: String,
+    val primaryCategory: String,
+    val secondaryCategories: List<String>,
+    val normalizedTags: List<String>,
     val difficulty: String,
     val difficultyLevel: Int,
     val url: String,
@@ -23,10 +27,14 @@ data class ProblemDetailResponse(
 ) {
     companion object {
         fun from(problem: Problem): ProblemDetailResponse {
+            val categoryView = ProblemCategoryViewResolver.resolve(problem)
             return ProblemDetailResponse(
                 id = problem.id.value,
                 title = problem.title,
                 category = problem.category.englishName,
+                primaryCategory = categoryView.primaryCategory,
+                secondaryCategories = categoryView.secondaryCategories,
+                normalizedTags = categoryView.normalizedTags,
                 difficulty = problem.difficulty.name,
                 difficultyLevel = problem.difficultyLevel,
                 url = problem.url,
@@ -41,7 +49,6 @@ data class ProblemDetailResponse(
         }
     }
 }
-
 
 
 
