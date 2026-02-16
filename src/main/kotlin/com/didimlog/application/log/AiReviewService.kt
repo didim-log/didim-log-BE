@@ -23,6 +23,7 @@ class AiReviewService(
     private val aiApiClient: AiApiClient,
     private val logAiReviewLockRepository: LogAiReviewLockRepository,
     private val aiUsageService: AiUsageService,
+    private val aiReviewCodeCacheService: AiReviewCodeCacheService,
     @Qualifier("aiReviewTaskExecutor")
     private val aiReviewTaskExecutor: TaskExecutor
 ) {
@@ -41,6 +42,10 @@ class AiReviewService(
         if (code.length < MIN_CODE_LENGTH) {
             return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
         }
+        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, logEntity.isSuccess)
+        if (cachedByCode != null) {
+            return AiReviewResult(review = cachedByCode, cached = true)
+        }
 
         val userId = logEntity.bojId?.value
         checkAvailability(userId)
@@ -49,7 +54,7 @@ class AiReviewService(
         val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
         
         if (!tryAcquireLock(logId, now, expiresAt)) {
-            return handleLockNotAcquired(logId, now)
+            return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
         }
 
         // AI API 호출 및 사용량 증가는 generateAiReview 내부에서 처리
@@ -69,11 +74,15 @@ class AiReviewService(
         if (code.length < MIN_CODE_LENGTH) {
             return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
         }
+        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, logEntity.isSuccess)
+        if (cachedByCode != null) {
+            return AiReviewResult(review = cachedByCode, cached = true)
+        }
 
         val now = LocalDateTime.now()
         val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
         if (!tryAcquireLock(logId, now, expiresAt)) {
-            return handleLockNotAcquired(logId, now)
+            return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
         }
 
         try {
@@ -152,11 +161,20 @@ class AiReviewService(
         return logAiReviewLockRepository.tryAcquireLock(logId, now, expiresAt)
     }
 
-    private fun handleLockNotAcquired(logId: String, @Suppress("UNUSED_PARAMETER") now: LocalDateTime): AiReviewResult {
+    private fun handleLockNotAcquired(
+        logId: String,
+        @Suppress("UNUSED_PARAMETER") now: LocalDateTime,
+        code: String,
+        isSuccess: Boolean?
+    ): AiReviewResult {
         val afterLog = logRepository.findById(logId).orElse(null)
         val afterCached = afterLog?.aiReviewTextOrNull()
         if (afterCached != null) {
             return AiReviewResult(review = afterCached, cached = true)
+        }
+        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, isSuccess)
+        if (cachedByCode != null) {
+            return AiReviewResult(review = cachedByCode, cached = true)
         }
 
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
@@ -182,7 +200,9 @@ class AiReviewService(
             aiUsageService.incrementUsage(userId)
         }
 
-        return saveAiReviewResult(logId, response.review, duration)
+        val result = saveAiReviewResult(logId, response.review, duration)
+        aiReviewCodeCacheService.cacheReview(code, isSuccess, result.review)
+        return result
     }
 
     private fun requestAiApiWithErrorHandling(

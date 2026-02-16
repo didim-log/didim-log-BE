@@ -1795,11 +1795,16 @@ JWT 토큰 기반 인증을 지원합니다.
 - 사용자 일일 제한: 5회 (`AI_CONFIG:LIMIT:USER`)
 - 전역 일일 제한: 1000회 (`AI_CONFIG:LIMIT:GLOBAL`)
 - 로그 `bojId`가 없는 경우 기본적으로 AI 리뷰 요청 차단 (`AI_CONFIG:REQUIRE_BOJ_FOR_AI_REVIEW=true`)
+- 동일 코드 재요청은 코드 해시 캐시를 통해 AI 재호출 없이 즉시 반환 (TTL 7일)
 - AI 호출 타임아웃: connect/read/response 10초 기본값
 - AI 비동기 워커: core 2, max 4, queue 200
 
 ### 관리자 정책 제어 API
 
+- `POST /api/v1/admin/system/ai-limits`
+  - Request Body: `{"globalLimit": number, "userLimit": number}`
+  - 유효성: `globalLimit`/`userLimit` 모두 `1~1000`, 그리고 `userLimit <= globalLimit`
+  - 설명: 사용자/전역 일일 제한을 즉시 변경합니다.
 - `POST /api/v1/admin/system/ai-review-policy`
   - Request Body: `{"requireBojForAiReview": true|false}`
   - 설명: `true`면 BOJ 연동이 없는 로그의 AI 리뷰 요청을 차단합니다. (기본값 `true`)

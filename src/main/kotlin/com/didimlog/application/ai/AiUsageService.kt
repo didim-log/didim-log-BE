@@ -3,6 +3,8 @@ package com.didimlog.application.ai
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.slf4j.LoggerFactory
+import org.springframework.data.redis.core.RedisOperations
+import org.springframework.data.redis.core.SessionCallback
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
 import java.time.LocalDate
@@ -44,40 +46,31 @@ class AiUsageService(
      * @throws BusinessException 사용 불가능한 경우
      */
     fun checkAvailability(userId: String): AiStatus {
-        // 1. 서비스 활성화 여부 확인
-        val isEnabled = isServiceEnabled()
-        if (!isEnabled) {
+        val snapshot = getAvailabilitySnapshot(userId)
+
+        if (!snapshot.isEnabled) {
             throw BusinessException(ErrorCode.AI_SERVICE_DISABLED, "AI 서비스가 일시 중지되었습니다.")
         }
-
-        // 2. 제한값 조회
-        val globalLimit = getGlobalLimit()
-        val userLimit = getUserLimit()
-
-        // 3. 전역 사용량 확인
-        val todayGlobalUsage = getTodayGlobalUsage()
-        if (todayGlobalUsage >= globalLimit) {
+        if (snapshot.todayGlobalUsage >= snapshot.globalLimit) {
             throw BusinessException(
                 ErrorCode.AI_GLOBAL_LIMIT_EXCEEDED,
                 "현재 서비스 이용량이 많아 AI 기능이 일시 중지되었습니다."
             )
         }
-
-        // 4. 사용자 사용량 확인
-        val todayUserUsage = getTodayUserUsage(userId)
-        if (todayUserUsage >= userLimit) {
+        if (snapshot.todayUserUsage >= snapshot.userLimit) {
             throw BusinessException(
                 ErrorCode.AI_USER_LIMIT_EXCEEDED,
-                "일일 AI 사용 횟수(${userLimit}회)를 초과했습니다. 내일 다시 이용해주세요."
+                "일일 AI 사용 횟수(${snapshot.userLimit}회)를 초과했습니다. 내일 다시 이용해주세요."
             )
         }
 
         return AiStatus(
             isEnabled = true,
-            todayGlobalUsage = todayGlobalUsage,
-            globalLimit = globalLimit,
-            userLimit = userLimit,
-            todayUserUsage = todayUserUsage
+            todayGlobalUsage = snapshot.todayGlobalUsage,
+            globalLimit = snapshot.globalLimit,
+            userLimit = snapshot.userLimit,
+            requireBojForAiReview = snapshot.requireBojForAiReview,
+            todayUserUsage = snapshot.todayUserUsage
         )
     }
 
@@ -90,15 +83,19 @@ class AiUsageService(
         val today = LocalDate.now().format(DATE_FORMATTER)
         val globalKey = "$USAGE_GLOBAL_PREFIX$today"
         val userKey = "$USAGE_USER_PREFIX$userId:$today"
-
-        // 원자적 증가 (INCR)
-        redisTemplate.opsForValue().increment(globalKey)
-        redisTemplate.opsForValue().increment(userKey)
-
-        // TTL 설정 (다음 날 자정까지 유지)
         val ttlSeconds = getSecondsUntilMidnight()
-        redisTemplate.expire(globalKey, java.time.Duration.ofSeconds(ttlSeconds))
-        redisTemplate.expire(userKey, java.time.Duration.ofSeconds(ttlSeconds))
+
+        redisTemplate.executePipelined(object : SessionCallback<Unit> {
+            override fun <K : Any?, V : Any?> execute(operations: RedisOperations<K, V>): Unit? {
+                @Suppress("UNCHECKED_CAST")
+                val stringOps = operations as RedisOperations<String, String>
+                stringOps.opsForValue().increment(globalKey)
+                stringOps.opsForValue().increment(userKey)
+                stringOps.expire(globalKey, java.time.Duration.ofSeconds(ttlSeconds))
+                stringOps.expire(userKey, java.time.Duration.ofSeconds(ttlSeconds))
+                return null
+            }
+        })
 
         log.debug("AI 사용량 증가: userId=$userId, globalKey=$globalKey, userKey=$userKey")
     }
@@ -138,6 +135,12 @@ class AiUsageService(
      * @param userLimit 사용자 일일 제한
      */
     fun updateLimits(globalLimit: Int, userLimit: Int) {
+        if (userLimit > globalLimit) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "userLimit은 globalLimit을 초과할 수 없습니다. userLimit=$userLimit, globalLimit=$globalLimit"
+            )
+        }
         redisTemplate.opsForValue().set(CONFIG_GLOBAL_LIMIT, globalLimit.toString())
         redisTemplate.opsForValue().set(CONFIG_USER_LIMIT, userLimit.toString())
         log.info("AI 사용량 제한 업데이트: globalLimit=$globalLimit, userLimit=$userLimit")
@@ -149,18 +152,14 @@ class AiUsageService(
      * @return AiStatus
      */
     fun getStatus(): AiStatus {
-        val isEnabled = isServiceEnabled()
-        val globalLimit = getGlobalLimit()
-        val userLimit = getUserLimit()
-        val todayGlobalUsage = getTodayGlobalUsage()
-        val requireBojForAiReview = isRequireBojForAiReview()
+        val snapshot = getAvailabilitySnapshot(userId = null)
 
         return AiStatus(
-            isEnabled = isEnabled,
-            todayGlobalUsage = todayGlobalUsage,
-            globalLimit = globalLimit,
-            userLimit = userLimit,
-            requireBojForAiReview = requireBojForAiReview,
+            isEnabled = snapshot.isEnabled,
+            todayGlobalUsage = snapshot.todayGlobalUsage,
+            globalLimit = snapshot.globalLimit,
+            userLimit = snapshot.userLimit,
+            requireBojForAiReview = snapshot.requireBojForAiReview,
             todayUserUsage = null // 사용자별 사용량은 사용자 ID가 필요하므로 null
         )
     }
@@ -169,15 +168,15 @@ class AiUsageService(
      * AI 리뷰 요청 시 BOJ 연동 사용자를 필수로 요구하는지 조회합니다.
      */
     fun isRequireBojForAiReview(): Boolean {
-        val value = redisTemplate.opsForValue().get(CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW)
-        return value?.toBoolean() ?: DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW
+        val values = multiGet(listOf(CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW))
+        return values[CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW]?.toBoolean() ?: DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW
     }
 
     /**
      * 서비스 활성화 여부를 확인합니다.
      */
     private fun isServiceEnabled(): Boolean {
-        val value = redisTemplate.opsForValue().get(CONFIG_ENABLED)
+        val value = multiGet(listOf(CONFIG_ENABLED))[CONFIG_ENABLED]
         val isEnabled = value?.toBoolean() ?: DEFAULT_ENABLED
         log.debug("AI service enabled check: key=$CONFIG_ENABLED, value=$value, result=$isEnabled")
         return isEnabled
@@ -187,7 +186,7 @@ class AiUsageService(
      * 전역 일일 제한을 조회합니다.
      */
     private fun getGlobalLimit(): Int {
-        val value = redisTemplate.opsForValue().get(CONFIG_GLOBAL_LIMIT)
+        val value = multiGet(listOf(CONFIG_GLOBAL_LIMIT))[CONFIG_GLOBAL_LIMIT]
         return value?.toInt() ?: DEFAULT_GLOBAL_LIMIT
     }
 
@@ -195,7 +194,7 @@ class AiUsageService(
      * 사용자 일일 제한을 조회합니다.
      */
     private fun getUserLimit(): Int {
-        val value = redisTemplate.opsForValue().get(CONFIG_USER_LIMIT)
+        val value = multiGet(listOf(CONFIG_USER_LIMIT))[CONFIG_USER_LIMIT]
         return value?.toInt() ?: DEFAULT_USER_LIMIT
     }
 
@@ -205,7 +204,7 @@ class AiUsageService(
     private fun getTodayGlobalUsage(): Int {
         val today = LocalDate.now().format(DATE_FORMATTER)
         val key = "$USAGE_GLOBAL_PREFIX$today"
-        val value = redisTemplate.opsForValue().get(key)
+        val value = multiGet(listOf(key))[key]
         return value?.toInt() ?: 0
     }
 
@@ -215,7 +214,7 @@ class AiUsageService(
     private fun getTodayUserUsage(userId: String): Int {
         val today = LocalDate.now().format(DATE_FORMATTER)
         val key = "$USAGE_USER_PREFIX$userId:$today"
-        val value = redisTemplate.opsForValue().get(key)
+        val value = multiGet(listOf(key))[key]
         val usage = value?.toInt() ?: 0
         log.debug("User usage check: userId=$userId, key=$key, value=$value, usage=$usage")
         return usage
@@ -228,16 +227,14 @@ class AiUsageService(
      * @return 사용자 AI 사용량 정보
      */
     fun getUserUsage(userId: String): UserUsageInfo {
-        val isEnabled = isServiceEnabled()
-        val userLimit = getUserLimit()
-        val todayUserUsage = getTodayUserUsage(userId)
-        val remaining = (userLimit - todayUserUsage).coerceAtLeast(0)
+        val snapshot = getAvailabilitySnapshot(userId)
+        val remaining = (snapshot.userLimit - snapshot.todayUserUsage).coerceAtLeast(0)
         
         return UserUsageInfo(
-            limit = userLimit,
-            usage = todayUserUsage,
+            limit = snapshot.userLimit,
+            usage = snapshot.todayUserUsage,
             remaining = remaining,
-            isServiceEnabled = isEnabled
+            isServiceEnabled = snapshot.isEnabled
         )
     }
     
@@ -260,6 +257,54 @@ class AiUsageService(
         return java.time.Duration.between(now, midnight).seconds
     }
 
+    private fun getAvailabilitySnapshot(userId: String?): AvailabilitySnapshot {
+        val today = LocalDate.now().format(DATE_FORMATTER)
+        val globalUsageKey = "$USAGE_GLOBAL_PREFIX$today"
+        val keys = mutableListOf(
+            CONFIG_ENABLED,
+            CONFIG_GLOBAL_LIMIT,
+            CONFIG_USER_LIMIT,
+            CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW,
+            globalUsageKey
+        )
+        val userUsageKey = if (userId == null) {
+            null
+        } else {
+            "$USAGE_USER_PREFIX$userId:$today".also { keys.add(it) }
+        }
+        val values = multiGet(keys)
+        val isEnabled = values[CONFIG_ENABLED]?.toBoolean() ?: DEFAULT_ENABLED
+        val globalLimit = values[CONFIG_GLOBAL_LIMIT]?.toIntOrNull() ?: DEFAULT_GLOBAL_LIMIT
+        val userLimit = values[CONFIG_USER_LIMIT]?.toIntOrNull() ?: DEFAULT_USER_LIMIT
+        val requireBojForAiReview = values[CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW]?.toBoolean() ?: DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW
+        val todayGlobalUsage = values[globalUsageKey]?.toIntOrNull() ?: 0
+        val todayUserUsage = if (userUsageKey == null) {
+            0
+        } else {
+            values[userUsageKey]?.toIntOrNull() ?: 0
+        }
+        return AvailabilitySnapshot(
+            isEnabled = isEnabled,
+            globalLimit = globalLimit,
+            userLimit = userLimit,
+            requireBojForAiReview = requireBojForAiReview,
+            todayGlobalUsage = todayGlobalUsage,
+            todayUserUsage = todayUserUsage
+        )
+    }
+
+    private fun multiGet(keys: List<String>): Map<String, String?> {
+        if (keys.isEmpty()) {
+            return emptyMap()
+        }
+        val values = redisTemplate.opsForValue().multiGet(keys) ?: emptyList()
+        val result = LinkedHashMap<String, String?>(keys.size)
+        for (index in keys.indices) {
+            result[keys[index]] = values.getOrNull(index)
+        }
+        return result
+    }
+
     /**
      * AI 서비스 상태 정보
      */
@@ -271,5 +316,13 @@ class AiUsageService(
         val requireBojForAiReview: Boolean = DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW,
         val todayUserUsage: Int? = null
     )
-}
 
+    private data class AvailabilitySnapshot(
+        val isEnabled: Boolean,
+        val globalLimit: Int,
+        val userLimit: Int,
+        val requireBojForAiReview: Boolean,
+        val todayGlobalUsage: Int,
+        val todayUserUsage: Int
+    )
+}

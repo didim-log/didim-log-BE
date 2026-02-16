@@ -212,6 +212,26 @@ class SystemControllerTest {
 
         verify(exactly = 1) { aiUsageService.setRequireBojForAiReview(true) }
     }
+
+    @Test
+    @DisplayName("AI 제한 업데이트 시 상한을 초과하면 400 Bad Request를 반환한다")
+    fun `ai 제한 업데이트 실패 - 상한 초과`() {
+        val request = mapOf(
+            "globalLimit" to 1001,
+            "userLimit" to 5
+        )
+
+        mockMvc.perform(
+            post("/api/v1/admin/system/ai-limits")
+                .with(csrf())
+                .principal(UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { aiUsageService.updateLimits(any(), any()) }
+    }
 }
 
 @DisplayName("PublicSystemController 테스트")

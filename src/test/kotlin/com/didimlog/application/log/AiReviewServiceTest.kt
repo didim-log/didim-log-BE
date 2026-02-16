@@ -16,6 +16,7 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.core.task.TaskExecutor
 import java.util.Optional
@@ -27,14 +28,22 @@ class AiReviewServiceTest {
     private val aiApiClient: AiApiClient = mockk()
     private val lockRepository: LogAiReviewLockRepository = mockk()
     private val aiUsageService: AiUsageService = mockk(relaxed = true)
+    private val aiReviewCodeCacheService: AiReviewCodeCacheService = mockk(relaxed = true)
     private val aiReviewTaskExecutor: TaskExecutor = TaskExecutor { task -> task.run() }
     private val aiReviewService = AiReviewService(
         logRepository,
         aiApiClient,
         lockRepository,
         aiUsageService,
+        aiReviewCodeCacheService,
         aiReviewTaskExecutor
     )
+
+    @BeforeEach
+    fun setUp() {
+        every { aiReviewCodeCacheService.getCachedReview(any(), any()) } returns null
+        every { aiReviewCodeCacheService.cacheReview(any(), any(), any()) } returns Unit
+    }
 
     @Test
     @DisplayName("이미 aiReview가 있으면 외부 API를 호출하지 않고 캐시를 반환한다")
@@ -55,6 +64,29 @@ class AiReviewServiceTest {
         assertThat(result.cached).isTrue()
         verify { aiApiClient wasNot Called }
         verify(exactly = 0) { logRepository.save(any()) }
+    }
+
+    @Test
+    @DisplayName("동일 코드 캐시가 있으면 외부 API를 호출하지 않고 결과를 반환한다")
+    fun `code hash cache first`() {
+        val logId = "log-cache-1"
+        val code = "public class Main { public static void main(String[] args) { System.out.println(1); } }"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode(code),
+            aiReview = null
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every { aiReviewCodeCacheService.getCachedReview(code.trim(), null) } returns "code-cached"
+
+        val result = aiReviewService.requestOneLineReview(logId)
+
+        assertThat(result.review).isEqualTo("code-cached")
+        assertThat(result.cached).isTrue()
+        verify { aiApiClient wasNot Called }
+        verify(exactly = 0) { lockRepository.tryAcquireLock(any(), any(), any()) }
     }
 
     @Test
@@ -94,6 +126,7 @@ class AiReviewServiceTest {
         assertThat(result.cached).isFalse()
         verify(exactly = 1) { aiApiClient.requestOneLineReview(any(), any()) }
         verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
+        verify(exactly = 1) { aiReviewCodeCacheService.cacheReview(any(), null, "ok") }
     }
 
     @Test
