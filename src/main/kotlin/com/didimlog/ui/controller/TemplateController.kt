@@ -3,7 +3,6 @@ package com.didimlog.ui.controller
 import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.TemplateCategory
-import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.template.SectionPreset
 import com.didimlog.domain.valueobject.BojId
@@ -68,7 +67,7 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val templates = templateService.getTemplates(studentId)
-        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student, templates)
+        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student)
         val response = templates.map {
             TemplateResponse.from(
                 template = it,
@@ -98,13 +97,18 @@ class TemplateController(
     fun getTemplateSummaries(authentication: Authentication): ResponseEntity<List<TemplateSummaryResponse>> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val templates = templateService.getTemplates(studentId)
-        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student, templates)
-        val response = templates.map {
-            TemplateSummaryResponse.from(
-                template = it,
-                defaultSuccessTemplateId = defaultSuccessTemplateId,
-                defaultFailTemplateId = defaultFailTemplateId
+        val summaries = templateService.getTemplateSummaries(studentId)
+        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIdsForSummary(student, studentId)
+        val response = summaries.map {
+            TemplateSummaryResponse(
+                id = it.id,
+                studentId = it.studentId,
+                title = it.title,
+                type = it.type,
+                isDefaultSuccess = defaultSuccessTemplateId != null && defaultSuccessTemplateId == it.id,
+                isDefaultFail = defaultFailTemplateId != null && defaultFailTemplateId == it.id,
+                createdAt = it.createdAt,
+                updatedAt = it.updatedAt
             )
         }
         return ResponseEntity.ok(response)
@@ -516,11 +520,20 @@ class TemplateController(
         }
     }
 
-    private fun resolveDefaultTemplateIds(student: Student, templates: List<com.didimlog.domain.template.Template>): Pair<String?, String?> {
+    private fun resolveDefaultTemplateIds(student: Student): Pair<String?, String?> {
+        val studentId = getStudentId(student)
         val successTemplateId = student.defaultSuccessTemplateId
-            ?: templates.firstOrNull { it.type == TemplateOwnershipType.SYSTEM && it.title == "Simple(요약)" }?.id
+            ?: templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId).id
         val failTemplateId = student.defaultFailTemplateId
-            ?: templates.firstOrNull { it.type == TemplateOwnershipType.SYSTEM && it.title == "Detail(상세)" }?.id
+            ?: templateService.getDefaultTemplate(TemplateCategory.FAIL, studentId).id
+        return successTemplateId to failTemplateId
+    }
+
+    private fun resolveDefaultTemplateIdsForSummary(student: Student, studentId: String): Pair<String?, String?> {
+        val successTemplateId = student.defaultSuccessTemplateId
+            ?: templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId).id
+        val failTemplateId = student.defaultFailTemplateId
+            ?: templateService.getDefaultTemplate(TemplateCategory.FAIL, studentId).id
         return successTemplateId to failTemplateId
     }
 }

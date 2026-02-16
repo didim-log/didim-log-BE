@@ -26,8 +26,10 @@ class TemplateInitializer(
      * 요약(Simple) 시스템 템플릿을 초기화한다.
      */
     private fun initializeSimpleTemplate() {
-        val existingTemplate = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
-            .firstOrNull { it.title == "Simple(요약)" }
+        val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
+        val existingTemplate = systemTemplates
+            .firstOrNull { it.isDefaultSuccess }
+            ?: systemTemplates.firstOrNull { it.title == "Simple(요약)" }
         
         if (existingTemplate != null) {
             return
@@ -58,8 +60,10 @@ class TemplateInitializer(
      * 상세(Detail) 시스템 템플릿을 초기화한다.
      */
     private fun initializeDetailTemplate() {
-        val existingTemplate = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
-            .firstOrNull { it.title == "Detail(상세)" }
+        val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
+        val existingTemplate = systemTemplates
+            .firstOrNull { it.isDefaultFail }
+            ?: systemTemplates.firstOrNull { it.title == "Detail(상세)" }
         
         if (existingTemplate != null) {
             return
