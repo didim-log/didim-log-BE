@@ -1,6 +1,6 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.ProblemCollectorService
+import com.didimlog.application.problem.collector.ProblemCollectorService
 import com.didimlog.application.admin.ProblemStatsService
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
@@ -126,9 +126,9 @@ class ProblemCollectorControllerTest {
     fun `문제 메타데이터 수집 작업 상태 조회 성공`() {
         // given
         val jobId = "test-job-id-metadata"
-        val status = com.didimlog.application.MetadataCollectJobStatus(
+        val status = com.didimlog.application.problem.collector.MetadataCollectJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.RUNNING,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
             totalCount = 100,
             processedCount = 50,
             successCount = 48,
@@ -218,9 +218,9 @@ class ProblemCollectorControllerTest {
     fun `언어 정보 업데이트 작업 상태 조회 성공`() {
         // given
         val jobId = "test-job-id-123"
-        val status = com.didimlog.application.LanguageUpdateJobStatus(
+        val status = com.didimlog.application.problem.collector.LanguageUpdateJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.RUNNING,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
             totalCount = 3400,
             processedCount = 150,
             successCount = 148,
@@ -285,13 +285,78 @@ class ProblemCollectorControllerTest {
     }
 
     @Test
+    @DisplayName("문제 상세 정보 재수집 성공 시 200 OK 및 Response JSON 구조 검증")
+    fun `문제 상세 정보 재수집 성공`() {
+        // given
+        every { problemCollectorService.refreshDetailsBatchAsync(null, null) } returns "refresh-job-id-001"
+
+        // when & then
+        mockMvc.perform(
+            post("/api/v1/admin/problems/refresh-details")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.message").value("문제 상세 정보 재수집 작업이 시작되었습니다."))
+            .andExpect(jsonPath("$.jobId").value("refresh-job-id-001"))
+
+        verify(exactly = 1) { problemCollectorService.refreshDetailsBatchAsync(null, null) }
+    }
+
+    @Test
+    @DisplayName("문제 상세 정보 재수집 상태 조회 성공")
+    fun `문제 상세 정보 재수집 상태 조회 성공`() {
+        // given
+        val jobId = "refresh-job-id-001"
+        val status = com.didimlog.application.problem.collector.DetailsCollectJobStatus(
+            jobId = jobId,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
+            totalCount = 1000,
+            processedCount = 100,
+            successCount = 95,
+            failCount = 5,
+            startedAt = 1704067200000,
+            completedAt = null,
+            errorMessage = null
+        )
+        every { problemCollectorService.getDetailsRefreshJobStatus(jobId) } returns status
+
+        // when & then
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/problems/refresh-details/status/$jobId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.jobId").value(jobId))
+            .andExpect(jsonPath("$.status").value("RUNNING"))
+            .andExpect(jsonPath("$.totalCount").value(1000))
+            .andExpect(jsonPath("$.processedCount").value(100))
+            .andExpect(jsonPath("$.progressPercentage").value(10))
+
+        verify(exactly = 1) { problemCollectorService.getDetailsRefreshJobStatus(jobId) }
+    }
+
+    @Test
+    @DisplayName("문제 상세 정보 재수집 시 start/end가 하나만 주어지면 400 Bad Request 반환")
+    fun `문제 상세 정보 재수집 range 유효성 검증`() {
+        mockMvc.perform(
+            post("/api/v1/admin/problems/refresh-details")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .param("start", "1000")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
     @DisplayName("문제 상세 정보 수집 작업 상태 조회 성공")
     fun `문제 상세 정보 수집 작업 상태 조회 성공`() {
         // given
         val jobId = "test-job-id-456"
-        val status = com.didimlog.application.DetailsCollectJobStatus(
+        val status = com.didimlog.application.problem.collector.DetailsCollectJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.RUNNING,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
             totalCount = 100,
             processedCount = 50,
             successCount = 48,
@@ -336,7 +401,6 @@ class ProblemCollectorControllerTest {
         verify(exactly = 1) { problemCollectorService.getDetailsCollectJobStatus(jobId) }
     }
 }
-
 
 
 

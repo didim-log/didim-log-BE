@@ -1,6 +1,6 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.ProblemService
+import com.didimlog.application.problem.ProblemService
 import com.didimlog.application.recommendation.RecommendationService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
@@ -85,6 +85,9 @@ class ProblemControllerTest {
             .andExpect(jsonPath("$.id").value(problemId.toString()))
             .andExpect(jsonPath("$.title").value("A+B"))
             .andExpect(jsonPath("$.category").exists())
+            .andExpect(jsonPath("$.primaryCategory").value("IMPLEMENTATION"))
+            .andExpect(jsonPath("$.secondaryCategories").isArray)
+            .andExpect(jsonPath("$.normalizedTags").isArray)
             .andExpect(jsonPath("$.difficulty").exists())
             .andExpect(jsonPath("$.url").exists())
     }
@@ -98,7 +101,7 @@ class ProblemControllerTest {
             createProblem("1001", "A-B")
         )
 
-        every { recommendationService.recommendProblems("bojId", 10, null) } returns problems
+        every { recommendationService.recommendProblems("bojId", 10, null, null) } returns problems
 
         // when & then
         mockMvc.perform(
@@ -111,6 +114,8 @@ class ProblemControllerTest {
             .andExpect(jsonPath("$").isArray)
             .andExpect(jsonPath("$[0].id").value("1000"))
             .andExpect(jsonPath("$[0].title").value("A+B"))
+            .andExpect(jsonPath("$[0].primaryCategory").value("IMPLEMENTATION"))
+            .andExpect(jsonPath("$[0].normalizedTags[0]").value("IMPLEMENTATION"))
             .andExpect(jsonPath("$[1].id").value("1001"))
             .andExpect(jsonPath("$[1].title").value("A-B"))
     }
@@ -163,8 +168,6 @@ class ProblemControllerTest {
         )
     }
 }
-
-
 
 
 

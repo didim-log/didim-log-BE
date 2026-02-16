@@ -1,6 +1,6 @@
 package com.didimlog.application.ai
 
-import com.didimlog.application.ProblemService
+import com.didimlog.application.problem.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier

@@ -1,9 +1,9 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.DetailsCollectJobStatus
-import com.didimlog.application.LanguageUpdateJobStatus
-import com.didimlog.application.MetadataCollectJobStatus
-import com.didimlog.application.ProblemCollectorService
+import com.didimlog.application.problem.collector.DetailsCollectJobStatus
+import com.didimlog.application.problem.collector.LanguageUpdateJobStatus
+import com.didimlog.application.problem.collector.MetadataCollectJobStatus
+import com.didimlog.application.problem.collector.ProblemCollectorService
 import com.didimlog.application.admin.ProblemStatsService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.Positive
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -225,8 +226,93 @@ class ProblemCollectorController(
     }
 
     @Operation(
+        summary = "문제 상세 정보 재수집 (비동기)",
+        description = "기존에 수집된 문제도 포함해 상세 정보를 강제로 다시 크롤링하여 갱신합니다. start/end를 지정하면 해당 범위만 재수집합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "작업 시작 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 start/end 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/refresh-details")
+    fun refreshDetails(
+        authentication: Authentication,
+        @Parameter(description = "시작 문제 ID (선택, end와 함께 제공)")
+        @RequestParam(required = false)
+        @Min(value = 1, message = "시작 문제 ID는 1 이상이어야 합니다.")
+        start: Int?,
+        @Parameter(description = "종료 문제 ID (선택, start와 함께 제공)")
+        @RequestParam(required = false)
+        @Min(value = 1, message = "종료 문제 ID는 1 이상이어야 합니다.")
+        end: Int?
+    ): ResponseEntity<Map<String, String>> {
+        validateRange(start, end)
+        val jobId = problemCollectorService.refreshDetailsBatchAsync(start, end)
+        val response = mutableMapOf(
+            "message" to "문제 상세 정보 재수집 작업이 시작되었습니다.",
+            "jobId" to jobId
+        )
+        if (start != null && end != null) {
+            response["range"] = "$start-$end"
+        }
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "문제 상세 정보 재수집 작업 상태 조회",
+        description = "문제 상세 정보 재수집(강제 갱신) 작업의 진행 상태를 조회합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "작업 상태 조회 성공"),
+            ApiResponse(
+                responseCode = "404",
+                description = "작업을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/refresh-details/status/{jobId}")
+    fun getDetailsRefreshJobStatus(
+        authentication: Authentication,
+        @Parameter(description = "작업 ID", required = true)
+        @PathVariable jobId: String
+    ): ResponseEntity<DetailsCollectJobStatus> {
+        val status = problemCollectorService.getDetailsRefreshJobStatus(jobId)
+            ?: throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
+        return ResponseEntity.ok(status)
+    }
+
+    @Operation(
         summary = "문제 언어 정보 최신화 (비동기)",
-        description = "DB에서 언어 정보가 null인 문제들의 언어 정보를 비동기로 업데이트합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
+        description = "DB의 전체 문제를 대상으로 본문/입출력/제목 기반 언어 판별을 다시 수행해 언어 정보를 보정합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -296,5 +382,20 @@ class ProblemCollectorController(
         val status = problemCollectorService.getLanguageUpdateJobStatus(jobId)
             ?: throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
         return ResponseEntity.ok(status)
+    }
+
+    private fun validateRange(start: Int?, end: Int?) {
+        if ((start == null) != (end == null)) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "start와 end는 함께 제공되어야 합니다."
+            )
+        }
+        if (start != null && end != null && start > end) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "start는 end보다 클 수 없습니다. start=$start, end=$end"
+            )
+        }
     }
 }

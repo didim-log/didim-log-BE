@@ -1,12 +1,14 @@
 package com.didimlog.application.template
 
-import com.didimlog.application.ProblemService
+import com.didimlog.application.problem.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
+import com.didimlog.domain.enums.Tier
 import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
@@ -15,6 +17,7 @@ import com.didimlog.domain.template.Template
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -28,6 +31,8 @@ class TemplateService(
     private val problemService: ProblemService,
     private val studentRepository: StudentRepository
 ) {
+    private val log = LoggerFactory.getLogger(TemplateService::class.java)
+
     data class TemplateSummaryProjection(
         val id: String,
         val studentId: String?,
@@ -183,14 +188,22 @@ class TemplateService(
         if (category == TemplateCategory.SUCCESS) {
             val templateId = student.defaultSuccessTemplateId
             if (templateId != null) {
-                return getTemplate(templateId)
+                val template = resolveStudentDefaultTemplate(templateId, studentId)
+                if (template != null) {
+                    return template
+                }
+                log.warn("유효하지 않은 성공 기본 템플릿 ID를 감지하여 시스템 기본값으로 fallback 합니다. studentId={}, templateId={}", studentId, templateId)
             }
             return getSystemDefaultSuccessTemplate()
         }
         
         val templateId = student.defaultFailTemplateId
         if (templateId != null) {
-            return getTemplate(templateId)
+            val template = resolveStudentDefaultTemplate(templateId, studentId)
+            if (template != null) {
+                return template
+            }
+            log.warn("유효하지 않은 실패 기본 템플릿 ID를 감지하여 시스템 기본값으로 fallback 합니다. studentId={}, templateId={}", studentId, templateId)
         }
         return getSystemDefaultFailTemplate()
     }
@@ -227,6 +240,14 @@ class TemplateService(
                 ErrorCode.TEMPLATE_NOT_FOUND,
                 "시스템 기본 실패 템플릿을 찾을 수 없습니다. defaultFail 플래그를 확인해주세요."
             )
+    }
+
+    private fun resolveStudentDefaultTemplate(templateId: String, studentId: String): Template? {
+        val template = templateRepository.findById(templateId).orElse(null) ?: return null
+        if (template.type == TemplateOwnershipType.CUSTOM && template.studentId != studentId) {
+            return null
+        }
+        return template
     }
 
     /**
@@ -385,8 +406,23 @@ class TemplateService(
      * @throws BusinessException 문제를 찾을 수 없는 경우
      */
     private fun getProblem(problemId: Long): Problem {
-        // 템플릿 렌더링은 문제 메타데이터만 필요하므로 크롤링 없는 경량 조회를 사용한다.
-        return problemService.getProblemMeta(problemId)
+        // 템플릿 렌더링 경로는 외부 의존(solved.ac)을 타지 않고 DB 우선으로 조회한다.
+        // DB 미존재/조회 실패 시에도 템플릿 작성 UX를 깨지 않기 위해 최소 문제 정보로 fallback 한다.
+        return runCatching { problemService.getProblemMetaIfExists(problemId) }
+            .getOrNull()
+            ?: createFallbackProblem(problemId)
+    }
+
+    private fun createFallbackProblem(problemId: Long): Problem {
+        return Problem(
+            id = ProblemId(problemId.toString()),
+            title = "문제 $problemId",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 1,
+            url = "https://www.acmicpc.net/problem/$problemId",
+            language = "ko"
+        )
     }
 
     /**

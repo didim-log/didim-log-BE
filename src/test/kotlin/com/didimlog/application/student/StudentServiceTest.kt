@@ -9,8 +9,10 @@ import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -273,5 +275,70 @@ class StudentServiceTest {
         verify(exactly = 1) { feedbackRepository.deleteAllByWriterId(studentId) }
         verify(exactly = 1) { studentRepository.delete(student) }
     }
-}
 
+    @Test
+    @DisplayName("BOJ 프로필 동기화 시 변경이 없으면 기존 학생을 반환하고 저장하지 않는다")
+    fun `syncBojProfile 변경 없음`() {
+        // given
+        val bojId = "testuser"
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            rating = 500,
+            solvedAcTierLevel = SolvedAcTierLevel.fromRating(500),
+            currentTier = Tier.SILVER,
+            role = Role.USER
+        )
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 500,
+            tier = 9
+        )
+
+        // when
+        val result = studentService.syncBojProfile(bojId)
+
+        // then
+        assertThat(result).isEqualTo(student)
+        verify(exactly = 0) { studentRepository.save(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("BOJ 프로필 동기화 시 변경이 있으면 학생 정보를 갱신해 저장한다")
+    fun `syncBojProfile 변경 있음`() {
+        // given
+        val bojId = "testuser"
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            rating = 500,
+            solvedAcTierLevel = SolvedAcTierLevel.fromRating(500),
+            currentTier = Tier.SILVER,
+            role = Role.USER
+        )
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 1200,
+            tier = 13
+        )
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+
+        // when
+        val updated = studentService.syncBojProfile(bojId)
+
+        // then
+        assertThat(updated.rating).isEqualTo(1200)
+        assertThat(updated.solvedAcTierLevel).isEqualTo(SolvedAcTierLevel.fromRating(1200))
+        verify(exactly = 1) { studentRepository.save(any<Student>()) }
+    }
+}

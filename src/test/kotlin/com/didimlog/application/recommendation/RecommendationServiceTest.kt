@@ -406,6 +406,78 @@ class RecommendationServiceTest {
         verify { problemRepository.findByLevelBetweenFlexible(1, 2) }
     }
 
+    @Test
+    @DisplayName("language=ko 필터는 저장된 language 필드와 무관하게 영어 본문 문제를 제외한다")
+    fun `language ko strict filter excludes english content`() {
+        // given
+        val bojId = "strictko"
+        val student = createStudent(
+            id = "student-ko",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+        val koreanProblem = createProblem(
+            id = "1000",
+            tier = Tier.BRONZE,
+            level = 3,
+            language = "ko",
+            descriptionHtml = "<p>두 수를 입력받아 합을 출력한다.</p>"
+        )
+        val englishProblemButKo = createProblem(
+            id = "1001",
+            tier = Tier.BRONZE,
+            level = 3,
+            language = "ko",
+            descriptionHtml = "<p>Given two integers A and B, output A+B.</p>"
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns listOf(koreanProblem, englishProblemButKo)
+
+        // when
+        val recommended = recommendationService.recommendProblems(bojId, count = 10, language = "ko")
+
+        // then
+        assertThat(recommended).extracting<String> { it.id.value }.containsExactly("1000")
+    }
+
+    @Test
+    @DisplayName("language=en 필터는 저장된 language 필드와 무관하게 한국어 본문 문제를 제외한다")
+    fun `language en strict filter excludes korean content`() {
+        // given
+        val bojId = "stricten"
+        val student = createStudent(
+            id = "student-en",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+        val englishProblem = createProblem(
+            id = "2000",
+            tier = Tier.BRONZE,
+            level = 3,
+            language = "en",
+            descriptionHtml = "<p>Implement a queue using two stacks.</p>"
+        )
+        val koreanProblemButEn = createProblem(
+            id = "2001",
+            tier = Tier.BRONZE,
+            level = 3,
+            language = "en",
+            descriptionHtml = "<p>두 개의 스택으로 큐를 구현하라.</p>"
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns listOf(englishProblem, koreanProblemButEn)
+
+        // when
+        val recommended = recommendationService.recommendProblems(bojId, count = 10, language = "en")
+
+        // then
+        assertThat(recommended).extracting<String> { it.id.value }.containsExactly("2000")
+    }
+
     private fun createStudent(
         id: String,
         bojId: String,
@@ -443,7 +515,9 @@ class RecommendationServiceTest {
         id: String,
         tier: Tier,
         level: Int = tier.minLevel,
-        category: ProblemCategory = ProblemCategory.IMPLEMENTATION
+        category: ProblemCategory = ProblemCategory.IMPLEMENTATION,
+        language: String = "ko",
+        descriptionHtml: String? = null
     ): Problem {
         return Problem(
             id = ProblemId(id),
@@ -451,8 +525,9 @@ class RecommendationServiceTest {
             category = category,
             difficulty = tier,
             level = level,
-            url = "https://www.acmicpc.net/problem/$id"
+            url = "https://www.acmicpc.net/problem/$id",
+            language = language,
+            descriptionHtml = descriptionHtml
         )
     }
 }
-
