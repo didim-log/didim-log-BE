@@ -27,11 +27,14 @@ class TemplateInitializer(
      */
     private fun initializeSimpleTemplate() {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
-        val existingTemplate = systemTemplates
-            .firstOrNull { it.isDefaultSuccess }
-            ?: systemTemplates.firstOrNull { it.title == "Simple(요약)" }
-        
+        val existingTemplate = systemTemplates.firstOrNull { it.isDefaultSuccess }
         if (existingTemplate != null) {
+            return
+        }
+
+        val candidate = systemTemplates.firstOrNull { !it.isDefaultFail }
+        if (candidate != null) {
+            templateRepository.save(candidate.copy(isDefaultSuccess = true))
             return
         }
 
@@ -61,11 +64,14 @@ class TemplateInitializer(
      */
     private fun initializeDetailTemplate() {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
-        val existingTemplate = systemTemplates
-            .firstOrNull { it.isDefaultFail }
-            ?: systemTemplates.firstOrNull { it.title == "Detail(상세)" }
-        
+        val existingTemplate = systemTemplates.firstOrNull { it.isDefaultFail }
         if (existingTemplate != null) {
+            return
+        }
+
+        val candidate = systemTemplates.firstOrNull { !it.isDefaultSuccess }
+        if (candidate != null) {
+            templateRepository.save(candidate.copy(isDefaultFail = true))
             return
         }
 

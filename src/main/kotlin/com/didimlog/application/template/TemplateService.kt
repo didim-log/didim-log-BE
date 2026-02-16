@@ -205,10 +205,10 @@ class TemplateService(
     private fun getSystemDefaultSuccessTemplate(): Template {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
         return systemTemplates.firstOrNull { it.isDefaultSuccess }
-            ?: systemTemplates.firstOrNull { it.title == "Simple(요약)" }
+            ?: systemTemplates.firstOrNull { !it.isDefaultFail }
             ?: throw BusinessException(
                 ErrorCode.TEMPLATE_NOT_FOUND,
-                "시스템 기본 성공 템플릿을 찾을 수 없습니다."
+                "시스템 기본 성공 템플릿을 찾을 수 없습니다. defaultSuccess 플래그를 확인해주세요."
             )
     }
 
@@ -222,10 +222,10 @@ class TemplateService(
     private fun getSystemDefaultFailTemplate(): Template {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
         return systemTemplates.firstOrNull { it.isDefaultFail }
-            ?: systemTemplates.firstOrNull { it.title == "Detail(상세)" }
+            ?: systemTemplates.firstOrNull { !it.isDefaultSuccess }
             ?: throw BusinessException(
                 ErrorCode.TEMPLATE_NOT_FOUND,
-                "시스템 기본 실패 템플릿을 찾을 수 없습니다."
+                "시스템 기본 실패 템플릿을 찾을 수 없습니다. defaultFail 플래그를 확인해주세요."
             )
     }
 
