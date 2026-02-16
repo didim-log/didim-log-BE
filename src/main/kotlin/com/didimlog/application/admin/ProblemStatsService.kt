@@ -2,7 +2,6 @@ package com.didimlog.application.admin
 
 import org.bson.Document
 import org.springframework.data.mongodb.core.MongoTemplate
-import org.springframework.data.mongodb.core.query.Query
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -16,14 +15,8 @@ class ProblemStatsService(
 
     @Transactional(readOnly = true)
     fun getProblemStats(): ProblemStats {
-        val query = Query()
-        query.fields()
-            .include("_id")
-            .include("descriptionHtml")
-            .include("language")
-
-        val docs = mongoTemplate.find(query, Document::class.java, "problems")
-        if (docs.isEmpty()) {
+        val totalCount = mongoTemplate.getCollection("problems").countDocuments()
+        if (totalCount == 0L) {
             return ProblemStats(
                 totalCount = 0L,
                 minProblemId = null,
@@ -33,48 +26,64 @@ class ProblemStatsService(
             )
         }
 
-        var minProblemId: Int? = null
-        var maxProblemId: Int? = null
-        var minNullDescriptionHtmlProblemId: Int? = null
-        var minNullLanguageProblemId: Int? = null
+        val pipeline = listOf(
+            Document(
+                "\$match",
+                Document("_id", Document("\$regex", "^[0-9]+$"))
+            ),
+            Document(
+                "\$project",
+                Document("numericProblemId", Document("\$toInt", "\$_id"))
+                    .append("descriptionHtml", "\$descriptionHtml")
+                    .append("languageNormalized", Document("\$toLower", Document("\$ifNull", listOf("\$language", ""))))
+            ),
+            Document(
+                "\$group",
+                Document("_id", null)
+                    .append("minProblemId", Document("\$min", "\$numericProblemId"))
+                    .append("maxProblemId", Document("\$max", "\$numericProblemId"))
+                    .append(
+                        "minNullDescriptionHtmlProblemId",
+                        Document(
+                            "\$min",
+                            Document(
+                                "\$cond",
+                                listOf(
+                                    Document("\$eq", listOf(Document("\$ifNull", listOf("\$descriptionHtml", "")), "")),
+                                    "\$numericProblemId",
+                                    null
+                                )
+                            )
+                        )
+                    )
+                    .append(
+                        "minNullLanguageProblemId",
+                        Document(
+                            "\$min",
+                            Document(
+                                "\$cond",
+                                listOf(
+                                    Document("\$in", listOf("\$languageNormalized", listOf("", "other"))),
+                                    "\$numericProblemId",
+                                    null
+                                )
+                            )
+                        )
+                    )
+            )
+        )
 
-        for (doc in docs) {
-            val numericProblemId = extractNumericProblemId(doc) ?: continue
-
-            minProblemId = min(minProblemId, numericProblemId)
-            maxProblemId = max(maxProblemId, numericProblemId)
-
-            val descriptionHtml = doc.get("descriptionHtml")?.toString()
-            if (descriptionHtml.isNullOrBlank()) {
-                minNullDescriptionHtmlProblemId = min(minNullDescriptionHtmlProblemId, numericProblemId)
-            }
-
-            val language = doc.get("language")?.toString()
-            if (language.isNullOrBlank() || language.equals("other", ignoreCase = true)) {
-                minNullLanguageProblemId = min(minNullLanguageProblemId, numericProblemId)
-            }
-        }
+        val aggregateResult = mongoTemplate.getCollection("problems")
+            .aggregate(pipeline)
+            .first()
 
         return ProblemStats(
-            totalCount = docs.size.toLong(),
-            minProblemId = minProblemId,
-            maxProblemId = maxProblemId,
-            minNullDescriptionHtmlProblemId = minNullDescriptionHtmlProblemId,
-            minNullLanguageProblemId = minNullLanguageProblemId
+            totalCount = totalCount,
+            minProblemId = aggregateResult?.getInteger("minProblemId"),
+            maxProblemId = aggregateResult?.getInteger("maxProblemId"),
+            minNullDescriptionHtmlProblemId = aggregateResult?.getInteger("minNullDescriptionHtmlProblemId"),
+            minNullLanguageProblemId = aggregateResult?.getInteger("minNullLanguageProblemId")
         )
-    }
-
-    private fun extractNumericProblemId(doc: Document): Int? {
-        val rawId = doc["_id"]?.toString() ?: return null
-        return rawId.toIntOrNull()
-    }
-
-    private fun min(current: Int?, candidate: Int): Int {
-        return if (current == null || candidate < current) candidate else current
-    }
-
-    private fun max(current: Int?, candidate: Int): Int {
-        return if (current == null || candidate > current) candidate else current
     }
 
     data class ProblemStats(
