@@ -3,7 +3,6 @@ package com.didimlog.ui.controller
 import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.TemplateCategory
-import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.template.SectionPreset
 import com.didimlog.domain.valueobject.BojId
@@ -12,6 +11,7 @@ import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.TemplatePreviewRequest
 import com.didimlog.ui.dto.TemplatePresetResponse
 import com.didimlog.ui.dto.TemplateRequest
+import com.didimlog.ui.dto.TemplateRenderRequest
 import com.didimlog.ui.dto.TemplateRenderResponse
 import com.didimlog.ui.dto.TemplateResponse
 import com.didimlog.ui.dto.TemplateSummaryResponse
@@ -67,7 +67,7 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val templates = templateService.getTemplates(studentId)
-        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student, templates)
+        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student)
         val response = templates.map {
             TemplateResponse.from(
                 template = it,
@@ -97,13 +97,18 @@ class TemplateController(
     fun getTemplateSummaries(authentication: Authentication): ResponseEntity<List<TemplateSummaryResponse>> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val templates = templateService.getTemplates(studentId)
-        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student, templates)
-        val response = templates.map {
-            TemplateSummaryResponse.from(
-                template = it,
-                defaultSuccessTemplateId = defaultSuccessTemplateId,
-                defaultFailTemplateId = defaultFailTemplateId
+        val summaries = templateService.getTemplateSummaries(studentId)
+        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIdsForSummary(student, studentId)
+        val response = summaries.map {
+            TemplateSummaryResponse(
+                id = it.id,
+                studentId = it.studentId,
+                title = it.title,
+                type = it.type,
+                isDefaultSuccess = defaultSuccessTemplateId != null && defaultSuccessTemplateId == it.id,
+                isDefaultFail = defaultFailTemplateId != null && defaultFailTemplateId == it.id,
+                createdAt = it.createdAt,
+                updatedAt = it.updatedAt
             )
         }
         return ResponseEntity.ok(response)
@@ -213,6 +218,51 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val renderedContent = templateService.renderTemplate(id, problemId, studentId, programmingLanguage, code)
+        val response = TemplateRenderResponse(renderedContent = renderedContent)
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "템플릿 렌더링 (POST)",
+        description = "저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. GET 렌더링과 동일 동작이며 긴 code payload 전송을 위해 POST를 지원합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "렌더링 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "템플릿 또는 문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/{id}/render")
+    fun renderTemplatePost(
+        authentication: Authentication,
+        @Parameter(description = "템플릿 ID")
+        @PathVariable id: String,
+        @Valid @RequestBody request: TemplateRenderRequest
+    ): ResponseEntity<TemplateRenderResponse> {
+        val student = getStudentFromAuthentication(authentication)
+        val studentId = getStudentId(student)
+        val renderedContent = templateService.renderTemplate(
+            id,
+            request.problemId,
+            studentId,
+            request.programmingLanguage,
+            request.code
+        )
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }
@@ -470,11 +520,20 @@ class TemplateController(
         }
     }
 
-    private fun resolveDefaultTemplateIds(student: Student, templates: List<com.didimlog.domain.template.Template>): Pair<String?, String?> {
+    private fun resolveDefaultTemplateIds(student: Student): Pair<String?, String?> {
+        val studentId = getStudentId(student)
         val successTemplateId = student.defaultSuccessTemplateId
-            ?: templates.firstOrNull { it.type == TemplateOwnershipType.SYSTEM && it.title == "Simple(요약)" }?.id
+            ?: templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId).id
         val failTemplateId = student.defaultFailTemplateId
-            ?: templates.firstOrNull { it.type == TemplateOwnershipType.SYSTEM && it.title == "Detail(상세)" }?.id
+            ?: templateService.getDefaultTemplate(TemplateCategory.FAIL, studentId).id
+        return successTemplateId to failTemplateId
+    }
+
+    private fun resolveDefaultTemplateIdsForSummary(student: Student, studentId: String): Pair<String?, String?> {
+        val successTemplateId = student.defaultSuccessTemplateId
+            ?: templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId).id
+        val failTemplateId = student.defaultFailTemplateId
+            ?: templateService.getDefaultTemplate(TemplateCategory.FAIL, studentId).id
         return successTemplateId to failTemplateId
     }
 }

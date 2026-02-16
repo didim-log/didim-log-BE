@@ -34,18 +34,19 @@ class StatisticsService(
     fun getStatistics(bojId: String): StatisticsInfo {
         val student = findStudentByBojIdOrThrow(bojId)
         val studentId = student.id ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID가 없습니다. bojId=$bojId")
-        val monthlyHeatmap = getMonthlyHeatmap(student)
+        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        val monthlyHeatmap = getMonthlyHeatmap(retrospectives)
         val totalSolvedCount = getTotalSolvedCount(student)
-        val totalRetrospectives = getTotalRetrospectives(studentId)
-        val totalFailures = getTotalFailures(studentId)
+        val totalRetrospectives = getTotalRetrospectives(retrospectives)
+        val totalFailures = getTotalFailures(retrospectives)
         val averageSolveTime = getAverageSolveTime(student)
         val successRate = getSuccessRate(student)
         
         // 성공한 문제의 카테고리별 통계 (Radar/Bar Chart용)
-        val categoryStats = getCategoryStats(studentId)
+        val categoryStats = getCategoryStats(retrospectives)
         
         // 실패한 문제의 카테고리별 통계 (Weakness Analysis용)
-        val weaknessStats = getWeaknessStats(studentId)
+        val weaknessStats = getWeaknessStats(retrospectives)
 
         return StatisticsInfo(
             monthlyHeatmap = monthlyHeatmap,
@@ -73,19 +74,20 @@ class StatisticsService(
      * 프론트엔드의 GitHub 스타일 히트맵과 일치하도록 정확히 365일 전부터 오늘까지의 데이터를 반환한다.
      * 연도별 히트맵도 함께 생성한다.
      */
-    private fun getMonthlyHeatmap(student: Student): List<HeatmapData> {
-        val solutions = student.solutions.getAll()
+    private fun getMonthlyHeatmap(retrospectives: List<com.didimlog.domain.Retrospective>): List<HeatmapData> {
         val today = LocalDate.now()
         val startDate = today.minusDays(364) // 정확히 365일 전 (오늘 포함하여 365일)
 
         val heatmapMap = mutableMapOf<LocalDate, MutableList<String>>()
 
-        solutions.forEach { solution ->
-            val solutionDate = solution.solvedAt.toLocalDate()
+        retrospectives.forEach { retrospective ->
+            val solutionDate = retrospective.createdAt.toLocalDate()
             // startDate부터 today까지 포함 (둘 다 포함)
             if (!solutionDate.isBefore(startDate) && !solutionDate.isAfter(today)) {
                 val problemIds = heatmapMap.getOrPut(solutionDate) { mutableListOf() }
-                problemIds.add(solution.problemId.value)
+                if (retrospective.problemId !in problemIds) {
+                    problemIds.add(retrospective.problemId)
+                }
             }
         }
 
@@ -106,8 +108,7 @@ class StatisticsService(
      * @param studentId 학생 ID
      * @return 카테고리별 통계 리스트 (count 기준 내림차순 정렬)
      */
-    private fun getCategoryStats(studentId: String): List<CategoryStat> {
-        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+    private fun getCategoryStats(retrospectives: List<com.didimlog.domain.Retrospective>): List<CategoryStat> {
         val successRetrospectives = retrospectives.filter { retrospective ->
             retrospective.solutionResult == ProblemResult.SUCCESS
         }
@@ -151,8 +152,8 @@ class StatisticsService(
      * @param studentId 학생 ID
      * @return 총 회고 수
      */
-    private fun getTotalRetrospectives(studentId: String): Long {
-        return retrospectiveRepository.countByStudentId(studentId)
+    private fun getTotalRetrospectives(retrospectives: List<com.didimlog.domain.Retrospective>): Long {
+        return retrospectives.size.toLong()
     }
 
     /**
@@ -163,8 +164,7 @@ class StatisticsService(
      * @param studentId 학생 ID
      * @return 총 실패 회고 수
      */
-    private fun getTotalFailures(studentId: String): Long {
-        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+    private fun getTotalFailures(retrospectives: List<com.didimlog.domain.Retrospective>): Long {
         return retrospectives.count { retrospective ->
             retrospective.solutionResult == ProblemResult.FAIL || retrospective.solutionResult == ProblemResult.TIME_OVER
         }.toLong()
@@ -214,8 +214,7 @@ class StatisticsService(
      * @param studentId 학생 ID
      * @return 카테고리별 통계 리스트 (count 기준 내림차순 정렬)
      */
-    private fun getWeaknessStats(studentId: String): List<CategoryStat> {
-        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+    private fun getWeaknessStats(retrospectives: List<com.didimlog.domain.Retrospective>): List<CategoryStat> {
         val failedRetrospectives = retrospectives.filter { retrospective ->
             retrospective.solutionResult == ProblemResult.FAIL || retrospective.solutionResult == ProblemResult.TIME_OVER
         }

@@ -58,7 +58,15 @@ class Solutions(
      * @return 해당 문제 ID의 최신 Solution 또는 null
      */
     fun findByProblemId(problemId: com.didimlog.domain.valueobject.ProblemId): Solution? {
-        return items.filter { it.problemId == problemId }
-            .maxByOrNull { it.solvedAt }
+        var latest: Solution? = null
+        for (solution in items) {
+            if (solution.problemId != problemId) {
+                continue
+            }
+            if (latest == null || solution.solvedAt.isAfter(latest.solvedAt)) {
+                latest = solution
+            }
+        }
+        return latest
     }
 }

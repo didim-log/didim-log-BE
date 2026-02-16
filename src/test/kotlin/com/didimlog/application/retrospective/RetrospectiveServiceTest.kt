@@ -420,18 +420,21 @@ class RetrospectiveServiceTest {
     fun `회고 조회`() {
         // given
         val retrospectiveId = "retrospective-id"
+        val studentId = "student-id"
         val retrospective = Retrospective(
             id = retrospectiveId,
-            studentId = "student-id",
+            studentId = studentId,
             problemId = "1000",
             content = "이 문제는 DFS를 사용해서 풀었습니다. 재귀 호출 시 방문 체크를 빼먹어서 시간이 오래 걸렸네요.",
             summary = "한 줄 요약 테스트"
         )
+        val student = createStudent(id = studentId)
 
         every { retrospectiveRepository.findById(retrospectiveId) } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
 
         // when
-        val result = retrospectiveService.getRetrospective(retrospectiveId)
+        val result = retrospectiveService.getRetrospective(retrospectiveId, studentId)
 
         // then
         assertThat(result.id).isEqualTo(retrospectiveId)
@@ -442,11 +445,14 @@ class RetrospectiveServiceTest {
     @DisplayName("getRetrospective는 회고가 없으면 예외를 발생시킨다")
     fun `회고가 없으면 예외`() {
         // given
+        val studentId = "student-id"
+        val student = createStudent(id = studentId)
         every { retrospectiveRepository.findById("missing") } returns Optional.empty()
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
 
         // expect
         val exception = assertThrows<BusinessException> {
-            retrospectiveService.getRetrospective("missing")
+            retrospectiveService.getRetrospective("missing", studentId)
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.RETROSPECTIVE_NOT_FOUND)
     }

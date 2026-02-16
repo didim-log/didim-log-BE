@@ -5,9 +5,12 @@ import com.didimlog.domain.repository.LogRepository
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.AiGenerationTimeoutException
 import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.infra.ai.AiApiClient
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.core.task.TaskExecutor
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -19,7 +22,10 @@ class AiReviewService(
     private val logRepository: LogRepository,
     private val aiApiClient: AiApiClient,
     private val logAiReviewLockRepository: LogAiReviewLockRepository,
-    private val aiUsageService: AiUsageService
+    private val aiUsageService: AiUsageService,
+    private val aiReviewCodeCacheService: AiReviewCodeCacheService,
+    @Qualifier("aiReviewTaskExecutor")
+    private val aiReviewTaskExecutor: TaskExecutor
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -36,29 +42,114 @@ class AiReviewService(
         if (code.length < MIN_CODE_LENGTH) {
             return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
         }
-
-        // AI 사용량 체크 (사용자 ID가 있는 경우만)
-        val userId = logEntity.bojId?.value
-        if (userId != null) {
-            log.info("Checking AI availability for user: $userId")
-            try {
-                aiUsageService.checkAvailability(userId)
-            } catch (e: BusinessException) {
-                // 사용량 제한 초과 시 예외를 그대로 전파
-                log.warn("AI availability check failed for user: $userId, reason: ${e.message}")
-                throw e
-            }
+        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, logEntity.isSuccess)
+        if (cachedByCode != null) {
+            return AiReviewResult(review = cachedByCode, cached = true)
         }
+
+        val userId = logEntity.bojId?.value
+        checkAvailability(userId)
 
         val now = LocalDateTime.now()
         val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
         
         if (!tryAcquireLock(logId, now, expiresAt)) {
-            return handleLockNotAcquired(logId, now)
+            return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
         }
 
         // AI API 호출 및 사용량 증가는 generateAiReview 내부에서 처리
         return generateAiReview(logId, code, logEntity.isSuccess, userId)
+    }
+
+    @Transactional
+    fun requestOneLineReviewAsync(logId: String, requesterBojId: String): AiReviewResult {
+        val logEntity = findLogOrThrow(logId)
+
+        val cachedReview = logEntity.aiReviewTextOrNull()
+        if (cachedReview != null) {
+            return AiReviewResult(review = cachedReview, cached = true)
+        }
+
+        val code = logEntity.code.value.trim()
+        if (code.length < MIN_CODE_LENGTH) {
+            return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
+        }
+        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, logEntity.isSuccess)
+        if (cachedByCode != null) {
+            return AiReviewResult(review = cachedByCode, cached = true)
+        }
+
+        val now = LocalDateTime.now()
+        val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
+        if (!tryAcquireLock(logId, now, expiresAt)) {
+            return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
+        }
+
+        try {
+            val logOwnerBojId = logEntity.bojId?.value
+            val usageUserId = resolveUsageUserId(requesterBojId, logOwnerBojId)
+            checkAvailability(usageUserId)
+            scheduleAiReviewGeneration(logId, code, logEntity.isSuccess, usageUserId)
+        } catch (e: BusinessException) {
+            logAiReviewLockRepository.markFailed(logId)
+            throw e
+        }
+
+        return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
+    }
+
+    private fun resolveUsageUserId(requesterBojId: String, logOwnerBojId: String?): String {
+        if (requesterBojId.isBlank()) {
+            throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        }
+
+        if (logOwnerBojId == null) {
+            if (aiUsageService.isRequireBojForAiReview()) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "BOJ 연동이 완료된 로그에서만 AI 리뷰를 요청할 수 있습니다."
+                )
+            }
+            return requesterBojId
+        }
+
+        if (requesterBojId != logOwnerBojId) {
+            throw BusinessException(
+                ErrorCode.ACCESS_DENIED,
+                "본인이 작성한 로그에 대해서만 AI 리뷰를 요청할 수 있습니다."
+            )
+        }
+
+        return logOwnerBojId
+    }
+
+    private fun checkAvailability(userId: String?) {
+        if (userId == null) {
+            return
+        }
+
+        log.info("Checking AI availability for user: $userId")
+        try {
+            aiUsageService.checkAvailability(userId)
+        } catch (e: BusinessException) {
+            log.warn("AI availability check failed for user: $userId, reason: ${e.message}")
+            throw e
+        }
+    }
+
+    private fun scheduleAiReviewGeneration(logId: String, code: String, isSuccess: Boolean?, userId: String?) {
+        try {
+            aiReviewTaskExecutor.execute {
+                try {
+                    generateAiReview(logId, code, isSuccess, userId)
+                } catch (e: Exception) {
+                    log.error("비동기 AI 리뷰 생성 실패: logId=$logId, userId=$userId", e)
+                }
+            }
+        } catch (e: Exception) {
+            logAiReviewLockRepository.markFailed(logId)
+            throw AiGenerationFailedException("AI 리뷰 작업 등록에 실패했습니다.", e)
+        }
     }
 
     private fun findLogOrThrow(logId: String): com.didimlog.domain.Log {
@@ -70,14 +161,23 @@ class AiReviewService(
         return logAiReviewLockRepository.tryAcquireLock(logId, now, expiresAt)
     }
 
-    private fun handleLockNotAcquired(logId: String, @Suppress("UNUSED_PARAMETER") now: LocalDateTime): AiReviewResult {
+    private fun handleLockNotAcquired(
+        logId: String,
+        @Suppress("UNUSED_PARAMETER") now: LocalDateTime,
+        code: String,
+        isSuccess: Boolean?
+    ): AiReviewResult {
         val afterLog = logRepository.findById(logId).orElse(null)
         val afterCached = afterLog?.aiReviewTextOrNull()
         if (afterCached != null) {
             return AiReviewResult(review = afterCached, cached = true)
         }
+        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, isSuccess)
+        if (cachedByCode != null) {
+            return AiReviewResult(review = cachedByCode, cached = true)
+        }
 
-        return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false)
+        return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
     }
 
     private fun generateAiReview(logId: String, code: String, isSuccess: Boolean?, userId: String?): AiReviewResult {
@@ -100,7 +200,9 @@ class AiReviewService(
             aiUsageService.incrementUsage(userId)
         }
 
-        return saveAiReviewResult(logId, response.review, duration)
+        val result = saveAiReviewResult(logId, response.review, duration)
+        aiReviewCodeCacheService.cacheReview(code, isSuccess, result.review)
+        return result
     }
 
     private fun requestAiApiWithErrorHandling(
@@ -224,14 +326,13 @@ class AiReviewService(
         private const val MIN_CODE_LENGTH = 10
         private const val CODE_TOO_SHORT_MESSAGE = "코드가 너무 짧아 분석할 수 없습니다"
         private const val IN_PROGRESS_MESSAGE = "AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요."
-        private const val LOCK_TTL_SECONDS = 30L
-        private const val AI_TIMEOUT_SECONDS = 30L
+        private const val LOCK_TTL_SECONDS = 45L
+        private const val AI_TIMEOUT_SECONDS = 12L
     }
 }
 
 data class AiReviewResult(
     val review: String,
-    val cached: Boolean
+    val cached: Boolean,
+    val inProgress: Boolean = false
 )
-
-

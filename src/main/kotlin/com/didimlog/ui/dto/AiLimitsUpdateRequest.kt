@@ -1,5 +1,6 @@
 package com.didimlog.ui.dto
 
+import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
 
@@ -9,13 +10,14 @@ import jakarta.validation.constraints.NotNull
 data class AiLimitsUpdateRequest(
     @field:NotNull(message = "globalLimit은 필수입니다.")
     @field:Min(value = 1, message = "globalLimit은 1 이상이어야 합니다.")
+    @field:Max(value = 1000, message = "globalLimit은 1000 이하여야 합니다.")
     val globalLimit: Int,
     
     @field:NotNull(message = "userLimit은 필수입니다.")
     @field:Min(value = 1, message = "userLimit은 1 이상이어야 합니다.")
+    @field:Max(value = 1000, message = "userLimit은 1000 이하여야 합니다.")
     val userLimit: Int
 )
-
 
 
 

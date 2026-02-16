@@ -7,9 +7,9 @@ data class AiStatusResponse(
     val isEnabled: Boolean,
     val todayGlobalUsage: Int,
     val globalLimit: Int,
-    val userLimit: Int
+    val userLimit: Int,
+    val requireBojForAiReview: Boolean
 )
-
 
 
 

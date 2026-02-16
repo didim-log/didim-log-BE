@@ -11,6 +11,7 @@
 - [StudyController](#studycontroller)
 - [RetrospectiveController](#retrospectivecontroller)
 - [DashboardController](#dashboardcontroller)
+- [LogController](#logcontroller)
 - [StudentController](#studentcontroller)
 - [QuoteController](#quotecontroller)
 - [StatisticsController](#statisticscontroller)
@@ -31,6 +32,7 @@ Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
 - `Auth`: 인증/인가
 - `Template`: 회고 템플릿 관리/렌더링
 - `Retrospective`: 회고 CRUD/검색
+- `Log`: 코드 로그 작성/AI 리뷰/피드백
 - `Problem`, `Study`, `Statistics`, `Ranking`, `Dashboard`: 학습/분석 기능
 - `Admin`: 관리자 기능 전체(회원/로그/문제수집/시스템제어/감사로그 포함)
 - `System`: 공개 시스템 상태 조회
@@ -49,8 +51,12 @@ Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
 | POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/signup/finalize` | 소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되며 정식 Access Token이 발급됩니다. | **Request Body:**<br>`SignupFinalizeRequest`<br>- `email` (String, required): 사용자 이메일<br>  - 유효성: `@NotBlank` (null/공백 불가)<br>  - **GitHub 비공개 이메일 등 제공자에서 이메일을 내려주지 않는 경우**: 프론트엔드에서 사용자가 직접 입력한 값을 전달해야 함<br>- `provider` (String, required): 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)<br>  - 유효성: `@NotBlank`<br>- `providerId` (String, required): 제공자별 사용자 ID<br>  - 유효성: `@NotBlank`<br>- `nickname` (String, required): 설정할 닉네임<br>  - 유효성: `@NotBlank`<br>- `bojId` (String, optional): BOJ ID (선택)<br>  - 제공된 경우 Solved.ac API로 검증 및 Rating 조회<br>  - **중복 불가** (이미 존재하는 BOJ ID면 409 발생)<br>- `isAgreedToTerms` (Boolean, required): 약관 동의 여부<br>  - 유효성: `@NotNull`<br>  - 반드시 `true`여야 함 (약관 동의는 필수)<br><br>※ 서버는 호환성을 위해 `termsAgreed`도 함께 지원합니다. | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (USER role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수, BOJ ID가 제공된 경우)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER", "BRONZE")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/find-account` | 이메일을 입력받아 가입된 소셜 제공자(Provider)를 반환합니다. | **Request Body:**<br>`FindAccountRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindAccountResponse`<br>- `provider` (String)<br>- `message` (String) | None |
+| POST | `/api/v1/auth/find-id` | 이메일을 입력받아 BOJ ID를 조회합니다. | **Request Body:**<br>`FindIdRequest`<br>- `email` (String, required)<br>  - 유효성: `@NotBlank`, `@Email` | `FindIdPasswordResponse`<br>- `message` (String) | None |
+| POST | `/api/v1/auth/find-password` | 이메일과 BOJ ID를 검증한 뒤 비밀번호 재설정 코드를 발급하고 이메일로 전송합니다. | **Request Body:**<br>`FindPasswordRequest`<br>- `email` (String, required)<br>  - 유효성: `@NotBlank`, `@Email`<br>- `bojId` (String, required)<br>  - 유효성: `@NotBlank` | `FindIdPasswordResponse`<br>- `message` (String) | None |
+| POST | `/api/v1/auth/reset-password` | 비밀번호 재설정 코드와 새 비밀번호로 비밀번호를 변경합니다. | **Request Body:**<br>`ResetPasswordRequest`<br>- `resetCode` (String, required)<br>  - 유효성: `@NotBlank`<br>- `newPassword` (String, required)<br>  - 유효성: `@NotBlank`, `@Size(min=8)` | `FindIdPasswordResponse`<br>- `message` (String) | None |
 | POST | `/api/v1/auth/boj/code` | BOJ 프로필 상태 메시지 인증에 사용할 코드를 발급합니다. | 없음 | `BojCodeIssueResponse`<br>- `sessionId` (String)<br>- `code` (String)<br>- `expiresInSeconds` (Long) | None |
 | POST | `/api/v1/auth/boj/verify` | BOJ 프로필 상태 메시지에서 발급 코드 포함 여부를 확인하고 성공 시 소유권 인증을 완료합니다. | **Request Body:**<br>`BojVerifyRequest`<br>- `sessionId` (String, required)<br>- `bojId` (String, required) | `BojVerifyResponse`<br>- `verified` (Boolean) | None |
+| POST | `/api/v1/auth/refresh` | Refresh Token으로 Access/Refresh Token을 재발급합니다. | **Headers:**<br>- `Authorization: Bearer {refreshToken}` (optional)<br>**Request Body:**<br>`RefreshTokenRequest`<br>- `refreshToken` (String, optional)<br><br>Body와 Header 중 하나에서 Refresh Token 제공 필요 | `AuthResponse`<br>- `token` (String)<br>- `refreshToken` (String)<br>- `message` (String) | None |
 
 **예시 요청 (회원가입):**
 ```http
@@ -482,11 +488,12 @@ Content-Type: application/json
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, optional): 한 줄 요약<br>  - 유효성: `@Size(max=200)` (200자 이하)<br>  - null 허용 (선택사항)<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>  - 사용자가 직접 선택한 결과임을 명시<br>  - null 허용 (선택사항)<br>- `solvedCategory` (String, optional): 사용자가 선택한 풀이 전략(알고리즘) 태그<br>  - 유효성: `@Size(max=50)` (50자 이하)<br>  - 예: "BruteForce", "Greedy" 등<br>  - null 허용 (선택사항)<br>- `solveTime` (String, optional): 풀이 소요 시간 (예: "15m 30s")<br>  - null 허용 (선택사항) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 학생 ID (JWT 토큰에서 자동 추출)<br>- `problemId` (String): 문제 ID<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601 형식)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 알고리즘 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, nullable): 사용자가 선택한 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
-| GET | `/api/v1/retrospectives` | 검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. | **Query Parameters:**<br>- `keyword` (String, optional): 검색 키워드 (내용 또는 문제 ID)<br>- `category` (String, optional): 카테고리 필터 (예: "DFS", "DP")<br>- `isBookmarked` (Boolean, optional): 북마크 여부 (true인 경우만 필터링)<br>- `studentId` (String, optional): 학생 ID 필터<br>- `page` (Int, optional, default: 1): 페이지 번호 (1부터 시작)<br>  - 유효성: `@Min(1)` (1 이상)<br>- `size` (Int, optional, default: 10): 페이지 크기<br>  - 유효성: `@Positive` (1 이상)<br>- `sort` (String, optional): 정렬 기준 (예: "createdAt,desc" 또는 "createdAt,asc")<br>  - 기본값: "createdAt,desc" | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>): 회고 목록<br>- `totalElements` (Long): 전체 회고 수<br>- `totalPages` (Int): 전체 페이지 수<br>- `currentPage` (Int): 현재 페이지 번호<br>- `size` (Int): 페이지 크기<br>- `hasNext` (Boolean): 다음 페이지 존재 여부<br>- `hasPrevious` (Boolean): 이전 페이지 존재 여부 | None |
-| GET | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 조회합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>(위와 동일) | None |
-| POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 회고의 북마크 상태를 토글합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `BookmarkToggleResponse`<br><br>**BookmarkToggleResponse 구조:**<br>- `isBookmarked` (Boolean): 변경된 북마크 상태 | None |
-| DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 회고 ID로 회고를 삭제합니다. | **Path Variables:**<br>- `retrospectiveId` (String, required): 회고 ID | `204 No Content` (응답 본문 없음) | None |
+| POST | `/api/v1/retrospectives` | 학생이 문제 풀이 후 회고를 작성합니다. 이미 해당 문제에 대한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `problemId` (String, required): 문제 ID<br><br>**Request Body:**<br>`RetrospectiveRequest`<br>- `content` (String, required): 회고 내용<br>  - 유효성: `@NotBlank`, `@Size(min=10)` (10자 이상)<br>- `summary` (String, required): 한 줄 요약<br>  - 유효성: `@NotBlank`, `@Size(max=200)`<br>- `resultType` (ProblemResult, optional): 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)<br>- `solvedCategory` (String, optional): 풀이 전략 태그 (`@Size(max=50)`)<br>- `solveTime` (String, optional): 풀이 소요 시간 (`@Size(max=50)`) | `RetrospectiveResponse`<br><br>**RetrospectiveResponse 구조:**<br>- `id` (String): 회고 ID<br>- `studentId` (String): 회고 소유 학생 ID<br>- `isOwner` (Boolean): 현재 요청 사용자의 소유 여부<br>- `problemId` (String): 문제 ID<br>- `problemTitle` (String, nullable): 문제 제목 (리스트/카드 렌더링 최적화용)<br>- `content` (String): 회고 내용<br>- `summary` (String, nullable): 한 줄 요약<br>- `createdAt` (LocalDateTime): 생성 일시 (ISO 8601)<br>- `isBookmarked` (Boolean): 북마크 여부<br>- `mainCategory` (String, nullable): 주요 카테고리<br>- `solutionResult` (String, nullable): 풀이 결과<br>- `solvedCategory` (String, nullable): 풀이 전략 태그<br>- `solveTime` (String, nullable): 풀이 소요 시간 | JWT Token |
+| GET | `/api/v1/retrospectives` | 인증 사용자의 회고 목록을 조회합니다. 키워드, 카테고리, 북마크, 정렬, 페이징 필터를 지원합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br><br>**Query Parameters:**<br>- `keyword` (String, optional): 내용/문제 ID 검색어<br>- `category` (String, optional): 카테고리 필터<br>- `solvedCategory` (String, optional): 풀이 전략 태그(부분 일치)<br>- `isBookmarked` (Boolean, optional): 북마크 필터<br>- `page` (Int, optional, default: 1): `@Min(1)`<br>- `size` (Int, optional, default: 10): `@Min(1)`, `@Max(100)`<br>- `sort` (String, optional): 예 `createdAt,desc` | `RetrospectivePageResponse`<br><br>**RetrospectivePageResponse 구조:**<br>- `content` (List<RetrospectiveResponse>)<br>- `totalElements` (Long)<br>- `totalPages` (Int)<br>- `currentPage` (Int)<br>- `size` (Int)<br>- `hasNext` (Boolean)<br>- `hasPrevious` (Boolean) | JWT Token |
+| GET | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `RetrospectiveResponse` | JWT Token |
+| GET | `/api/v1/retrospectives/template` | 결과 타입에 맞는 기본 템플릿을 렌더링해 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID (`@Positive`)<br>- `resultType` (ProblemResult, required): SUCCESS/FAIL/TIME_OVER | `RetrospectiveTemplateResponse`<br>- `template` (String) | JWT Token |
+| POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 인증 사용자의 소유 회고 북마크 상태를 토글합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `BookmarkToggleResponse`<br>- `isBookmarked` (Boolean) | JWT Token |
+| DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 삭제합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `204 No Content` | JWT Token |
 
 **예시 요청 (회고 작성 - 성공 케이스):**
 ```http
@@ -532,6 +539,7 @@ Content-Type: application/json
 {
   "id": "retrospective-123",
   "studentId": "student-123",
+  "isOwner": true,
   "problemId": "1000",
   "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
   "summary": "두 수의 합을 구하는 기본 구현 문제",
@@ -575,6 +583,7 @@ GET /api/v1/retrospectives?sort=createdAt,asc&page=1&size=10
     {
       "id": "retrospective-123",
       "studentId": "student-123",
+      "isOwner": true,
       "problemId": "1000",
       "content": "이 문제는 DFS를 사용해서 풀었습니다.",
       "summary": "DFS를 활용한 그래프 탐색 문제",
@@ -597,6 +606,7 @@ GET /api/v1/retrospectives?sort=createdAt,asc&page=1&size=10
 **예시 요청 (북마크 토글):**
 ```http
 POST /api/v1/retrospectives/retrospective-123/bookmark
+Authorization: Bearer <token>
 ```
 
 **예시 응답 (북마크 토글):**
@@ -609,6 +619,7 @@ POST /api/v1/retrospectives/retrospective-123/bookmark
 **예시 요청 (회고 삭제):**
 ```http
 DELETE /api/v1/retrospectives/retrospective-123
+Authorization: Bearer <token>
 ```
 
 **예시 응답 (회고 삭제):**
@@ -797,7 +808,7 @@ GET /api/v1/quotes/random
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/statistics` | 학생의 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한 통계 정보를 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 12개월간의 월별 잔디 데이터<br>- `categoryDistribution` (Map<String, Int>): 카테고리별 풀이 통계 (현재는 빈 맵, 향후 구현 예정)<br>- `totalSolvedCount` (Int): 누적 풀이 수<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식, 예: "2024-01-15")<br>- `count` (Int): 해당 날짜의 풀이 수 | JWT Token |
+| GET | `/api/v1/statistics` | 인증 사용자의 통계 정보를 조회합니다. 최근 365일 히트맵(회고 생성일 기준), 누적 풀이/회고/실패, 평균 풀이 시간, 성공률, 카테고리/약점 통계를 반환합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `StatisticsResponse`<br><br>**StatisticsResponse 구조:**<br>- `monthlyHeatmap` (List<HeatmapDataResponse>): 최근 365일 활동 히트맵 (회고 기준)<br>- `totalSolved` (Int): 누적 성공 문제 수(고유 문제 기준)<br>- `totalRetrospectives` (Long): 누적 회고 수<br>- `totalFailures` (Long): 실패/시간초과 회고 수<br>- `averageSolveTime` (Double): 평균 풀이 시간(초)<br>- `successRate` (Double): 성공률(%)<br>- `categoryStats` (List<CategoryStatResponse>): 성공 카테고리 통계<br>- `weaknessStats` (List<CategoryStatResponse>): 실패 카테고리 통계<br><br>**HeatmapDataResponse 구조:**<br>- `date` (String): 날짜 (ISO 8601 형식)<br>- `count` (Int): 해당 날짜 문제 수<br>- `problemIds` (List<String>): 해당 날짜 문제 ID 목록 | JWT Token |
 
 **예시 요청:**
 ```http
@@ -811,19 +822,26 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "monthlyHeatmap": [
     {
       "date": "2024-01-15",
-      "count": 3
+      "count": 3,
+      "problemIds": ["1000", "1001", "1002"]
     },
     {
       "date": "2024-01-16",
-      "count": 2
-    },
-    {
-      "date": "2024-01-17",
-      "count": 1
+      "count": 2,
+      "problemIds": ["10869", "2557"]
     }
   ],
-  "categoryDistribution": {},
-  "totalSolvedCount": 150
+  "totalSolved": 150,
+  "totalRetrospectives": 180,
+  "totalFailures": 30,
+  "averageSolveTime": 842.5,
+  "successRate": 83.3,
+  "categoryStats": [
+    { "category": "DP", "count": 42 }
+  ],
+  "weaknessStats": [
+    { "category": "Greedy", "count": 12 }
+  ]
 }
 ```
 
@@ -835,7 +853,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/ranks` | 기간별 회고 작성 수 기준 상위 랭킹을 조회합니다. 동점자는 같은 순위로 처리합니다. | **Query Parameters:**<br>- `limit` (Int, optional, default: 100): 1~1000<br>- `period` (String, optional, default: TOTAL): DAILY/WEEKLY/MONTHLY/TOTAL | `List<LeaderboardResponse>`<br><br>**LeaderboardResponse 구조:**<br>- `rank` (Int): 순위 (1부터 시작)<br>- `nickname` (String): 닉네임<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `retrospectiveCount` (Long): 회고 작성 수<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br>- `profileImageUrl` (String, nullable): 프로필 이미지 URL (향후 확장용, 현재는 null) | None |
+| GET | `/api/v1/ranks` | 기간별 회고 작성 수 기준 상위 랭킹을 조회합니다. 동점자는 같은 순위로 처리합니다. | **Query Parameters:**<br>- `limit` (Int, optional, default: 100): 1~1000<br>- `period` (String, optional, default: TOTAL): DAILY/WEEKLY/MONTHLY/TOTAL | `List<LeaderboardResponse>`<br><br>**LeaderboardResponse 구조:**<br>- `rank` (Int): 순위 (1부터 시작)<br>- `studentId` (String): 학생 ID (클라이언트 내 순위 식별용)<br>- `nickname` (String): 닉네임<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값)<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `retrospectiveCount` (Long): 회고 작성 수<br>- `consecutiveSolveDays` (Int): 연속 풀이 일수<br>- `profileImageUrl` (String, nullable): 프로필 이미지 URL (향후 확장용, 현재는 null) | None |
 
 **예시 요청:**
 ```http
@@ -1122,6 +1140,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/admin/problems/stats` | 문제 컬렉션 통계를 조회합니다. 배치 작업 시작 범위 판단에 사용합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `ProblemStatsResponse`<br>- `totalCount` (Long)<br>- `minProblemId` (Int, nullable)<br>- `maxProblemId` (Int, nullable)<br>- `minNullDescriptionHtmlProblemId` (Int, nullable)<br>- `minNullLanguageProblemId` (Int, nullable) | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 비동기로 수집하여 DB에 저장합니다. (Upsert 방식) 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 메타데이터 수집 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용)<br>- `range` (String): 작업 범위 (예: "1-100") | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/collect-metadata/status/{jobId}` | 문제 메타데이터 수집 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `MetadataCollectJobStatus`<br><br>**MetadataCollectJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startProblemId` (Int): 시작 문제 ID<br>- `endProblemId` (Int): 종료 문제 ID<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 비동기로 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 상세 정보 크롤링 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용) | JWT Token (ADMIN) |
@@ -1257,15 +1276,16 @@ Content-Type: application/json
 
 회고 템플릿 관리 관련 API를 제공합니다. 사용자는 자신만의 커스텀 템플릿을 생성하고 관리할 수 있으며, 템플릿에 매크로 변수를 사용하여 문제 정보를 동적으로 치환할 수 있습니다.
 
-> 최신 정책: 프론트엔드는 아래 `TemplateController` 엔드포인트만 사용합니다.  
-> `/api/v1/retrospectives/template` 및 `POST /api/v1/retrospectives/template/static` 같은 회고 템플릿 전용 API는 제공하지 않습니다.
+> 최신 정책: 템플릿 관리/편집은 `TemplateController` 엔드포인트를 사용하고, 회고 작성 화면의 기본 템플릿 조회는 `GET /api/v1/retrospectives/template`를 사용합니다.  
+> `POST /api/v1/retrospectives/template/static` 엔드포인트는 제공하지 않습니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/templates` | 인증된 사용자의 커스텀 템플릿과 시스템 기본 템플릿 목록을 조회합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplateResponse>`<br><br>**TemplateResponse 구조:**<br>- `id` (String): 템플릿 ID<br>- `studentId` (String, nullable): 템플릿 소유자 ID (시스템 템플릿은 null)<br>- `title` (String): 템플릿 이름<br>- `content` (String): 템플릿 내용 (마크다운 원본)<br>- `type` (String): 템플릿 타입 ("SYSTEM", "CUSTOM")<br>- `isDefaultSuccess` (Boolean): 성공용 기본 템플릿 여부<br>- `isDefaultFail` (Boolean): 실패용 기본 템플릿 여부<br>- `createdAt` (LocalDateTime): 생성 일시<br>- `updatedAt` (LocalDateTime): 수정 일시 | JWT Token |
 | GET | `/api/v1/templates/presets` | 커스텀 템플릿 작성 시 활용할 수 있는 추천 섹션 목록을 조회합니다. 성공(SUCCESS), 실패(FAIL), 공통(COMMON) 카테고리별로 분류되어 제공됩니다. 프론트엔드에서 섹션 추가 시 가이드 질문(코칭 질문)을 함께 넣을지 선택할 수 있습니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `List<TemplatePresetResponse>`<br><br>**TemplatePresetResponse 구조:**<br>- `title` (String): 섹션 제목 (버튼에 표시될 이름, 예: "💡 핵심 로직")<br>- `guide` (String): 섹션 작성 가이드 (툴팁용, 예: "이 문제의 가장 중요한 점화식이나 접근법은 무엇인가요?")<br>- `category` (String): 섹션 카테고리 ("SUCCESS", "FAIL", "COMMON")<br>- `markdownContent` (String): 삽입될 마크다운 내용 (이모지 포함, 예: "## 💡 핵심 로직\n\n")<br>- `contentGuide` (String, nullable): 본문에 삽입될 가이드 질문(코칭 질문) (선택적으로 사용) | JWT Token |
 | POST | `/api/v1/templates/preview` | 템플릿을 저장하지 않고 미리보기로 렌더링합니다. 매크로 변수를 실제 문제 데이터로 치환하여 결과를 반환합니다. 템플릿 작성 중 매크로가 올바르게 변환되는지 확인할 수 있습니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환됩니다. `programmingLanguage`가 제공되지 않으면 `code` 필드에서 CodeLanguageDetector를 사용하여 자동 감지됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplatePreviewRequest`<br>- `templateContent` (String, required): 미리보기할 템플릿 내용<br>  - 유효성: `@NotBlank`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 필드에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
-| GET | `/api/v1/templates/{id}/render` | 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 매크로 변수를 실제 문제 데이터로 치환합니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환됩니다. `programmingLanguage`가 제공되지 않으면 `code` 파라미터에서 CodeLanguageDetector를 사용하여 자동 감지됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 파라미터에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
+| POST | `/api/v1/templates/{id}/render` | 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 긴 코드 payload 전송을 위해 POST body를 기본 경로로 사용합니다. 코드 블록 내의 `{{language}}`는 프로그래밍 언어로 치환됩니다. `programmingLanguage`가 제공되지 않으면 `code` 필드에서 CodeLanguageDetector를 사용하여 자동 감지됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Request Body:**<br>`TemplateRenderRequest`<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional): 프로그래밍 언어 코드 (예: "JAVA", "KOTLIN", "PYTHON", "CPP")<br>  - 코드 블록의 언어 태그로 사용됨<br>  - 제공되지 않으면 `code` 필드에서 자동 감지<br>- `code` (String, optional): 제출한 코드<br>  - `programmingLanguage`가 없을 때 CodeLanguageDetector로 언어 자동 감지에 사용<br>  - 가중치 기반 언어 감지 시스템 사용 | `TemplateRenderResponse`<br><br>**TemplateRenderResponse 구조:**<br>- `renderedContent` (String): 매크로가 치환된 템플릿 내용 | JWT Token |
+| GET | `/api/v1/templates/{id}/render` | (레거시 호환) 저장된 템플릿을 문제 데이터와 결합하여 렌더링된 템플릿을 반환합니다. 신규 클라이언트는 POST 사용을 권장합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID<br>  - 유효성: `@Min(1)`<br>- `programmingLanguage` (String, optional)<br>- `code` (String, optional) | `TemplateRenderResponse` | JWT Token |
 | POST | `/api/v1/templates` | 새로운 커스텀 템플릿을 생성합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용 (마크다운, 매크로 포함)<br>  - 유효성: `@NotBlank`, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
 | PUT | `/api/v1/templates/{id}` | 커스텀 템플릿을 수정합니다. 시스템 템플릿은 수정할 수 없습니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Request Body:**<br>`TemplateRequest`<br>- `title` (String, required): 템플릿 이름<br>  - 유효성: `@NotBlank`, 최대 100자<br>- `content` (String, required): 템플릿 내용<br>  - 유효성: `@NotBlank`, 최대 10000자 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
 | PUT | `/api/v1/templates/{id}/default` | 특정 템플릿을 성공 또는 실패용 기본값으로 설정합니다. 기존 기본 템플릿은 자동으로 해제됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Path Variables:**<br>- `id` (String, required): 템플릿 ID<br><br>**Query Parameters:**<br>- `category` (String, required): 템플릿 카테고리 ("SUCCESS" 또는 "FAIL")<br>  - `SUCCESS`: 성공용 기본 템플릿으로 설정<br>  - `FAIL`: 실패용 기본 템플릿으로 설정 | `TemplateResponse`<br><br>**TemplateResponse 구조:**<br>(위와 동일) | JWT Token |
@@ -1426,7 +1446,20 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 }
 ```
 
-**예시 요청 (템플릿 렌더링):**
+**예시 요청 (템플릿 렌더링 - 권장 POST):**
+```http
+POST /api/v1/templates/template-1/render
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "problemId": 1000,
+  "programmingLanguage": "KOTLIN",
+  "code": "fun main() { println(\"Hello\") }"
+}
+```
+
+**예시 요청 (템플릿 렌더링 - 레거시 GET):**
 ```http
 GET /api/v1/templates/template-1/render?problemId=1000
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
@@ -1734,6 +1767,47 @@ JWT 토큰 기반 인증을 지원합니다.
 ### 날짜/시간 형식
 모든 날짜/시간 필드는 ISO 8601 형식을 따릅니다:
 - 예: `2024-01-15T10:30:00`
+
+---
+
+## LogController
+
+코드 로그 생성, AI 리뷰 요청/조회, AI 피드백, 사용자 AI 사용량 조회 기능을 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| POST | `/api/v1/logs` | 코딩 로그를 생성합니다. | **Request Body:** `LogCreateRequest`<br>- `title` (String, required)<br>- `content` (String, required, max 5000)<br>- `code` (String, required, max 5000)<br>- `isSuccess` (Boolean, optional) | `LogResponse`<br>- `id` (String) | JWT(Optional) |
+| GET | `/api/v1/logs/{logId}/template` | 로그 본문 템플릿을 조회합니다. 본인이 작성한 로그만 조회할 수 있습니다. | **Path Variable:** `logId` (String, required) | `LogTemplateResponse`<br>- `template` (String) | JWT |
+| POST | `/api/v1/logs/{logId}/ai-review` | AI 한 줄 리뷰를 요청합니다. 캐시가 있으면 즉시 `200`, 캐시가 없으면 비동기 작업을 등록하고 `202`를 반환합니다. 동일 API를 다시 호출하면 완료 후 캐시 결과를 받을 수 있습니다. | **Path Variable:** `logId` (String, required) | `AiReviewResponse`<br>- `review` (String)<br>- `cached` (Boolean)<br>- `inProgress` (Boolean) | JWT |
+| POST | `/api/v1/logs/{logId}/feedback` | AI 리뷰 피드백(LIKE/DISLIKE)을 저장합니다. | **Path Variable:** `logId` (String, required)<br>**Request Body:** `LogFeedbackRequest`<br>- `status` (LIKE/DISLIKE, required)<br>- `reason` (String, optional) | `{ \"message\": \"피드백이 제출되었습니다.\" }` | JWT |
+| GET | `/api/v1/logs/ai-usage/me` | 내 AI 일일 사용량/잔여량/서비스 활성화 여부를 조회합니다. | 없음 | `AiUsageResponse`<br>- `limit` (Int)<br>- `usage` (Int)<br>- `remaining` (Int)<br>- `isServiceEnabled` (Boolean) | JWT |
+
+### AI 리뷰 응답 규칙
+
+- `200 OK`: 이미 생성된 리뷰를 반환 (`cached=true`, `inProgress=false`)
+- `202 Accepted`: 리뷰 생성 작업이 접수되어 진행 중 (`cached=false`, `inProgress=true`)
+- `429 Too Many Requests`: 사용자 일일 제한 초과(`AI_USER_LIMIT_EXCEEDED`) 또는 일시적 혼잡(`AI_SERVICE_BUSY`)
+- `503 Service Unavailable`: 전역 제한 초과(`AI_GLOBAL_LIMIT_EXCEEDED`) 또는 서비스 비활성화(`AI_SERVICE_DISABLED`)
+- `403 Forbidden`: 본인 로그가 아닌 경우(`ACCESS_DENIED`)
+
+### 운영 기본값 (환경 변수로 변경 가능)
+
+- 사용자 일일 제한: 5회 (`AI_CONFIG:LIMIT:USER`)
+- 전역 일일 제한: 1000회 (`AI_CONFIG:LIMIT:GLOBAL`)
+- 로그 `bojId`가 없는 경우 기본적으로 AI 리뷰 요청 차단 (`AI_CONFIG:REQUIRE_BOJ_FOR_AI_REVIEW=true`)
+- 동일 코드 재요청은 코드 해시 캐시를 통해 AI 재호출 없이 즉시 반환 (TTL 7일)
+- AI 호출 타임아웃: connect/read/response 10초 기본값
+- AI 비동기 워커: core 2, max 4, queue 200
+
+### 관리자 정책 제어 API
+
+- `POST /api/v1/admin/system/ai-limits`
+  - Request Body: `{"globalLimit": number, "userLimit": number}`
+  - 유효성: `globalLimit`/`userLimit` 모두 `1~1000`, 그리고 `userLimit <= globalLimit`
+  - 설명: 사용자/전역 일일 제한을 즉시 변경합니다.
+- `POST /api/v1/admin/system/ai-review-policy`
+  - Request Body: `{"requireBojForAiReview": true|false}`
+  - 설명: `true`면 BOJ 연동이 없는 로그의 AI 리뷰 요청을 차단합니다. (기본값 `true`)
 
 ---
 

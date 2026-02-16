@@ -3,6 +3,7 @@ package com.didimlog.domain.repository
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.template.Template
 import org.springframework.data.mongodb.repository.MongoRepository
+import org.springframework.data.mongodb.repository.Query
 
 interface TemplateRepository : MongoRepository<Template, String> {
 
@@ -13,6 +14,16 @@ interface TemplateRepository : MongoRepository<Template, String> {
      * @return 템플릿 목록
      */
     fun findByStudentIdOrType(studentId: String, type: TemplateOwnershipType): List<Template>
+
+    /**
+     * 특정 학생 템플릿 + 시스템 템플릿의 요약 정보를 조회한다.
+     * content 필드를 제외하여 목록 초기 로딩 비용을 절감한다.
+     */
+    @Query(
+        value = "{ \$or: [ { 'studentId': ?0 }, { 'type': ?1 } ] }",
+        fields = "{ 'content': 0 }"
+    )
+    fun findSummaryByStudentIdOrType(studentId: String, type: TemplateOwnershipType): List<TemplateSummaryView>
 
     /**
      * 특정 학생의 커스텀 템플릿만 조회한다.

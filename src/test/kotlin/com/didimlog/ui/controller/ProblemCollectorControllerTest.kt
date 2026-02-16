@@ -1,6 +1,7 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.ProblemCollectorService
+import com.didimlog.application.admin.ProblemStatsService
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
@@ -15,6 +16,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -37,10 +39,16 @@ class ProblemCollectorControllerTest {
     @Autowired
     private lateinit var problemCollectorService: ProblemCollectorService
 
+    @Autowired
+    private lateinit var problemStatsService: ProblemStatsService
+
     @TestConfiguration
     class TestConfig {
         @Bean
         fun problemCollectorService(): ProblemCollectorService = mockk(relaxed = true)
+
+        @Bean
+        fun problemStatsService(): ProblemStatsService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -65,6 +73,32 @@ class ProblemCollectorControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    @DisplayName("문제 통계 조회 성공 시 200 OK 및 Response JSON 구조 검증")
+    fun `문제 통계 조회 성공`() {
+        every { problemStatsService.getProblemStats() } returns ProblemStatsService.ProblemStats(
+            totalCount = 1000L,
+            minProblemId = 1000,
+            maxProblemId = 9999,
+            minNullDescriptionHtmlProblemId = 1024,
+            minNullLanguageProblemId = 2048
+        )
+
+        mockMvc.perform(
+            get("/api/v1/admin/problems/stats")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.totalCount").value(1000))
+            .andExpect(jsonPath("$.minProblemId").value(1000))
+            .andExpect(jsonPath("$.maxProblemId").value(9999))
+            .andExpect(jsonPath("$.minNullDescriptionHtmlProblemId").value(1024))
+            .andExpect(jsonPath("$.minNullLanguageProblemId").value(2048))
+
+        verify(exactly = 1) { problemStatsService.getProblemStats() }
     }
 
     @Test
@@ -302,8 +336,6 @@ class ProblemCollectorControllerTest {
         verify(exactly = 1) { problemCollectorService.getDetailsCollectJobStatus(jobId) }
     }
 }
-
-
 
 
 

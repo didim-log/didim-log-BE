@@ -80,6 +80,65 @@ class BojCrawler {
 
         return Pair(sampleInputs, sampleOutputs)
     }
+
+    /**
+     * 문제 상세 본문의 언어를 판별한다.
+     *
+     * 우선순위:
+     * 1) 한글 5자 이상이면 한국어(ko)
+     * 2) 일본어 가나가 포함되면 일본어(ja)
+     * 3) 한자만 존재하면 중국어(zh)
+     * 4) 영문 비중이 가장 높으면 영어(en)
+     * 5) 그 외 기본값 한국어(ko)
+     */
+    @Suppress("unused")
+    private fun detectDetailLanguage(text: String): String {
+        if (text.isBlank()) {
+            return "ko"
+        }
+
+        var koreanCount = 0
+        var englishCount = 0
+        var japaneseKanaCount = 0
+        var cjkHanCount = 0
+
+        for (char in text) {
+            when {
+                char in '가'..'힣' -> koreanCount++
+                char in 'a'..'z' || char in 'A'..'Z' -> englishCount++
+                char in '\u3040'..'\u30ff' -> japaneseKanaCount++
+                char in '\u4e00'..'\u9fff' -> cjkHanCount++
+            }
+        }
+
+        if (koreanCount >= 5) {
+            return "ko"
+        }
+        if (japaneseKanaCount > 0) {
+            return "ja"
+        }
+        if (cjkHanCount > 0 && koreanCount == 0) {
+            return "zh"
+        }
+
+        val totalLetterCount = koreanCount + englishCount + japaneseKanaCount + cjkHanCount
+        if (totalLetterCount == 0) {
+            return "ko"
+        }
+        if (englishCount > koreanCount && englishCount > cjkHanCount) {
+            return "en"
+        }
+        if (koreanCount > 0) {
+            return "ko"
+        }
+        if (englishCount > 0) {
+            return "en"
+        }
+        if (cjkHanCount > 0) {
+            return "zh"
+        }
+        return "ko"
+    }
 }
 
 /**

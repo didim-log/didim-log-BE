@@ -9,6 +9,7 @@ import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AiReviewResponse
 import com.didimlog.ui.dto.LogCreateRequest
 import com.didimlog.ui.dto.LogResponse
+import com.didimlog.ui.dto.LogTemplateResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -82,16 +83,68 @@ class LogController(
     }
 
     @Operation(
-        summary = "AI 한 줄 리뷰 생성/조회",
-        description = "로그 엔티티에서 코드와 언어를 자동으로 추출하여 AI 한 줄 리뷰를 생성하거나 조회합니다. " +
-                "캐시 우선으로 동작하며, 코드가 2000자를 초과하면 자동으로 잘라서 분석합니다."
+        summary = "로그 템플릿 조회",
+        description = "로그 본문(template)을 조회합니다. 본인이 작성한 로그만 조회할 수 있습니다.",
+        security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "조회/생성 성공"),
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "본인 로그가 아닌 경우 접근 거부",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "로그를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/{logId}/template")
+    fun getLogTemplate(
+        @Parameter(hidden = true)
+        authentication: Authentication?,
+        @PathVariable
+        @NotBlank(message = "로그 ID는 필수입니다.")
+        logId: String
+    ): ResponseEntity<LogTemplateResponse> {
+        val requesterBojId = authentication?.name
+            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        val template = logService.getLogTemplate(logId, requesterBojId)
+        return ResponseEntity.ok(LogTemplateResponse(template = template))
+    }
+
+    @Operation(
+        summary = "AI 한 줄 리뷰 생성/조회",
+        description = "로그 엔티티에서 코드와 언어를 자동으로 추출하여 AI 한 줄 리뷰를 생성하거나 조회합니다. " +
+                "캐시가 있으면 즉시 반환하고, 최초 요청은 비동기 작업을 등록한 뒤 202 Accepted를 반환합니다. " +
+                "코드가 2000자를 초과하면 자동으로 잘라서 분석합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "캐시된 리뷰 조회 성공"),
+            ApiResponse(responseCode = "202", description = "리뷰 생성 작업이 접수되어 진행 중"),
             ApiResponse(
                 responseCode = "400",
                 description = "요청 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "본인 로그가 아닌 경우 접근 거부",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
@@ -103,12 +156,25 @@ class LogController(
     )
     @PostMapping("/{logId}/ai-review")
     fun requestAiReview(
+        @Parameter(hidden = true)
+        authentication: Authentication?,
         @PathVariable
         @NotBlank(message = "로그 ID는 필수입니다.")
         logId: String
     ): ResponseEntity<AiReviewResponse> {
-        val result = aiReviewService.requestOneLineReview(logId)
-        return ResponseEntity.ok(AiReviewResponse(review = result.review, cached = result.cached))
+        val requesterBojId = authentication?.name
+            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        val result = aiReviewService.requestOneLineReviewAsync(logId, requesterBojId)
+        val response = AiReviewResponse(
+            review = result.review,
+            cached = result.cached,
+            inProgress = result.inProgress
+        )
+        if (result.inProgress) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+        }
+
+        return ResponseEntity.ok(response)
     }
 
     @Operation(
@@ -191,5 +257,3 @@ class LogController(
         )
     }
 }
-
-

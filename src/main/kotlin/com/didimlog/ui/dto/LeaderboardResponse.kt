@@ -5,6 +5,7 @@ package com.didimlog.ui.dto
  */
 data class LeaderboardResponse(
     val rank: Int, // 순위 (1부터 시작)
+    val studentId: String,
     val nickname: String,
     val tier: String, // 티어명 (예: "GOLD", "SILVER")
     val tierLevel: Int, // 티어 레벨 (Solved.ac 레벨 대표값)
@@ -21,6 +22,7 @@ data class LeaderboardResponse(
         ): LeaderboardResponse {
             return LeaderboardResponse(
                 rank = rank,
+                studentId = student.id ?: "",
                 nickname = student.nickname.value,
                 tier = student.currentTier.name,
                 tierLevel = student.solvedAcTierLevel.value,
@@ -32,4 +34,3 @@ data class LeaderboardResponse(
         }
     }
 }
-

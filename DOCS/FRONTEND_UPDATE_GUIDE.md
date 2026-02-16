@@ -9,7 +9,8 @@
 - `GET /api/v1/templates/summaries`
 - `GET /api/v1/templates/presets`
 - `POST /api/v1/templates/preview`
-- `GET /api/v1/templates/{id}/render`
+- `POST /api/v1/templates/{id}/render`
+- `GET /api/v1/templates/{id}/render` (레거시 호환)
 - `POST /api/v1/templates`
 - `PUT /api/v1/templates/{id}`
 - `PUT /api/v1/templates/{id}/default?category=SUCCESS|FAIL`

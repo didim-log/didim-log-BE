@@ -16,9 +16,15 @@ data class RetrospectivePageResponse(
     val hasPrevious: Boolean
 ) {
     companion object {
-        fun from(page: Page<Retrospective>): RetrospectivePageResponse {
+        fun from(
+            page: Page<Retrospective>,
+            requesterStudentId: String? = null,
+            problemTitles: Map<String, String> = emptyMap()
+        ): RetrospectivePageResponse {
             return RetrospectivePageResponse(
-                content = page.content.map { RetrospectiveResponse.from(it) },
+                content = page.content.map {
+                    RetrospectiveResponse.from(it, requesterStudentId, problemTitles[it.problemId])
+                },
                 totalElements = page.totalElements,
                 totalPages = page.totalPages,
                 currentPage = page.number,
@@ -29,8 +35,6 @@ data class RetrospectivePageResponse(
         }
     }
 }
-
-
 
 
 

@@ -2,8 +2,6 @@ package com.didimlog.infra.ai
 
 import com.didimlog.application.ai.LlmClient
 import org.slf4j.LoggerFactory
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 
 /**
  * Gemini LLM Client를 AiApiClient 인터페이스에 맞추는 어댑터
@@ -15,7 +13,7 @@ class GeminiAiApiClient(
 
     private val log = LoggerFactory.getLogger(GeminiAiApiClient::class.java)
 
-    override fun requestOneLineReview(prompt: String, timeoutSeconds: Long): AiApiResponse {
+    override fun requestOneLineReview(prompt: String, @Suppress("UNUSED_PARAMETER") timeoutSeconds: Long): AiApiResponse {
         val systemPrompt = """
         당신은 엄격하고 통찰력 있는 알고리즘 코딩 테스트 면접관입니다.
         사용자의 코드를 분석하여, 개발자의 성장에 가장 도움이 될 '단 하나의 핵심 조언'을 한 문장으로 건네세요.
@@ -34,26 +32,17 @@ class GeminiAiApiClient(
     """.trimIndent()
 
         return try {
-            val future = CompletableFuture.supplyAsync {
-                val review = llmClient.generateMarkdown(systemPrompt, prompt)
-                // 한 줄로 추출: 첫 줄만 사용하거나 줄바꿈 제거
-                val oneLineReview = review.lines().firstOrNull()?.trim() ?: review.trim()
-                AiApiResponse(
-                    rawJson = """{"review":"$oneLineReview"}""",
-                    review = oneLineReview
-                )
-            }
-
-            val result = future.get(timeoutSeconds, TimeUnit.SECONDS)
+            val review = llmClient.generateMarkdown(systemPrompt, prompt)
+            val oneLineReview = review.lines().firstOrNull()?.trim() ?: review.trim()
+            val result = AiApiResponse(
+                rawJson = """{"review":"$oneLineReview"}""",
+                review = oneLineReview
+            )
             log.debug("Gemini AI 한 줄 리뷰 생성 완료: length={}", result.review.length)
             result
-        } catch (e: java.util.concurrent.TimeoutException) {
-            log.warn("Gemini AI 한 줄 리뷰 생성 타임아웃: timeout={}초", timeoutSeconds)
-            throw java.util.concurrent.TimeoutException("AI 리뷰 생성 시간이 초과되었습니다. 최대 대기 시간: ${timeoutSeconds}초")
         } catch (e: Exception) {
             log.error("Gemini AI 한 줄 리뷰 생성 실패", e)
             throw e
         }
     }
 }
-

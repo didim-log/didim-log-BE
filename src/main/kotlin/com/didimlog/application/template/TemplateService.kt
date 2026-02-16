@@ -10,6 +10,7 @@ import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.global.util.CodeLanguageDetector
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
+import com.didimlog.domain.repository.TemplateSummaryView
 import com.didimlog.domain.template.Template
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
@@ -27,6 +28,15 @@ class TemplateService(
     private val problemService: ProblemService,
     private val studentRepository: StudentRepository
 ) {
+    data class TemplateSummaryProjection(
+        val id: String,
+        val studentId: String?,
+        val title: String,
+        val type: String,
+        val createdAt: java.time.LocalDateTime,
+        val updatedAt: java.time.LocalDateTime
+    )
+
 
     /**
      * 특정 학생의 템플릿과 시스템 템플릿을 모두 조회한다.
@@ -37,6 +47,15 @@ class TemplateService(
     @Transactional(readOnly = true)
     fun getTemplates(studentId: String): List<Template> {
         return templateRepository.findByStudentIdOrType(studentId, TemplateOwnershipType.SYSTEM)
+    }
+
+    /**
+     * 특정 학생의 템플릿 요약 정보(본문 제외)를 조회한다.
+     */
+    @Transactional(readOnly = true)
+    fun getTemplateSummaries(studentId: String): List<TemplateSummaryProjection> {
+        return templateRepository.findSummaryByStudentIdOrType(studentId, TemplateOwnershipType.SYSTEM)
+            .map { it.toProjection() }
     }
 
     /**
@@ -185,10 +204,11 @@ class TemplateService(
      */
     private fun getSystemDefaultSuccessTemplate(): Template {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
-        return systemTemplates.firstOrNull { it.title == "Simple(요약)" }
+        return systemTemplates.firstOrNull { it.isDefaultSuccess }
+            ?: systemTemplates.firstOrNull { !it.isDefaultFail }
             ?: throw BusinessException(
                 ErrorCode.TEMPLATE_NOT_FOUND,
-                "시스템 기본 성공 템플릿을 찾을 수 없습니다."
+                "시스템 기본 성공 템플릿을 찾을 수 없습니다. defaultSuccess 플래그를 확인해주세요."
             )
     }
 
@@ -201,10 +221,11 @@ class TemplateService(
      */
     private fun getSystemDefaultFailTemplate(): Template {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
-        return systemTemplates.firstOrNull { it.title == "Detail(상세)" }
+        return systemTemplates.firstOrNull { it.isDefaultFail }
+            ?: systemTemplates.firstOrNull { !it.isDefaultSuccess }
             ?: throw BusinessException(
                 ErrorCode.TEMPLATE_NOT_FOUND,
-                "시스템 기본 실패 템플릿을 찾을 수 없습니다."
+                "시스템 기본 실패 템플릿을 찾을 수 없습니다. defaultFail 플래그를 확인해주세요."
             )
     }
 
@@ -240,13 +261,18 @@ class TemplateService(
     ): String {
         val template = getTemplate(templateId)
         val problem = getProblem(problemId)
-        val timeTaken = getTimeTaken(studentId, problemId)
-        val result = getProblemResult(studentId, problemId)
+        val studentProblemInfo = getStudentProblemInfo(studentId, problemId)
         
         // 프로그래밍 언어가 제공되지 않았고 코드가 있으면 자동 감지
         val detectedLanguage = programmingLanguage ?: detectLanguageFromCode(code)
         
-        return renderContent(template.content, problem, timeTaken, result, detectedLanguage)
+        return renderContent(
+            template.content,
+            problem,
+            studentProblemInfo.timeTaken,
+            studentProblemInfo.result,
+            detectedLanguage
+        )
     }
 
     /**
@@ -370,39 +396,35 @@ class TemplateService(
      * @param problemId 문제 ID
      * @return 포맷팅된 풀이 시간 ("X분 Y초", "X초", 또는 "-")
      */
-    private fun getTimeTaken(studentId: String, problemId: Long): String {
-        val student = getStudent(studentId)
-        val problemIdVo = ProblemId(problemId.toString())
-        val solution = student.solutions.findByProblemId(problemIdVo)
-        
-        if (solution == null) {
-            return "-"
-        }
-        
-        return formatTimeTaken(solution.timeTaken.value)
-    }
+    private data class StudentProblemInfo(
+        val timeTaken: String,
+        val result: String
+    )
 
     /**
-     * 학생의 특정 문제 풀이 결과를 조회하여 템플릿 매크로용 문자열로 변환한다.
-     *
-     * @param studentId 학생 ID
-     * @param problemId 문제 ID
-     * @return 풀이 결과 문자열 ("해결", "미해결", 또는 "해결/미해결")
+     * 학생 + 문제 기준으로 템플릿 렌더링에 필요한 정보(풀이시간/결과)를 한 번에 계산한다.
      */
-    private fun getProblemResult(studentId: String, problemId: Long): String {
+    private fun getStudentProblemInfo(studentId: String, problemId: Long): StudentProblemInfo {
         val student = getStudent(studentId)
         val problemIdVo = ProblemId(problemId.toString())
         val solution = student.solutions.findByProblemId(problemIdVo)
-        
+
         if (solution == null) {
-            return "해결/미해결"
+            return StudentProblemInfo(
+                timeTaken = "-",
+                result = "해결/미해결"
+            )
         }
-        
-        return when (solution.result) {
+
+        val resultText = when (solution.result) {
             ProblemResult.SUCCESS -> "해결"
             ProblemResult.FAIL,
             ProblemResult.TIME_OVER -> "미해결"
         }
+        return StudentProblemInfo(
+            timeTaken = formatTimeTaken(solution.timeTaken.value),
+            result = resultText
+        )
     }
 
     /**
@@ -436,5 +458,16 @@ class TemplateService(
         }
         
         return "${minutes}분 ${remainingSeconds}초"
+    }
+
+    private fun TemplateSummaryView.toProjection(): TemplateSummaryProjection {
+        return TemplateSummaryProjection(
+            id = this.id ?: "",
+            studentId = this.studentId,
+            title = this.title,
+            type = this.type.name,
+            createdAt = this.createdAt,
+            updatedAt = this.updatedAt
+        )
     }
 }

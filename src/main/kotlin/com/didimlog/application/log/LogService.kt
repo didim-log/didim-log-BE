@@ -77,5 +77,33 @@ class LogService(
         val updatedLog = log.updateFeedback(status, reason)
         return logRepository.save(updatedLog)
     }
-}
 
+    /**
+     * 로그 템플릿(로그 본문)을 조회합니다.
+     *
+     * @param logId 로그 ID
+     * @param requesterBojId 요청자 BOJ ID
+     * @return 로그 본문 문자열
+     */
+    @Transactional(readOnly = true)
+    fun getLogTemplate(logId: String, requesterBojId: String): String {
+        if (requesterBojId.isBlank()) {
+            throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        }
+
+        val log = logRepository.findById(logId)
+            .orElseThrow {
+                BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "로그를 찾을 수 없습니다. logId=$logId")
+            }
+
+        val ownerBojId = log.bojId?.value
+        if (ownerBojId.isNullOrBlank()) {
+            throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 템플릿을 조회할 수 있습니다.")
+        }
+        if (ownerBojId != requesterBojId) {
+            throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 템플릿을 조회할 수 있습니다.")
+        }
+
+        return log.content.value
+    }
+}

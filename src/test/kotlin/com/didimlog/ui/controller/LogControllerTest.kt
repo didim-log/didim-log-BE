@@ -22,6 +22,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -46,6 +47,9 @@ class LogControllerTest {
 
     @Autowired
     private lateinit var logService: LogService
+
+    @Autowired
+    private lateinit var aiReviewService: com.didimlog.application.log.AiReviewService
 
     @TestConfiguration
     class TestConfig {
@@ -142,5 +146,51 @@ class LogControllerTest {
         )
             .andExpect(status().isBadRequest)
     }
-}
 
+    @Test
+    @DisplayName("AI 리뷰 생성 시작 시 202 Accepted 를 반환한다")
+    fun `ai 리뷰 생성 시작`() {
+        every {
+            aiReviewService.requestOneLineReviewAsync("log-1", "user123")
+        } returns com.didimlog.application.log.AiReviewResult(
+            review = "AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요.",
+            cached = false,
+            inProgress = true
+        )
+
+        val authentication = UsernamePasswordAuthenticationToken(
+            "user123",
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_USER"))
+        )
+
+        mockMvc.perform(
+            post("/api/v1/logs/log-1/ai-review")
+                .principal(authentication)
+        )
+            .andExpect(status().isAccepted)
+            .andExpect(jsonPath("$.cached").value(false))
+            .andExpect(jsonPath("$.inProgress").value(true))
+    }
+
+    @Test
+    @DisplayName("로그 템플릿 조회 성공 시 200 + template 반환")
+    fun `로그 템플릿 조회 성공`() {
+        every { logService.getLogTemplate("log-1", "user123") } returns "템플릿 본문"
+
+        val authentication = UsernamePasswordAuthenticationToken(
+            "user123",
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_USER"))
+        )
+
+        mockMvc.perform(
+            get("/api/v1/logs/log-1/template")
+                .principal(authentication)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.template").value("템플릿 본문"))
+
+        verify(exactly = 1) { logService.getLogTemplate("log-1", "user123") }
+    }
+}

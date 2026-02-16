@@ -2,8 +2,12 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.application.retrospective.RetrospectiveService
+import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.TemplateCategory
+import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
@@ -12,7 +16,7 @@ import com.didimlog.ui.dto.BookmarkToggleResponse
 import com.didimlog.ui.dto.RetrospectivePageResponse
 import com.didimlog.ui.dto.RetrospectiveRequest
 import com.didimlog.ui.dto.RetrospectiveResponse
-import com.didimlog.ui.dto.TemplateResponse
+import com.didimlog.ui.dto.RetrospectiveTemplateResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -22,8 +26,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -46,7 +52,9 @@ import org.springframework.web.bind.annotation.RestController
 @org.springframework.validation.annotation.Validated
 class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
-    private val studentRepository: StudentRepository
+    private val studentRepository: StudentRepository,
+    private val problemRepository: ProblemRepository,
+    private val templateService: TemplateService
 ) {
     companion object {
         private val ALLOWED_SORT_FIELDS = setOf("createdAt", "problemId", "isBookmarked")
@@ -111,7 +119,11 @@ class RetrospectiveController(
             solvedCategory = request.solvedCategory,
             solveTime = request.solveTime
         )
-        val response = RetrospectiveResponse.from(retrospective)
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -137,7 +149,7 @@ class RetrospectiveController(
     )
     @GetMapping
     fun getRetrospectives(
-        authentication: Authentication?,
+        authentication: Authentication,
         @Parameter(description = "검색 키워드 (제목 또는 내용)", required = false)
         @RequestParam(required = false)
         keyword: String?,
@@ -154,10 +166,6 @@ class RetrospectiveController(
         @RequestParam(required = false)
         isBookmarked: Boolean?,
 
-        @Parameter(description = "학생 ID (인증된 사용자는 무시되고 자신의 ID가 사용됨)", required = false)
-        @RequestParam(required = false)
-        studentId: String?,
-
         @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
         @RequestParam(defaultValue = "1")
         @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
@@ -165,21 +173,19 @@ class RetrospectiveController(
 
         @Parameter(description = "페이지 크기", required = false)
         @RequestParam(defaultValue = "10")
+        @Min(value = 1, message = "페이지 크기는 1 이상이어야 합니다.")
+        @Max(value = 100, message = "페이지 크기는 100 이하여야 합니다.")
         size: Int,
 
         @Parameter(description = "정렬 기준 (예: createdAt,desc 또는 createdAt,asc)", required = false)
         @RequestParam(required = false)
         sort: String?
     ): ResponseEntity<RetrospectivePageResponse> {
-        // 인증된 사용자의 경우, 자신의 studentId만 조회 가능하도록 제한
-        if (authentication == null) {
-            val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
-            return ResponseEntity.ok(response)
-        }
-
         val bojId = authentication.name
         val currentStudent = getStudentByBojId(bojId)
-        val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, currentStudent.id, page, size, sort)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
         return ResponseEntity.ok(response)
     }
 
@@ -188,7 +194,7 @@ class RetrospectiveController(
         category: String?,
         solvedCategory: String?,
         isBookmarked: Boolean?,
-        studentId: String?,
+        studentId: String,
         page: Int,
         size: Int,
         sort: String?
@@ -202,7 +208,8 @@ class RetrospectiveController(
             studentId = studentId
         )
         val pageResult = retrospectiveService.searchRetrospectives(condition, pageable)
-        return RetrospectivePageResponse.from(pageResult)
+        val problemTitles = resolveProblemTitleMap(pageResult.content.map { it.problemId })
+        return RetrospectivePageResponse.from(pageResult, studentId, problemTitles)
     }
 
     @Operation(
@@ -221,14 +228,75 @@ class RetrospectiveController(
     )
     @GetMapping("/{retrospectiveId}")
     fun getRetrospective(
+        authentication: Authentication,
         @Parameter(description = "회고 ID", required = true)
         @PathVariable
         @NotBlank(message = "회고 ID는 필수입니다.")
         retrospectiveId: String
     ): ResponseEntity<RetrospectiveResponse> {
-        val retrospective = retrospectiveService.getRetrospective(retrospectiveId)
-        val response = RetrospectiveResponse.from(retrospective)
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        val retrospective = retrospectiveService.getRetrospective(retrospectiveId, studentId)
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
         return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "회고 기본 템플릿 조회",
+        description = "요청한 결과 타입(SUCCESS/FAIL/TIME_OVER)에 맞는 기본 템플릿을 렌더링하여 반환합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 파라미터",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생/템플릿/문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/template")
+    fun getRetrospectiveTemplate(
+        authentication: Authentication,
+        @RequestParam
+        @Positive(message = "문제 ID는 1 이상이어야 합니다.")
+        problemId: Long,
+        @RequestParam
+        resultType: ProblemResult
+    ): ResponseEntity<RetrospectiveTemplateResponse> {
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        val templateCategory = if (resultType == ProblemResult.SUCCESS) {
+            TemplateCategory.SUCCESS
+        } else {
+            TemplateCategory.FAIL
+        }
+        val defaultTemplate = templateService.getDefaultTemplate(templateCategory, studentId)
+        val templateId = defaultTemplate.id
+            ?: throw BusinessException(ErrorCode.TEMPLATE_NOT_FOUND, "기본 템플릿 ID를 찾을 수 없습니다.")
+        val renderedTemplate = templateService.renderTemplate(templateId, problemId, studentId)
+        return ResponseEntity.ok(RetrospectiveTemplateResponse(template = renderedTemplate))
     }
 
     @Operation(
@@ -247,12 +315,18 @@ class RetrospectiveController(
     )
     @PostMapping("/{retrospectiveId}/bookmark")
     fun toggleBookmark(
+        authentication: Authentication,
         @Parameter(description = "회고 ID", required = true)
         @PathVariable
         @NotBlank(message = "회고 ID는 필수입니다.")
         retrospectiveId: String
     ): ResponseEntity<BookmarkToggleResponse> {
-        val isBookmarked = retrospectiveService.toggleBookmark(retrospectiveId)
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        val isBookmarked = retrospectiveService.toggleBookmark(retrospectiveId, studentId)
         val response = BookmarkToggleResponse(isBookmarked = isBookmarked)
         return ResponseEntity.ok(response)
     }
@@ -313,6 +387,20 @@ class RetrospectiveController(
             .orElseThrow {
                 BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
             }
+    }
+
+    private fun resolveProblemTitle(problemId: String): String? {
+        return problemRepository.findById(problemId)
+            .map { it.title }
+            .orElse(null)
+    }
+
+    private fun resolveProblemTitleMap(problemIds: List<String>): Map<String, String> {
+        if (problemIds.isEmpty()) {
+            return emptyMap()
+        }
+        return problemRepository.findAllById(problemIds.distinct())
+            .associate { it.id.value to it.title }
     }
 
 
@@ -404,7 +492,11 @@ class RetrospectiveController(
             solvedCategory = request.solvedCategory,
             solveTime = request.solveTime
         )
-        val response = RetrospectiveResponse.from(retrospective)
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
         return ResponseEntity.ok(response)
     }
 }

@@ -4,8 +4,10 @@ import com.didimlog.application.DetailsCollectJobStatus
 import com.didimlog.application.LanguageUpdateJobStatus
 import com.didimlog.application.MetadataCollectJobStatus
 import com.didimlog.application.ProblemCollectorService
+import com.didimlog.application.admin.ProblemStatsService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.ui.dto.ProblemStatsResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -30,8 +32,35 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/admin/problems")
 @Validated
 class ProblemCollectorController(
-    private val problemCollectorService: ProblemCollectorService
+    private val problemCollectorService: ProblemCollectorService,
+    private val problemStatsService: ProblemStatsService
 ) {
+
+    @Operation(
+        summary = "문제 통계 조회",
+        description = "문제 컬렉션의 총 개수와 수집 진행에 필요한 최소/최대 문제 ID 정보를 조회합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "ADMIN 권한 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/stats")
+    fun getProblemStats(authentication: Authentication): ResponseEntity<ProblemStatsResponse> {
+        val stats = problemStatsService.getProblemStats()
+        return ResponseEntity.ok(ProblemStatsResponse.from(stats))
+    }
 
     @Operation(
         summary = "문제 메타데이터 수집 (비동기)",
