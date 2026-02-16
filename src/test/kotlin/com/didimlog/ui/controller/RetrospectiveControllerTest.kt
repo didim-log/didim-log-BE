@@ -1,14 +1,17 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.retrospective.RetrospectiveService
+import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.template.Template
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
@@ -38,6 +41,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.LocalDateTime
+import com.didimlog.domain.enums.TemplateOwnershipType
 
 @DisplayName("RetrospectiveController 테스트")
 @WebMvcTest(
@@ -64,6 +68,9 @@ class RetrospectiveControllerTest {
     private lateinit var problemRepository: ProblemRepository
 
     @Autowired
+    private lateinit var templateService: TemplateService
+
+    @Autowired
     private lateinit var objectMapper: ObjectMapper
 
     @TestConfiguration
@@ -76,6 +83,9 @@ class RetrospectiveControllerTest {
 
         @Bean
         fun problemRepository(): ProblemRepository = mockk(relaxed = true)
+
+        @Bean
+        fun templateService(): TemplateService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -417,6 +427,36 @@ class RetrospectiveControllerTest {
                 solveTime = null
             )
         }
+    }
+
+    @Test
+    @DisplayName("회고 기본 템플릿 조회 성공 시 200 OK 및 template 반환")
+    fun `회고 기본 템플릿 조회 성공`() {
+        val studentId = "student1"
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val student = createStudent(id = studentId, bojId = bojId)
+        val defaultTemplate = Template(
+            id = "template-1",
+            studentId = null,
+            title = "Simple(요약)",
+            content = "## 템플릿",
+            type = TemplateOwnershipType.SYSTEM
+        )
+
+        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
+        every { templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId) } returns defaultTemplate
+        every { templateService.renderTemplate("template-1", 1000L, studentId, any(), any()) } returns "렌더링된 템플릿"
+
+        mockMvc.perform(
+            get("/api/v1/retrospectives/template")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .param("problemId", "1000")
+                .param("resultType", "SUCCESS")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.template").value("렌더링된 템플릿"))
     }
 
     private fun createRetrospective(

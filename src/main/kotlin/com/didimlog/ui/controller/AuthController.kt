@@ -25,6 +25,7 @@ import com.didimlog.ui.dto.FindPasswordRequest
 import com.didimlog.ui.dto.LoginRequest
 import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.RefreshTokenRequest
+import com.didimlog.ui.dto.ResetPasswordRequest
 import com.didimlog.ui.dto.SignupFinalizeRequest
 import com.didimlog.ui.dto.SuperAdminRequest
 import io.swagger.v3.oas.annotations.Operation
@@ -345,6 +346,39 @@ class AuthController(
         return ResponseEntity.ok(
             FindIdPasswordResponse(
                 message = "이메일로 비밀번호 재설정 코드가 전송되었습니다."
+            )
+        )
+    }
+
+    @Operation(
+        summary = "비밀번호 재설정",
+        description = "비밀번호 재설정 코드와 새 비밀번호를 입력받아 비밀번호를 변경합니다. 재설정 코드는 1회성으로 사용되며 성공 시 즉시 폐기됩니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "비밀번호 재설정 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 코드 또는 비밀번호 정책 위반",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "재설정 코드에 해당하는 사용자를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/reset-password")
+    fun resetPassword(
+        @RequestBody
+        @Valid
+        request: ResetPasswordRequest
+    ): ResponseEntity<FindIdPasswordResponse> {
+        authService.resetPassword(request.resetCode, request.newPassword)
+        return ResponseEntity.ok(
+            FindIdPasswordResponse(
+                message = "비밀번호가 재설정되었습니다."
             )
         )
     }

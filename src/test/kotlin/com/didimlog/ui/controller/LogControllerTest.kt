@@ -22,6 +22,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -170,5 +171,26 @@ class LogControllerTest {
             .andExpect(status().isAccepted)
             .andExpect(jsonPath("$.cached").value(false))
             .andExpect(jsonPath("$.inProgress").value(true))
+    }
+
+    @Test
+    @DisplayName("로그 템플릿 조회 성공 시 200 + template 반환")
+    fun `로그 템플릿 조회 성공`() {
+        every { logService.getLogTemplate("log-1", "user123") } returns "템플릿 본문"
+
+        val authentication = UsernamePasswordAuthenticationToken(
+            "user123",
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_USER"))
+        )
+
+        mockMvc.perform(
+            get("/api/v1/logs/log-1/template")
+                .principal(authentication)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.template").value("템플릿 본문"))
+
+        verify(exactly = 1) { logService.getLogTemplate("log-1", "user123") }
     }
 }

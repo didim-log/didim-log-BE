@@ -457,6 +457,42 @@ class AuthControllerTest {
             .andExpect(status().isInternalServerError)
             .andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
     }
-}
 
+    @Test
+    @DisplayName("비밀번호 재설정 성공 시 200 OK와 성공 메시지를 반환한다")
+    fun `비밀번호 재설정 성공`() {
+        val request = mapOf(
+            "resetCode" to "ABCD1234",
+            "newPassword" to "NewPassword123!"
+        )
+
+        every { authService.resetPassword("ABCD1234", "NewPassword123!") } just runs
+
+        mockMvc.perform(
+            post("/api/v1/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.message").value("비밀번호가 재설정되었습니다."))
+
+        verify(exactly = 1) { authService.resetPassword("ABCD1234", "NewPassword123!") }
+    }
+
+    @Test
+    @DisplayName("비밀번호 재설정 시 새 비밀번호가 짧으면 400 Bad Request를 반환한다")
+    fun `비밀번호 재설정 실패 - 비밀번호 길이 부족`() {
+        val request = mapOf(
+            "resetCode" to "ABCD1234",
+            "newPassword" to "short"
+        )
+
+        mockMvc.perform(
+            post("/api/v1/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+    }
+}
 

@@ -2,8 +2,11 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.application.retrospective.RetrospectiveService
+import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -13,7 +16,7 @@ import com.didimlog.ui.dto.BookmarkToggleResponse
 import com.didimlog.ui.dto.RetrospectivePageResponse
 import com.didimlog.ui.dto.RetrospectiveRequest
 import com.didimlog.ui.dto.RetrospectiveResponse
-import com.didimlog.ui.dto.TemplateResponse
+import com.didimlog.ui.dto.RetrospectiveTemplateResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -26,6 +29,7 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -49,7 +53,8 @@ import org.springframework.web.bind.annotation.RestController
 class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
     private val studentRepository: StudentRepository,
-    private val problemRepository: ProblemRepository
+    private val problemRepository: ProblemRepository,
+    private val templateService: TemplateService
 ) {
     companion object {
         private val ALLOWED_SORT_FIELDS = setOf("createdAt", "problemId", "isBookmarked")
@@ -241,6 +246,57 @@ class RetrospectiveController(
             problemTitle = resolveProblemTitle(retrospective.problemId)
         )
         return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "회고 기본 템플릿 조회",
+        description = "요청한 결과 타입(SUCCESS/FAIL/TIME_OVER)에 맞는 기본 템플릿을 렌더링하여 반환합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 파라미터",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생/템플릿/문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/template")
+    fun getRetrospectiveTemplate(
+        authentication: Authentication,
+        @RequestParam
+        @Positive(message = "문제 ID는 1 이상이어야 합니다.")
+        problemId: Long,
+        @RequestParam
+        resultType: ProblemResult
+    ): ResponseEntity<RetrospectiveTemplateResponse> {
+        val bojId = authentication.name
+        val currentStudent = getStudentByBojId(bojId)
+        val studentId = currentStudent.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+
+        val templateCategory = if (resultType == ProblemResult.SUCCESS) {
+            TemplateCategory.SUCCESS
+        } else {
+            TemplateCategory.FAIL
+        }
+        val defaultTemplate = templateService.getDefaultTemplate(templateCategory, studentId)
+        val templateId = defaultTemplate.id
+            ?: throw BusinessException(ErrorCode.TEMPLATE_NOT_FOUND, "기본 템플릿 ID를 찾을 수 없습니다.")
+        val renderedTemplate = templateService.renderTemplate(templateId, problemId, studentId)
+        return ResponseEntity.ok(RetrospectiveTemplateResponse(template = renderedTemplate))
     }
 
     @Operation(
