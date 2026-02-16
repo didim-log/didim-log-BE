@@ -1,4 +1,4 @@
-package com.didimlog.application
+package com.didimlog.application.problem.collector
 
 /**
  * 문제 메타데이터 수집 작업 상태를 나타내는 데이터 클래스

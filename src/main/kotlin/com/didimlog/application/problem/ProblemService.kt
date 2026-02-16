@@ -1,4 +1,4 @@
-package com.didimlog.application
+package com.didimlog.application.problem
 
 import com.didimlog.domain.Problem
 import com.didimlog.domain.repository.ProblemRepository

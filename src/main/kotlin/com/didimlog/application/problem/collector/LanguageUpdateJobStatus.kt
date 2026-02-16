@@ -1,9 +1,9 @@
-package com.didimlog.application
+package com.didimlog.application.problem.collector
 
 /**
- * 문제 상세 정보 수집 작업 상태를 나타내는 데이터 클래스
+ * 언어 정보 업데이트 작업 상태를 나타내는 데이터 클래스
  */
-data class DetailsCollectJobStatus(
+data class LanguageUpdateJobStatus(
     val jobId: String,
     val status: JobStatus,
     val totalCount: Int,
@@ -34,3 +34,9 @@ data class DetailsCollectJobStatus(
         }
 }
 
+enum class JobStatus {
+    PENDING,    // 대기 중
+    RUNNING,    // 실행 중
+    COMPLETED,  // 완료
+    FAILED      // 실패
+}

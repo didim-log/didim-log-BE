@@ -1,6 +1,6 @@
 package com.didimlog.application.template
 
-import com.didimlog.application.ProblemService
+import com.didimlog.application.problem.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory

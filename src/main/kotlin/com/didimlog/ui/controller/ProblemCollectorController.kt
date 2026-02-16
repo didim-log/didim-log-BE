@@ -1,9 +1,9 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.DetailsCollectJobStatus
-import com.didimlog.application.LanguageUpdateJobStatus
-import com.didimlog.application.MetadataCollectJobStatus
-import com.didimlog.application.ProblemCollectorService
+import com.didimlog.application.problem.collector.DetailsCollectJobStatus
+import com.didimlog.application.problem.collector.LanguageUpdateJobStatus
+import com.didimlog.application.problem.collector.MetadataCollectJobStatus
+import com.didimlog.application.problem.collector.ProblemCollectorService
 import com.didimlog.application.admin.ProblemStatsService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode

@@ -1,4 +1,4 @@
-package com.didimlog.application
+package com.didimlog.application.problem.collector
 
 import com.didimlog.application.utils.ProblemLanguageDetector
 import com.didimlog.domain.Problem

@@ -1,6 +1,6 @@
 package com.didimlog.application.ai
 
-import com.didimlog.application.ProblemService
+import com.didimlog.application.problem.ProblemService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 

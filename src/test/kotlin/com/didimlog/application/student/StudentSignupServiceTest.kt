@@ -1,4 +1,4 @@
-package com.didimlog.application
+package com.didimlog.application.student
 
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Tier

@@ -38,9 +38,9 @@ class LogService(
         bojId: String? = null,
         isSuccess: Boolean? = null
     ): Log {
-        // LogContent는 notBlank를 요구하므로, 빈 문자열인 경우 기본값 제공
+        // LogContent는 notBlank를 요구하므로, 빈 문자열인 경우 플레이스홀더를 사용한다.
         val logContent = when {
-            content.isBlank() -> " "
+            content.isBlank() -> "(empty)"
             else -> content
         }
         val bojIdVo = bojId?.let { BojId(it) }

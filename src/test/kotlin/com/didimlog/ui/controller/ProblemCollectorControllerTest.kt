@@ -1,6 +1,6 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.ProblemCollectorService
+import com.didimlog.application.problem.collector.ProblemCollectorService
 import com.didimlog.application.admin.ProblemStatsService
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
@@ -126,9 +126,9 @@ class ProblemCollectorControllerTest {
     fun `문제 메타데이터 수집 작업 상태 조회 성공`() {
         // given
         val jobId = "test-job-id-metadata"
-        val status = com.didimlog.application.MetadataCollectJobStatus(
+        val status = com.didimlog.application.problem.collector.MetadataCollectJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.RUNNING,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
             totalCount = 100,
             processedCount = 50,
             successCount = 48,
@@ -218,9 +218,9 @@ class ProblemCollectorControllerTest {
     fun `언어 정보 업데이트 작업 상태 조회 성공`() {
         // given
         val jobId = "test-job-id-123"
-        val status = com.didimlog.application.LanguageUpdateJobStatus(
+        val status = com.didimlog.application.problem.collector.LanguageUpdateJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.RUNNING,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
             totalCount = 3400,
             processedCount = 150,
             successCount = 148,
@@ -308,9 +308,9 @@ class ProblemCollectorControllerTest {
     fun `문제 상세 정보 재수집 상태 조회 성공`() {
         // given
         val jobId = "refresh-job-id-001"
-        val status = com.didimlog.application.DetailsCollectJobStatus(
+        val status = com.didimlog.application.problem.collector.DetailsCollectJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.RUNNING,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
             totalCount = 1000,
             processedCount = 100,
             successCount = 95,
@@ -354,9 +354,9 @@ class ProblemCollectorControllerTest {
     fun `문제 상세 정보 수집 작업 상태 조회 성공`() {
         // given
         val jobId = "test-job-id-456"
-        val status = com.didimlog.application.DetailsCollectJobStatus(
+        val status = com.didimlog.application.problem.collector.DetailsCollectJobStatus(
             jobId = jobId,
-            status = com.didimlog.application.JobStatus.RUNNING,
+            status = com.didimlog.application.problem.collector.JobStatus.RUNNING,
             totalCount = 100,
             processedCount = 50,
             successCount = 48,

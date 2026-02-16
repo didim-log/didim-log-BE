@@ -3,6 +3,7 @@ plugins {
 	kotlin("plugin.spring") version "1.9.25"
 	id("org.springframework.boot") version "3.3.5"
 	id("io.spring.dependency-management") version "1.1.7"
+	id("jacoco")
 }
 
 group = "com.didimlog"
@@ -12,6 +13,49 @@ description = "Step by step algorithm log"
 springBoot {
     mainClass.set("com.didimlog.DidimLogApplication")
 }
+
+val integrationTest by sourceSets.creating {
+	kotlin.srcDir("src/integrationTest/kotlin")
+	resources.srcDirs("src/integrationTest/resources", "src/test/resources")
+	compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
+	runtimeClasspath += output + compileClasspath
+}
+
+val jacocoCoreCoverageIncludes = listOf(
+	"com/didimlog/application/admin/**",
+	"com/didimlog/application/auth/**",
+	"com/didimlog/application/dashboard/**",
+	"com/didimlog/application/feedback/**",
+	"com/didimlog/application/log/**",
+	"com/didimlog/application/member/**",
+	"com/didimlog/application/notice/**",
+	"com/didimlog/application/problem/**",
+	"com/didimlog/application/quote/**",
+	"com/didimlog/application/ranking/**",
+	"com/didimlog/application/recommendation/**",
+	"com/didimlog/application/retrospective/**",
+	"com/didimlog/application/storage/**",
+	"com/didimlog/application/student/**",
+	"com/didimlog/application/study/**",
+	"com/didimlog/application/utils/**",
+	"com/didimlog/domain/*.class",
+	"com/didimlog/domain/*\\$*.class",
+	"com/didimlog/domain/enums/**",
+	"com/didimlog/domain/repository/**",
+	"com/didimlog/domain/template/**",
+	"com/didimlog/domain/validation/**",
+	"com/didimlog/domain/valueobject/**",
+	"com/didimlog/global/auth/**",
+	"com/didimlog/global/config/**",
+	"com/didimlog/global/config/security/**",
+	"com/didimlog/global/system/**",
+	"com/didimlog/global/util/**"
+)
+
+val jacocoCoreCoverageExcludes = listOf(
+	"com/didimlog/application/problem/collector/**",
+	"**/*Test*"
+)
 
 java {
 	toolchain {
@@ -48,6 +92,9 @@ dependencies {
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+configurations[integrationTest.implementationConfigurationName].extendsFrom(configurations["testImplementation"])
+configurations[integrationTest.runtimeOnlyConfigurationName].extendsFrom(configurations["testRuntimeOnly"])
+
 kotlin {
 	compilerOptions {
 		freeCompilerArgs.addAll("-Xjsr305=strict")
@@ -58,38 +105,93 @@ tasks.withType<Test> {
 	useJUnitPlatform()
 }
 
-// 단위 테스트 태스크: 파일명 패턴 **/*Test.kt 포함, **/*IntegrationTest.kt 제외
-// DB나 Spring Context 없이 빠르게 실행되는 테스트만 수행
-// @SpringBootTest를 사용하는 테스트는 통합 테스트로 간주하여 제외
-tasks.named<Test>("test") {
-	exclude("**/*IntegrationTest.class")
-	exclude("**/*IT.class")
-	exclude("**/DidimLogApplicationTests.class")
-	exclude("**/DidimLogApplicationIntegrationTests.class")
-	exclude("**/SecurityIntegrationTest.class")
-	exclude("**/StudyIntegrationTest.class")
-	exclude("**/RetrospectiveSearchIntegrationTest.class")
-	exclude("**/JwtTokenProviderIntegrationTest.class")
-}
-
-// 통합 테스트 태스크: 파일명 패턴 **/*IntegrationTest.kt 또는 **/*IT.kt만 포함
-// @SpringBootTest 등 무거운 의존성을 가진 테스트 수행
-// 참고: 앞으로 통합 테스트 파일명은 반드시 IntegrationTest 또는 IT로 끝나야 합니다.
-tasks.register<Test>("integrationTest") {
+val integrationTestTask = tasks.register<Test>("integrationTest") {
 	group = "verification"
-	description = "Runs integration tests"
+	description = "Runs integration tests from src/integrationTest"
 	useJUnitPlatform()
-	include("**/*IntegrationTest.class")
-	include("**/*IT.class")
-	include("**/DidimLogApplicationTests.class")
-	include("**/DidimLogApplicationIntegrationTests.class")
-	include("**/SecurityIntegrationTest.class")
-	include("**/StudyIntegrationTest.class")
-	include("**/RetrospectiveSearchIntegrationTest.class")
-	include("**/JwtTokenProviderIntegrationTest.class")
-	include("**/AiReviewIntegrationTest.class")
-	
-	// 통합 테스트는 단위 테스트가 완료된 후 실행
+	testClassesDirs = integrationTest.output.classesDirs
+	classpath = integrationTest.runtimeClasspath
 	mustRunAfter("test")
 }
 
+tasks.named("check") {
+	dependsOn(integrationTestTask)
+}
+
+jacoco {
+	toolVersion = "0.8.12"
+}
+
+tasks.named<Test>("test") {
+	finalizedBy("jacocoTestReport")
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+	dependsOn("test")
+	classDirectories.setFrom(
+		files(
+			sourceSets["main"].output.asFileTree.matching {
+				include(jacocoCoreCoverageIncludes)
+				exclude(jacocoCoreCoverageExcludes)
+			}
+		)
+	)
+
+	reports {
+		xml.required.set(true)
+		html.required.set(true)
+		csv.required.set(false)
+	}
+}
+
+tasks.register<JacocoReport>("jacocoIntegrationTestReport") {
+	group = "verification"
+	description = "Generates JaCoCo coverage report for integration tests"
+	dependsOn(integrationTestTask)
+
+	executionData(fileTree(layout.buildDirectory).include("jacoco/integrationTest.exec", "jacoco/integrationTest*.exec"))
+	sourceSets(sourceSets["main"])
+	classDirectories.setFrom(
+		files(
+			sourceSets["main"].output.asFileTree.matching {
+				include(jacocoCoreCoverageIncludes)
+				exclude(jacocoCoreCoverageExcludes)
+			}
+		)
+	)
+
+	reports {
+		xml.required.set(true)
+		html.required.set(true)
+		csv.required.set(false)
+	}
+}
+
+tasks.register<JacocoReport>("jacocoMergedReport") {
+	group = "verification"
+	description = "Generates merged JaCoCo coverage report for unit + integration tests"
+	dependsOn("test", integrationTestTask)
+
+	executionData(
+		fileTree(layout.buildDirectory).include(
+			"jacoco/test.exec",
+			"jacoco/integrationTest.exec",
+			"jacoco/*.exec"
+		)
+	)
+	sourceSets(sourceSets["main"])
+	classDirectories.setFrom(
+		files(
+			sourceSets["main"].output.asFileTree.matching {
+				include(jacocoCoreCoverageIncludes)
+				exclude(jacocoCoreCoverageExcludes)
+			}
+		)
+	)
+
+	reports {
+		xml.required.set(true)
+		html.required.set(true)
+		csv.required.set(false)
+	}
+}

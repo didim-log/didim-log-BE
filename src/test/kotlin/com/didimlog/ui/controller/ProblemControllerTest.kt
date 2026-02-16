@@ -1,6 +1,6 @@
 package com.didimlog.ui.controller
 
-import com.didimlog.application.ProblemService
+import com.didimlog.application.problem.ProblemService
 import com.didimlog.application.recommendation.RecommendationService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
