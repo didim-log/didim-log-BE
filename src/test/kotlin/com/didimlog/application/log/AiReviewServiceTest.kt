@@ -16,6 +16,7 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.springframework.core.task.TaskExecutor
 import java.util.Optional
 
 @DisplayName("AiReviewService 테스트")
@@ -25,7 +26,14 @@ class AiReviewServiceTest {
     private val aiApiClient: AiApiClient = mockk()
     private val lockRepository: LogAiReviewLockRepository = mockk()
     private val aiUsageService: AiUsageService = mockk(relaxed = true)
-    private val aiReviewService = AiReviewService(logRepository, aiApiClient, lockRepository, aiUsageService)
+    private val aiReviewTaskExecutor: TaskExecutor = TaskExecutor { task -> task.run() }
+    private val aiReviewService = AiReviewService(
+        logRepository,
+        aiApiClient,
+        lockRepository,
+        aiUsageService,
+        aiReviewTaskExecutor
+    )
 
     @Test
     @DisplayName("이미 aiReview가 있으면 외부 API를 호출하지 않고 캐시를 반환한다")
@@ -72,7 +80,7 @@ class AiReviewServiceTest {
             todayUserUsage = 0
         )
         every { aiUsageService.incrementUsage(any()) } returns Unit
-        every { aiApiClient.requestOneLineReview(any()) } answers {
+        every { aiApiClient.requestOneLineReview(any(), any()) } answers {
             val prompt = firstArg<String>()
             assertThat(prompt).contains("a".repeat(2_000))
             assertThat(prompt).doesNotContain("a".repeat(2_001))
@@ -83,7 +91,7 @@ class AiReviewServiceTest {
 
         assertThat(result.review).isEqualTo("ok")
         assertThat(result.cached).isFalse()
-        verify(exactly = 1) { aiApiClient.requestOneLineReview(any()) }
+        verify(exactly = 1) { aiApiClient.requestOneLineReview(any(), any()) }
         verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
     }
 
@@ -133,6 +141,32 @@ class AiReviewServiceTest {
         verify(exactly = 0) { lockRepository.markCompleted(any(), any(), any()) }
         verify(exactly = 0) { lockRepository.markFailed(any()) }
     }
+
+    @Test
+    @DisplayName("비동기 요청은 202 상태용 inProgress 결과를 즉시 반환한다")
+    fun `async request returns in progress`() {
+        val logId = "log-5"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("0123456789"),
+            aiReview = null,
+            bojId = null
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
+        every { lockRepository.markCompleted(any(), any(), any()) } returns true
+        every { aiApiClient.requestOneLineReview(any(), any()) } returns AiApiResponse(
+            rawJson = """{"review":"ok"}""",
+            review = "ok"
+        )
+
+        val result = aiReviewService.requestOneLineReviewAsync(logId)
+
+        assertThat(result.inProgress).isTrue()
+        assertThat(result.cached).isFalse()
+        verify(exactly = 1) { aiApiClient.requestOneLineReview(any(), any()) }
+        verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
+    }
 }
-
-

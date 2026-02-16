@@ -116,8 +116,18 @@ ai:
   # AI 서비스 활성화 여부 (기본값: false)
   # true로 설정하면 키워드 추출 기능이 활성화됩니다.
   enabled: ${AI_ENABLED:false}
+  review:
+    async:
+      core-pool-size: ${AI_REVIEW_ASYNC_CORE_POOL_SIZE:2}
+      max-pool-size: ${AI_REVIEW_ASYNC_MAX_POOL_SIZE:4}
+      queue-capacity: ${AI_REVIEW_ASYNC_QUEUE_CAPACITY:200}
   gemini:
     # 운영/로컬 환경변수로 주입 (하드코딩 금지)
     api-key: ${GEMINI_API_KEY:}
     url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
-
+    connect-timeout-millis: ${GEMINI_CONNECT_TIMEOUT_MILLIS:3000}
+    response-timeout-seconds: ${GEMINI_RESPONSE_TIMEOUT_SECONDS:10}
+    read-timeout-seconds: ${GEMINI_READ_TIMEOUT_SECONDS:10}
+    write-timeout-seconds: ${GEMINI_WRITE_TIMEOUT_SECONDS:10}
+    max-retries: ${GEMINI_MAX_RETRIES:1}
+    retry-backoff-millis: ${GEMINI_RETRY_BACKOFF_MILLIS:700}

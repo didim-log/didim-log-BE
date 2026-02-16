@@ -84,11 +84,13 @@ class LogController(
     @Operation(
         summary = "AI 한 줄 리뷰 생성/조회",
         description = "로그 엔티티에서 코드와 언어를 자동으로 추출하여 AI 한 줄 리뷰를 생성하거나 조회합니다. " +
-                "캐시 우선으로 동작하며, 코드가 2000자를 초과하면 자동으로 잘라서 분석합니다."
+                "캐시가 있으면 즉시 반환하고, 최초 요청은 비동기 작업을 등록한 뒤 202 Accepted를 반환합니다. " +
+                "코드가 2000자를 초과하면 자동으로 잘라서 분석합니다."
     )
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "조회/생성 성공"),
+            ApiResponse(responseCode = "200", description = "캐시된 리뷰 조회 성공"),
+            ApiResponse(responseCode = "202", description = "리뷰 생성 작업이 접수되어 진행 중"),
             ApiResponse(
                 responseCode = "400",
                 description = "요청 오류",
@@ -107,8 +109,17 @@ class LogController(
         @NotBlank(message = "로그 ID는 필수입니다.")
         logId: String
     ): ResponseEntity<AiReviewResponse> {
-        val result = aiReviewService.requestOneLineReview(logId)
-        return ResponseEntity.ok(AiReviewResponse(review = result.review, cached = result.cached))
+        val result = aiReviewService.requestOneLineReviewAsync(logId)
+        val response = AiReviewResponse(
+            review = result.review,
+            cached = result.cached,
+            inProgress = result.inProgress
+        )
+        if (result.inProgress) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+        }
+
+        return ResponseEntity.ok(response)
     }
 
     @Operation(
@@ -191,5 +202,4 @@ class LogController(
         )
     }
 }
-
 

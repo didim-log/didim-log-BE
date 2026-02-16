@@ -11,6 +11,7 @@
 - [StudyController](#studycontroller)
 - [RetrospectiveController](#retrospectivecontroller)
 - [DashboardController](#dashboardcontroller)
+- [LogController](#logcontroller)
 - [StudentController](#studentcontroller)
 - [QuoteController](#quotecontroller)
 - [StatisticsController](#statisticscontroller)
@@ -31,6 +32,7 @@ Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
 - `Auth`: 인증/인가
 - `Template`: 회고 템플릿 관리/렌더링
 - `Retrospective`: 회고 CRUD/검색
+- `Log`: 코드 로그 작성/AI 리뷰/피드백
 - `Problem`, `Study`, `Statistics`, `Ranking`, `Dashboard`: 학습/분석 기능
 - `Admin`: 관리자 기능 전체(회원/로그/문제수집/시스템제어/감사로그 포함)
 - `System`: 공개 시스템 상태 조회
@@ -1759,6 +1761,33 @@ JWT 토큰 기반 인증을 지원합니다.
 ### 날짜/시간 형식
 모든 날짜/시간 필드는 ISO 8601 형식을 따릅니다:
 - 예: `2024-01-15T10:30:00`
+
+---
+
+## LogController
+
+코드 로그 생성, AI 리뷰 요청/조회, AI 피드백, 사용자 AI 사용량 조회 기능을 제공합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| POST | `/api/v1/logs` | 코딩 로그를 생성합니다. | **Request Body:** `LogCreateRequest`<br>- `title` (String, required)<br>- `content` (String, required, max 5000)<br>- `code` (String, required, max 5000)<br>- `isSuccess` (Boolean, optional) | `LogResponse`<br>- `id` (String) | JWT(Optional) |
+| POST | `/api/v1/logs/{logId}/ai-review` | AI 한 줄 리뷰를 요청합니다. 캐시가 있으면 즉시 `200`, 캐시가 없으면 비동기 작업을 등록하고 `202`를 반환합니다. 동일 API를 다시 호출하면 완료 후 캐시 결과를 받을 수 있습니다. | **Path Variable:** `logId` (String, required) | `AiReviewResponse`<br>- `review` (String)<br>- `cached` (Boolean)<br>- `inProgress` (Boolean) | None |
+| POST | `/api/v1/logs/{logId}/feedback` | AI 리뷰 피드백(LIKE/DISLIKE)을 저장합니다. | **Path Variable:** `logId` (String, required)<br>**Request Body:** `LogFeedbackRequest`<br>- `status` (LIKE/DISLIKE, required)<br>- `reason` (String, optional) | `{ \"message\": \"피드백이 제출되었습니다.\" }` | JWT |
+| GET | `/api/v1/logs/ai-usage/me` | 내 AI 일일 사용량/잔여량/서비스 활성화 여부를 조회합니다. | 없음 | `AiUsageResponse`<br>- `limit` (Int)<br>- `usage` (Int)<br>- `remaining` (Int)<br>- `isServiceEnabled` (Boolean) | JWT |
+
+### AI 리뷰 응답 규칙
+
+- `200 OK`: 이미 생성된 리뷰를 반환 (`cached=true`, `inProgress=false`)
+- `202 Accepted`: 리뷰 생성 작업이 접수되어 진행 중 (`cached=false`, `inProgress=true`)
+- `429 Too Many Requests`: 사용자 일일 제한 초과(`AI_USER_LIMIT_EXCEEDED`) 또는 일시적 혼잡(`AI_SERVICE_BUSY`)
+- `503 Service Unavailable`: 전역 제한 초과(`AI_GLOBAL_LIMIT_EXCEEDED`) 또는 서비스 비활성화(`AI_SERVICE_DISABLED`)
+
+### 운영 기본값 (환경 변수로 변경 가능)
+
+- 사용자 일일 제한: 5회 (`AI_CONFIG:LIMIT:USER`)
+- 전역 일일 제한: 1000회 (`AI_CONFIG:LIMIT:GLOBAL`)
+- AI 호출 타임아웃: connect/read/response 10초 기본값
+- AI 비동기 워커: core 2, max 4, queue 200
 
 ---
 

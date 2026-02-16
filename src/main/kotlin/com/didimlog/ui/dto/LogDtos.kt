@@ -6,7 +6,8 @@ import jakarta.validation.constraints.Size
 
 data class AiReviewResponse(
     val review: String,
-    val cached: Boolean
+    val cached: Boolean,
+    val inProgress: Boolean = false
 )
 
 /**
@@ -41,5 +42,4 @@ data class LogResponse(
         }
     }
 }
-
 

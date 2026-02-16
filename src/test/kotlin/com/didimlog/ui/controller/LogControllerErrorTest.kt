@@ -61,12 +61,11 @@ class LogControllerErrorTest {
     @Test
     @DisplayName("AI 생성 실패 시 503 + AI_GENERATION_FAILED 로 응답한다")
     fun `ai generation failed`() {
-        every { aiReviewService.requestOneLineReview("log-1") } throws AiGenerationFailedException()
+        every { aiReviewService.requestOneLineReviewAsync("log-1") } throws AiGenerationFailedException()
 
         mockMvc.perform(post("/api/v1/logs/log-1/ai-review"))
             .andExpect(status().isServiceUnavailable)
             .andExpect(jsonPath("$.code").value("AI_GENERATION_FAILED"))
     }
 }
-
 
