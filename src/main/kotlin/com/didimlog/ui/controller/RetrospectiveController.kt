@@ -30,6 +30,7 @@ import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
@@ -45,6 +46,10 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 @Tag(name = "Retrospective", description = "회고 작성 및 조회 관련 API")
 @RestController
@@ -54,7 +59,9 @@ class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
     private val studentRepository: StudentRepository,
     private val problemRepository: ProblemRepository,
-    private val templateService: TemplateService
+    private val templateService: TemplateService,
+    @Value("\${app.template.render-timeout-millis:4000}")
+    private val templateRenderTimeoutMillis: Long
 ) {
     companion object {
         private val ALLOWED_SORT_FIELDS = setOf("createdAt", "problemId", "isBookmarked")
@@ -270,6 +277,11 @@ class RetrospectiveController(
                 responseCode = "404",
                 description = "학생/템플릿/문제를 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "504",
+                description = "템플릿 렌더링 시간 초과",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
     )
@@ -295,7 +307,14 @@ class RetrospectiveController(
         val defaultTemplate = templateService.getDefaultTemplate(templateCategory, studentId)
         val templateId = defaultTemplate.id
             ?: throw BusinessException(ErrorCode.TEMPLATE_NOT_FOUND, "기본 템플릿 ID를 찾을 수 없습니다.")
-        val renderedTemplate = templateService.renderTemplate(templateId, problemId, studentId)
+        val renderedTemplate = renderTemplateWithTimeout {
+            templateService.renderTemplate(
+                templateId = templateId,
+                problemId = problemId,
+                studentId = studentId,
+                resultTypeHint = resultType
+            )
+        }
         return ResponseEntity.ok(RetrospectiveTemplateResponse(template = renderedTemplate))
     }
 
@@ -360,6 +379,35 @@ class RetrospectiveController(
             return field
         }
         return "createdAt"
+    }
+
+    private fun renderTemplateWithTimeout(renderAction: () -> String): String {
+        val renderFuture = CompletableFuture.supplyAsync { renderAction() }
+        return try {
+            renderFuture.get(templateRenderTimeoutMillis, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            renderFuture.cancel(true)
+            throw BusinessException(
+                ErrorCode.TEMPLATE_RENDER_TIMEOUT,
+                "템플릿 렌더링 시간이 초과되었습니다. timeoutMillis=$templateRenderTimeoutMillis"
+            )
+        } catch (e: ExecutionException) {
+            val cause = e.cause
+            when (cause) {
+                is BusinessException -> throw cause
+                is RuntimeException -> throw cause
+                else -> throw BusinessException(
+                    ErrorCode.COMMON_INTERNAL_ERROR,
+                    "템플릿 렌더링 중 알 수 없는 오류가 발생했습니다."
+                )
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw BusinessException(
+                ErrorCode.COMMON_INTERNAL_ERROR,
+                "템플릿 렌더링 작업이 중단되었습니다."
+            )
+        }
     }
 
     private fun parseProblemCategory(raw: String): ProblemCategory {

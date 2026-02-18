@@ -25,6 +25,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -37,6 +38,10 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 @Tag(name = "Template", description = "회고 템플릿 관리 API - 사용자 커스텀 템플릿 및 시스템 기본 템플릿 관리")
 @RestController
@@ -44,7 +49,9 @@ import org.springframework.web.bind.annotation.RestController
 @org.springframework.validation.annotation.Validated
 class TemplateController(
     private val templateService: TemplateService,
-    private val studentRepository: StudentRepository
+    private val studentRepository: StudentRepository,
+    @Value("\${app.template.render-timeout-millis:4000}")
+    private val templateRenderTimeoutMillis: Long
 ) {
 
     @Operation(
@@ -191,6 +198,11 @@ class TemplateController(
                 responseCode = "404",
                 description = "템플릿을 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "504",
+                description = "템플릿 렌더링 시간 초과",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
     )
@@ -212,7 +224,9 @@ class TemplateController(
     ): ResponseEntity<TemplateRenderResponse> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val renderedContent = templateService.renderTemplate(id, problemId, studentId, programmingLanguage, code)
+        val renderedContent = renderTemplateWithTimeout {
+            templateService.renderTemplate(id, problemId, studentId, programmingLanguage, code)
+        }
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }
@@ -239,6 +253,11 @@ class TemplateController(
                 responseCode = "404",
                 description = "템플릿을 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "504",
+                description = "템플릿 렌더링 시간 초과",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
     )
@@ -251,13 +270,15 @@ class TemplateController(
     ): ResponseEntity<TemplateRenderResponse> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val renderedContent = templateService.renderTemplate(
-            id,
-            request.problemId,
-            studentId,
-            request.programmingLanguage,
-            request.code
-        )
+        val renderedContent = renderTemplateWithTimeout {
+            templateService.renderTemplate(
+                id,
+                request.problemId,
+                studentId,
+                request.programmingLanguage,
+                request.code
+            )
+        }
         val response = TemplateRenderResponse(renderedContent = renderedContent)
         return ResponseEntity.ok(response)
     }
@@ -530,5 +551,34 @@ class TemplateController(
         val failTemplateId = student.defaultFailTemplateId
             ?: templateService.getDefaultTemplate(TemplateCategory.FAIL, studentId).id
         return successTemplateId to failTemplateId
+    }
+
+    private fun renderTemplateWithTimeout(renderAction: () -> String): String {
+        val renderFuture = CompletableFuture.supplyAsync { renderAction() }
+        return try {
+            renderFuture.get(templateRenderTimeoutMillis, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            renderFuture.cancel(true)
+            throw BusinessException(
+                ErrorCode.TEMPLATE_RENDER_TIMEOUT,
+                "템플릿 렌더링 시간이 초과되었습니다. timeoutMillis=$templateRenderTimeoutMillis"
+            )
+        } catch (e: ExecutionException) {
+            val cause = e.cause
+            when (cause) {
+                is BusinessException -> throw cause
+                is RuntimeException -> throw cause
+                else -> throw BusinessException(
+                    ErrorCode.COMMON_INTERNAL_ERROR,
+                    "템플릿 렌더링 중 알 수 없는 오류가 발생했습니다."
+                )
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw BusinessException(
+                ErrorCode.COMMON_INTERNAL_ERROR,
+                "템플릿 렌더링 작업이 중단되었습니다."
+            )
+        }
     }
 }

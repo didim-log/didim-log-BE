@@ -1,10 +1,9 @@
 package com.didimlog.application.recommendation
 
+import com.didimlog.application.utils.AlgorithmHierarchyUtils
 import com.didimlog.application.utils.ProblemLanguageDetector
-import com.didimlog.application.utils.TagUtils
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -84,25 +83,23 @@ class RecommendationService(
 
     private fun findCandidateProblems(minLevel: Int, maxLevel: Int, category: String?, language: String?): List<Problem> {
         val problems = if (category != null) {
-            // 1. 태그 별칭을 공식 전체 이름으로 변환 (예: "BFS" -> "Breadth-first Search")
-            val normalizedCategory = TagUtils.normalizeTagName(category)
-            
-            // 2. ProblemCategory enum에서 englishName 또는 enum 이름으로 매칭
-            val categoryEnglishName = ProblemCategory.entries
-                .find { 
-                    // enum 이름 매칭 (예: BFS, DFS, DP)
-                    it.name.equals(normalizedCategory, ignoreCase = true) ||
-                    // englishName 매칭 (예: "Breadth-first Search")
-                    it.englishName.equals(normalizedCategory, ignoreCase = true)
-                }
-                ?.englishName
-                ?: normalizedCategory // 매칭 안 되면 정규화된 문자열 사용
-            
-            problemRepository.findByLevelBetweenAndCategory(
+            val categoryEnglishName = AlgorithmHierarchyUtils.findCategoryEnglishName(category)
+            val expandedTags = AlgorithmHierarchyUtils.getExpandedTags(categoryEnglishName)
+
+            val primaryCategoryMatches = problemRepository.findByLevelBetweenAndCategory(
                 min = minLevel,
                 max = maxLevel,
                 category = categoryEnglishName
             )
+
+            val tagMatches = problemRepository.findByLevelBetweenAndTagsIn(
+                min = minLevel,
+                max = maxLevel,
+                expandedTags = expandedTags
+            )
+
+            (primaryCategoryMatches + tagMatches)
+                .distinctBy { it.id.value }
         } else {
             // 레거시 스키마(difficultyLevel)도 함께 지원한다.
             problemRepository.findByLevelBetweenFlexible(min = minLevel, max = maxLevel)
