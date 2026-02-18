@@ -1164,6 +1164,7 @@ Content-Type: application/json
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
 | GET | `/api/v1/admin/dashboard/stats` | 총 회원 수, 오늘 가입한 회원 수, 총 해결된 문제 수, 오늘 작성된 회고 수를 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `AdminDashboardStatsResponse`<br><br>**AdminDashboardStatsResponse 구조:**<br>- `totalUsers` (Long): 총 회원 수<br>- `todaySignups` (Long): 오늘 가입한 회원 수<br>- `totalSolvedProblems` (Long): 총 해결된 문제 수 (SUCCESS인 Solution 개수)<br>- `todayRetrospectives` (Long): 오늘 작성된 회고 수 | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/dashboard/metrics` | 최근 N분 성능 메트릭(분당 요청량, 응답속도, 에러율, 상태코드 분포)을 조회합니다. ADMIN 권한이 필요합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br>**Query:**<br>- `minutes` (optional, default: 30, max: 120) | `PerformanceMetricsResponse`<br><br>**PerformanceMetricsResponse 구조:**<br>- `rpm` (Double): 평균 분당 요청 수<br>- `averageResponseTime` (Double): 평균 응답 시간(ms)<br>- `p95ResponseTime` (Double): P95 응답 시간(ms)<br>- `maxResponseTime` (Double): 최대 응답 시간(ms)<br>- `totalRequests` (Long): 집계 기간 총 요청 수<br>- `errorRequests` (Long): 4xx/5xx 요청 수<br>- `serverErrorRequests` (Long): 5xx 요청 수<br>- `errorRate` (Double): 전체 에러율(%)<br>- `serverErrorRate` (Double): 서버 에러율(%)<br>- `slowRequestRate` (Double): 1초 이상 응답 비율(%)<br>- `timeRangeMinutes` (Int): 집계 구간(분)<br>- `statusCodeSummary` (List): 상태코드별 요청 수/비율 상위 6개<br>- `rpmTimeSeries` (List): 분당 요청 수 시계열<br>- `latencyTimeSeries` (List): 분당 평균 응답시간(ms) 시계열<br>- `errorRateTimeSeries` (List): 분당 에러율(%) 시계열 | JWT Token (ADMIN) |
 
 **예시 요청:**
 ```http
@@ -1178,6 +1179,46 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "todaySignups": 5,
   "totalSolvedProblems": 1250,
   "todayRetrospectives": 12
+}
+```
+
+**예시 요청 (성능 메트릭):**
+```http
+GET /api/v1/admin/dashboard/metrics?minutes=30
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**예시 응답 (성능 메트릭):**
+```json
+{
+  "rpm": 42.8,
+  "averageResponseTime": 133.4,
+  "p95ResponseTime": 520.0,
+  "maxResponseTime": 1910.0,
+  "totalRequests": 1284,
+  "errorRequests": 12,
+  "serverErrorRequests": 3,
+  "errorRate": 0.93,
+  "serverErrorRate": 0.23,
+  "slowRequestRate": 1.56,
+  "timeRangeMinutes": 30,
+  "statusCodeSummary": [
+    { "statusCode": 200, "count": 1203, "ratio": 93.69 },
+    { "statusCode": 404, "count": 9, "ratio": 0.70 },
+    { "statusCode": 500, "count": 3, "ratio": 0.23 }
+  ],
+  "rpmTimeSeries": [
+    { "timestamp": 1739862000, "value": 39.0 },
+    { "timestamp": 1739862060, "value": 44.0 }
+  ],
+  "latencyTimeSeries": [
+    { "timestamp": 1739862000, "value": 121.5 },
+    { "timestamp": 1739862060, "value": 147.3 }
+  ],
+  "errorRateTimeSeries": [
+    { "timestamp": 1739862000, "value": 0.0 },
+    { "timestamp": 1739862060, "value": 2.27 }
+  ]
 }
 ```
 

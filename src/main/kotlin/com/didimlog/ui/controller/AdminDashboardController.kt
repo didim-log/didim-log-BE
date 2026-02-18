@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Positive
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -142,6 +143,7 @@ class AdminDashboardController(
     @GetMapping("/metrics")
     fun getPerformanceMetrics(
         @org.springframework.web.bind.annotation.RequestParam(defaultValue = "30")
+        @Max(value = 120, message = "minutes는 120 이하여야 합니다.")
         @Positive(message = "minutes는 1 이상이어야 합니다.")
         minutes: Int
     ): ResponseEntity<PerformanceMetricsResponse> {
@@ -176,4 +178,3 @@ class AdminDashboardController(
         return ResponseEntity.ok(AiQualityStatsResponse.from(stats))
     }
 }
-
