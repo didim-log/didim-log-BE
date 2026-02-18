@@ -1,8 +1,12 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminLogService
+import com.didimlog.application.admin.LogCleanupMode
 import com.didimlog.application.admin.LogCleanupService
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AdminLogResponse
+import com.didimlog.ui.dto.LogCleanupPreviewResponse
 import com.didimlog.ui.dto.LogCleanupResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -120,8 +124,8 @@ class AdminLogController(
     }
 
     @Operation(
-        summary = "오래된 로그 정리",
-        description = "지정된 일수 이상 된 로그를 삭제합니다. ADMIN 권한이 필요합니다.",
+        summary = "로그 정리 미리보기",
+        description = "로그 정리 실행 전 삭제 대상 개수와 상태별 분포를 조회합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -145,19 +149,73 @@ class AdminLogController(
         ]
     )
     @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/cleanup/preview")
+    fun previewCleanupLogs(
+        @Parameter(description = "정리 모드 (OLDER_THAN_DAYS | KEEP_RECENT_DAYS)")
+        @RequestParam(defaultValue = "OLDER_THAN_DAYS")
+        mode: LogCleanupMode,
+        @Parameter(description = "mode=OLDER_THAN_DAYS에서 기준일")
+        @RequestParam(required = false)
+        olderThanDays: Int?,
+        @Parameter(description = "mode=KEEP_RECENT_DAYS에서 유지일")
+        @RequestParam(required = false)
+        keepDays: Int?
+    ): ResponseEntity<LogCleanupPreviewResponse> {
+        val referenceDays = resolveReferenceDays(mode, olderThanDays, keepDays)
+        val plan = logCleanupService.previewCleanup(mode, referenceDays)
+        return ResponseEntity.ok(
+            LogCleanupPreviewResponse(
+                mode = plan.mode,
+                referenceDays = plan.referenceDays,
+                cutoffAt = plan.cutoffDate,
+                deletableCount = plan.deletableCount,
+                statusBreakdown = plan.statusBreakdown
+            )
+        )
+    }
+
+    @Operation(
+        summary = "오래된 로그 정리 실행",
+        description = "지정 모드/기준 일수에 따라 로그 정리를 실행합니다. ADMIN 권한이 필요합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/cleanup")
     fun cleanupLogs(
-        @Parameter(description = "기준일 (이보다 오래된 로그 삭제)", required = true)
-        @RequestParam
-        @Positive(message = "olderThanDays는 1 이상이어야 합니다.")
-        olderThanDays: Int
+        @Parameter(description = "정리 모드 (OLDER_THAN_DAYS | KEEP_RECENT_DAYS)")
+        @RequestParam(defaultValue = "OLDER_THAN_DAYS")
+        mode: LogCleanupMode,
+        @Parameter(description = "mode=OLDER_THAN_DAYS에서 기준일")
+        @RequestParam(required = false)
+        olderThanDays: Int?,
+        @Parameter(description = "mode=KEEP_RECENT_DAYS에서 유지일")
+        @RequestParam(required = false)
+        keepDays: Int?
     ): ResponseEntity<LogCleanupResponse> {
-        val deletedCount = logCleanupService.cleanupLogs(olderThanDays)
+        val referenceDays = resolveReferenceDays(mode, olderThanDays, keepDays)
+        val result = logCleanupService.cleanupLogs(mode, referenceDays)
         val response = LogCleanupResponse(
-            message = "${deletedCount}개의 로그가 삭제되었습니다.",
-            deletedCount = deletedCount
+            message = "${result.deletedCount}개의 로그가 삭제되었습니다.",
+            mode = result.mode,
+            referenceDays = result.referenceDays,
+            cutoffAt = result.cutoffDate,
+            deletedCount = result.deletedCount
         )
         return ResponseEntity.ok(response)
     }
-}
 
+    private fun resolveReferenceDays(mode: LogCleanupMode, olderThanDays: Int?, keepDays: Int?): Int {
+        val referenceDays = when (mode) {
+            LogCleanupMode.OLDER_THAN_DAYS -> olderThanDays
+            LogCleanupMode.KEEP_RECENT_DAYS -> keepDays
+        } ?: throw BusinessException(
+            ErrorCode.COMMON_INVALID_INPUT,
+            "mode=$mode 에 필요한 기준 일수가 누락되었습니다."
+        )
+
+        if (referenceDays <= 0) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "기준 일수는 1 이상이어야 합니다.")
+        }
+        return referenceDays
+    }
+}

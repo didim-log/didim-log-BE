@@ -1,6 +1,7 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminLogService
+import com.didimlog.application.admin.LogCleanupMode
 import com.didimlog.application.admin.LogCleanupService
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -69,19 +70,29 @@ class AdminLogControllerTest {
         val olderThanDays = 30
         val deletedCount = 100L
 
-        every { logCleanupService.cleanupLogs(olderThanDays) } returns deletedCount
+        every {
+            logCleanupService.cleanupLogs(LogCleanupMode.OLDER_THAN_DAYS, olderThanDays)
+        } returns LogCleanupService.CleanupResult(
+            mode = LogCleanupMode.OLDER_THAN_DAYS,
+            referenceDays = olderThanDays,
+            cutoffDate = java.time.LocalDateTime.now().minusDays(olderThanDays.toLong()),
+            deletedCount = deletedCount
+        )
 
         // when & then
         mockMvc.perform(
             delete("/api/v1/admin/logs/cleanup")
+                .param("mode", "OLDER_THAN_DAYS")
                 .param("olderThanDays", olderThanDays.toString())
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.message").value("100개의 로그가 삭제되었습니다."))
+            .andExpect(jsonPath("$.mode").value("OLDER_THAN_DAYS"))
+            .andExpect(jsonPath("$.referenceDays").value(30))
             .andExpect(jsonPath("$.deletedCount").value(100))
 
-        verify(exactly = 1) { logCleanupService.cleanupLogs(olderThanDays) }
+        verify(exactly = 1) { logCleanupService.cleanupLogs(LogCleanupMode.OLDER_THAN_DAYS, olderThanDays) }
     }
 
     @Test
@@ -90,10 +101,36 @@ class AdminLogControllerTest {
         // when & then
         mockMvc.perform(
             delete("/api/v1/admin/logs/cleanup")
+                .param("mode", "OLDER_THAN_DAYS")
                 .param("olderThanDays", "0")
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isBadRequest)
     }
-}
 
+    @Test
+    @DisplayName("로그 정리 preview 조회 시 200 OK")
+    fun `로그 정리 preview 성공`() {
+        every {
+            logCleanupService.previewCleanup(LogCleanupMode.KEEP_RECENT_DAYS, 3)
+        } returns LogCleanupService.CleanupPlan(
+            mode = LogCleanupMode.KEEP_RECENT_DAYS,
+            referenceDays = 3,
+            cutoffDate = java.time.LocalDateTime.now().minusDays(3),
+            deletableCount = 22L,
+            statusBreakdown = mapOf("COMPLETED" to 20L, "FAILED" to 2L)
+        )
+
+        mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/admin/logs/cleanup/preview")
+                .param("mode", "KEEP_RECENT_DAYS")
+                .param("keepDays", "3")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mode").value("KEEP_RECENT_DAYS"))
+            .andExpect(jsonPath("$.referenceDays").value(3))
+            .andExpect(jsonPath("$.deletableCount").value(22))
+            .andExpect(jsonPath("$.statusBreakdown.COMPLETED").value(20))
+    }
+}

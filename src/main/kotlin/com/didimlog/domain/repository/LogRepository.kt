@@ -38,6 +38,18 @@ interface LogRepository : MongoRepository<Log, String> {
     fun countByCreatedAtBefore(dateTime: LocalDateTime): Long
 
     /**
+     * 특정 날짜 이전 + 특정 AI 리뷰 상태의 로그 개수를 조회한다.
+     */
+    @Query("{ 'createdAt': { \$lt: ?0 }, 'aiReviewStatus': ?1 }")
+    fun countByCreatedAtBeforeAndAiReviewStatus(dateTime: LocalDateTime, status: AiReviewStatus): Long
+
+    /**
+     * 특정 날짜 이전 + AI 리뷰 상태가 없는 로그 개수를 조회한다.
+     */
+    @Query("{ 'createdAt': { \$lt: ?0 }, 'aiReviewStatus': null }")
+    fun countByCreatedAtBeforeAndAiReviewStatusIsNull(dateTime: LocalDateTime): Long
+
+    /**
      * AI 피드백 상태로 로그 개수를 조회한다.
      *
      * @param status 피드백 상태
@@ -87,5 +99,4 @@ interface LogRepository : MongoRepository<Log, String> {
         pageable: Pageable
     ): Page<Log>
 }
-
 

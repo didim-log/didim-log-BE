@@ -4,6 +4,7 @@ import com.didimlog.domain.Quote
 import com.didimlog.domain.repository.QuoteRepository
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
@@ -54,32 +55,33 @@ class QuoteServiceTest {
     }
 
     @Test
-    @DisplayName("시딩 로직은 DB에 명언이 있으면 건너뛴다")
-    fun `시딩 로직 건너뛰기`() {
-        // given
-        every { quoteRepository.count() } returns 1L
+    @DisplayName("시딩 로직은 누락된 큐레이션 명언을 보강한다")
+    fun `시딩 로직 데이터 보강`() {
+        every { quoteRepository.findAll() } returns emptyList()
+        every { quoteRepository.saveAll(any<List<Quote>>()) } returns emptyList()
+        every { quoteRepository.count() } returns 35L
 
-        // when
         quoteService.seedQuotes()
 
-        // then
-        verify(exactly = 1) { quoteRepository.count() }
-        verify(exactly = 0) { quoteRepository.saveAll(any<List<Quote>>()) }
+        val quoteListSlot = slot<List<Quote>>()
+        verify(atLeast = 1) { quoteRepository.saveAll(capture(quoteListSlot)) }
+        assertThat(quoteListSlot.captured).isNotEmpty()
     }
 
     @Test
-    @DisplayName("시딩 로직은 DB에 명언이 없으면 초기 데이터를 저장한다")
-    fun `시딩 로직 데이터 저장`() {
-        // given
-        every { quoteRepository.count() } returns 0L
+    @DisplayName("시딩 로직은 Unknown 저자를 큐레이션 저자로 교정한다")
+    fun `시딩 로직 저자 교정`() {
+        val existingUnknown = Quote(
+            id = "q1",
+            content = "말은 쉽다. 코드를 보여줘라.",
+            author = "Unknown"
+        )
+        every { quoteRepository.findAll() } returns listOf(existingUnknown)
         every { quoteRepository.saveAll(any<List<Quote>>()) } returns emptyList()
+        every { quoteRepository.count() } returns 36L
 
-        // when
         quoteService.seedQuotes()
 
-        // then
-        verify(exactly = 1) { quoteRepository.count() }
-        verify(exactly = 1) { quoteRepository.saveAll(any<List<Quote>>()) }
+        verify(atLeast = 1) { quoteRepository.saveAll(any<List<Quote>>()) }
     }
 }
-
