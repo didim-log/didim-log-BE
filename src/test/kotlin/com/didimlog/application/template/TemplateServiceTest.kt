@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test
 import java.util.Optional
 
 @DisplayName("TemplateService 테스트")
+@Suppress("DEPRECATION")
 class TemplateServiceTest {
 
     private val templateRepository: TemplateRepository = mockk()

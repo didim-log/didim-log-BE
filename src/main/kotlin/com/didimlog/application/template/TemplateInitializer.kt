@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component
  * Simple(요약)과 Detail(상세) 템플릿을 자동으로 초기화하여 신규 사용자도 바로 사용할 수 있도록 한다.
  */
 @Component
+@Suppress("DEPRECATION")
 class TemplateInitializer(
     private val templateRepository: TemplateRepository
 ) : ApplicationRunner {

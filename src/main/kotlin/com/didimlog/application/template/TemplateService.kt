@@ -215,6 +215,7 @@ class TemplateService(
      * @return 시스템 기본 성공 템플릿
      * @throws BusinessException 템플릿을 찾을 수 없는 경우
      */
+    @Suppress("DEPRECATION")
     private fun getSystemDefaultSuccessTemplate(): Template {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
         return systemTemplates.firstOrNull { it.isDefaultSuccess }
@@ -232,6 +233,7 @@ class TemplateService(
      * @return 시스템 기본 실패 템플릿
      * @throws BusinessException 템플릿을 찾을 수 없는 경우
      */
+    @Suppress("DEPRECATION")
     private fun getSystemDefaultFailTemplate(): Template {
         val systemTemplates = templateRepository.findByType(TemplateOwnershipType.SYSTEM)
         return systemTemplates.firstOrNull { it.isDefaultFail }
