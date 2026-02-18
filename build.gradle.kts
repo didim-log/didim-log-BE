@@ -123,7 +123,7 @@ jacoco {
 }
 
 tasks.named<Test>("test") {
-	finalizedBy("jacocoTestReport")
+	maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
 }
 
 tasks.named<JacocoReport>("jacocoTestReport") {

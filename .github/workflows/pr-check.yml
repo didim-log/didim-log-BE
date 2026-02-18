@@ -53,7 +53,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run unit tests
-        run: ./gradlew clean test
+        run: ./gradlew test
 
   integration-test:
     runs-on: ubuntu-latest
@@ -98,6 +98,5 @@ jobs:
       - name: Run integration tests
         env:
           SERVER_URL: https://dummy-server.com
-        run: ./gradlew clean integrationTest
-
+        run: ./gradlew integrationTest
 

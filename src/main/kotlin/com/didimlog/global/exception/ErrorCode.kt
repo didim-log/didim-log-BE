@@ -12,6 +12,7 @@ enum class ErrorCode(
     // 400 Bad Request
     COMMON_INVALID_INPUT(400, "COMMON_INVALID_INPUT", "입력값이 올바르지 않습니다."),
     COMMON_VALIDATION_FAILED(400, "COMMON_VALIDATION_FAILED", "유효성 검사에 실패했습니다."),
+    INVALID_RANGE(400, "INVALID_RANGE", "요청한 범위(start/end)가 올바르지 않습니다."),
     INVALID_PASSWORD(400, "INVALID_PASSWORD", "비밀번호 정책에 위배됩니다."),
     DUPLICATE_NICKNAME(400, "DUPLICATE_NICKNAME", "이미 사용 중인 닉네임입니다."),
     PASSWORD_MISMATCH(400, "PASSWORD_MISMATCH", "현재 비밀번호가 일치하지 않습니다."),
@@ -36,9 +37,11 @@ enum class ErrorCode(
     QUOTE_NOT_FOUND(404, "QUOTE_NOT_FOUND", "명언을 찾을 수 없습니다."),
     FEEDBACK_NOT_FOUND(404, "FEEDBACK_NOT_FOUND", "피드백을 찾을 수 없습니다."),
     TEMPLATE_NOT_FOUND(404, "TEMPLATE_NOT_FOUND", "템플릿을 찾을 수 없습니다."),
+    JOB_NOT_FOUND(404, "JOB_NOT_FOUND", "작업을 찾을 수 없습니다."),
 
     // 409 Conflict
     DUPLICATE_BOJ_ID(409, "DUPLICATE_BOJ_ID", "이미 가입된 백준 아이디입니다."),
+    JOB_ALREADY_TERMINAL(409, "JOB_ALREADY_TERMINAL", "이미 종료된 작업입니다."),
 
     // 400 Bad Request
     AI_CONTEXT_TOO_LARGE(400, "AI_CONTEXT_TOO_LARGE", "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."),
@@ -50,6 +53,8 @@ enum class ErrorCode(
     AI_SERVICE_DISABLED(503, "AI_SERVICE_DISABLED", "AI 서비스가 일시 중지되었습니다."),
     AI_GLOBAL_LIMIT_EXCEEDED(503, "AI_GLOBAL_LIMIT_EXCEEDED", "현재 서비스 이용량이 많아 AI 기능이 일시 중지되었습니다."),
     AI_USER_LIMIT_EXCEEDED(429, "AI_USER_LIMIT_EXCEEDED", "일일 AI 사용 횟수를 초과했습니다. 내일 다시 이용해주세요."),
+    QUEUE_TIMEOUT(503, "QUEUE_TIMEOUT", "작업 대기열에서 시간 초과가 발생했습니다."),
+    WORKER_UNAVAILABLE(503, "WORKER_UNAVAILABLE", "작업 처리 워커를 사용할 수 없습니다."),
 
     // 500 Internal Server Error
     COMMON_INTERNAL_ERROR(500, "COMMON_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")
