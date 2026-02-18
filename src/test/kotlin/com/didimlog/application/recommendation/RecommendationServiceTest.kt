@@ -270,15 +270,23 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        // RecommendationService는 category를 englishName으로 변환하므로, 실제 호출되는 값으로 모킹
-        // "IMPLEMENTATION"은 "Implementation"으로 변환되어 호출됨
-        // "Graph Theory"는 그대로 "Graph Theory"로 호출됨 (englishName과 일치)
         // tierLevel=3 -> 레벨 1~5 범위
         every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.IMPLEMENTATION.englishName) } returns implementationProblems
-        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.GRAPH_THEORY.englishName) } returns graphProblems
+        every { problemRepository.findByLevelBetweenAndTagsIn(1, 5, match { it.contains(ProblemCategory.IMPLEMENTATION.englishName) }) } returns emptyList()
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.GRAPH_THEORY.englishName) } returns emptyList()
+        every {
+            problemRepository.findByLevelBetweenAndTagsIn(
+                1,
+                5,
+                match { tags ->
+                    tags.contains(ProblemCategory.GRAPH_THEORY.englishName) &&
+                        tags.contains(ProblemCategory.BFS.englishName) &&
+                        tags.contains(ProblemCategory.DFS.englishName)
+                }
+            )
+        } returns graphProblems
 
         // when
-        // RecommendationService는 category를 englishName으로 변환하므로, 실제로는 "Implementation"과 "Graph Theory"로 변환됨
         val recommendedImplementation = recommendationService.recommendProblems(bojId, count = 5, category = "IMPLEMENTATION")
         val recommendedGraph = recommendationService.recommendProblems(bojId, count = 5, category = ProblemCategory.GRAPH_THEORY.englishName)
 
@@ -287,7 +295,8 @@ class RecommendationServiceTest {
         assertThat(recommendedImplementation).allMatch { it.category == ProblemCategory.IMPLEMENTATION }
         assertThat(recommendedGraph).hasSize(1)
         assertThat(recommendedGraph).allMatch { it.category == ProblemCategory.GRAPH_THEORY }
-        // 카테고리 필터가 정확히 동작하는지 결과로 검증 (MockK verify는 제외)
+        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.IMPLEMENTATION.englishName) }
+        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.GRAPH_THEORY.englishName) }
     }
 
     @Test
@@ -304,14 +313,92 @@ class RecommendationServiceTest {
 
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
-        every { problemRepository.findByLevelBetweenAndCategory(1, 5, "DYNAMIC_PROGRAMMING") } returns emptyList()
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) } returns emptyList()
+        every { problemRepository.findByLevelBetweenAndTagsIn(1, 5, any()) } returns emptyList()
 
         // when
         val recommended = recommendationService.recommendProblems(bojId, count = 5, category = "DYNAMIC_PROGRAMMING")
 
         // then
         assertThat(recommended).isEmpty()
-        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, "DYNAMIC_PROGRAMMING") }
+        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) }
+        verify { problemRepository.findByLevelBetweenAndTagsIn(1, 5, any()) }
+    }
+
+    @Test
+    @DisplayName("EXACT 모드는 대표 카테고리만 검색하고 태그 확장은 사용하지 않는다")
+    fun `exact filter mode only matches primary category`() {
+        val bojId = "exactmode1"
+        val student = createStudent(
+            id = "student-exact",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+        val primaryMatch = createProblem(
+            id = "3000",
+            tier = Tier.BRONZE,
+            level = 3,
+            category = ProblemCategory.BFS
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.BFS.englishName) } returns listOf(primaryMatch)
+
+        val recommended = recommendationService.recommendProblemsDetailed(
+            bojId = bojId,
+            count = 10,
+            category = "BFS",
+            filterMode = CategoryFilterMode.EXACT
+        )
+
+        assertThat(recommended).hasSize(1)
+        assertThat(recommended.first().matchedByPrimary).isTrue()
+        assertThat(recommended.first().matchedByTags).isFalse()
+        verify(exactly = 0) { problemRepository.findByLevelBetweenAndTagsIn(any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("RELATED 모드는 형제 카테고리(DFS) 태그도 함께 포함한다")
+    fun `related filter mode includes sibling category tags`() {
+        val bojId = "relatedmode1"
+        val student = createStudent(
+            id = "student-related",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+        val dfsTaggedProblem = createProblem(
+            id = "3001",
+            tier = Tier.BRONZE,
+            level = 3,
+            category = ProblemCategory.GRAPH_THEORY
+        ).copy(tags = listOf(ProblemCategory.DFS.englishName))
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) } returns emptyList()
+        every {
+            problemRepository.findByLevelBetweenAndTagsIn(
+                1,
+                5,
+                match { tags ->
+                    tags.contains(ProblemCategory.BFS.englishName) &&
+                        tags.contains(ProblemCategory.DFS.englishName)
+                }
+            )
+        } returns listOf(dfsTaggedProblem)
+
+        val recommended = recommendationService.recommendProblemsDetailed(
+            bojId = bojId,
+            count = 10,
+            category = "BFS",
+            filterMode = CategoryFilterMode.RELATED
+        )
+
+        assertThat(recommended).hasSize(1)
+        assertThat(recommended.first().matchedByPrimary).isTrue()
+        assertThat(recommended.first().matchedByTags).isTrue()
+        assertThat(recommended.first().expandedFrom).isNotEmpty()
     }
 
     @Test

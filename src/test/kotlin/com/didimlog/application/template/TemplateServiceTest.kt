@@ -620,6 +620,91 @@ class TemplateServiceTest {
     }
 
     @Test
+    @DisplayName("렌더링 대상 템플릿이 없으면 기본 템플릿으로 fallback 한다")
+    fun `템플릿 렌더링 - 템플릿 fallback`() {
+        // given
+        val problemId = 1000L
+        val systemSuccessTemplate = Template(
+            id = "system-success",
+            studentId = null,
+            title = "Simple(요약)",
+            content = "Fallback: {{problemTitle}}",
+            type = TemplateOwnershipType.SYSTEM,
+            isDefaultSuccess = true,
+            isDefaultFail = false
+        )
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            currentTier = Tier.BRONZE,
+            solutions = Solutions()
+        )
+
+        every { templateRepository.findById(templateId) } returns Optional.empty()
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns listOf(systemSuccessTemplate)
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+
+        // when
+        val result = service.renderTemplate(templateId, problemId, studentId)
+
+        // then
+        assertThat(result).contains("Fallback: A+B")
+        verify { templateRepository.findByType(TemplateOwnershipType.SYSTEM) }
+    }
+
+    @Test
+    @DisplayName("타인의 커스텀 템플릿을 렌더링하면 ACCESS_DENIED 예외가 발생한다")
+    fun `템플릿 렌더링 - 타인 소유 템플릿 접근 차단`() {
+        // given
+        val problemId = 1000L
+        val otherStudentTemplate = Template(
+            id = templateId,
+            studentId = "other-student",
+            title = "타인 템플릿",
+            content = "내용",
+            type = TemplateOwnershipType.CUSTOM
+        )
+        val problem = Problem(
+            id = ProblemId("1000"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000",
+            language = "ko"
+        )
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = "testuser",
+            currentTier = Tier.BRONZE,
+            solutions = Solutions()
+        )
+
+        every { templateRepository.findById(templateId) } returns Optional.of(otherStudentTemplate)
+        every { problemService.getProblemMetaIfExists(problemId) } returns problem
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+
+        // when & then
+        assertThatThrownBy { service.renderTemplate(templateId, problemId, studentId) }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ACCESS_DENIED)
+    }
+
+    @Test
     @DisplayName("문제 메타가 없어도 템플릿 렌더링은 fallback 문제 정보로 성공한다")
     fun `템플릿 렌더링 - 문제 메타 fallback`() {
         // given

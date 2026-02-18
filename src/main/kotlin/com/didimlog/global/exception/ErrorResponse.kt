@@ -9,6 +9,7 @@ data class ErrorResponse(
     val error: String,
     val code: String,
     val message: String,
+    val retryable: Boolean? = null, // 재시도 가능 여부 (선택적)
     val remainingAttempts: Int? = null, // Rate Limiting 남은 횟수 (선택적)
     val unlockTime: String? = null // Rate Limit 해제 시간 (한국시간, ISO 8601 형식, 선택적)
 ) {
@@ -18,7 +19,8 @@ data class ErrorResponse(
                 status = errorCode.status,
                 error = getHttpStatusName(errorCode.status),
                 code = errorCode.code,
-                message = errorCode.message
+                message = errorCode.message,
+                retryable = errorCode.retryable.takeIf { it }
             )
         }
 
@@ -27,7 +29,8 @@ data class ErrorResponse(
                 status = errorCode.status,
                 error = getHttpStatusName(errorCode.status),
                 code = errorCode.code,
-                message = customMessage
+                message = customMessage,
+                retryable = errorCode.retryable.takeIf { it }
             )
         }
 
@@ -37,6 +40,7 @@ data class ErrorResponse(
                 error = getHttpStatusName(errorCode.status),
                 code = errorCode.code,
                 message = customMessage,
+                retryable = errorCode.retryable.takeIf { it },
                 remainingAttempts = remainingAttempts
             )
         }
@@ -54,8 +58,8 @@ data class ErrorResponse(
             404 to "Not Found",
             409 to "Conflict",
             429 to "Too Many Requests",
+            504 to "Gateway Timeout",
             500 to "Internal Server Error"
         )
     }
 }
-

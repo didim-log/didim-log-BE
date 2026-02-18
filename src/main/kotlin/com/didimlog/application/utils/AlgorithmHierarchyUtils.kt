@@ -231,6 +231,74 @@ object AlgorithmHierarchyUtils {
         ),
     )
 
+    data class CategoryMeta(
+        val canonical: String,
+        val englishName: String,
+        val koreanName: String,
+        val aliases: List<String>,
+        val parents: List<String>,
+        val children: List<String>,
+        val related: List<String>,
+    )
+
+    private fun resolveCategory(value: String): ProblemCategory? {
+        return ProblemCategory.entries.find {
+            it.name.equals(value, ignoreCase = true) ||
+                it.englishName.equals(value, ignoreCase = true) ||
+                it.koreanName.equals(value, ignoreCase = true)
+        }
+    }
+
+    private fun resolveCategoryOrNull(value: String): ProblemCategory? {
+        return ProblemCategory.entries.find {
+            it.name == value || it.englishName == value
+        }
+    }
+
+    private fun childCategories(parent: ProblemCategory): List<ProblemCategory> {
+        val rawChildren = (HIERARCHY_MAP[parent.name].orEmpty() + HIERARCHY_MAP[parent.englishName].orEmpty())
+            .distinct()
+        return rawChildren.mapNotNull { resolveCategoryOrNull(it) }.distinct()
+    }
+
+    private fun parentCategories(child: ProblemCategory): List<ProblemCategory> {
+        return ProblemCategory.entries.filter { parent ->
+            childCategories(parent).any { it == child }
+        }
+    }
+
+    fun getRelatedCategories(category: String): List<String> {
+        val target = resolveCategory(category) ?: return emptyList()
+        val parents = parentCategories(target)
+        val siblings = parents
+            .flatMap { childCategories(it) }
+            .filter { it != target }
+        return (parents + siblings)
+            .distinct()
+            .map { it.englishName }
+    }
+
+    fun getCategoryMetadata(): List<CategoryMeta> {
+        return ProblemCategory.entries.map { category ->
+            val parents = parentCategories(category)
+            val children = childCategories(category)
+            val related = (parents + parents.flatMap { childCategories(it) })
+                .filter { it != category }
+                .distinct()
+            val aliases = listOf(category.name, category.englishName, category.koreanName)
+                .distinct()
+            CategoryMeta(
+                canonical = category.name,
+                englishName = category.englishName,
+                koreanName = category.koreanName,
+                aliases = aliases,
+                parents = parents.map { it.name },
+                children = children.map { it.name },
+                related = related.map { it.name }
+            )
+        }
+    }
+
     /**
      * 입력받은 카테고리를 확장된 태그 리스트로 변환한다.
      * 자기 자신을 포함한 모든 하위 태그 리스트를 반환한다.
@@ -305,4 +373,3 @@ object AlgorithmHierarchyUtils {
             ?: normalized
     }
 }
-

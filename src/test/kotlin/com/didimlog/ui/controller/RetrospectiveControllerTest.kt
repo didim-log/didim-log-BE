@@ -446,7 +446,7 @@ class RetrospectiveControllerTest {
 
         every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every { templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId) } returns defaultTemplate
-        every { templateService.renderTemplate("template-1", 1000L, studentId, any(), any()) } returns "렌더링된 템플릿"
+        every { templateService.renderTemplate("template-1", 1000L, studentId, null, null, ProblemResult.SUCCESS) } returns "렌더링된 템플릿"
 
         mockMvc.perform(
             get("/api/v1/retrospectives/template")

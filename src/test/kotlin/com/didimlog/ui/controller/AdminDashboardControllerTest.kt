@@ -108,9 +108,19 @@ class AdminDashboardControllerTest {
         val metrics = PerformanceMetricsService.PerformanceMetrics(
             rpm = 45.5,
             averageResponseTime = 125.3,
+            p95ResponseTime = 420.0,
+            maxResponseTime = 900.0,
+            totalRequests = 1365,
+            errorRequests = 12,
+            serverErrorRequests = 3,
+            errorRate = 0.87,
+            serverErrorRate = 0.22,
+            slowRequestRate = 1.1,
             timeRangeMinutes = 30,
+            statusCodeSummary = emptyList(),
             rpmTimeSeries = emptyList(),
-            latencyTimeSeries = emptyList()
+            latencyTimeSeries = emptyList(),
+            errorRateTimeSeries = emptyList()
         )
 
         every { performanceMetricsService.getPerformanceMetrics(30) } returns metrics
@@ -124,6 +134,9 @@ class AdminDashboardControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.rpm").value(45.5))
             .andExpect(jsonPath("$.averageResponseTime").value(125.3))
+            .andExpect(jsonPath("$.p95ResponseTime").value(420.0))
+            .andExpect(jsonPath("$.totalRequests").value(1365))
+            .andExpect(jsonPath("$.errorRate").value(0.87))
             .andExpect(jsonPath("$.timeRangeMinutes").value(30))
 
         verify(exactly = 1) { performanceMetricsService.getPerformanceMetrics(30) }
@@ -137,9 +150,19 @@ class AdminDashboardControllerTest {
         val metrics = PerformanceMetricsService.PerformanceMetrics(
             rpm = 30.0,
             averageResponseTime = 100.0,
+            p95ResponseTime = 310.0,
+            maxResponseTime = 700.0,
+            totalRequests = 900,
+            errorRequests = 4,
+            serverErrorRequests = 1,
+            errorRate = 0.44,
+            serverErrorRate = 0.11,
+            slowRequestRate = 0.77,
             timeRangeMinutes = 30,
+            statusCodeSummary = emptyList(),
             rpmTimeSeries = emptyList(),
-            latencyTimeSeries = emptyList()
+            latencyTimeSeries = emptyList(),
+            errorRateTimeSeries = emptyList()
         )
 
         every { performanceMetricsService.getPerformanceMetrics(30) } returns metrics
@@ -174,4 +197,3 @@ class AdminDashboardControllerTest {
             .andExpect(jsonPath("$.code").value("COMMON_INTERNAL_ERROR"))
     }
 }
-

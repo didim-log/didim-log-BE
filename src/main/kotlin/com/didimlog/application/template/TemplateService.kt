@@ -280,11 +280,16 @@ class TemplateService(
         problemId: Long,
         studentId: String,
         programmingLanguage: String? = null,
-        code: String? = null
+        code: String? = null,
+        resultTypeHint: ProblemResult? = null
     ): String {
-        val template = getTemplate(templateId)
         val problem = getProblem(problemId)
         val studentProblemInfo = getStudentProblemInfo(studentId, problemId)
+        val fallbackCategory = resolveFallbackTemplateCategory(
+            resultTypeHint = resultTypeHint,
+            studentProblemResult = studentProblemInfo.problemResultType
+        )
+        val template = resolveTemplateForRender(templateId, studentId, fallbackCategory)
         
         // 프로그래밍 언어가 제공되지 않았고 코드가 있으면 자동 감지
         val detectedLanguage = programmingLanguage ?: detectLanguageFromCode(code)
@@ -436,7 +441,8 @@ class TemplateService(
      */
     private data class StudentProblemInfo(
         val timeTaken: String,
-        val result: String
+        val result: String,
+        val problemResultType: ProblemResult?
     )
 
     /**
@@ -450,7 +456,8 @@ class TemplateService(
         if (solution == null) {
             return StudentProblemInfo(
                 timeTaken = "-",
-                result = "해결/미해결"
+                result = "해결/미해결",
+                problemResultType = null
             )
         }
 
@@ -461,8 +468,49 @@ class TemplateService(
         }
         return StudentProblemInfo(
             timeTaken = formatTimeTaken(solution.timeTaken.value),
-            result = resultText
+            result = resultText,
+            problemResultType = solution.result
         )
+    }
+
+    private fun resolveTemplateForRender(
+        templateId: String,
+        studentId: String,
+        fallbackCategory: TemplateCategory
+    ): Template {
+        val template = templateRepository.findById(templateId).orElse(null)
+        if (template == null) {
+            log.warn(
+                "렌더링 대상 템플릿이 없어 기본 템플릿으로 fallback 합니다. templateId={}, studentId={}, fallbackCategory={}",
+                templateId,
+                studentId,
+                fallbackCategory
+            )
+            return getDefaultTemplate(fallbackCategory, studentId)
+        }
+
+        if (template.type == TemplateOwnershipType.CUSTOM && template.studentId != studentId) {
+            throw BusinessException(
+                ErrorCode.ACCESS_DENIED,
+                "접근 권한이 없는 템플릿입니다. templateId=$templateId"
+            )
+        }
+
+        return template
+    }
+
+    private fun resolveFallbackTemplateCategory(
+        resultTypeHint: ProblemResult?,
+        studentProblemResult: ProblemResult?
+    ): TemplateCategory {
+        val effectiveResult = resultTypeHint ?: studentProblemResult
+        return if (effectiveResult == ProblemResult.SUCCESS) {
+            TemplateCategory.SUCCESS
+        } else if (effectiveResult == null) {
+            TemplateCategory.SUCCESS
+        } else {
+            TemplateCategory.FAIL
+        }
     }
 
     /**

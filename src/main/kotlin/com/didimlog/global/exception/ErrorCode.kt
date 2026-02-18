@@ -7,7 +7,8 @@ package com.didimlog.global.exception
 enum class ErrorCode(
     val status: Int,
     val code: String,
-    val message: String
+    val message: String,
+    val retryable: Boolean = false
 ) {
     // 400 Bad Request
     COMMON_INVALID_INPUT(400, "COMMON_INVALID_INPUT", "입력값이 올바르지 않습니다."),
@@ -27,7 +28,8 @@ enum class ErrorCode(
     // 503 Service Unavailable
     MAINTENANCE_MODE(503, "MAINTENANCE_MODE", "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."),
     AI_GENERATION_FAILED(503, "AI_GENERATION_FAILED", "AI 리뷰 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
-    AI_GENERATION_TIMEOUT(503, "AI_GENERATION_TIMEOUT", "AI 리뷰 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."),
+    AI_GENERATION_TIMEOUT(503, "AI_GENERATION_TIMEOUT", "AI 리뷰 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.", retryable = true),
+    TEMPLATE_RENDER_TIMEOUT(504, "TEMPLATE_RENDER_TIMEOUT", "템플릿 렌더링 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.", retryable = true),
 
     // 404 Not Found
     COMMON_RESOURCE_NOT_FOUND(404, "COMMON_RESOURCE_NOT_FOUND", "요청한 자원을 찾을 수 없습니다."),

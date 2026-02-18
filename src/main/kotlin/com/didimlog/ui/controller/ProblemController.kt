@@ -1,7 +1,10 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.problem.ProblemService
+import com.didimlog.application.recommendation.CategoryFilterMode
 import com.didimlog.application.recommendation.RecommendationService
+import com.didimlog.application.utils.AlgorithmHierarchyUtils
+import com.didimlog.ui.dto.ProblemCategoryMetaResponse
 import com.didimlog.ui.dto.ProblemDetailResponse
 import com.didimlog.ui.dto.ProblemResponse
 import io.swagger.v3.oas.annotations.Operation
@@ -76,12 +79,37 @@ class ProblemController(
         category: String?,
         @Parameter(description = "문제 언어 (선택사항, \"ko\" 또는 \"en\", null이면 모든 언어)", required = false)
         @RequestParam(required = false)
-        language: String?
+        language: String?,
+        @Parameter(description = "카테고리 필터 모드 (EXACT: 대표 카테고리만, HIERARCHY: 하위 태그 확장, RELATED: 연관 카테고리까지 확장)", required = false)
+        @RequestParam(defaultValue = "RELATED")
+        filterMode: CategoryFilterMode
     ): ResponseEntity<List<ProblemResponse>> {
         val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val problems = recommendationService.recommendProblems(bojId, count, category, language)
-        val response = problems.map { ProblemResponse.from(it) }
+        val recommendation = recommendationService.recommendProblemsDetailed(bojId, count, category, language, filterMode)
+        val response = recommendation.map { item ->
+            ProblemResponse.from(
+                problem = item.problem,
+                matchedByPrimary = if (category != null) item.matchedByPrimary else null,
+                matchedByTags = if (category != null) item.matchedByTags else null,
+                expandedFrom = if (category != null) item.expandedFrom else emptyList()
+            )
+        }
         return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "카테고리 메타 조회",
+        description = "추천 카테고리의 정규 이름, 별칭, 부모/자식/연관 카테고리 메타 정보를 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공")
+        ]
+    )
+    @GetMapping("/categories/meta")
+    fun getCategoryMeta(): ResponseEntity<List<ProblemCategoryMetaResponse>> {
+        val metadata = AlgorithmHierarchyUtils.getCategoryMetadata().map { ProblemCategoryMetaResponse.from(it) }
+        return ResponseEntity.ok(metadata)
     }
 
     @Operation(
