@@ -1178,123 +1178,57 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## ProblemCollectorController
 
-문제 데이터 수집 관련 API를 제공합니다. ADMIN 권한이 필요하며, JWT 토큰의 role이 ADMIN인 경우에만 접근 가능합니다. 모든 작업은 비동기로 실행되며, 작업 ID를 통해 작업 상태를 조회할 수 있습니다. 상태 조회 응답은 항상 `totalCount`, `processedCount`, `progressPercentage`를 포함하며 `processedCount <= totalCount`를 보장합니다.
+문제 데이터 수집/재수집/운영 제어 API를 제공합니다. ADMIN 권한이 필요합니다.  
+모든 상태 조회 API는 공통 `JobStatusUnifiedResponse` 스키마를 반환합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/admin/problems/stats` | 문제 컬렉션 통계를 조회합니다. 배치 작업 시작 범위 판단에 사용합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `ProblemStatsResponse`<br>- `totalCount` (Long)<br>- `minProblemId` (Int, nullable)<br>- `maxProblemId` (Int, nullable)<br>- `minNullDescriptionHtmlProblemId` (Int, nullable)<br>- `minNullLanguageProblemId` (Int, nullable) | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/collect-metadata` | Solved.ac API를 통해 지정된 범위의 문제 메타데이터를 비동기로 수집하여 DB에 저장합니다. (Upsert 방식) 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, required): 시작 문제 ID<br>  - 유효성: `@Positive` (1 이상)<br>- `end` (Int, required): 종료 문제 ID (포함)<br>  - 유효성: `@Positive` (1 이상) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 메타데이터 수집 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용)<br>- `range` (String): 작업 범위 (예: "1-100") | JWT Token (ADMIN) |
-| GET | `/api/v1/admin/problems/collect-metadata/status/{jobId}` | 문제 메타데이터 수집 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `MetadataCollectJobStatus`<br><br>**MetadataCollectJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startProblemId` (Int): 시작 문제 ID<br>- `endProblemId` (Int): 종료 문제 ID<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/collect-details` | DB에서 descriptionHtml이 null인 문제들의 상세 정보를 BOJ 사이트에서 비동기로 크롤링하여 업데이트합니다. Rate Limit을 준수하기 위해 각 요청 사이에 2~4초 간격을 둡니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 상세 정보 크롤링 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용) | JWT Token (ADMIN) |
-| GET | `/api/v1/admin/problems/collect-details/status/{jobId}` | 문제 상세 정보 수집 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `DetailsCollectJobStatus`<br><br>**DetailsCollectJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/refresh-details` | 기존에 수집된 문제를 포함하여 상세 정보(description/input/output/sample)를 강제로 재수집합니다. 본문 재수집과 함께 언어도 재판별해 저장합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Query Parameters:**<br>- `start` (Int, optional): 시작 문제 ID (`@Min(1)`) - `end`와 함께 제공<br>- `end` (Int, optional): 종료 문제 ID (`@Min(1)`) - `start`와 함께 제공<br><br>**Validation:**<br>- `start`/`end`는 함께 제공되어야 함<br>- `start <= end` | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 상세 정보 재수집 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID<br>- `range` (String, optional): 범위 실행 시 `"{start}-{end}"` | JWT Token (ADMIN) |
-| GET | `/api/v1/admin/problems/refresh-details/status/{jobId}` | 문제 상세 정보 재수집(강제 갱신) 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `DetailsCollectJobStatus`<br><br>**DetailsCollectJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/update-language` | DB의 전체 문제를 대상으로 본문/입출력/제목 기반 언어 판별을 재수행하여 언어 정보를 보정합니다. 작업 ID를 반환하며, 실제 작업은 백그라운드에서 진행됩니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요) | `Map<String, String>`<br><br>**Response 구조:**<br>- `message` (String): 응답 메시지 ("문제 언어 정보 최신화 작업이 시작되었습니다.")<br>- `jobId` (String): 작업 ID (상태 조회 시 사용) | JWT Token (ADMIN) |
-| GET | `/api/v1/admin/problems/update-language/status/{jobId}` | 언어 정보 업데이트 작업의 진행 상태를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 (ADMIN role 필요)<br><br>**Path Variables:**<br>- `jobId` (String, required): 작업 ID | `LanguageUpdateJobStatus`<br><br>**LanguageUpdateJobStatus 구조:**<br>- `jobId` (String): 작업 ID<br>- `status` (String): 작업 상태 (PENDING, RUNNING, COMPLETED, FAILED)<br>- `totalCount` (Int): 전체 문제 수<br>- `processedCount` (Int): 처리된 문제 수<br>- `successCount` (Int): 성공한 문제 수<br>- `failCount` (Int): 실패한 문제 수<br>- `startedAt` (Long): 작업 시작 시간 (Unix timestamp)<br>- `completedAt` (Long, nullable): 작업 완료 시간 (Unix timestamp)<br>- `errorMessage` (String, nullable): 에러 메시지<br>- `progressPercentage` (Int): 진행률 (0~100) | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/stats` | 문제 컬렉션 통계를 조회합니다. | **Headers:** `Authorization` | `ProblemStatsResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/collect-metadata` | 지정 범위 메타데이터 수집 작업을 시작합니다. | **Query:** `start`(required), `end`(required) | `message`, `jobId`, `range` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/collect-metadata/status/{jobId}` | 메타데이터 수집 작업 상태를 조회합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/collect-details` | 상세 정보 수집 작업을 시작합니다. | - | `message`, `jobId` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/collect-details/status/{jobId}` | 상세 정보 수집 작업 상태를 조회합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/refresh-details` | 상세 정보 강제 재수집 작업을 시작합니다. | **Query:** `start`(optional), `end`(optional), `start/end`는 함께 전달, `start <= end` | `message`, `jobId`, `range(optional)` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/refresh-details/status/{jobId}` | 상세 정보 재수집 작업 상태를 조회합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/update-language` | 전체 문제 언어 재판별 작업을 시작합니다. | - | `message`, `jobId` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/update-language/status/{jobId}` | 언어 업데이트 작업 상태를 조회합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/jobs` | 작업 목록을 조회합니다. | **Query:** `type`, `status`, `from`, `to`, `page`, `size` | `JobPageResponse<JobStatusUnifiedResponse>` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/jobs/{jobId}` | 작업 단건을 조회합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/jobs/{jobId}/cancel` | 작업을 취소합니다. (`PENDING/RUNNING -> CANCELLED`) | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/jobs/{jobId}/retry` | 작업을 체크포인트 기반으로 재시도합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/jobs/metrics` | 운영 메트릭을 조회합니다. | **Query:** `window=DAY|WEEK|MONTH` | `JobMetricsResponse` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/problems/jobs/audit` | 작업 감사 로그(실행자/시간/범위/결과)를 조회합니다. | **Query:** `type`, `status`, `from`, `to`, `page`, `size` | `JobPageResponse<JobAuditResponse>` | JWT Token (ADMIN) |
 
-**예시 요청 (메타데이터 수집):**
-```http
-POST /api/v1/admin/problems/collect-metadata?start=1&end=100
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+**공통 상태 응답 (`JobStatusUnifiedResponse`)**
+- `jobId` (String)
+- `jobType` (String): `COLLECT_METADATA` / `COLLECT_DETAILS` / `REFRESH_DETAILS` / `UPDATE_LANGUAGE`
+- `status` (String): `PENDING` / `RUNNING` / `COMPLETED` / `FAILED` / `CANCELLED`
+- `queuedAt` (Long, Unix seconds)
+- `startedAt` (Long, nullable, Unix seconds)
+- `lastHeartbeatAt` (Long, nullable, Unix seconds)
+- `completedAt` (Long, nullable, Unix seconds)
+- `totalCount` (Int)
+- `processedCount` (Int)
+- `successCount` (Int)
+- `failCount` (Int)
+- `progressPercentage` (Int, 0~100)
+- `estimatedRemainingSeconds` (Long, nullable)
+- `queuePosition` (Int, nullable)
+- `range` (Object, nullable): `{ "start": Int?, "end": Int? }`
+- `lastCheckpointId` (String, nullable)
+- `errorCode` (String, nullable)
+- `errorMessage` (String, nullable)
+- `createdBy` (String)
 
-**예시 응답 (메타데이터 수집):**
-```json
-{
-  "message": "문제 메타데이터 수집 작업이 시작되었습니다.",
-  "jobId": "550e8400-e29b-41d4-a716-446655440000",
-  "range": "1-100"
-}
-```
+**상태 전이**
+- `PENDING -> RUNNING -> COMPLETED|FAILED|CANCELLED`
 
-**예시 요청 (메타데이터 수집 작업 상태 조회):**
-```http
-GET /api/v1/admin/problems/collect-metadata/status/550e8400-e29b-41d4-a716-446655440000
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**예시 응답 (메타데이터 수집 작업 상태 조회):**
-```json
-{
-  "jobId": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "RUNNING",
-  "totalCount": 100,
-  "processedCount": 50,
-  "successCount": 48,
-  "failCount": 2,
-  "startProblemId": 1,
-  "endProblemId": 100,
-  "startedAt": 1704067200000,
-  "completedAt": null,
-  "errorMessage": null,
-  "progressPercentage": 50
-}
-```
-
-**예시 요청 (상세 정보 크롤링):**
-```http
-POST /api/v1/admin/problems/collect-details
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**예시 응답 (상세 정보 크롤링):**
-```json
-{
-  "message": "문제 상세 정보 크롤링 작업이 시작되었습니다.",
-  "jobId": "550e8400-e29b-41d4-a716-446655440001"
-}
-```
-
-**예시 요청 (상세 정보 재수집 - 전체):**
-```http
-POST /api/v1/admin/problems/refresh-details
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**예시 요청 (상세 정보 재수집 - 범위):**
-```http
-POST /api/v1/admin/problems/refresh-details?start=1000&end=5000
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**예시 응답 (상세 정보 재수집):**
-```json
-{
-  "message": "문제 상세 정보 재수집 작업이 시작되었습니다.",
-  "jobId": "550e8400-e29b-41d4-a716-446655440010",
-  "range": "1000-5000"
-}
-```
-
-**예시 요청 (상세 정보 재수집 상태 조회):**
-```http
-GET /api/v1/admin/problems/refresh-details/status/550e8400-e29b-41d4-a716-446655440010
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**예시 요청 (언어 정보 최신화):**
-```http
-POST /api/v1/admin/problems/update-language
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**예시 응답 (언어 정보 최신화):**
-```json
-{
-  "message": "문제 언어 정보 최신화 작업이 시작되었습니다.",
-  "jobId": "550e8400-e29b-41d4-a716-446655440002"
-}
-```
-
-**에러 응답 예시 (작업을 찾을 수 없음):**
-```json
-{
-  "status": 404,
-  "error": "Not Found",
-  "code": "COMMON_RESOURCE_NOT_FOUND",
-  "message": "작업을 찾을 수 없습니다. jobId=non-existent-id"
-}
-```
+**표준 에러 코드**
+- `INVALID_RANGE`
+- `JOB_NOT_FOUND`
+- `QUEUE_TIMEOUT`
+- `WORKER_UNAVAILABLE`
+- `JOB_ALREADY_TERMINAL`
 
 ---
 
