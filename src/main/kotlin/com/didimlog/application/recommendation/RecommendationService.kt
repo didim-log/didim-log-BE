@@ -7,16 +7,38 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
-    /**
-     * 문제 추천 서비스
-     * 학생의 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 문제 중, 아직 풀지 않은 문제를 추천한다.
-     * 무한 성장(Continuous Growth) 로직을 지원하여, 최대 티어에 도달해도 상위 난이도 문제를 추천한다.
-     */
+/**
+ * 카테고리 필터 정책
+ * - EXACT: primary category 정확 일치만 허용
+ * - HIERARCHY: primary category + 선택 카테고리의 하위 태그 확장
+ * - RELATED: HIERARCHY + 연관 카테고리(부모/형제) 확장
+ */
+enum class CategoryFilterMode {
+    EXACT,
+    HIERARCHY,
+    RELATED
+}
+
+/**
+ * 추천 문제와 매칭 근거
+ */
+data class RecommendationProblemMatch(
+    val problem: Problem,
+    val matchedByPrimary: Boolean,
+    val matchedByTags: Boolean,
+    val expandedFrom: List<String>
+)
+
+/**
+ * 문제 추천 서비스
+ * 학생의 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 문제 중, 아직 풀지 않은 문제를 추천한다.
+ */
 @Service
 @Transactional(readOnly = true)
 class RecommendationService(
@@ -24,25 +46,29 @@ class RecommendationService(
     private val problemRepository: ProblemRepository
 ) {
 
-    /**
-     * 학생에게 추천할 문제 목록을 반환한다.
-     * 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 문제 중, 아직 풀지 않은 문제를 랜덤으로 선택한다.
-     * 무한 성장 로직: Tier Enum에 정의되지 않은 상위 난이도(DIAMOND, RUBY 등)도 추천 가능하다.
-     *
-     * @param bojId BOJ ID (JWT 토큰에서 추출)
-     * @param count 추천할 문제 개수
-     * @param category 문제 카테고리 (선택사항, null이면 모든 카테고리)
-     * @param language 문제 언어 (선택사항, "ko" 또는 "en", null이면 모든 언어)
-     * @return 추천 문제 목록 (풀 수 있는 문제가 없으면 빈 리스트)
-     */
-    fun recommendProblems(bojId: String, count: Int, category: String? = null, language: String? = null): List<Problem> {
+    fun recommendProblems(
+        bojId: String,
+        count: Int,
+        category: String? = null,
+        language: String? = null,
+        filterMode: CategoryFilterMode = CategoryFilterMode.RELATED
+    ): List<Problem> {
+        return recommendProblemsDetailed(bojId, count, category, language, filterMode)
+            .map { it.problem }
+    }
+
+    fun recommendProblemsDetailed(
+        bojId: String,
+        count: Int,
+        category: String? = null,
+        language: String? = null,
+        filterMode: CategoryFilterMode = CategoryFilterMode.RELATED
+    ): List<RecommendationProblemMatch> {
         val student = findStudentByBojIdOrThrow(bojId)
-        // Solved.ac tierLevel(1=Bronze 5 ...)을 추천 난이도 계산의 Source of Truth로 사용한다.
-        // 로그인/새로고침 시점에 동기화된 tierLevel을 기준으로 범위를 계산한다.
         val effectiveTierLevel = student.solvedAcTierLevel.value
         val (minLevel, maxLevel) = calculateTargetDifficultyLevelRange(effectiveTierLevel)
 
-        val candidateProblems = findCandidateProblems(minLevel, maxLevel, category, language)
+        val candidateProblems = findCandidateProblems(minLevel, maxLevel, category, language, filterMode)
         val solvedProblemIds = student.getSolvedProblemIds()
         val unsolvedProblems = filterUnsolvedProblems(candidateProblems, solvedProblemIds)
 
@@ -59,58 +85,111 @@ class RecommendationService(
 
     /**
      * 현재 티어 레벨 범위에서 -2 ~ +2 단계의 난이도 레벨 범위를 계산한다.
-     * 타겟 범위: (현재 티어 최소 레벨 - 2) ~ (현재 티어 최대 레벨 + 2)
-     * 최소 레벨 제약: 계산된 최소 레벨이 1 미만인 경우 1로 제한
-     * 무한 성장 로직: 최대 티어에 도달한 경우에도 상위 난이도 문제를 추천한다.
-     * 예: BRONZE 티어(레벨 1~5) 학생 -> 레벨 (1-2) ~ (5+2) = 레벨 1~7 문제 추천
-     * 예: SILVER 티어(레벨 6~10) 학생 -> 레벨 (6-2) ~ (10+2) = 레벨 4~12 문제 추천
-     * 예: RUBY 티어(레벨 26~30) 학생 -> 레벨 (26-2) ~ (30+2) = 레벨 24~32 문제 추천
-     * 예: UNRATED 티어(레벨 0) 학생 -> 레벨 1~2 (Bronze V ~ Bronze IV) 문제 추천
-     *
-     * @param tierLevel Solved.ac 사용자 티어 레벨 (0=Unrated, 1~30=Bronze 5~Ruby 1, 31=Master)
-     * @return 타겟 난이도 레벨 범위 (minLevel, maxLevel) Pair
      */
     private fun calculateTargetDifficultyLevelRange(tierLevel: Int): Pair<Int, Int> {
-        // UNRATED 특별 처리: Bronze V(레벨 1) ~ Bronze IV(레벨 2) 추천
         if (tierLevel <= 0) {
             return Pair(1, 2)
         }
-        
+
         val minLevel = (tierLevel - 2).coerceAtLeast(1)
         val maxLevel = tierLevel + 2
         return Pair(minLevel, maxLevel)
     }
 
-    private fun findCandidateProblems(minLevel: Int, maxLevel: Int, category: String?, language: String?): List<Problem> {
-        val problems = if (category != null) {
-            val categoryEnglishName = AlgorithmHierarchyUtils.findCategoryEnglishName(category)
-            val expandedTags = AlgorithmHierarchyUtils.getExpandedTags(categoryEnglishName)
+    private fun findCandidateProblems(
+        minLevel: Int,
+        maxLevel: Int,
+        category: String?,
+        language: String?,
+        filterMode: CategoryFilterMode
+    ): List<RecommendationProblemMatch> {
+        if (category == null) {
+            val problems = problemRepository.findByLevelBetweenFlexible(min = minLevel, max = maxLevel)
+            val filtered = if (language != null) applyLanguageFilter(problems, language) else problems
+            return filtered.map {
+                RecommendationProblemMatch(
+                    problem = it,
+                    matchedByPrimary = false,
+                    matchedByTags = false,
+                    expandedFrom = emptyList()
+                )
+            }
+        }
 
-            val primaryCategoryMatches = problemRepository.findByLevelBetweenAndCategory(
+        val categoryEnglishName = AlgorithmHierarchyUtils.findCategoryEnglishName(category)
+        val targetCategories = resolveTargetCategories(categoryEnglishName, filterMode)
+
+        val primaryMatchesByCategory = targetCategories.associateWith { targetCategory ->
+            problemRepository.findByLevelBetweenAndCategory(
                 min = minLevel,
                 max = maxLevel,
-                category = categoryEnglishName
+                category = targetCategory
             )
+        }
 
-            val tagMatches = problemRepository.findByLevelBetweenAndTagsIn(
+        val expandedTagsByCategory = if (filterMode == CategoryFilterMode.EXACT) {
+            emptyMap()
+        } else {
+            targetCategories.associateWith { targetCategory ->
+                AlgorithmHierarchyUtils.getExpandedTags(targetCategory)
+            }
+        }
+
+        val allExpandedTags = expandedTagsByCategory
+            .values
+            .flatten()
+            .distinctByLowercase()
+
+        val tagMatches = if (allExpandedTags.isEmpty()) {
+            emptyList()
+        } else {
+            problemRepository.findByLevelBetweenAndTagsIn(
                 min = minLevel,
                 max = maxLevel,
-                expandedTags = expandedTags
+                expandedTags = allExpandedTags
             )
+        }
 
-            (primaryCategoryMatches + tagMatches)
-                .distinctBy { it.id.value }
+        val merged = (primaryMatchesByCategory.values.flatten() + tagMatches)
+            .distinctBy { it.id.value }
+
+        val filteredByLanguage = if (language != null) {
+            applyLanguageFilter(merged, language)
         } else {
-            // 레거시 스키마(difficultyLevel)도 함께 지원한다.
-            problemRepository.findByLevelBetweenFlexible(min = minLevel, max = maxLevel)
+            merged
         }
-        
-        // language 필터 적용
-        return if (language != null) {
-            applyLanguageFilter(problems, language)
-        } else {
-            problems
+
+        return filteredByLanguage.map { problem ->
+            val matchedPrimaryCategories = targetCategories.filter { targetCategory ->
+                problem.category.englishName.equals(targetCategory, ignoreCase = true)
+            }
+
+            val matchedTagCategories = expandedTagsByCategory
+                .filter { (_, expandedTags) ->
+                    problem.tags.any { problemTag ->
+                        expandedTags.any { expandedTag ->
+                            problemTag.equals(expandedTag, ignoreCase = true)
+                        }
+                    }
+                }
+                .keys
+                .toList()
+
+            RecommendationProblemMatch(
+                problem = problem,
+                matchedByPrimary = matchedPrimaryCategories.isNotEmpty(),
+                matchedByTags = matchedTagCategories.isNotEmpty(),
+                expandedFrom = (matchedPrimaryCategories + matchedTagCategories).distinctByLowercase()
+            )
         }
+    }
+
+    private fun resolveTargetCategories(categoryEnglishName: String, filterMode: CategoryFilterMode): List<String> {
+        return when (filterMode) {
+            CategoryFilterMode.EXACT,
+            CategoryFilterMode.HIERARCHY -> listOf(categoryEnglishName)
+            CategoryFilterMode.RELATED -> listOf(categoryEnglishName) + AlgorithmHierarchyUtils.getRelatedCategories(categoryEnglishName)
+        }.distinctByLowercase()
     }
 
     /**
@@ -152,18 +231,22 @@ class RecommendationService(
     }
 
     private fun filterUnsolvedProblems(
-        candidateProblems: List<Problem>,
-        solvedProblemIds: Set<com.didimlog.domain.valueobject.ProblemId>
-    ): List<Problem> {
-        return candidateProblems.filter { problem ->
-            !solvedProblemIds.contains(problem.id)
+        candidateProblems: List<RecommendationProblemMatch>,
+        solvedProblemIds: Set<ProblemId>
+    ): List<RecommendationProblemMatch> {
+        return candidateProblems.filter { candidate ->
+            !solvedProblemIds.contains(candidate.problem.id)
         }
     }
 
-    private fun selectRandomProblems(problems: List<Problem>, count: Int): List<Problem> {
+    private fun selectRandomProblems(problems: List<RecommendationProblemMatch>, count: Int): List<RecommendationProblemMatch> {
         if (problems.size <= count) {
             return problems.shuffled()
         }
         return problems.shuffled().take(count)
     }
+}
+
+private fun List<String>.distinctByLowercase(): List<String> {
+    return this.distinctBy { it.lowercase() }
 }

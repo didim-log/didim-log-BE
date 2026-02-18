@@ -1,6 +1,8 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.problem.ProblemService
+import com.didimlog.application.recommendation.CategoryFilterMode
+import com.didimlog.application.recommendation.RecommendationProblemMatch
 import com.didimlog.application.recommendation.RecommendationService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
@@ -96,12 +98,30 @@ class ProblemControllerTest {
     @DisplayName("문제 추천 시 200 OK 및 Response JSON 구조 검증")
     fun `문제 추천 성공`() {
         // given
-        val problems = listOf(
-            createProblem("1000", "A+B"),
-            createProblem("1001", "A-B")
+        val recommendation = listOf(
+            RecommendationProblemMatch(
+                problem = createProblem("1000", "A+B"),
+                matchedByPrimary = true,
+                matchedByTags = true,
+                expandedFrom = listOf("Breadth-first Search", "Depth-first Search")
+            ),
+            RecommendationProblemMatch(
+                problem = createProblem("1001", "A-B"),
+                matchedByPrimary = true,
+                matchedByTags = false,
+                expandedFrom = listOf("Breadth-first Search")
+            )
         )
 
-        every { recommendationService.recommendProblems("bojId", 10, null, null) } returns problems
+        every {
+            recommendationService.recommendProblemsDetailed(
+                "bojId",
+                10,
+                null,
+                null,
+                CategoryFilterMode.RELATED
+            )
+        } returns recommendation
 
         // when & then
         mockMvc.perform(
@@ -116,6 +136,7 @@ class ProblemControllerTest {
             .andExpect(jsonPath("$[0].title").value("A+B"))
             .andExpect(jsonPath("$[0].primaryCategory").value("IMPLEMENTATION"))
             .andExpect(jsonPath("$[0].normalizedTags[0]").value("IMPLEMENTATION"))
+            .andExpect(jsonPath("$[0].expandedFrom").isArray)
             .andExpect(jsonPath("$[1].id").value("1001"))
             .andExpect(jsonPath("$[1].title").value("A-B"))
     }
@@ -147,6 +168,17 @@ class ProblemControllerTest {
     }
 
     @Test
+    @DisplayName("카테고리 메타 조회 시 200 OK 반환")
+    fun `카테고리 메타 조회 성공`() {
+        mockMvc.perform(
+            get("/api/v1/problems/categories/meta")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$").isArray)
+    }
+
+    @Test
     @DisplayName("문제 상세 조회 시 problemId가 0 이하일 때 400 Bad Request 반환")
     fun `문제 상세 조회 시 problemId 유효성 검증`() {
         // when & then
@@ -168,7 +200,4 @@ class ProblemControllerTest {
         )
     }
 }
-
-
-
 

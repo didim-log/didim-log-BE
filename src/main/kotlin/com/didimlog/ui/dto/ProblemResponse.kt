@@ -17,10 +17,18 @@ data class ProblemResponse(
     val difficulty: String,
     val difficultyLevel: Int,
     val url: String,
-    val language: String
+    val language: String,
+    val matchedByPrimary: Boolean? = null,
+    val matchedByTags: Boolean? = null,
+    val expandedFrom: List<String> = emptyList()
 ) {
     companion object {
-        fun from(problem: Problem): ProblemResponse {
+        fun from(
+            problem: Problem,
+            matchedByPrimary: Boolean? = null,
+            matchedByTags: Boolean? = null,
+            expandedFrom: List<String> = emptyList()
+        ): ProblemResponse {
             val categoryView = ProblemCategoryViewResolver.resolve(problem)
             return ProblemResponse(
                 id = problem.id.value,
@@ -32,7 +40,10 @@ data class ProblemResponse(
                 difficulty = problem.difficulty.name,
                 difficultyLevel = problem.difficultyLevel,
                 url = problem.url,
-                language = problem.language
+                language = problem.language,
+                matchedByPrimary = matchedByPrimary,
+                matchedByTags = matchedByTags,
+                expandedFrom = expandedFrom
             )
         }
     }

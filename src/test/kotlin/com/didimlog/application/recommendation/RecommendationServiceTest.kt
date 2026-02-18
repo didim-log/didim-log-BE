@@ -326,6 +326,82 @@ class RecommendationServiceTest {
     }
 
     @Test
+    @DisplayName("EXACT 모드는 대표 카테고리만 검색하고 태그 확장은 사용하지 않는다")
+    fun `exact filter mode only matches primary category`() {
+        val bojId = "exactmode1"
+        val student = createStudent(
+            id = "student-exact",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+        val primaryMatch = createProblem(
+            id = "3000",
+            tier = Tier.BRONZE,
+            level = 3,
+            category = ProblemCategory.BFS
+        )
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.BFS.englishName) } returns listOf(primaryMatch)
+
+        val recommended = recommendationService.recommendProblemsDetailed(
+            bojId = bojId,
+            count = 10,
+            category = "BFS",
+            filterMode = CategoryFilterMode.EXACT
+        )
+
+        assertThat(recommended).hasSize(1)
+        assertThat(recommended.first().matchedByPrimary).isTrue()
+        assertThat(recommended.first().matchedByTags).isFalse()
+        verify(exactly = 0) { problemRepository.findByLevelBetweenAndTagsIn(any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("RELATED 모드는 형제 카테고리(DFS) 태그도 함께 포함한다")
+    fun `related filter mode includes sibling category tags`() {
+        val bojId = "relatedmode1"
+        val student = createStudent(
+            id = "student-related",
+            bojId = bojId,
+            tier = Tier.BRONZE,
+            solvedProblemIds = setOf()
+        )
+        val dfsTaggedProblem = createProblem(
+            id = "3001",
+            tier = Tier.BRONZE,
+            level = 3,
+            category = ProblemCategory.GRAPH_THEORY
+        ).copy(tags = listOf(ProblemCategory.DFS.englishName))
+
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) } returns emptyList()
+        every {
+            problemRepository.findByLevelBetweenAndTagsIn(
+                1,
+                5,
+                match { tags ->
+                    tags.contains(ProblemCategory.BFS.englishName) &&
+                        tags.contains(ProblemCategory.DFS.englishName)
+                }
+            )
+        } returns listOf(dfsTaggedProblem)
+
+        val recommended = recommendationService.recommendProblemsDetailed(
+            bojId = bojId,
+            count = 10,
+            category = "BFS",
+            filterMode = CategoryFilterMode.RELATED
+        )
+
+        assertThat(recommended).hasSize(1)
+        assertThat(recommended.first().matchedByPrimary).isTrue()
+        assertThat(recommended.first().matchedByTags).isTrue()
+        assertThat(recommended.first().expandedFrom).isNotEmpty()
+    }
+
+    @Test
     @DisplayName("UNRATED 티어 학생에게 Bronze V(레벨 1) ~ Bronze IV(레벨 2) 문제를 추천한다")
     fun `UNRATED 티어 학생에게 Bronze V~IV 레벨 문제 추천`() {
         // given

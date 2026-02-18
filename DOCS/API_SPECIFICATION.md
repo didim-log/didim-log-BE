@@ -412,12 +412,13 @@ AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_STANDARDS.md` 기반으�
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| GET | `/api/v1/problems/recommend` | 학생의 현재 티어 범위(-2~+2)에서 아직 풀지 않은 문제를 추천합니다. `category`/`language` 필터를 지원하며, 카테고리 필터는 `primary category OR tags` 정책을 적용합니다. `language=ko`는 본문/입출력/제목 기반 strict 필터를 적용합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)`, `@Max(50)`<br>- `category` (String, optional): 문제 카테고리 필터<br>  - 축약형/Enum/영문 정식명 모두 허용 (예: `BFS`, `IMPLEMENTATION`, `Graph Theory`)<br>  - 매칭 정책: `problem.category == category` 또는 `problem.tags`에 확장 태그(하위 태그 포함)가 존재하면 포함<br>- `language` (String, optional): 문제 언어 필터 (`ko` 또는 `en`)<br>  - `ko`: 영어 본문 문제를 제외하는 strict 필터 적용 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 대표 카테고리(영문 표준명)<br>- `primaryCategory` (String): 프론트 표시용 대표 전략 카테고리(Enum 이름, 예: `BFS`, `DP`)<br>- `secondaryCategories` (List<String>): 보조 전략 카테고리(Enum 이름 리스트)<br>- `normalizedTags` (List<String>): 정규화된 태그(Enum 이름 리스트)<br>- `difficulty` (String): 난이도 티어명 (예: `BRONZE`, `SILVER`)<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 언어 (`ko`/`en`) | JWT Token |
+| GET | `/api/v1/problems/recommend` | 학생의 현재 티어 범위(-2~+2)에서 아직 풀지 않은 문제를 추천합니다. `category`/`language` 필터를 지원하며, `filterMode` 정책에 따라 카테고리 확장 범위를 제어할 수 있습니다. `language=ko`는 본문/입출력/제목 기반 strict 필터를 적용합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Query Parameters:**<br>- `count` (Int, optional, default: 10): 추천할 문제 개수<br>  - 유효성: `@Min(1)`, `@Max(50)`<br>- `category` (String, optional): 문제 카테고리 필터<br>  - 축약형/Enum/영문 정식명 모두 허용 (예: `BFS`, `IMPLEMENTATION`, `Graph Theory`)<br>- `filterMode` (String, optional, default: `RELATED`): 카테고리 필터 정책<br>  - `EXACT`: 대표 카테고리 정확 일치만 허용<br>  - `HIERARCHY`: 대표 카테고리 + 하위 태그 확장<br>  - `RELATED`: `HIERARCHY` + 부모/형제 카테고리까지 확장<br>- `language` (String, optional): 문제 언어 필터 (`ko` 또는 `en`)<br>  - `ko`: 영어 본문 문제를 제외하는 strict 필터 적용 | `List<ProblemResponse>`<br><br>**ProblemResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 대표 카테고리(영문 표준명)<br>- `primaryCategory` (String): 프론트 표시용 대표 전략 카테고리(Enum 이름, 예: `BFS`, `DP`)<br>- `secondaryCategories` (List<String>): 보조 전략 카테고리(Enum 이름 리스트)<br>- `normalizedTags` (List<String>): 정규화된 태그(Enum 이름 리스트)<br>- `difficulty` (String): 난이도 티어명 (예: `BRONZE`, `SILVER`)<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `language` (String): 문제 언어 (`ko`/`en`)<br>- `matchedByPrimary` (Boolean, nullable): 카테고리 필터 시 대표 카테고리 매칭 여부<br>- `matchedByTags` (Boolean, nullable): 카테고리 필터 시 태그 확장 매칭 여부<br>- `expandedFrom` (List<String>): 카테고리 확장 매칭 근거(영문 표준명) | JWT Token |
 | GET | `/api/v1/problems/{problemId}` | 문제 상세 정보를 조회합니다. DB에 상세 정보가 없으면 크롤링으로 보강 후 반환합니다. | **Path Variables:**<br>- `problemId` (Long, required): 문제 ID (`@Positive`) | `ProblemDetailResponse`<br><br>**ProblemDetailResponse 구조:**<br>- `id` (String): 문제 ID<br>- `title` (String): 문제 제목<br>- `category` (String): 대표 카테고리(영문 표준명)<br>- `primaryCategory` (String): 대표 전략 카테고리(Enum 이름)<br>- `secondaryCategories` (List<String>): 보조 전략 카테고리(Enum 이름 리스트)<br>- `normalizedTags` (List<String>): 정규화된 태그(Enum 이름 리스트)<br>- `difficulty` (String): 난이도 티어명<br>- `difficultyLevel` (Int): Solved.ac 난이도 레벨 (1-30)<br>- `url` (String): 문제 URL<br>- `descriptionHtml` (String, nullable): 문제 본문 HTML<br>- `inputDescriptionHtml` (String, nullable): 입력 설명 HTML<br>- `outputDescriptionHtml` (String, nullable): 출력 설명 HTML<br>- `sampleInputs` (List<String>, nullable): 샘플 입력<br>- `sampleOutputs` (List<String>, nullable): 샘플 출력<br>- `tags` (List<String>): 원본 태그(영문 표준명)<br>- `language` (String): 문제 언어 (`ko`/`en`) | None |
+| GET | `/api/v1/problems/categories/meta` | 카테고리 정규화 메타 정보를 조회합니다. FE에서 카테고리 선택/표시/연관 추천 UX를 동기화할 때 사용합니다. | 없음 | `List<ProblemCategoryMetaResponse>`<br><br>**ProblemCategoryMetaResponse 구조:**<br>- `canonical` (String): 카테고리 canonical(enum name)<br>- `englishName` (String): 영문 표준명<br>- `koreanName` (String): 한글 표기<br>- `aliases` (List<String>): 허용 별칭 목록<br>- `parents` (List<String>): 부모 카테고리 canonical 목록<br>- `children` (List<String>): 하위 카테고리 canonical 목록<br>- `related` (List<String>): 연관 카테고리 canonical 목록 | None |
 
-**예시 요청 (기본 추천):**
+**예시 요청 (카테고리 연관 확장 추천):**
 ```http
-GET /api/v1/problems/recommend?count=3
+GET /api/v1/problems/recommend?count=3&category=DFS&filterMode=RELATED
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -429,7 +430,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **예시 요청 (한국어 strict 필터):**
 ```http
-GET /api/v1/problems/recommend?category=DFS&language=ko&count=10
+GET /api/v1/problems/recommend?category=DFS&language=ko&count=10&filterMode=RELATED
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -446,7 +447,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "difficulty": "BRONZE",
     "difficultyLevel": 3,
     "url": "https://www.acmicpc.net/problem/1000",
-    "language": "ko"
+    "language": "ko",
+    "matchedByPrimary": true,
+    "matchedByTags": true,
+    "expandedFrom": ["Depth-first Search", "Graph Theory"]
   },
   {
     "id": "1001",
@@ -458,7 +462,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     "difficulty": "BRONZE",
     "difficultyLevel": 3,
     "url": "https://www.acmicpc.net/problem/1001",
-    "language": "ko"
+    "language": "ko",
+    "matchedByPrimary": true,
+    "matchedByTags": false,
+    "expandedFrom": ["Depth-first Search"]
   }
 ]
 ```
