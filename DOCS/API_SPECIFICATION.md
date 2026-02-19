@@ -1224,6 +1224,33 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ---
 
+## AdminLogController
+
+관리자 AI 리뷰 로그 조회/정리 API를 제공합니다. ADMIN 권한이 필요합니다.
+
+| Method | URI | 기능 설명 | Request | Response | Auth |
+|--------|-----|----------|---------|----------|------|
+| GET | `/api/v1/admin/logs` | AI 리뷰 로그 목록을 조회합니다. | **Query:** `bojId(optional)`, `page`, `size` | `Page<AdminLogResponse>` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/logs/{logId}` | 로그 상세를 조회합니다. | **Path:** `logId` | `AdminLogResponse` | JWT Token (ADMIN) |
+| GET | `/api/v1/admin/logs/cleanup/preview` | 삭제 예정 건수를 미리 조회합니다. | **Query:** `mode=OLDER_THAN_DAYS\|KEEP_RECENT_DAYS`, `olderThanDays?`, `keepDays?` | `LogCleanupPreviewResponse` | JWT Token (ADMIN) |
+| DELETE | `/api/v1/admin/logs/cleanup` | 로그 정리를 실행합니다. | **Query:** `mode=OLDER_THAN_DAYS\|KEEP_RECENT_DAYS`, `olderThanDays?`, `keepDays?` | `LogCleanupResponse` | JWT Token (ADMIN) |
+
+**LogCleanupPreviewResponse 구조**
+- `mode` (String): `OLDER_THAN_DAYS` 또는 `KEEP_RECENT_DAYS`
+- `referenceDays` (Int): 기준 일수
+- `cutoffAt` (LocalDateTime): 삭제 기준 시각
+- `deletableCount` (Long): 삭제 예정 건수
+- `statusBreakdown` (Map<String, Long>): 상태별 삭제 예정 건수
+
+**LogCleanupResponse 구조**
+- `message` (String)
+- `mode` (String)
+- `referenceDays` (Int)
+- `cutoffAt` (LocalDateTime)
+- `deletedCount` (Long)
+
+---
+
 ## ProblemCollectorController
 
 문제 데이터 수집/재수집/운영 제어 API를 제공합니다. ADMIN 권한이 필요합니다.  

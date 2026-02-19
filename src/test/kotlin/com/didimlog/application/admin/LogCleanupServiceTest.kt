@@ -24,13 +24,17 @@ class LogCleanupServiceTest {
         val deletedCount = 10L
 
         every { logRepository.countByCreatedAtBefore(any()) } returns deletedCount
+        every { logRepository.countByCreatedAtBeforeAndAiReviewStatus(any(), any()) } returnsMany listOf(5L, 2L, 1L, 1L)
+        every { logRepository.countByCreatedAtBeforeAndAiReviewStatusIsNull(any()) } returns 1L
         every { logRepository.deleteByCreatedAtBefore(any()) } just runs
 
         // when
-        val result = logCleanupService.cleanupLogs(olderThanDays)
+        val result = logCleanupService.cleanupLogs(LogCleanupMode.OLDER_THAN_DAYS, olderThanDays)
 
         // then
-        assertThat(result).isEqualTo(deletedCount)
+        assertThat(result.deletedCount).isEqualTo(deletedCount)
+        assertThat(result.mode).isEqualTo(LogCleanupMode.OLDER_THAN_DAYS)
+        assertThat(result.referenceDays).isEqualTo(olderThanDays)
         verify(exactly = 1) { logRepository.countByCreatedAtBefore(any()) }
         verify(exactly = 1) { logRepository.deleteByCreatedAtBefore(any()) }
     }
@@ -42,15 +46,33 @@ class LogCleanupServiceTest {
         val olderThanDays = 7
 
         every { logRepository.countByCreatedAtBefore(any()) } returns 0L
+        every { logRepository.countByCreatedAtBeforeAndAiReviewStatus(any(), any()) } returnsMany listOf(0L, 0L, 0L, 0L)
+        every { logRepository.countByCreatedAtBeforeAndAiReviewStatusIsNull(any()) } returns 0L
         every { logRepository.deleteByCreatedAtBefore(any()) } just runs
 
         // when
-        val result = logCleanupService.cleanupLogs(olderThanDays)
+        val result = logCleanupService.cleanupLogs(LogCleanupMode.OLDER_THAN_DAYS, olderThanDays)
 
         // then
-        assertThat(result).isEqualTo(0L)
+        assertThat(result.deletedCount).isEqualTo(0L)
         verify(exactly = 1) { logRepository.countByCreatedAtBefore(any()) }
         verify(exactly = 1) { logRepository.deleteByCreatedAtBefore(any()) }
     }
-}
 
+    @Test
+    @DisplayName("previewCleanup은 삭제 예정 건수와 상태별 분포를 반환한다")
+    fun `로그 정리 미리보기 성공`() {
+        every { logRepository.countByCreatedAtBefore(any()) } returns 12L
+        every { logRepository.countByCreatedAtBeforeAndAiReviewStatus(any(), any()) } returnsMany listOf(7L, 3L, 1L, 0L)
+        every { logRepository.countByCreatedAtBeforeAndAiReviewStatusIsNull(any()) } returns 1L
+
+        val preview = logCleanupService.previewCleanup(LogCleanupMode.KEEP_RECENT_DAYS, 3)
+
+        assertThat(preview.mode).isEqualTo(LogCleanupMode.KEEP_RECENT_DAYS)
+        assertThat(preview.referenceDays).isEqualTo(3)
+        assertThat(preview.deletableCount).isEqualTo(12L)
+        assertThat(preview.statusBreakdown["COMPLETED"]).isEqualTo(7L)
+        assertThat(preview.statusBreakdown["FAILED"]).isEqualTo(3L)
+        assertThat(preview.statusBreakdown["UNKNOWN"]).isEqualTo(1L)
+    }
+}
