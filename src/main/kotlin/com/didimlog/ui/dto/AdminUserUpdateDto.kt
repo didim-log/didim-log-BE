@@ -23,6 +23,11 @@ data class AdminUserUpdateDto(
         regexp = ".*\\S.*",
         message = "bojId는 공백일 수 없습니다."
     )
-    val bojId: String? = null
-)
+    val bojId: String? = null,
 
+    @field:Pattern(
+        regexp = ".*\\S.*",
+        message = "password는 공백일 수 없습니다."
+    )
+    val password: String? = null
+)

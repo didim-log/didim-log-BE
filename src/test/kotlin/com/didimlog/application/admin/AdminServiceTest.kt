@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
+import org.springframework.security.crypto.password.PasswordEncoder
 import java.util.*
 
 @DisplayName("AdminService 테스트")
@@ -29,7 +30,8 @@ class AdminServiceTest {
     private val studentRepository: StudentRepository = mockk()
     private val quoteRepository: QuoteRepository = mockk()
     private val retrospectiveRepository: RetrospectiveRepository = mockk()
-    private val adminService = AdminService(studentRepository, quoteRepository, retrospectiveRepository)
+    private val passwordEncoder: PasswordEncoder = mockk()
+    private val adminService = AdminService(studentRepository, quoteRepository, retrospectiveRepository, passwordEncoder)
 
     @Test
     @DisplayName("명언 목록을 페이징하여 조회할 수 있다")
@@ -213,6 +215,34 @@ class AdminServiceTest {
         verify(exactly = 1) { studentRepository.findById(studentId) }
         verify(exactly = 1) { studentRepository.save(any<Student>()) }
     }
+
+    @Test
+    @DisplayName("관리자는 사용자 비밀번호를 선택적으로 수정할 수 있다")
+    fun `관리자 사용자 비밀번호 수정 성공`() {
+        // given
+        val studentId = "student1"
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("user1"),
+            provider = Provider.BOJ,
+            providerId = "user1",
+            bojId = BojId("user1"),
+            password = "oldEncoded",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val request = AdminUserUpdateDto(password = "newPassword123!")
+
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { passwordEncoder.encode("newPassword123!") } returns "newEncoded"
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+
+        // when
+        val updated = adminService.updateUser(studentId, request)
+
+        // then
+        assertThat(updated.password).isEqualTo("newEncoded")
+        verify(exactly = 1) { passwordEncoder.encode("newPassword123!") }
+        verify(exactly = 1) { studentRepository.save(any<Student>()) }
+    }
 }
-
-

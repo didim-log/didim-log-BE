@@ -2,7 +2,7 @@ package com.didimlog.application.ai
 
 /**
  * AI 분석 섹션 타입
- * - DOCS/RETROSPECTIVE_STANDARDS.md 의 [AI 분석 영역] 목차를 따른다.
+ * - 서비스 내부에서 정의한 AI 분석 섹션 기준을 따른다.
  */
 enum class AiSectionType {
     REFACTORING,
@@ -12,4 +12,3 @@ enum class AiSectionType {
     COUNTER_EXAMPLE,
     GUIDANCE
 }
-

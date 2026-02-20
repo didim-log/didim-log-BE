@@ -78,9 +78,10 @@ graph TD
 - 템플릿 기본값 category는 `SUCCESS` / `FAIL`만 지원합니다. (`FAILURE` 미지원)
 - Swagger 카테고리는 기능군 기준으로 `Admin`, `System` 등으로 통합 관리합니다.
 - 상세 명세:
+  - `DOCS/CLEAN_CODE_PRINCIPLES.md`
+  - `DOCS/PR_GUIDE.md`
+  - `DOCS/COMMIT_CONVENTION.md`
   - `DOCS/API_SPECIFICATION.md`
-  - `DOCS/FRONTEND_UPDATE_GUIDE.md`
-  - `DOCS/TEST_ARCHITECTURE.md`
 
 ## 9. 배포 순서 (Release Order)
 - 템플릿 category 레거시 alias 제거가 반영되어, 호환성 기준으로 **프론트 선배포 후 백엔드 배포**를 권장합니다.

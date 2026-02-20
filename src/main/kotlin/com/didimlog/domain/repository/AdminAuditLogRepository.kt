@@ -12,7 +12,35 @@ interface AdminAuditLogRepository : MongoRepository<AdminAuditLog, String> {
 
     fun findByActionOrderByCreatedAtDesc(action: com.didimlog.domain.enums.AdminActionType, pageable: Pageable): Page<AdminAuditLog>
 
+    fun findByAdminIdAndActionOrderByCreatedAtDesc(
+        adminId: String,
+        action: com.didimlog.domain.enums.AdminActionType,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
     fun findByCreatedAtBetweenOrderByCreatedAtDesc(
+        startDate: LocalDateTime,
+        endDate: LocalDateTime,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findByAdminIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+        adminId: String,
+        startDate: LocalDateTime,
+        endDate: LocalDateTime,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findByActionAndCreatedAtBetweenOrderByCreatedAtDesc(
+        action: com.didimlog.domain.enums.AdminActionType,
+        startDate: LocalDateTime,
+        endDate: LocalDateTime,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findByAdminIdAndActionAndCreatedAtBetweenOrderByCreatedAtDesc(
+        adminId: String,
+        action: com.didimlog.domain.enums.AdminActionType,
         startDate: LocalDateTime,
         endDate: LocalDateTime,
         pageable: Pageable
@@ -20,7 +48,6 @@ interface AdminAuditLogRepository : MongoRepository<AdminAuditLog, String> {
 
     fun findAllByOrderByCreatedAtDesc(pageable: Pageable): Page<AdminAuditLog>
 }
-
 
 
 

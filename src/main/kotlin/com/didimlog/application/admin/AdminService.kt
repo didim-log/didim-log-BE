@@ -16,6 +16,7 @@ import com.didimlog.ui.dto.AdminUserUpdateDto
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -29,7 +30,8 @@ import java.time.format.DateTimeFormatter
 class AdminService(
     private val studentRepository: StudentRepository,
     private val quoteRepository: QuoteRepository,
-    private val retrospectiveRepository: RetrospectiveRepository
+    private val retrospectiveRepository: RetrospectiveRepository,
+    private val passwordEncoder: PasswordEncoder
 ) {
 
     private val log = LoggerFactory.getLogger(AdminService::class.java)
@@ -224,6 +226,13 @@ class AdminService(
                 updatedStudent = updatedStudent.copy(bojId = bojIdVo)
                 isChanged = true
             }
+        }
+
+        val newPassword = normalizeTextOrNull(request.password)
+        if (newPassword != null) {
+            val encodedPassword = passwordEncoder.encode(newPassword)
+            updatedStudent = updatedStudent.updatePassword(encodedPassword)
+            isChanged = true
         }
 
         if (!isChanged) {

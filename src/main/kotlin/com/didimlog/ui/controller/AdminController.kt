@@ -143,7 +143,7 @@ class AdminController(
 
     @Operation(
         summary = "사용자 정보 강제 수정",
-        description = "특정 사용자의 권한(Role), 닉네임, BOJ ID를 선택적으로 수정합니다. ADMIN 권한이 필요합니다.",
+        description = "특정 사용자의 권한(Role), 닉네임, BOJ ID, 비밀번호를 선택적으로 수정합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
