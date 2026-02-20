@@ -403,7 +403,7 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 
 ## AiAnalysisController
 
-AI 분석 관련 API를 제공합니다. `RETROSPECTIVE_STANDARDS.md` 기반으로 섹션별 마크다운을 생성합니다.
+AI 분석 관련 API를 제공합니다. 서비스 내부 섹션 기준으로 마크다운을 생성합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
