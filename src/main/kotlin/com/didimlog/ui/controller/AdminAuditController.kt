@@ -2,6 +2,8 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.AdminAuditLogResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -81,17 +83,18 @@ class AdminAuditController(
         endDate: LocalDateTime?
     ): ResponseEntity<Page<AdminAuditLogResponse>> {
         val pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
-        
-        val auditLogs = when {
-            adminId != null -> adminAuditService.getAuditLogsByAdminId(adminId, pageable)
-            action != null -> adminAuditService.getAuditLogsByAction(action, pageable)
-            startDate != null && endDate != null -> adminAuditService.getAuditLogsByDateRange(startDate, endDate, pageable)
-            else -> adminAuditService.getAuditLogs(pageable)
+
+        if ((startDate == null) xor (endDate == null)) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "startDate와 endDate는 함께 전달해야 합니다."
+            )
         }
-        
+
+        val auditLogs = adminAuditService.searchAuditLogs(adminId, action, startDate, endDate, pageable)
+
         val response = auditLogs.map { AdminAuditLogResponse.from(it) }
         return ResponseEntity.ok(response)
     }
 }
-
 

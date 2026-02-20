@@ -20,8 +20,10 @@ class MemberService(
     }
 
     @Transactional
-    fun updateMyNickname(memberId: String, nickname: String) {
-        val member = studentRepository.findById(memberId).orElseThrow { IllegalArgumentException("회원을 찾을 수 없습니다. memberId=$memberId") }
+    fun updateMyNickname(bojId: String, nickname: String) {
+        val member = findStudentByBojIdOrThrow(bojId)
+        val memberId = member.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
         validateDuplicate(memberId, nickname)
         val updated = member.updateNickname(nickname)
         studentRepository.save(updated)
@@ -66,7 +68,6 @@ class MemberService(
         }
     }
 }
-
 
 
 

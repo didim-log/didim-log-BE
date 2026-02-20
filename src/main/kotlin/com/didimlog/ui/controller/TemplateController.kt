@@ -51,7 +51,9 @@ class TemplateController(
     private val templateService: TemplateService,
     private val studentRepository: StudentRepository,
     @Value("\${app.template.render-timeout-millis:4000}")
-    private val templateRenderTimeoutMillis: Long
+    private val templateRenderTimeoutMillis: Long,
+    @Value("\${app.template.timeout-fallback-enabled:true}")
+    private val templateTimeoutFallbackEnabled: Boolean
 ) {
 
     @Operation(
@@ -224,10 +226,13 @@ class TemplateController(
     ): ResponseEntity<TemplateRenderResponse> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val renderedContent = renderTemplateWithTimeout {
-            templateService.renderTemplate(id, problemId, studentId, programmingLanguage, code)
-        }
-        val response = TemplateRenderResponse(renderedContent = renderedContent)
+        val response = renderTemplateResponseWithTimeout(
+            templateId = id,
+            problemId = problemId,
+            studentId = studentId,
+            programmingLanguage = programmingLanguage,
+            code = code
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -270,16 +275,13 @@ class TemplateController(
     ): ResponseEntity<TemplateRenderResponse> {
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
-        val renderedContent = renderTemplateWithTimeout {
-            templateService.renderTemplate(
-                id,
-                request.problemId,
-                studentId,
-                request.programmingLanguage,
-                request.code
-            )
-        }
-        val response = TemplateRenderResponse(renderedContent = renderedContent)
+        val response = renderTemplateResponseWithTimeout(
+            templateId = id,
+            problemId = request.problemId,
+            studentId = studentId,
+            programmingLanguage = request.programmingLanguage,
+            code = request.code
+        )
         return ResponseEntity.ok(response)
     }
 
@@ -578,6 +580,36 @@ class TemplateController(
             throw BusinessException(
                 ErrorCode.COMMON_INTERNAL_ERROR,
                 "템플릿 렌더링 작업이 중단되었습니다."
+            )
+        }
+    }
+
+    private fun renderTemplateResponseWithTimeout(
+        templateId: String,
+        problemId: Long,
+        studentId: String,
+        programmingLanguage: String?,
+        code: String?
+    ): TemplateRenderResponse {
+        return try {
+            val rendered = renderTemplateWithTimeout {
+                templateService.renderTemplate(templateId, problemId, studentId, programmingLanguage, code)
+            }
+            TemplateRenderResponse(renderedContent = rendered)
+        } catch (e: BusinessException) {
+            if (e.errorCode != ErrorCode.TEMPLATE_RENDER_TIMEOUT || !templateTimeoutFallbackEnabled) {
+                throw e
+            }
+            val fallbackContent = templateService.renderFallbackTemplate(
+                problemId = problemId,
+                studentId = studentId,
+                programmingLanguage = programmingLanguage,
+                code = code
+            )
+            TemplateRenderResponse(
+                renderedContent = fallbackContent,
+                fallbackUsed = true,
+                fallbackReason = ErrorCode.TEMPLATE_RENDER_TIMEOUT.code
             )
         }
     }

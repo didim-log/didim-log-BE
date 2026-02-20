@@ -79,7 +79,9 @@ data class TemplateSummaryResponse(
  * 템플릿 렌더링 응답 DTO
  */
 data class TemplateRenderResponse(
-    val renderedContent: String
+    val renderedContent: String,
+    val fallbackUsed: Boolean = false,
+    val fallbackReason: String? = null
 )
 
 /**
@@ -105,5 +107,4 @@ data class TemplatePresetResponse(
         }
     }
 }
-
 

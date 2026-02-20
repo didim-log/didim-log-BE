@@ -304,6 +304,35 @@ class TemplateService(
     }
 
     /**
+     * 템플릿 렌더 타임아웃 등으로 정상 렌더링이 불가능한 경우 사용할 fallback 렌더링.
+     * 요청 템플릿 ID와 무관하게 사용자의 기본 템플릿(성공/실패 기준)을 사용한다.
+     */
+    @Transactional(readOnly = true)
+    fun renderFallbackTemplate(
+        problemId: Long,
+        studentId: String,
+        programmingLanguage: String? = null,
+        code: String? = null,
+        resultTypeHint: ProblemResult? = null
+    ): String {
+        val problem = getProblem(problemId)
+        val studentProblemInfo = getStudentProblemInfo(studentId, problemId)
+        val fallbackCategory = resolveFallbackTemplateCategory(
+            resultTypeHint = resultTypeHint,
+            studentProblemResult = studentProblemInfo.problemResultType
+        )
+        val fallbackTemplate = getDefaultTemplate(fallbackCategory, studentId)
+        val detectedLanguage = programmingLanguage ?: detectLanguageFromCode(code)
+        return renderContent(
+            fallbackTemplate.content,
+            problem,
+            studentProblemInfo.timeTaken,
+            studentProblemInfo.result,
+            detectedLanguage
+        )
+    }
+
+    /**
      * 템플릿 내용을 렌더링한다.
      * 코드 블록 내의 {{language}}는 프로그래밍 언어로 치환하고,
      * 일반 텍스트의 {{language}}는 문제 설명 언어로 치환한다.

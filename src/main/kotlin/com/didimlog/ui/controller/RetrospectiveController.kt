@@ -61,7 +61,9 @@ class RetrospectiveController(
     private val problemRepository: ProblemRepository,
     private val templateService: TemplateService,
     @Value("\${app.template.render-timeout-millis:4000}")
-    private val templateRenderTimeoutMillis: Long
+    private val templateRenderTimeoutMillis: Long,
+    @Value("\${app.template.timeout-fallback-enabled:true}")
+    private val templateTimeoutFallbackEnabled: Boolean
 ) {
     companion object {
         private val ALLOWED_SORT_FIELDS = setOf("createdAt", "problemId", "isBookmarked")
@@ -307,15 +309,13 @@ class RetrospectiveController(
         val defaultTemplate = templateService.getDefaultTemplate(templateCategory, studentId)
         val templateId = defaultTemplate.id
             ?: throw BusinessException(ErrorCode.TEMPLATE_NOT_FOUND, "기본 템플릿 ID를 찾을 수 없습니다.")
-        val renderedTemplate = renderTemplateWithTimeout {
-            templateService.renderTemplate(
-                templateId = templateId,
-                problemId = problemId,
-                studentId = studentId,
-                resultTypeHint = resultType
-            )
-        }
-        return ResponseEntity.ok(RetrospectiveTemplateResponse(template = renderedTemplate))
+        val response = renderRetrospectiveTemplateWithFallback(
+            templateId = templateId,
+            problemId = problemId,
+            studentId = studentId,
+            resultType = resultType
+        )
+        return ResponseEntity.ok(response)
     }
 
     @Operation(
@@ -406,6 +406,39 @@ class RetrospectiveController(
             throw BusinessException(
                 ErrorCode.COMMON_INTERNAL_ERROR,
                 "템플릿 렌더링 작업이 중단되었습니다."
+            )
+        }
+    }
+
+    private fun renderRetrospectiveTemplateWithFallback(
+        templateId: String,
+        problemId: Long,
+        studentId: String,
+        resultType: ProblemResult
+    ): RetrospectiveTemplateResponse {
+        return try {
+            val renderedTemplate = renderTemplateWithTimeout {
+                templateService.renderTemplate(
+                    templateId = templateId,
+                    problemId = problemId,
+                    studentId = studentId,
+                    resultTypeHint = resultType
+                )
+            }
+            RetrospectiveTemplateResponse(template = renderedTemplate)
+        } catch (e: BusinessException) {
+            if (e.errorCode != ErrorCode.TEMPLATE_RENDER_TIMEOUT || !templateTimeoutFallbackEnabled) {
+                throw e
+            }
+            val fallbackTemplate = templateService.renderFallbackTemplate(
+                problemId = problemId,
+                studentId = studentId,
+                resultTypeHint = resultType
+            )
+            RetrospectiveTemplateResponse(
+                template = fallbackTemplate,
+                fallbackUsed = true,
+                fallbackReason = ErrorCode.TEMPLATE_RENDER_TIMEOUT.code
             )
         }
     }

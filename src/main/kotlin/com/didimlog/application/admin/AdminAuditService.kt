@@ -103,8 +103,52 @@ class AdminAuditService(
     ): Page<AdminAuditLog> {
         return adminAuditLogRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(startDate, endDate, pageable)
     }
-}
 
+    @Transactional(readOnly = true)
+    fun searchAuditLogs(
+        adminId: String?,
+        action: AdminActionType?,
+        startDate: LocalDateTime?,
+        endDate: LocalDateTime?,
+        pageable: Pageable
+    ): Page<AdminAuditLog> {
+        val hasDateRange = startDate != null && endDate != null
+        return when {
+            adminId != null && action != null && hasDateRange ->
+                adminAuditLogRepository.findByAdminIdAndActionAndCreatedAtBetweenOrderByCreatedAtDesc(
+                    adminId,
+                    action,
+                    startDate!!,
+                    endDate!!,
+                    pageable
+                )
+            adminId != null && action != null ->
+                adminAuditLogRepository.findByAdminIdAndActionOrderByCreatedAtDesc(adminId, action, pageable)
+            adminId != null && hasDateRange ->
+                adminAuditLogRepository.findByAdminIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+                    adminId,
+                    startDate!!,
+                    endDate!!,
+                    pageable
+                )
+            action != null && hasDateRange ->
+                adminAuditLogRepository.findByActionAndCreatedAtBetweenOrderByCreatedAtDesc(
+                    action,
+                    startDate!!,
+                    endDate!!,
+                    pageable
+                )
+            adminId != null ->
+                adminAuditLogRepository.findByAdminIdOrderByCreatedAtDesc(adminId, pageable)
+            action != null ->
+                adminAuditLogRepository.findByActionOrderByCreatedAtDesc(action, pageable)
+            hasDateRange ->
+                adminAuditLogRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(startDate!!, endDate!!, pageable)
+            else ->
+                adminAuditLogRepository.findAllByOrderByCreatedAtDesc(pageable)
+        }
+    }
+}
 
 
 

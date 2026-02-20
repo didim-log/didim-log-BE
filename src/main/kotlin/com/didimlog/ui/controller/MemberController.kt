@@ -78,8 +78,8 @@ class MemberController(
         @Valid
         request: UpdateMyNicknameRequest
     ): ResponseEntity<Void> {
-        val memberId = authentication.name
-        memberService.updateMyNickname(memberId, request.nickname)
+        val bojId = authentication.name
+        memberService.updateMyNickname(bojId, request.nickname)
         return ResponseEntity.noContent().build()
     }
 

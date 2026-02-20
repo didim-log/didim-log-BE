@@ -5,6 +5,7 @@ import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.DuplicateNicknameException
 import io.mockk.Called
@@ -48,14 +49,16 @@ class MemberServiceTest {
     @Test
     @DisplayName("내 닉네임 변경 시 다른 사용자가 이미 사용 중이면 DuplicateNicknameException이 발생한다")
     fun `내 닉네임 변경 - 중복`() {
-        val memberId = "me"
+        val memberId = "member-id"
+        val bojId = "me"
         val nickname = "user_01"
 
         val me = Student(
             id = memberId,
             nickname = Nickname("me01"),
             provider = Provider.BOJ,
-            providerId = "me01",
+            providerId = bojId,
+            bojId = BojId(bojId),
             currentTier = Tier.BRONZE,
             role = Role.USER
         )
@@ -64,17 +67,17 @@ class MemberServiceTest {
             nickname = Nickname(nickname),
             provider = Provider.BOJ,
             providerId = "other",
+            bojId = BojId("other"),
             currentTier = Tier.BRONZE,
             role = Role.USER
         )
 
-        every { studentRepository.findById(memberId) } returns Optional.of(me)
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(me)
         every { studentRepository.findByNickname(Nickname(nickname)) } returns Optional.of(other)
 
-        assertThatThrownBy { memberService.updateMyNickname(memberId, nickname) }
+        assertThatThrownBy { memberService.updateMyNickname(bojId, nickname) }
             .isInstanceOf(DuplicateNicknameException::class.java)
             .hasMessageContaining("이미 사용 중인 닉네임입니다")
     }
 }
-
 
