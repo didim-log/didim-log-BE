@@ -3,9 +3,7 @@ services:
     image: stdiodh/didim-log-be:latest
     container_name: didim-log-be-container
     ports:
-      - "8083:8080"
-    # .env 파일을 상대 경로로 참조 (docker-compose.yml과 같은 디렉토리의 .env 파일 사용)
-    # GitHub Actions가 /home/{AWS_USER}/app/didim-log-be/.env 경로에 생성한 파일을 자동으로 로드
+      - "8080:8080"
     env_file:
       - .env
     networks:
@@ -15,7 +13,6 @@ services:
       - mongo
       - redis
 
-  # 2. MongoDB
   mongo:
     image: mongo:latest
     container_name: didim-log-be-mongodb-container
@@ -25,7 +22,6 @@ services:
     networks:
       - didim-log-network
 
-  # 3. Redis
   redis:
     image: redis:alpine
     container_name: didim-log-be-redis-container
@@ -34,6 +30,33 @@ services:
       - redis-data:/data
     networks:
       - didim-log-network
+
+  nginx:
+    image: nginx:latest
+    container_name: didimlog-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    networks:
+      - didim-log-network
+    restart: always
+    depends_on:
+      - didim-log-be
+
+  certbot:
+    image: certbot/certbot
+    container_name: didimlog-certbot
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - didim-log-network
+    restart: always
 
 networks:
   didim-log-network:
