@@ -2,8 +2,8 @@ services:
   didim-log-be:
     image: stdiodh/didim-log-be:latest
     container_name: didim-log-be-container
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     env_file:
       - .env
     networks:
