@@ -1,0 +1,21 @@
+{
+  "priority": 1,
+  "scenarioName": "ai-review-failed-retry",
+  "requiredScenarioState": "failed-once",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1beta/models/.*:generateContent",
+    "bodyPatterns": [
+      {
+        "contains": "FORCE_GEMINI_FAILURE_ONCE"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "bodyFileName": "gemini-success.json"
+  }
+}

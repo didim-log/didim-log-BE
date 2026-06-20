@@ -1,0 +1,27 @@
+{
+  "priority": 1,
+  "scenarioName": "ai-review-failed-retry",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "failed-once",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1beta/models/.*:generateContent",
+    "bodyPatterns": [
+      {
+        "contains": "FORCE_GEMINI_FAILURE_ONCE"
+      }
+    ]
+  },
+  "response": {
+    "status": 500,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": {
+        "code": 500,
+        "message": "forced local Gemini failure for retry verification"
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: ${MONGO_CONTAINER:-didimlog-performance-mongo}
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - didimlog-performance-mongo-data:/data/db
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${REDIS_CONTAINER:-didimlog-performance-redis}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+
+  gemini-wiremock:
+    image: wiremock/wiremock:3.9.1
+    container_name: didimlog-performance-gemini-wiremock
+    ports:
+      - "${WIREMOCK_PORT:-8090}:8080"
+    volumes:
+      - ./gemini:/home/wiremock
+    command:
+      - "--global-response-templating"
+      - "--verbose"
+    restart: unless-stopped
+
+volumes:
+  didimlog-performance-mongo-data:
