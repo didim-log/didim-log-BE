@@ -144,10 +144,8 @@ const LOCAL_ALLOWED_HOSTS = new Set([
 const PERFORMANCE_DB_NAME = "didimlog-performance";
 
 function parseHttpUrl(name, value) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch (error) {
+  const parsed = parseUrlParts(value);
+  if (parsed === null) {
     throw new Error(`${name} must be a valid URL. value=${value}`);
   }
   if (!["http:", "https:"].includes(parsed.protocol)) {
@@ -157,6 +155,39 @@ function parseHttpUrl(name, value) {
     throw new Error(`${name} must not include URL credentials. value=${value}`);
   }
   return parsed;
+}
+
+function parseUrlParts(value) {
+  const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)?([?#].*)?$/i.exec(`${value}`);
+  if (!match) {
+    return null;
+  }
+  const protocol = `${match[1].toLowerCase()}:`;
+  const authority = match[2];
+  if (authority.includes("@")) {
+    const [credentials, hostPart] = authority.split("@");
+    const hostname = extractHostname(hostPart);
+    return { protocol, hostname, username: credentials, password: credentials, pathname: match[3] || "/" };
+  }
+  const hostname = extractHostname(authority);
+  if (!hostname) {
+    return null;
+  }
+  return {
+    protocol,
+    hostname,
+    username: "",
+    password: "",
+    pathname: match[3] || "/",
+  };
+}
+
+function extractHostname(authority) {
+  if (authority.startsWith("[")) {
+    const end = authority.indexOf("]");
+    return end > 0 ? authority.slice(1, end) : "";
+  }
+  return authority.split(":")[0];
 }
 
 function hostAllowedForLocal(hostname) {
@@ -197,10 +228,8 @@ function assertHttpTarget(name, value) {
 }
 
 function parseMongoUri(value) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch (error) {
+  const parsed = parseUrlParts(value);
+  if (parsed === null) {
     throw new Error(`MONGO_URI must be a valid URI. value=${value}`);
   }
   if (parsed.protocol !== "mongodb:") {
