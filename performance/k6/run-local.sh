@@ -517,6 +517,15 @@ ai_review_repeat() {
   local pass_count=0
   local fail_count=0
   for iteration in $(seq 1 "$AI_REPEAT_COUNT"); do
+    if ! wait_gemini_rate_window; then
+      failed=1
+      fail_count=$((fail_count + 1))
+      echo "AI concurrency iteration $iteration failed before k6: GeminiRateLimiter interval did not open" >&2
+      if [[ "$FAIL_FAST_AI_REPEAT" == "true" ]]; then
+        break
+      fi
+      continue
+    fi
     if ! ai_review_once "$iteration"; then
       failed=1
       fail_count=$((fail_count + 1))
