@@ -139,6 +139,22 @@ function reviewText(review) {
   }
   return String(review);
 }
+function numberValue(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value.toNumber === 'function') {
+    return value.toNumber();
+  }
+  if (value.low !== undefined && value.high !== undefined) {
+    return value.high * 4294967296 + (value.low >>> 0);
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
 const doc = docs.length > 0 ? docs[0] : null;
 const savedCount = docs.filter((item) => reviewText(item.aiReview) !== null).length;
 const review = doc ? reviewText(doc.aiReview) : null;
@@ -151,7 +167,7 @@ print(JSON.stringify({
   duplicateAiReviewSavedCount: Math.max(0, savedCount - 1),
   aiReviewStatus: doc ? (doc.aiReviewStatus || null) : null,
   lockExpiresAtPresent: doc ? (doc.aiReviewLockExpiresAt !== undefined && doc.aiReviewLockExpiresAt !== null) : false,
-  aiReviewDurationMillis: doc && doc.aiReviewDurationMillis !== undefined ? doc.aiReviewDurationMillis : null,
+  aiReviewDurationMillis: doc ? numberValue(doc.aiReviewDurationMillis) : null,
   reviewPresent: review !== null,
   reviewBlank: review !== null ? review.trim().length === 0 : null
 }));
