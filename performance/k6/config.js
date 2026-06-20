@@ -1,4 +1,4 @@
-import { env } from "./lib/environment.js";
+import { durationEnv, env, positiveIntegerEnv, positiveNumberEnv } from "./lib/environment.js";
 
 export const summaryTrendStats = ["min", "avg", "med", "p(90)", "p(95)", "p(99)", "max"];
 
@@ -11,7 +11,7 @@ export function commonThresholds(extra = {}) {
 
   const p95Ms = env("P95_MS");
   if (p95Ms !== undefined) {
-    thresholds.http_req_duration = [`p(95)<${p95Ms}`];
+    thresholds.http_req_duration = [`p(95)<${positiveNumberEnv("P95_MS", undefined)}`];
   }
 
   return thresholds;
@@ -21,8 +21,8 @@ export const defaultReadOptions = {
   scenarios: {
     read_workload: {
       executor: "constant-vus",
-      vus: Number(env("READ_VUS", "10")),
-      duration: env("READ_DURATION", "1m"),
+      vus: positiveIntegerEnv("READ_VUS", 10, 1, 500),
+      duration: durationEnv("READ_DURATION", "1m"),
       gracefulStop: "10s",
     },
   },

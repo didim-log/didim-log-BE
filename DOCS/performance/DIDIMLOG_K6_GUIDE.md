@@ -32,7 +32,22 @@ Controller와 테스트 코드 기준 경로는 다음과 같다.
 6. 성공 시 `MongoLogAiReviewLockRepository.markCompleted`가 `aiReview`, `aiReviewStatus=COMPLETED`, `aiReviewDurationMillis`를 저장하고 `aiReviewLockExpiresAt`을 unset한다.
 7. 실패 또는 timeout 시 `markFailed`가 `aiReviewStatus=FAILED`로 변경하고 lock expiry를 unset한다. FAILED 상태는 다음 요청에서 lock 재획득 가능 조건이다.
 
-Gemini 실제 활성화 조건은 `ai.gemini.api-key`와 `ai.gemini.url`이 모두 존재하는 경우다. 성능 실험은 `GEMINI_API_URL=http://localhost:8090/...`로 로컬 Gemini mock을 사용한다. Docker가 있으면 WireMock compose를 사용하고, Docker가 없으면 `run-local.sh start-mocks`가 Node 기반 mock을 띄운다.
+Gemini 실제 활성화 조건은 `ai.gemini.api-key`와 `ai.gemini.url`이 모두 존재하는 경우다. 성능 실험은 `GEMINI_API_URL=http://localhost:8090/...`로 로컬 Gemini mock을 사용한다. `MOCK_GEMINI_MODE=auto|wiremock|node`를 지원하며, `auto`는 Docker Compose WireMock을 먼저 확인한 뒤 로컬 환경에서 WireMock만 실패하면 Node mock으로 fallback한다.
+
+## Safety Guardrails
+
+성능 자산은 실행 초기에 `BASE_URL`, `WIREMOCK_URL`, `MONGO_URI`, `REDIS_HOST`를 검증한다.
+
+- 기본 허용 host는 `localhost`, `127.0.0.1`, `::1`, `mongo`, `redis`, `gemini-wiremock`, `host.docker.internal`이다.
+- `MONGO_URI`는 credential 없는 `mongodb://.../didimlog-performance`만 허용한다.
+- `TARGET_ENVIRONMENT=prod|production`은 항상 차단한다.
+- Fixture seed, cleanup, MongoDB 검증은 로컬 DB에서만 실행한다.
+- 원격 staging API 부하는 `ALLOW_REMOTE_LOAD_TEST=true`, `TARGET_ENVIRONMENT=staging`, `REMOTE_TARGET_ALLOWLIST` exact host, HTTPS `BASE_URL` 조건을 모두 만족할 때만 허용한다. 이 경우에도 fixture seed와 AI Mongo 검증은 금지된다.
+- `.env.performance`, raw result JSON, token/JWT 파일은 Git ignore 대상이다.
+
+## k6 Version
+
+`performance/k6/K6_VERSION`에 고정된 공식 Grafana k6 release만 사용한다. `run-local.sh`는 실행 중인 `k6 version`과 파일 값을 비교하고, `commit/devel` 빌드는 거부한다.
 
 ## 로컬 실행
 
@@ -48,25 +63,31 @@ performance/k6/run-local.sh seed
 # 3. 앱 실행은 별도 터미널에서 .env.performance의 Spring 환경 변수로 수행
 ./gradlew bootRun
 
-# 4. smoke
+# 4. Preflight
+performance/k6/run-local.sh preflight
+
+# 5. smoke
 performance/k6/run-local.sh smoke
 
-# 5. 조회 부하
+# 6. 조회 부하
 performance/k6/run-local.sh read
 
-# 6. AI 동시성 50건 x 10회
+# 7. AI 동시성 50건 x 10회
 performance/k6/run-local.sh ai-review
 
-# 7. FAILED 상태 저부하 재시도 검증
+# 8. FAILED 상태 저부하 재시도 검증
 performance/k6/run-local.sh ai-retry
 
-# 8. Redis Rate Limit 정책 검증
+# 9. Redis Rate Limit 정책 검증
 performance/k6/run-local.sh rate-limit
+
+# 10. Fixture와 테스트 key 정리
+performance/k6/run-local.sh cleanup
 ```
 
 ## 외부 API Mock 방식
 
-- Gemini: `performance/mock-external/docker-compose.performance.yml`의 WireMock을 사용한다. Docker가 없는 환경에서는 동일한 admin endpoint를 제공하는 Node 기반 로컬 mock을 사용한다.
+- Gemini: `performance/mock-external/docker-compose.performance.yml`의 WireMock을 사용한다. Node fallback은 `performance/mock-external/gemini/node-mock/server.js`가 동일한 admin endpoint를 제공한다.
 - MongoDB/Redis: 같은 performance compose의 로컬 컨테이너를 사용한다. 운영 DB/Redis를 사용하지 않는다.
 - Gemini 지연시간: `MOCK_GEMINI_DELAY_MS`를 `POST /__admin/settings`의 `fixedDelay`로 설정한다.
 - Gemini 호출 횟수: `POST /__admin/requests/count`로 `urlPathPattern=/v1beta/models/.*:generateContent`를 조회한다.
@@ -80,6 +101,9 @@ performance/k6/run-local.sh rate-limit
 - `http_req_failed < 1%`
 - `checks >= 99%`
 - AI 동시성 `ai_unexpected_5xx == 0`
+- AI 동시성 `ai_unexpected_error == 0`
+- AI 동시성 `ai_initial_request_count == AI_CONCURRENCY`
+- AI 동시성 `ai_classified_response_count == AI_CONCURRENCY`
 - AI 동시성 `gemini_call_mismatch == 0`
 
 `P95_MS` 환경 변수를 지정한 경우에만 `http_req_duration p(95) < P95_MS`를 추가한다.
@@ -103,12 +127,36 @@ performance/verify/verify_ai_call_count.sh --run-id "$AI_RUN_ID"
 검증 조건:
 
 - WireMock Gemini 실제 호출 횟수 1회
+- MongoDB matching log 1건
+- MongoDB 최종 `aiReviewStatus=COMPLETED`
 - MongoDB 최종 `aiReview` 저장 1건
 - 동일 run 중 중복 AI review 저장 0건
 - 완료 후 `aiReviewLockExpiresAt` 제거
+- `aiReviewDurationMillis >= 0`
+- 최종 review가 비어 있지 않음
 
-FAILED 재시도 케이스는 `AI_EXPERIMENT=failed-retry`로 같은 k6 파일을 실행한다. WireMock scenario가 `FORCE_GEMINI_FAILURE_ONCE` 마커가 포함된 요청의 첫 Gemini 호출만 500으로 응답하고, 다음 호출은 성공 응답을 반환한다. 이 케이스의 예상 Gemini 호출 수는 2회다.
+FAILED 중간 상태와 최종 상태는 다음처럼 별도 mode로 검증한다.
 
-AI 10회 반복은 실제 사용자별 일일 제한과 코드 기반 AI 리뷰 캐시를 우회하려고 정책을 변경하지 않는다. 대신 `run-local.sh`가 회차별 JWT subject를 `PERF_AI_BOJ_ID_PREFIX` 기반으로 분리하고, k6가 회차별 고유 코드 주석을 넣어 매 회차를 독립 fixture로 만든다. FAILED 재시도 케이스는 실제 `GeminiRateLimiter`의 4초 최소 간격을 존중하기 위해 기본 `AI_FAILED_RETRY_WAIT_SECONDS=5`를 사용한다.
+```bash
+performance/verify/verify_ai_call_count.sh \
+  --run-id "$AI_RUN_ID" \
+  --expect-status FAILED \
+  --expect-gemini-calls 1 \
+  --expect-review-count 0
+
+performance/verify/verify_ai_call_count.sh \
+  --run-id "$AI_RUN_ID" \
+  --expect-status COMPLETED \
+  --expect-gemini-calls 2 \
+  --expect-review-count 1
+```
+
+FAILED 재시도 케이스는 `run-local.sh ai-retry`가 첫 요청, FAILED polling, 실제 `GeminiRateLimiter` 최소 간격 polling, 두 번째 요청, COMPLETED polling, 최종 cached 200 확인을 순서대로 실행한다. WireMock/Node mock은 `FORCE_GEMINI_FAILURE_ONCE` 마커가 포함된 요청의 첫 Gemini 호출만 500으로 응답하고, 다음 호출은 성공 응답을 반환한다. 이 케이스의 예상 Gemini 호출 수는 2회다.
+
+AI 10회 반복은 실제 사용자별 일일 제한과 코드 기반 AI 리뷰 캐시를 우회하려고 정책을 변경하지 않는다. 대신 `run-local.sh`가 회차별 JWT subject를 `PERF_AI_BOJ_ID_PREFIX` 기반으로 분리하고, k6가 회차별 고유 코드 주석을 넣어 매 회차를 독립 fixture로 만든다. 기본은 모든 회차를 실행한 뒤 실패 회차를 집계하며, `FAIL_FAST_AI_REPEAT=true`일 때만 중간 중단한다.
+
+## CI Static Validation
+
+PR Check의 `performance-assets` job은 bash 문법, Node 문법, WireMock JSON, Docker Compose config, `k6 inspect`, `git diff --check`를 검증한다. 이 job의 성공은 성능 자산의 정적 유효성을 뜻하며, 로컬 런타임 AI 50 x 10 성공을 의미하지 않는다.
 
 실행할 수 없는 항목은 수치를 쓰지 말고 `NOT_EXECUTED`로 기록한다.

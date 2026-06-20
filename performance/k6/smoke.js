@@ -1,6 +1,6 @@
 import http from "k6/http";
 import { check } from "k6";
-import { BASE_URL, tags } from "./lib/environment.js";
+import { BASE_URL, assertSafeEnvironment, tags, validateConfiguredEnv } from "./lib/environment.js";
 import { authHeaders, getAuthToken } from "./lib/auth.js";
 import { checkJsonFields, checkStatus } from "./lib/checks.js";
 import { commonThresholds, summaryTrendStats } from "./config.js";
@@ -20,6 +20,11 @@ export const options = {
   thresholds: commonThresholds(),
   summaryTrendStats,
 };
+
+export function setup() {
+  assertSafeEnvironment({ allowRemoteBaseUrl: false });
+  validateConfiguredEnv();
+}
 
 export default function () {
   const token = getAuthToken();

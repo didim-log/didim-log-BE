@@ -2,85 +2,148 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Counter, Gauge } from "k6/metrics";
 import { authHeaders, getAuthToken } from "./lib/auth.js";
-import { BASE_URL, WIREMOCK_URL, env, numberEnv, tags } from "./lib/environment.js";
+import {
+  BASE_URL,
+  WIREMOCK_URL,
+  assertSafeEnvironment,
+  durationEnv,
+  env,
+  nonNegativeIntegerEnv,
+  positiveIntegerEnv,
+  tags,
+  validateConfiguredEnv,
+} from "./lib/environment.js";
 import { checkStatus, parseJson } from "./lib/checks.js";
 import { commonThresholds, summaryTrendStats } from "./config.js";
 import { summaryHandlers } from "./lib/summary.js";
 
-http.setResponseCallback(http.expectedStatuses(200, 201, 202, 409, 429, { min: 500, max: 599 }));
+http.setResponseCallback(http.expectedStatuses(200, 201, 202, { min: 500, max: 599 }));
 
+const aiInitialRequestCount = new Counter("ai_initial_request_count");
+const aiClassifiedResponseCount = new Counter("ai_classified_response_count");
 const aiGenerationSuccess = new Counter("ai_generation_success");
 const aiProcessing = new Counter("ai_processing");
 const aiCached = new Counter("ai_cached");
-const aiConflict = new Counter("ai_conflict");
 const aiUnexpected5xx = new Counter("ai_unexpected_5xx");
 const aiUnexpectedError = new Counter("ai_unexpected_error");
 const geminiCallCount = new Gauge("gemini_call_count");
 const geminiCallMismatch = new Counter("gemini_call_mismatch");
 
-const concurrency = numberEnv("AI_CONCURRENCY", 50);
-const verifyDelaySeconds = numberEnv("AI_VERIFY_DELAY_SECONDS", 8);
+const concurrency = positiveIntegerEnv("AI_CONCURRENCY", 50, 1, 500);
 const experiment = env("AI_EXPERIMENT", "concurrency");
 
 const concurrencyOptions = {
   scenarios: {
     ai_concurrency: {
-      executor: "shared-iterations",
+      executor: "per-vu-iterations",
       vus: concurrency,
-      iterations: concurrency,
-      maxDuration: env("AI_MAX_DURATION", "45s"),
+      iterations: 1,
+      maxDuration: durationEnv("AI_MAX_DURATION", "45s"),
       gracefulStop: "5s",
     },
-    verify_gemini: {
-      executor: "shared-iterations",
-      exec: "verifyGeminiAndCache",
-      vus: 1,
-      iterations: 1,
-      startTime: `${verifyDelaySeconds}s`,
-      maxDuration: "30s",
-    },
   },
   thresholds: commonThresholds({
+    ai_initial_request_count: [`count==${concurrency}`],
+    ai_classified_response_count: [`count==${concurrency}`],
     ai_unexpected_5xx: ["count==0"],
+    ai_unexpected_error: ["count==0"],
     gemini_call_mismatch: ["count==0"],
   }),
   summaryTrendStats,
 };
 
-const failedRetryOptions = {
+const failedFirstOptions = {
   scenarios: {
-    failed_retry: {
+    failed_first: {
       executor: "shared-iterations",
-      exec: "failedRetry",
+      exec: "failedFirstAttempt",
       vus: 1,
       iterations: 1,
-      maxDuration: "45s",
+      maxDuration: durationEnv("AI_MAX_DURATION", "45s"),
     },
   },
   thresholds: commonThresholds({
+    ai_initial_request_count: ["count==1"],
+    ai_classified_response_count: ["count==1"],
     ai_unexpected_5xx: ["count==0"],
+    ai_unexpected_error: ["count==0"],
     gemini_call_mismatch: ["count==0"],
   }),
   summaryTrendStats,
 };
 
-export const options = experiment === "failed-retry" ? failedRetryOptions : concurrencyOptions;
+const failedSecondOptions = {
+  scenarios: {
+    failed_second: {
+      executor: "shared-iterations",
+      exec: "failedSecondAttempt",
+      vus: 1,
+      iterations: 1,
+      maxDuration: durationEnv("AI_MAX_DURATION", "45s"),
+    },
+  },
+  thresholds: commonThresholds({
+    ai_initial_request_count: ["count==1"],
+    ai_classified_response_count: ["count==1"],
+    ai_unexpected_5xx: ["count==0"],
+    ai_unexpected_error: ["count==0"],
+    gemini_call_mismatch: ["count==0"],
+  }),
+  summaryTrendStats,
+};
+
+const failedFinalOptions = {
+  scenarios: {
+    failed_final: {
+      executor: "shared-iterations",
+      exec: "failedFinalCached",
+      vus: 1,
+      iterations: 1,
+      maxDuration: durationEnv("AI_MAX_DURATION", "45s"),
+    },
+  },
+  thresholds: commonThresholds({
+    ai_initial_request_count: ["count==1"],
+    ai_classified_response_count: ["count==1"],
+    ai_unexpected_5xx: ["count==0"],
+    ai_unexpected_error: ["count==0"],
+    gemini_call_mismatch: ["count==0"],
+  }),
+  summaryTrendStats,
+};
+
+export const options =
+  experiment === "failed-first"
+    ? failedFirstOptions
+    : experiment === "failed-second"
+      ? failedSecondOptions
+      : experiment === "failed-final"
+        ? failedFinalOptions
+        : concurrencyOptions;
 
 export function setup() {
+  assertSafeEnvironment({ allowRemoteBaseUrl: false });
+  validateConfiguredEnv();
+
   const token = getAuthToken();
-  resetWireMockJournal();
-  resetWireMockScenarios();
-  configureWireMockDelay();
+  if (experiment === "concurrency" || experiment === "failed-first") {
+    resetWireMockJournal();
+    resetWireMockScenarios();
+    configureWireMockDelay();
+  }
   const runId = env("AI_RUN_ID", `${Date.now()}`);
   const configuredLogId = env("AI_LOG_ID");
+  if ((experiment === "failed-second" || experiment === "failed-final") && !configuredLogId) {
+    throw new Error("AI_LOG_ID is required for failed-second and failed-final experiments.");
+  }
   const logId =
     configuredLogId ||
-    (experiment === "failed-retry" ? createFailedRetryLog(token, runId) : createAiReviewLog(token, runId));
+    (experiment === "failed-first" ? createFailedRetryLog(token, runId) : createAiReviewLog(token, runId));
   return {
     token,
     logId,
     runId,
-    startAt: Date.now() + numberEnv("AI_SYNC_WAIT_MS", 3000),
+    startAt: Date.now() + nonNegativeIntegerEnv("AI_SYNC_WAIT_MS", 3000, 30000),
   };
 }
 
@@ -90,81 +153,19 @@ export default function (data) {
     sleep(waitMs / 1000);
   }
 
-  const tagSet = tags("ai_review", "ai_concurrency", "pending");
-  const res = http.post(`${BASE_URL}/api/v1/logs/${data.logId}/ai-review`, null, {
-    headers: authHeaders(data.token),
-    tags: tagSet,
-  });
-
-  classifyAiReviewResponse(res);
+  sendAiReviewRequest(data, "ai_concurrency");
 }
 
-export function verifyGeminiAndCache(data) {
-  const count = getGeminiRequestCount();
-  geminiCallCount.add(count, tags("gemini_mock", "ai_concurrency", "verify", "MOCK"));
-  if (count !== numberEnv("EXPECTED_GEMINI_CALLS", 1)) {
-    geminiCallMismatch.add(1, tags("gemini_mock", "ai_concurrency", "mismatch", "MOCK"));
-  }
-
-  const tagSet = tags("ai_review", "ai_concurrency", "post_verify");
-  const res = http.post(`${BASE_URL}/api/v1/logs/${data.logId}/ai-review`, null, {
-    headers: authHeaders(data.token),
-    tags: tagSet,
-  });
-  checkStatus(res, 200, tagSet);
-  check(
-    res,
-    {
-      "post concurrency request returns cached review": (response) => {
-        const body = parseJson(response);
-        return body !== null && body.cached === true && body.inProgress === false;
-      },
-    },
-    tagSet
-  );
+export function failedFirstAttempt(data) {
+  sendAiReviewRequest(data, "ai_failed_retry_first");
 }
 
-export function failedRetry(data) {
-  const firstTags = tags("ai_review_failed_retry", "ai_failed_retry", "first_attempt");
-  const first = http.post(`${BASE_URL}/api/v1/logs/${data.logId}/ai-review`, null, {
-    headers: authHeaders(data.token),
-    tags: firstTags,
-  });
-  checkStatus(first, 202, firstTags);
+export function failedSecondAttempt(data) {
+  sendAiReviewRequest(data, "ai_failed_retry_second");
+}
 
-  sleep(numberEnv("AI_FAILED_RETRY_WAIT_SECONDS", 5));
-
-  const secondTags = tags("ai_review_failed_retry", "ai_failed_retry", "retry_after_failed");
-  const second = http.post(`${BASE_URL}/api/v1/logs/${data.logId}/ai-review`, null, {
-    headers: authHeaders(data.token),
-    tags: secondTags,
-  });
-  checkStatus(second, 202, secondTags);
-
-  sleep(numberEnv("AI_FAILED_RETRY_VERIFY_WAIT_SECONDS", 4));
-
-  const finalTags = tags("ai_review_failed_retry", "ai_failed_retry", "existing_result");
-  const final = http.post(`${BASE_URL}/api/v1/logs/${data.logId}/ai-review`, null, {
-    headers: authHeaders(data.token),
-    tags: finalTags,
-  });
-  checkStatus(final, 200, finalTags);
-  check(
-    final,
-    {
-      "failed retry eventually returns cached review": (response) => {
-        const body = parseJson(response);
-        return body !== null && body.cached === true && body.inProgress === false;
-      },
-    },
-    finalTags
-  );
-
-  const count = getGeminiRequestCount();
-  geminiCallCount.add(count, tags("gemini_mock", "ai_failed_retry", "verify", "MOCK"));
-  if (count !== numberEnv("EXPECTED_GEMINI_CALLS", 2)) {
-    geminiCallMismatch.add(1, tags("gemini_mock", "ai_failed_retry", "mismatch", "MOCK"));
-  }
+export function failedFinalCached(data) {
+  sendAiReviewRequest(data, "ai_failed_retry_final");
 }
 
 function createAiReviewLog(token, runId) {
@@ -220,29 +221,36 @@ function createFailedRetryLog(token, runId) {
   return res.json().id;
 }
 
-function classifyAiReviewResponse(res) {
+function sendAiReviewRequest(data, scenario) {
+  const initialTags = tags("ai_review", scenario, "initial_request");
+  aiInitialRequestCount.add(1, initialTags);
+  const res = http.post(`${BASE_URL}/api/v1/logs/${data.logId}/ai-review`, null, {
+    headers: authHeaders(data.token),
+    tags: initialTags,
+  });
+  classifyAiReviewResponse(res, scenario);
+}
+
+function classifyAiReviewResponse(res, scenario) {
   const body = parseJson(res);
   const resultType = classifyResultType(res, body);
-  const tagSet = tags("ai_review", "ai_concurrency", resultType);
-  checkStatus(res, [200, 202, 409], tagSet);
+  const tagSet = tags("ai_review", scenario, resultType);
+  aiClassifiedResponseCount.add(1, tagSet);
+  checkStatus(res, [200, 202], tagSet);
 
   if (res.status >= 500) {
     aiUnexpected5xx.add(1, tagSet);
     return;
   }
-  if (res.status === 409) {
-    aiConflict.add(1, tagSet);
-    return;
-  }
-  if (res.status === 202 && body?.inProgress === true) {
+  if (res.status === 202 && body?.inProgress === true && body?.cached === false) {
     aiProcessing.add(1, tagSet);
     return;
   }
-  if (res.status === 200 && body?.cached === true) {
+  if (res.status === 200 && body?.cached === true && body?.inProgress === false && hasReview(body)) {
     aiCached.add(1, tagSet);
     return;
   }
-  if (res.status === 200 && body?.cached === false && body?.inProgress === false) {
+  if (res.status === 200 && body?.cached === false && body?.inProgress === false && hasReview(body)) {
     aiGenerationSuccess.add(1, tagSet);
     return;
   }
@@ -251,21 +259,25 @@ function classifyAiReviewResponse(res) {
 
 function classifyResultType(res, body) {
   if (res.status >= 500) {
-    return "abnormal_5xx";
+    return "unexpected_5xx";
   }
-  if (res.status === 409) {
-    return "expected_conflict";
+  if (res.status === 202) {
+    return body?.inProgress === true && body?.cached === false ? "accepted_in_progress" : "unexpected_body";
   }
-  if (res.status === 202 && body?.inProgress === true) {
-    return "already_processing";
+  if (res.status === 200 && body?.cached === true && body?.inProgress === false && hasReview(body)) {
+    return "cached_result";
   }
-  if (res.status === 200 && body?.cached === true) {
-    return "existing_result";
+  if (res.status === 200 && body?.cached === false && body?.inProgress === false && hasReview(body)) {
+    return "generated_result";
   }
   if (res.status === 200) {
-    return "ai_generation_success";
+    return "unexpected_body";
   }
-  return "abnormal_error";
+  return "unexpected_status";
+}
+
+function hasReview(body) {
+  return typeof body?.review === "string" && body.review.trim().length > 0;
 }
 
 function resetWireMockJournal() {
@@ -281,7 +293,7 @@ function resetWireMockScenarios() {
 }
 
 function configureWireMockDelay() {
-  const delay = numberEnv("MOCK_GEMINI_DELAY_MS", 500);
+  const delay = nonNegativeIntegerEnv("MOCK_GEMINI_DELAY_MS", 500, 30000);
   http.post(
     `${WIREMOCK_URL}/__admin/settings`,
     JSON.stringify({ fixedDelay: delay }),
