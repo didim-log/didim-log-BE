@@ -42,7 +42,19 @@ out/
 # Secret Documentation
 /SECRET_DOCS/
 .env
+.env.performance
+.env.performance.local
+.env.performance.*
+!.env.performance.example
 
 # Mac cache
 .DS_Store
 .aider*
+
+performance/results/*
+!performance/results/.gitkeep
+
+performance/k6/*.local.env
+performance/k6/*token*
+performance/k6/*.jwt
+performance/mock-external/*.local.env

@@ -74,6 +74,23 @@ graph TD
 ./gradlew jacocoTestReport jacocoIntegrationTestReport jacocoMergedReport
 ```
 
+### 로컬 성능 검증
+
+| 측정 항목 | 조건 | 결과 |
+| :--- | :--- | :--- |
+| 조회 API | 10 VUs · 1분 | 5,431 requests · 90.41 RPS · P95 13.894 ms |
+| 응답 안정성 | Dashboard · Statistics · 회고 목록·상세 | HTTP 실패율 0% · Check 성공률 100% |
+| AI 회고 동시 요청 | 동일 로그 50건 · 10회 반복 | 모든 회차 Gemini 호출 1회 |
+| AI 회고 저장 | 동시 요청 50건 · 10회 반복 | 최종 저장 1건 · 중복 저장 0건 |
+| AI 작업 상태 | 성공 및 실패 후 재시도 | 최종 `COMPLETED` · Lock 잔존 0건 |
+| 회원가입 Rate Limit | 시간당 5건 | 5건 허용 · 이후 2건 차단 |
+| 로그인 Rate Limit | 시간당 10건 | 10건 허용 · 이후 2건 차단 |
+| 비밀번호 재설정 Rate Limit | 시간당 3건 | 3건 허용 · 이후 2건 차단 |
+
+> 로컬 MongoDB·Redis와 Gemini Mock을 사용한 합성 환경의 검증 결과이며, 운영 처리량이나 성능 개선율을 의미하지 않습니다.
+
+[상세 실행 조건과 결과](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)
+
 ## 8. API 계약 및 문서 (API Contract & Docs)
 - 템플릿 기본값 category는 `SUCCESS` / `FAIL`만 지원합니다. (`FAILURE` 미지원)
 - Swagger 카테고리는 기능군 기준으로 `Admin`, `System` 등으로 통합 관리합니다.

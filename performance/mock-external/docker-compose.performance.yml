@@ -1,0 +1,47 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: ${MONGO_CONTAINER:-didimlog-performance-mongo}
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - didimlog-performance-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${REDIS_CONTAINER:-didimlog-performance-redis}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  gemini-wiremock:
+    image: wiremock/wiremock:3.9.1
+    container_name: didimlog-performance-gemini-wiremock
+    ports:
+      - "${WIREMOCK_PORT:-8090}:8080"
+    volumes:
+      - ./gemini:/home/wiremock
+    command:
+      - "--global-response-templating"
+      - "--verbose"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/__admin/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  didimlog-performance-mongo-data:
