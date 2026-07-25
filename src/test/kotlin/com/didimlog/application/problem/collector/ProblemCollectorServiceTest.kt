@@ -21,7 +21,9 @@ import java.util.Collections
 import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -103,14 +105,7 @@ class ProblemCollectorServiceTest {
 
         every { adminAuditService.logAction(any(), any(), any(), any()) } just runs
 
-        service = ProblemCollectorService(
-            solvedAcClient = solvedAcClient,
-            problemRepository = problemRepository,
-            bojCrawler = bojCrawler,
-            redisTemplate = redisTemplate,
-            objectMapper = objectMapper,
-            adminAuditService = adminAuditService
-        )
+        service = createService()
     }
 
     @Test
@@ -132,6 +127,39 @@ class ProblemCollectorServiceTest {
         assertThat(status.lastCheckpointId).isEqualTo("2")
         assertThat(status.startedAt).isNotNull
         assertThat(status.completedAt).isNotNull
+    }
+
+    @Test
+    @DisplayName("메타데이터 수집 요청은 작업을 executor에 제출하고 즉시 PENDING 상태를 반환한다")
+    fun `collect metadata submits work to executor`() {
+        var submittedTask: Runnable? = null
+        service = createService(Executor { task -> submittedTask = task })
+        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { problemRepository.findById(any()) } returns Optional.empty()
+        every { problemRepository.save(any<Problem>()) } answers { firstArg() }
+
+        val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
+
+        assertThat(service.getMetadataCollectJobStatus(jobId)?.status).isEqualTo(JobStatus.PENDING)
+        assertThat(submittedTask).isNotNull
+
+        submittedTask!!.run()
+
+        assertThat(service.getMetadataCollectJobStatus(jobId)?.status).isEqualTo(JobStatus.COMPLETED)
+    }
+
+    @Test
+    @DisplayName("executor가 작업을 거부하면 수집 작업을 FAILED로 전환한다")
+    fun `collect metadata marks job failed when executor rejects`() {
+        service = createService(Executor { throw RejectedExecutionException("queue full") })
+
+        val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
+        val status = service.getMetadataCollectJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.FAILED)
+        assertThat(status?.errorCode).isEqualTo(ErrorCode.WORKER_UNAVAILABLE.code)
+        assertThat(status?.errorMessage).isEqualTo("작업 실행을 제출할 수 없습니다.")
+        verify(exactly = 0) { solvedAcClient.fetchProblem(any()) }
     }
 
     @Test
@@ -221,6 +249,18 @@ class ProblemCollectorServiceTest {
 
         assertThat(outcomes.count { it == "OK" }).isEqualTo(1)
         assertThat(outcomes.count { it == ErrorCode.JOB_ALREADY_TERMINAL.code }).isEqualTo(1)
+    }
+
+    private fun createService(taskExecutor: Executor? = null): ProblemCollectorService {
+        return ProblemCollectorService(
+            solvedAcClient = solvedAcClient,
+            problemRepository = problemRepository,
+            bojCrawler = bojCrawler,
+            redisTemplate = redisTemplate,
+            objectMapper = objectMapper,
+            adminAuditService = adminAuditService,
+            taskExecutor = taskExecutor
+        )
     }
 
     private fun seedJob(job: JobStatusUnifiedResponse) {
