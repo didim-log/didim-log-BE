@@ -14,13 +14,15 @@ import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcTierMapper
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.Executor
+import java.util.concurrent.RejectedExecutionException
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -38,7 +40,9 @@ class ProblemCollectorService(
     private val bojCrawler: BojCrawler,
     private val redisTemplate: StringRedisTemplate,
     private val objectMapper: ObjectMapper,
-    private val adminAuditService: AdminAuditService
+    private val adminAuditService: AdminAuditService,
+    @param:Qualifier("taskExecutor")
+    private val taskExecutor: Executor? = null
 ) {
 
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
@@ -150,7 +154,7 @@ class ProblemCollectorService(
             createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        collectMetadataAsyncInternal(job.jobId, start, end)
+        executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, start, end) }
         return job.jobId
     }
 
@@ -163,7 +167,7 @@ class ProblemCollectorService(
             createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        collectDetailsBatchAsyncInternal(job.jobId, targetProblems)
+        executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, targetProblems) }
         return job.jobId
     }
 
@@ -183,7 +187,7 @@ class ProblemCollectorService(
             createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        refreshDetailsBatchAsyncInternal(job.jobId, targetProblems)
+        executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, targetProblems) }
         return job.jobId
     }
 
@@ -196,7 +200,7 @@ class ProblemCollectorService(
             createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        updateLanguageBatchAsyncInternal(job.jobId, targetProblems)
+        executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, targetProblems) }
         return job.jobId
     }
 
@@ -440,7 +444,7 @@ class ProblemCollectorService(
             checkpointId = checkpointId
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        collectDetailsBatchAsyncInternal(job.jobId, targets)
+        executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, targets) }
         return job
     }
 
@@ -459,7 +463,7 @@ class ProblemCollectorService(
             checkpointId = checkpointId
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        refreshDetailsBatchAsyncInternal(job.jobId, targets)
+        executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, targets) }
         return job
     }
 
@@ -477,7 +481,7 @@ class ProblemCollectorService(
             checkpointId = checkpointId
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        updateLanguageBatchAsyncInternal(job.jobId, targets)
+        executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, targets) }
         return job
     }
 
@@ -501,7 +505,6 @@ class ProblemCollectorService(
         return completed
     }
 
-    @Async
     private fun collectMetadataAsyncInternal(jobId: String, start: Int, end: Int) {
         runJobLoop(
             jobId = jobId,
@@ -557,7 +560,6 @@ class ProblemCollectorService(
         }
     }
 
-    @Async
     private fun collectDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) {
             var processed = 0
@@ -596,7 +598,6 @@ class ProblemCollectorService(
         }
     }
 
-    @Async
     private fun refreshDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) {
             var processed = 0
@@ -648,7 +649,6 @@ class ProblemCollectorService(
         }
     }
 
-    @Async
     private fun updateLanguageBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) {
             var processed = 0
@@ -675,6 +675,21 @@ class ProblemCollectorService(
                 processed++
                 updateProgress(jobId, processed, success, fail, problem.id.value)
             }
+        }
+    }
+
+    private fun executeAsync(jobId: String, block: () -> Unit) {
+        val executor = taskExecutor
+        if (executor == null) {
+            block()
+            return
+        }
+
+        try {
+            executor.execute(block)
+        } catch (e: RejectedExecutionException) {
+            log.error("job submission rejected: jobId=$jobId, error=${e.message}", e)
+            markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업 실행을 제출할 수 없습니다.")
         }
     }
 

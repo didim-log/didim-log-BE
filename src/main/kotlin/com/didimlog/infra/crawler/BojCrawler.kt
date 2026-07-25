@@ -4,13 +4,15 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import org.springframework.context.annotation.Profile
 
 /**
  * 백준 온라인 저지(BOJ) 사이트를 크롤링하여 문제 상세 정보를 수집하는 컴포넌트
  * Rate Limit을 준수하기 위해 사용하는 쪽에서 지연 시간을 두어야 합니다.
  */
 @Component
-class BojCrawler {
+@Profile("!portfolio-fixture | prod")
+open class BojCrawler {
 
     private val log = LoggerFactory.getLogger(BojCrawler::class.java)
 
@@ -20,7 +22,7 @@ class BojCrawler {
      * @param problemId 문제 ID
      * @return 문제 상세 정보 (크롤링 실패 시 null)
      */
-    fun crawlProblemDetails(problemId: String): ProblemDetails? {
+    open fun crawlProblemDetails(problemId: String): ProblemDetails? {
         return try {
             val url = "https://www.acmicpc.net/problem/$problemId"
             val doc = fetchDocument(url)

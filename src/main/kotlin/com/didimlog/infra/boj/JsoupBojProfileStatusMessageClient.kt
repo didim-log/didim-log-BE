@@ -6,8 +6,10 @@ import com.didimlog.application.auth.boj.BojProfileStatusMessage
 import org.jsoup.Jsoup
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import org.springframework.context.annotation.Profile
 
 @Component
+@Profile("!portfolio-fixture | prod")
 class JsoupBojProfileStatusMessageClient : BojProfileStatusMessageClient {
 
     private val log = LoggerFactory.getLogger(JsoupBojProfileStatusMessageClient::class.java)
@@ -90,4 +92,3 @@ class JsoupBojProfileStatusMessageClient : BojProfileStatusMessageClient {
         return BojProfileStatusMessageFetchResult.Failed("status=${e.statusCode}, message=${e.message}")
     }
 }
-
