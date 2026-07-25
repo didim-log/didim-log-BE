@@ -1,0 +1,7 @@
+portfolio:
+  fixture:
+    boj-code: DIDIM-LOG-DEMO42
+
+logging:
+  level:
+    com.didimlog.portfolio: INFO

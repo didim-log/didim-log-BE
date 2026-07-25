@@ -4,6 +4,9 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.core.env.Environment
+import org.springframework.core.env.Profiles
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
@@ -12,7 +15,10 @@ import java.util.UUID
 @Service
 class BojOwnershipVerificationService(
     private val codeStore: BojVerificationCodeStore,
-    private val profileStatusMessageClient: BojProfileStatusMessageClient
+    private val profileStatusMessageClient: BojProfileStatusMessageClient,
+    @Value("\${portfolio.fixture.boj-code:}")
+    private val fixtureCode: String = "",
+    private val environment: Environment? = null
 ) {
 
     private val log = LoggerFactory.getLogger(BojOwnershipVerificationService::class.java)
@@ -49,7 +55,7 @@ class BojOwnershipVerificationService(
         codeStore.incrementRateLimitCount(rateLimitKey, RATE_LIMIT_TTL_SECONDS)
 
         val sessionId = UUID.randomUUID().toString()
-        val code = CODE_PREFIX + randomUpperAlphaNumeric(CODE_LENGTH)
+        val code = activeFixtureCode() ?: CODE_PREFIX + randomUpperAlphaNumeric(CODE_LENGTH)
         codeStore.save(sessionId, code, DEFAULT_TTL_SECONDS)
         return IssuedCode(sessionId = sessionId, code = code, expiresInSeconds = DEFAULT_TTL_SECONDS)
     }
@@ -156,5 +162,11 @@ class BojOwnershipVerificationService(
         }
         return builder.toString()
     }
-}
 
+    private fun activeFixtureCode(): String? {
+        val fixtureProfileOnly = environment?.acceptsProfiles(
+            Profiles.of("portfolio-fixture & !prod")
+        ) == true
+        return fixtureCode.takeIf { fixtureProfileOnly && it.isNotBlank() }
+    }
+}

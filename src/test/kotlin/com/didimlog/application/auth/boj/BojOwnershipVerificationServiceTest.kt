@@ -11,6 +11,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.springframework.mock.env.MockEnvironment
 
 @DisplayName("BOJ 소유권 인증 서비스 테스트")
 class BojOwnershipVerificationServiceTest {
@@ -35,6 +36,49 @@ class BojOwnershipVerificationServiceTest {
         verify(exactly = 1) { codeStore.getRateLimitCount(any()) }
         verify(exactly = 1) { codeStore.incrementRateLimitCount(any(), any()) }
         verify(exactly = 1) { codeStore.save(issued.sessionId, issued.code, issued.expiresInSeconds) }
+    }
+
+    @Test
+    @DisplayName("포트폴리오 전용 프로필에서는 고정 인증 코드를 발급한다")
+    fun `portfolio fixture profile issues deterministic code`() {
+        val environment = MockEnvironment().apply {
+            setActiveProfiles("portfolio-fixture")
+        }
+        val fixtureService = BojOwnershipVerificationService(
+            codeStore,
+            profileStatusMessageClient,
+            fixtureCode = "DIDIM-LOG-DEMO42",
+            environment = environment
+        )
+        every { codeStore.getRateLimitCount(any()) } returns 0L
+        every { codeStore.incrementRateLimitCount(any(), any()) } just runs
+        every { codeStore.save(any(), any(), any()) } just runs
+
+        val issued = fixtureService.issueVerificationCode("127.0.0.1")
+
+        assertThat(issued.code).isEqualTo("DIDIM-LOG-DEMO42")
+    }
+
+    @Test
+    @DisplayName("운영 프로필과 함께 활성화되면 포트폴리오 고정 코드를 사용하지 않는다")
+    fun `production profile disables deterministic fixture code`() {
+        val environment = MockEnvironment().apply {
+            setActiveProfiles("prod", "portfolio-fixture")
+        }
+        val productionService = BojOwnershipVerificationService(
+            codeStore,
+            profileStatusMessageClient,
+            fixtureCode = "DIDIM-LOG-DEMO42",
+            environment = environment
+        )
+        every { codeStore.getRateLimitCount(any()) } returns 0L
+        every { codeStore.incrementRateLimitCount(any(), any()) } just runs
+        every { codeStore.save(any(), any(), any()) } just runs
+
+        val issued = productionService.issueVerificationCode("127.0.0.1")
+
+        assertThat(issued.code).startsWith("DIDIM-LOG-")
+        assertThat(issued.code).isNotEqualTo("DIDIM-LOG-DEMO42")
     }
 
     @Test
@@ -125,4 +169,3 @@ class BojOwnershipVerificationServiceTest {
     }
 
 }
-
