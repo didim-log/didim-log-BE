@@ -149,7 +149,7 @@ flowchart LR
 
 ## 6. 화면으로 확인하기
 
-| GIF | 기능 요약 |
+| 데모 | 기능 요약 |
 | --- | --- |
 | `02` | 관리자 비동기 수집 → Redis 작업 상태 → MongoDB upsert → 문제 상세 확인 |
 | `04` | Solved.ac 태그 정규화 → 대표·보조 카테고리 저장 → 계층 확장 검색 |
@@ -158,15 +158,19 @@ flowchart LR
 
 관리자 화면에서 메타데이터 수집과 상세 정보 수집을 실행하고, Redis 작업 상태와 MongoDB 저장 결과를 실제 FE 문제 상세 화면까지 연결합니다.
 
-![문제 수집 파이프라인](./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif)
+[![문제 수집 파이프라인 영상 보기](./DOCS/assets/portfolio/02-crawler-pipeline_demo-poster.png)](./DOCS/assets/portfolio/02-crawler-pipeline_demo.mp4)
+
+[MP4 영상 열기](./DOCS/assets/portfolio/02-crawler-pipeline_demo.mp4) · [GIF 미리보기](./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif)
 
 ### 카테고리 메타데이터 수집과 계층 검색
 
 6개 문제의 태그를 정규화해 MongoDB에 저장한 뒤, 실제 문제 목록 화면에서 계층 확장 검색과 대표·보조 카테고리 표시를 확인합니다.
 
-![카테고리 메타데이터 파이프라인](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
+[![카테고리 메타데이터 파이프라인 영상 보기](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo-poster.png)](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.mp4)
 
-> 두 GIF는 외부 BOJ/Solved.ac 응답만 `portfolio-fixture`의 고정 응답으로 대체했습니다. React FE, Spring Boot BE, Redis 작업 상태, MongoDB 문서 저장, JWT 발급·검증은 로컬 환경에서 실제로 실행했습니다.
+[MP4 영상 열기](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.mp4) · [GIF 미리보기](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
+
+> 두 영상은 외부 BOJ/Solved.ac 응답만 `portfolio-fixture`의 고정 응답으로 대체했습니다. React FE, Spring Boot BE, Redis 작업 상태, MongoDB 문서 저장, JWT 발급·검증은 로컬 환경에서 실제로 실행했습니다.
 
 ## 7. 로컬 검증 결과
 
@@ -252,7 +256,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - DidimLog는 온라인 채점 시스템이 아닙니다. 풀이 성공 여부와 소요 시간은 사용자가 제출한 값을 기록합니다.
 - 카테고리는 별도 크롤러가 아니라 Solved.ac 메타데이터의 태그를 정규화한 결과입니다.
 - 부모·자식·연관 카테고리 계층은 코드로 관리하므로 외부 분류 체계 변경 시 함께 갱신해야 합니다.
-- GIF의 외부 BOJ/Solved.ac 응답은 재현 가능한 fixture이며, 실제 외부 연동 성공을 증명하지 않습니다.
+- 데모 영상의 외부 BOJ/Solved.ac 응답은 재현 가능한 fixture이며, 실제 외부 연동 성공을 증명하지 않습니다.
 - 성능 수치는 로컬 합성 환경의 결과로 운영 성능이나 개선율로 해석할 수 없습니다.
 - BOJ HTML 구조나 외부 API 계약이 변경되면 파서와 응답 모델 보완이 필요할 수 있습니다.
 
