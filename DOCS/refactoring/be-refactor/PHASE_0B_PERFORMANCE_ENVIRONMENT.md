@@ -9,7 +9,7 @@ JVM heap, fixture 시각·크기, mock 조건과 반복 정보를 고정한다.
 ## 소스 기준
 
 - Application baseline SHA: `74f7941d8d28275b9abe38877f32c4216955350b`
-- Baseline worktree checkpoint: `dfc051983e8decd1bf94993193a4ac4fde43917e`
+- Phase 0A coverage checkpoint: `dfc051983e8decd1bf94993193a4ac4fde43917e`
 - Baseline branch: `develop-be-refactor-baseline`
 - 성능 실행 시 application과 harness 모두 `gitDirty=false`여야 한다.
 
@@ -190,3 +190,6 @@ docker compose \
 - 기존 read workload는 closed model인 `constant-vus` 방식이다.
 - `performance/results` raw JSON은 Git ignore 대상이다.
 - 이 기준선으로 before와 after를 반복 측정하기 전에는 개선율을 계산하지 않는다.
+
+깨끗한 Phase 0B 커밋으로 실행한 command count와 query plan은
+[`PHASE_0B_BASELINE_RESULTS.md`](./PHASE_0B_BASELINE_RESULTS.md)에 기록한다.
