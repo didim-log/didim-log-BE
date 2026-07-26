@@ -85,11 +85,17 @@ class AdminService(
         val start = pageable.pageNumber * pageable.pageSize
         val end = minOf(start + pageable.pageSize, students.size)
         val pagedStudents = students.subList(start, end)
+        val studentIds = pagedStudents.mapNotNull { it.id }.toSet()
+        val retrospectiveCounts = if (studentIds.isEmpty()) {
+            emptyMap()
+        } else {
+            retrospectiveRepository.countByStudentIds(studentIds)
+        }
 
         return org.springframework.data.domain.PageImpl(
             pagedStudents.map { student ->
                 val solvedCount = calculateSolvedCount(student)
-                val retrospectiveCount = calculateRetrospectiveCount(student)
+                val retrospectiveCount = student.id?.let { retrospectiveCounts[it] } ?: 0L
                 AdminUserResponse.from(student, solvedCount, retrospectiveCount)
             },
             pageable,
@@ -111,17 +117,6 @@ class AdminService(
             .distinct()
             .size
             .toLong()
-    }
-
-    /**
-     * 학생이 작성한 회고 수를 계산한다.
-     *
-     * @param student 학생
-     * @return 작성한 회고 수
-     */
-    private fun calculateRetrospectiveCount(student: Student): Long {
-        val studentId = student.id ?: return 0L
-        return retrospectiveRepository.findAllByStudentId(studentId).size.toLong()
     }
 
     /**

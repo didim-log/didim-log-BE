@@ -13,6 +13,13 @@ import org.springframework.data.domain.Pageable
 interface RetrospectiveRepositoryCustom {
 
     /**
+     * 지정한 학생들의 회고 수를 한 번에 집계한다.
+     *
+     * 회고가 없는 학생은 결과 Map에 포함하지 않는다.
+     */
+    fun countByStudentIds(studentIds: Set<String>): Map<String, Long>
+
+    /**
      * 기간별 회고 작성 수를 학생 단위로 집계하여 내림차순 정렬한 랭킹을 조회한다.
      *
      * - period에 따라 createdAt 기준으로 기간 필터링을 적용한다.
@@ -41,4 +48,3 @@ data class StudentRetrospectiveCount(
     val studentId: String,
     val retrospectiveCount: Long
 )
-

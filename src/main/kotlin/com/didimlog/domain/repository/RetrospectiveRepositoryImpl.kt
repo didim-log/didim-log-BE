@@ -33,6 +33,26 @@ class RetrospectiveRepositoryImpl(
     private val mongoTemplate: MongoTemplate
 ) : RetrospectiveRepositoryCustom {
 
+    override fun countByStudentIds(studentIds: Set<String>): Map<String, Long> {
+        if (studentIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        val aggregation = newAggregation(
+            match(Criteria.where("studentId").`in`(studentIds)),
+            group("studentId").count().`as`("retrospectiveCount"),
+            project("retrospectiveCount").and("_id").`as`("studentId")
+        )
+
+        return mongoTemplate.aggregate(
+            aggregation,
+            "retrospectives",
+            StudentRetrospectiveCount::class.java
+        ).mappedResults.associate { result ->
+            result.studentId to result.retrospectiveCount
+        }
+    }
+
     override fun findTopStudentsByRetrospectiveCount(
         period: RankingPeriod,
         pageable: Pageable
