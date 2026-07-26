@@ -97,6 +97,34 @@ class RetrospectiveRankingIntegrationTest {
         assertThat(result.content.first { it.studentId == student2.id }.retrospectiveCount).isEqualTo(1)
     }
 
+    @Test
+    @DisplayName("지정한 학생들의 회고 수만 한 번에 집계한다")
+    fun `학생 ID batch 회고 수 집계`() {
+        // given
+        retrospectiveRepository.saveAll(
+            listOf(
+                Retrospective(studentId = "student-1", problemId = "1000", content = "회고 내용 1111111111"),
+                Retrospective(studentId = "student-1", problemId = "1001", content = "회고 내용 2222222222"),
+                Retrospective(studentId = "student-2", problemId = "1002", content = "회고 내용 3333333333"),
+                Retrospective(studentId = "outside-page", problemId = "1003", content = "회고 내용 4444444444")
+            )
+        )
+
+        // when
+        val result = retrospectiveRepository.countByStudentIds(
+            setOf("student-1", "student-2", "without-retrospective")
+        )
+
+        // then
+        assertThat(result).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "student-1" to 2L,
+                "student-2" to 1L
+            )
+        )
+        assertThat(retrospectiveRepository.countByStudentIds(emptySet())).isEmpty()
+    }
+
     private fun createStudent(id: String, nickname: String, rating: Int): Student {
         return Student(
             id = id,
@@ -112,4 +140,3 @@ class RetrospectiveRankingIntegrationTest {
         )
     }
 }
-

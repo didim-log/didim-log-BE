@@ -121,20 +121,72 @@ class AdminServiceTest {
                 password = "encoded",
                 currentTier = Tier.BRONZE,
                 role = Role.USER
+            ),
+            Student(
+                id = "student2",
+                nickname = Nickname("user2"),
+                provider = Provider.BOJ,
+                providerId = "user2",
+                bojId = BojId("user2"),
+                password = "encoded",
+                currentTier = Tier.BRONZE,
+                role = Role.USER
+            ),
+            Student(
+                id = "student3",
+                nickname = Nickname("user3"),
+                provider = Provider.BOJ,
+                providerId = "user3",
+                bojId = BojId("user3"),
+                password = "encoded",
+                currentTier = Tier.BRONZE,
+                role = Role.USER
             )
         )
         val pageable = PageRequest.of(0, 20)
 
         every { studentRepository.findAll() } returns students
-        every { retrospectiveRepository.findAllByStudentId(any()) } returns emptyList()
+        every {
+            retrospectiveRepository.countByStudentIds(setOf("student1", "student2", "student3"))
+        } returns linkedMapOf(
+            "student2" to 1L,
+            "student1" to 2L
+        )
 
         // when
         val result = adminService.getAllUsers(pageable)
 
         // then
-        assertThat(result.content).hasSize(1)
+        assertThat(result.content).hasSize(3)
         assertThat(result.content[0].nickname).isEqualTo("user1")
+        assertThat(result.content[0].retrospectiveCount).isEqualTo(2)
+        assertThat(result.content[1].nickname).isEqualTo("user2")
+        assertThat(result.content[1].retrospectiveCount).isEqualTo(1)
+        assertThat(result.content[2].nickname).isEqualTo("user3")
+        assertThat(result.content[2].retrospectiveCount).isZero()
         verify(exactly = 1) { studentRepository.findAll() }
+        verify(exactly = 1) {
+            retrospectiveRepository.countByStudentIds(setOf("student1", "student2", "student3"))
+        }
+        verify(exactly = 0) { retrospectiveRepository.findAllByStudentId(any()) }
+    }
+
+    @Test
+    @DisplayName("조회 결과가 비어 있으면 회고 수를 집계하지 않는다")
+    fun `빈 회원 목록은 회고 수를 집계하지 않음`() {
+        // given
+        val pageable = PageRequest.of(0, 20)
+        every { studentRepository.findAll() } returns emptyList()
+
+        // when
+        val result = adminService.getAllUsers(pageable)
+
+        // then
+        assertThat(result.content).isEmpty()
+        assertThat(result.totalElements).isZero()
+        verify(exactly = 1) { studentRepository.findAll() }
+        verify(exactly = 0) { retrospectiveRepository.countByStudentIds(any()) }
+        verify(exactly = 0) { retrospectiveRepository.findAllByStudentId(any()) }
     }
 
     @Test
