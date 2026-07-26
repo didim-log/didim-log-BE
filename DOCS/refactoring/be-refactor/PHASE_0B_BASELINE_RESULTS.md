@@ -119,3 +119,6 @@ gate가 유지됐다는 확인이며 커버리지 향상 성과로 사용하지 
 Phase 1에서 한 가지 병목을 변경한 뒤 같은 기준선 runner와 paired protocol로 다시
 측정한다. 차이가 반복 측정에서도 유지되고 원인이 설명될 때만 별도 성과 문서와
 README 요약에 전후 수치와 개선율을 추가한다.
+
+첫 번째 개선 결과는
+[`PHASE_1A_ADMIN_N_PLUS_ONE.md`](./PHASE_1A_ADMIN_N_PLUS_ONE.md)에 기록한다.
