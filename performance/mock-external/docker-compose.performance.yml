@@ -1,9 +1,9 @@
 services:
   mongo:
-    image: mongo:7
+    image: mongo:7.0.16@sha256:c630c59342c1493d50345136df2af14a76b9e827dd5316bfabee07a0880a5f3a
     container_name: ${MONGO_CONTAINER:-didimlog-performance-mongo}
     ports:
-      - "${MONGO_PORT:-27017}:27017"
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
     volumes:
       - didimlog-performance-mongo-data:/data/db
     healthcheck:
@@ -14,10 +14,10 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2.5-alpine@sha256:6aaf3f5e6bc8a592fbfe2cccf19eb36d27c39d12dab4f4b01556b7449e7b1f44
     container_name: ${REDIS_CONTAINER:-didimlog-performance-redis}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -27,10 +27,10 @@ services:
     restart: unless-stopped
 
   gemini-wiremock:
-    image: wiremock/wiremock:3.9.1
+    image: wiremock/wiremock:3.9.1@sha256:8fe02bc3f9b63deb1454d41750dbaf081adf4b3e8c74fd8e31f790bee5647b88
     container_name: didimlog-performance-gemini-wiremock
     ports:
-      - "${WIREMOCK_PORT:-8090}:8080"
+      - "127.0.0.1:${WIREMOCK_PORT:-8090}:8080"
     volumes:
       - ./gemini:/home/wiremock
     command:
@@ -45,3 +45,4 @@ services:
 
 volumes:
   didimlog-performance-mongo-data:
+    name: didimlog-performance-mongo-data

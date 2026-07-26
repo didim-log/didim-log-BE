@@ -1,0 +1,371 @@
+package com.didimlog.application.admin.query
+
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.didimlog.application.admin.AdminService
+import com.didimlog.domain.Retrospective
+import com.didimlog.domain.Student
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.global.config.PasswordEncoderConfig
+import com.mongodb.MongoClientSettings
+import com.mongodb.event.CommandListener
+import com.mongodb.event.CommandStartedEvent
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.ConcurrentLinkedQueue
+import org.assertj.core.api.Assertions.assertThat
+import org.bson.BsonString
+import org.bson.Document
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.mongo.MongoClientSettingsBuilderCustomizer
+import org.springframework.boot.test.autoconfigure.data.mongo.DataMongoTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.test.context.ActiveProfiles
+
+@DisplayName("관리자 회원 목록 조회 command baseline")
+@DataMongoTest
+@ActiveProfiles("test")
+@Import(
+    AdminService::class,
+    PasswordEncoderConfig::class,
+    AdminQueryMongoCommandConfiguration::class
+)
+class AdminUserQueryBaselineIntegrationTest {
+
+    @Autowired
+    private lateinit var adminService: AdminService
+
+    @Autowired
+    private lateinit var studentRepository: StudentRepository
+
+    @Autowired
+    private lateinit var retrospectiveRepository: RetrospectiveRepository
+
+    @Autowired
+    private lateinit var commandCounter: MongoCommandCounter
+
+    @Autowired
+    private lateinit var mongoTemplate: MongoTemplate
+
+    @BeforeEach
+    fun setUp() {
+        retrospectiveRepository.deleteAll()
+        studentRepository.deleteAll()
+
+        val students = studentRepository.saveAll(
+            (1..TOTAL_STUDENT_COUNT).map(::createStudent)
+        )
+        retrospectiveRepository.saveAll(
+            students.mapIndexed { index, student ->
+                Retrospective(
+                    studentId = requireNotNull(student.id),
+                    problemId = "baseline-problem-$index",
+                    content = "관리자 조회 baseline 회고 내용 $index"
+                )
+            }
+        )
+
+        commandCounter.reset()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        retrospectiveRepository.deleteAll()
+        studentRepository.deleteAll()
+        commandCounter.reset()
+    }
+
+    @ParameterizedTest(name = "page size {0}이면 find command는 1 + P번 실행된다")
+    @ValueSource(ints = [1, 5, 10])
+    fun `회원 목록 조회는 페이지 회원마다 회고를 추가 조회한다`(pageSize: Int) {
+        val result = adminService.getAllUsers(PageRequest.of(0, pageSize))
+
+        assertThat(result.content).hasSize(pageSize)
+        assertThat(result.totalElements).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(result.content).allSatisfy { user ->
+            assertThat(user.solvedCount).isZero()
+            assertThat(user.retrospectiveCount).isEqualTo(1)
+        }
+
+        val studentFindCount = commandCounter.countFindCommands("students")
+        val retrospectiveFindCount = commandCounter.countFindCommands("retrospectives")
+        val totalFindCount = commandCounter.countFindCommands()
+
+        assertThat(studentFindCount)
+            .describedAs("회원 전체 조회 command")
+            .isEqualTo(1)
+        assertThat(retrospectiveFindCount)
+            .describedAs("페이지 회원별 회고 조회 command")
+            .isEqualTo(pageSize)
+        assertThat(totalFindCount)
+            .describedAs("관리자 회원 목록의 1 + P baseline")
+            .isEqualTo(1 + pageSize)
+
+        val studentIndexes = collectIndexes(Student::class.java)
+        val retrospectiveIndexes = collectIndexes(Retrospective::class.java)
+        val studentFindAllStats = explainFind(
+            collection = "students",
+            query = "findAll",
+            filter = Document()
+        )
+        val retrospectiveByStudentIdStats = explainFind(
+            collection = "retrospectives",
+            query = "studentId",
+            filter = Document("studentId", "baseline-student-1")
+        )
+
+        assertQueryPlanBaseline(
+            studentIndexes = studentIndexes,
+            retrospectiveIndexes = retrospectiveIndexes,
+            studentFindAllStats = studentFindAllStats,
+            retrospectiveByStudentIdStats = retrospectiveByStudentIdStats
+        )
+
+        writeSnapshotIfRequested(
+            AdminQueryBaselineSnapshot(
+                source = BaselineSource(
+                    commitSha = System.getenv("ADMIN_QUERY_BASELINE_COMMIT_SHA") ?: "NOT_CAPTURED",
+                    gitDirty = System.getenv("ADMIN_QUERY_BASELINE_GIT_DIRTY")?.toBooleanStrictOrNull()
+                ),
+                database = mongoTemplate.db.name,
+                pageSize = pageSize,
+                commandCounts = MongoCommandCounts(
+                    studentFind = studentFindCount,
+                    retrospectiveFind = retrospectiveFindCount,
+                    totalFind = totalFindCount
+                ),
+                studentIndexes = studentIndexes,
+                retrospectiveIndexes = retrospectiveIndexes,
+                studentFindAll = studentFindAllStats,
+                retrospectiveByStudentId = retrospectiveByStudentIdStats
+            )
+        )
+    }
+
+    private fun collectIndexes(entityType: Class<*>): List<MongoIndexBaseline> {
+        return mongoTemplate.indexOps(entityType).indexInfo
+            .map { index ->
+                MongoIndexBaseline(
+                    name = index.name,
+                    unique = index.isUnique || index.name == "_id_",
+                    sparse = index.isSparse,
+                    fields = index.indexFields.map { field ->
+                        MongoIndexFieldBaseline(
+                            key = field.key,
+                            direction = field.direction?.name
+                        )
+                    }
+                )
+            }
+            .sortedBy { it.name }
+    }
+
+    private fun explainFind(
+        collection: String,
+        query: String,
+        filter: Document
+    ): MongoQueryExecutionBaseline {
+        val explain = mongoTemplate.executeCommand(
+            Document(
+                "explain",
+                Document("find", collection)
+                    .append("filter", filter)
+            ).append("verbosity", "executionStats")
+        )
+        val queryPlanner = explain.requiredDocument("queryPlanner")
+        val winningPlan = queryPlanner.requiredDocument("winningPlan")
+        val executionStats = explain.requiredDocument("executionStats")
+
+        return MongoQueryExecutionBaseline(
+            collection = collection,
+            query = query,
+            winningPlanStage = requireNotNull(findFirstPlanStage(winningPlan)) {
+                "winning plan stage를 찾을 수 없습니다. winningPlan=$winningPlan"
+            },
+            nReturned = executionStats.requiredLong("nReturned"),
+            totalDocsExamined = executionStats.requiredLong("totalDocsExamined"),
+            totalKeysExamined = executionStats.requiredLong("totalKeysExamined")
+        )
+    }
+
+    private fun findFirstPlanStage(value: Any?): String? {
+        return when (value) {
+            is Document -> {
+                (value["stage"] as? String)
+                    ?: value.values.asSequence().mapNotNull(::findFirstPlanStage).firstOrNull()
+            }
+            is Iterable<*> -> value.asSequence().mapNotNull(::findFirstPlanStage).firstOrNull()
+            else -> null
+        }
+    }
+
+    private fun assertQueryPlanBaseline(
+        studentIndexes: List<MongoIndexBaseline>,
+        retrospectiveIndexes: List<MongoIndexBaseline>,
+        studentFindAllStats: MongoQueryExecutionBaseline,
+        retrospectiveByStudentIdStats: MongoQueryExecutionBaseline
+    ) {
+        assertThat(studentIndexes.map { it.name }).containsExactly("_id_")
+        assertThat(retrospectiveIndexes.map { it.name }).containsExactly("_id_")
+
+        assertThat(studentFindAllStats.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(studentFindAllStats.nReturned).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentFindAllStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentFindAllStats.totalKeysExamined).isZero()
+
+        assertThat(retrospectiveByStudentIdStats.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(retrospectiveByStudentIdStats.nReturned).isEqualTo(1)
+        assertThat(retrospectiveByStudentIdStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(retrospectiveByStudentIdStats.totalKeysExamined).isZero()
+    }
+
+    private fun writeSnapshotIfRequested(snapshot: AdminQueryBaselineSnapshot) {
+        val configuredOutputDirectory = System.getenv(OUTPUT_DIRECTORY_ENV)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: return
+        val outputDirectory = Path.of(configuredOutputDirectory).toAbsolutePath().normalize()
+        Files.createDirectories(outputDirectory)
+        val outputFile = outputDirectory.resolve(
+            "admin-users-page-size-%02d.json".format(snapshot.pageSize)
+        )
+
+        jacksonObjectMapper()
+            .writerWithDefaultPrettyPrinter()
+            .writeValue(outputFile.toFile(), snapshot)
+    }
+
+    private fun createStudent(index: Int): Student {
+        return Student(
+            id = "baseline-student-$index",
+            nickname = Nickname("query$index"),
+            provider = Provider.BOJ,
+            providerId = "baseline-provider-$index",
+            bojId = BojId("baseline_$index"),
+            password = "encoded-password",
+            rating = 1_000 + index,
+            currentTier = Tier.GOLD,
+            role = Role.USER
+        )
+    }
+
+    companion object {
+        private const val TOTAL_STUDENT_COUNT = 12
+        private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
+    }
+}
+
+@TestConfiguration(proxyBeanMethods = false)
+class AdminQueryMongoCommandConfiguration {
+
+    @Bean
+    fun mongoCommandCounter(): MongoCommandCounter = MongoCommandCounter()
+
+    @Bean
+    fun mongoCommandCounterCustomizer(
+        commandCounter: MongoCommandCounter
+    ): MongoClientSettingsBuilderCustomizer {
+        return MongoClientSettingsBuilderCustomizer { builder: MongoClientSettings.Builder ->
+            builder.addCommandListener(commandCounter)
+        }
+    }
+}
+
+class MongoCommandCounter : CommandListener {
+
+    private val findCollections = ConcurrentLinkedQueue<String>()
+
+    override fun commandStarted(event: CommandStartedEvent) {
+        if (event.commandName != "find") {
+            return
+        }
+
+        val collection = (event.command[event.commandName] as? BsonString)?.value ?: return
+        if (collection != "students" && collection != "retrospectives") {
+            return
+        }
+
+        findCollections.add(collection)
+    }
+
+    fun reset() {
+        findCollections.clear()
+    }
+
+    fun countFindCommands(collection: String? = null): Int {
+        return findCollections.count { observedCollection ->
+            collection == null || observedCollection == collection
+        }
+    }
+}
+
+data class AdminQueryBaselineSnapshot(
+    val source: BaselineSource,
+    val database: String,
+    val pageSize: Int,
+    val commandCounts: MongoCommandCounts,
+    val studentIndexes: List<MongoIndexBaseline>,
+    val retrospectiveIndexes: List<MongoIndexBaseline>,
+    val studentFindAll: MongoQueryExecutionBaseline,
+    val retrospectiveByStudentId: MongoQueryExecutionBaseline
+)
+
+data class BaselineSource(
+    val commitSha: String,
+    val gitDirty: Boolean?
+)
+
+data class MongoCommandCounts(
+    val studentFind: Int,
+    val retrospectiveFind: Int,
+    val totalFind: Int
+)
+
+data class MongoIndexBaseline(
+    val name: String?,
+    val unique: Boolean,
+    val sparse: Boolean,
+    val fields: List<MongoIndexFieldBaseline>
+)
+
+data class MongoIndexFieldBaseline(
+    val key: String,
+    val direction: String?
+)
+
+data class MongoQueryExecutionBaseline(
+    val collection: String,
+    val query: String,
+    val winningPlanStage: String,
+    @get:JsonProperty("nReturned")
+    val nReturned: Long,
+    val totalDocsExamined: Long,
+    val totalKeysExamined: Long
+)
+
+private fun Document.requiredDocument(key: String): Document {
+    return requireNotNull(this[key] as? Document) {
+        "Mongo 응답에 $key 문서가 없습니다. response=$this"
+    }
+}
+
+private fun Document.requiredLong(key: String): Long {
+    return requireNotNull(this[key] as? Number) {
+        "Mongo 응답에 $key 숫자가 없습니다. document=$this"
+    }.toLong()
+}

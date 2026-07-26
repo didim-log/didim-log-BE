@@ -7,9 +7,21 @@ RESULTS_DIR="$ROOT_DIR/performance/results"
 MOCK_COMPOSE="$ROOT_DIR/performance/mock-external/docker-compose.performance.yml"
 NODE_MOCK="$ROOT_DIR/performance/mock-external/gemini/node-mock/server.js"
 VERIFY_AI="$ROOT_DIR/performance/verify/verify_ai_call_count.sh"
+WRITE_ENVIRONMENT_MANIFEST="$ROOT_DIR/performance/verify/write_environment_manifest.sh"
 K6_VERSION_FILE="$K6_DIR/K6_VERSION"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env.performance}"
 NODE_MOCK_PID_FILE="/tmp/didimlog-performance/gemini-mock.pid"
+
+DIDIMLOG_CALLER_K6_RUN_ID_SET="${K6_RUN_ID+x}"
+DIDIMLOG_CALLER_K6_RUN_ID="${K6_RUN_ID-}"
+DIDIMLOG_CALLER_APPLICATION_WORKTREE_SET="${APPLICATION_WORKTREE+x}"
+DIDIMLOG_CALLER_APPLICATION_WORKTREE="${APPLICATION_WORKTREE-}"
+DIDIMLOG_CALLER_REPETITION_INDEX_SET="${MEASUREMENT_REPETITION_INDEX+x}"
+DIDIMLOG_CALLER_REPETITION_INDEX="${MEASUREMENT_REPETITION_INDEX-}"
+DIDIMLOG_CALLER_ALLOW_DIRTY_SET="${ALLOW_DIRTY_PERFORMANCE_RUN+x}"
+DIDIMLOG_CALLER_ALLOW_DIRTY="${ALLOW_DIRTY_PERFORMANCE_RUN-}"
+DIDIMLOG_CALLER_PROTOCOL_ID_SET="${PERFORMANCE_PROTOCOL_ID+x}"
+DIDIMLOG_CALLER_PROTOCOL_ID="${PERFORMANCE_PROTOCOL_ID-}"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -18,47 +30,150 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
+if [[ "$DIDIMLOG_CALLER_K6_RUN_ID_SET" == "x" ]]; then
+  K6_RUN_ID="$DIDIMLOG_CALLER_K6_RUN_ID"
+fi
+if [[ "$DIDIMLOG_CALLER_APPLICATION_WORKTREE_SET" == "x" ]]; then
+  APPLICATION_WORKTREE="$DIDIMLOG_CALLER_APPLICATION_WORKTREE"
+fi
+if [[ "$DIDIMLOG_CALLER_REPETITION_INDEX_SET" == "x" ]]; then
+  MEASUREMENT_REPETITION_INDEX="$DIDIMLOG_CALLER_REPETITION_INDEX"
+fi
+if [[ "$DIDIMLOG_CALLER_ALLOW_DIRTY_SET" == "x" ]]; then
+  ALLOW_DIRTY_PERFORMANCE_RUN="$DIDIMLOG_CALLER_ALLOW_DIRTY"
+fi
+if [[ "$DIDIMLOG_CALLER_PROTOCOL_ID_SET" == "x" ]]; then
+  PERFORMANCE_PROTOCOL_ID="$DIDIMLOG_CALLER_PROTOCOL_ID"
+fi
+
 : "${BASE_URL:=http://localhost:8080}"
+: "${SERVER_PORT:=8080}"
 : "${WIREMOCK_URL:=http://localhost:8090}"
-: "${MOCK_GEMINI_MODE:=auto}"
+: "${WIREMOCK_PORT:=8090}"
+: "${MOCK_GEMINI_MODE:=wiremock}"
 : "${MOCK_GEMINI_DELAY_MS:=500}"
 : "${MONGO_URI:=mongodb://localhost:27017/didimlog-performance}"
 : "${MONGO_HOST:=127.0.0.1}"
 : "${MONGO_PORT:=27017}"
+: "${REDIS_HOST:=localhost}"
+: "${REDIS_PORT:=6379}"
+: "${REDIS_DATABASE:=0}"
+: "${SPRING_DATA_MONGODB_URI:=$MONGO_URI}"
+: "${SPRING_DATA_REDIS_HOST:=$REDIS_HOST}"
+: "${SPRING_DATA_REDIS_PORT:=$REDIS_PORT}"
+: "${SPRING_DATA_REDIS_DATABASE:=$REDIS_DATABASE}"
+: "${SPRING_PROFILES_ACTIVE:=default}"
+: "${SPRING_CONFIG_IMPORT:=optional:classpath:/didimlog-performance-no-external-config.properties}"
+: "${SPRING_MAIL_HOST:=127.0.0.1}"
+: "${SPRING_MAIL_PORT:=1}"
+: "${MAIL_PASSWORD:=performance-not-used}"
+: "${OAUTH_GOOGLE_ID:=performance-google-id}"
+: "${OAUTH_GOOGLE_SECRET:=performance-google-secret}"
+: "${OAUTH_GITHUB_ID:=performance-github-id}"
+: "${OAUTH_GITHUB_SECRET:=performance-github-secret}"
+: "${OAUTH_NAVER_ID:=performance-naver-id}"
+: "${OAUTH_NAVER_SECRET:=performance-naver-secret}"
+: "${SERVER_URL:=http://localhost:8080}"
+: "${JWT_SECRET:=performance-secret-key-must-be-at-least-256-bits-long-1234567890}"
+: "${JWT_ACCESS_TOKEN_EXPIRATION:=1800000}"
+: "${JWT_REFRESH_TOKEN_EXPIRATION:=604800000}"
+: "${JWT_EXPIRATION:=1800000}"
+: "${ADMIN_SECRET_KEY:=performance-admin-secret}"
+: "${AI_ENABLED:=false}"
+: "${GEMINI_API_KEY:=local-gemini-key}"
+: "${GEMINI_API_URL:=http://localhost:8090/v1beta/models/gemini-2.5-flash:generateContent}"
+: "${GEMINI_CONNECT_TIMEOUT_MILLIS:=1000}"
+: "${GEMINI_RESPONSE_TIMEOUT_SECONDS:=5}"
+: "${GEMINI_READ_TIMEOUT_SECONDS:=5}"
+: "${GEMINI_WRITE_TIMEOUT_SECONDS:=5}"
+: "${GEMINI_MAX_RETRIES:=0}"
+: "${GEMINI_RETRY_BACKOFF_MILLIS:=700}"
+: "${AI_REVIEW_ASYNC_CORE_POOL_SIZE:=8}"
+: "${AI_REVIEW_ASYNC_MAX_POOL_SIZE:=16}"
+: "${AI_REVIEW_ASYNC_QUEUE_CAPACITY:=500}"
 : "${PERF_BOJ_ID:=perfuser}"
 : "${PERF_AI_BOJ_ID_PREFIX:=${PERF_BOJ_ID}_ai}"
 : "${PERF_PASSWORD:=PerfPassword123!}"
 : "${PERF_BCRYPT_PASSWORD:=\$2y\$10\$FTcPZSUl3qvlezqQQb7oreLZ8T2XID88ICjFjXipc2Ei4EfS7k9SO}"
+: "${JWT_TTL_SECONDS:=3600}"
+: "${FIXTURE_VERSION:=be-refactor-phase0b-v1}"
+: "${PERF_FIXTURE_EPOCH:=2026-07-26T00:00:00Z}"
 : "${PERF_FIXTURE_RETROSPECTIVES:=100}"
+: "${MEASUREMENT_REPETITION_INDEX:=1}"
+: "${MEASUREMENT_REPETITION_TOTAL:=5}"
+: "${PERFORMANCE_PROTOCOL_ID:=be-refactor-phase0b-v1}"
+: "${ALLOW_DIRTY_PERFORMANCE_RUN:=false}"
 : "${AI_REPEAT_COUNT:=10}"
 : "${AI_CONCURRENCY:=50}"
 : "${AI_POLL_TIMEOUT_SECONDS:=30}"
 : "${AI_POLL_INTERVAL_MILLIS:=250}"
 : "${AI_FAILED_POLL_TIMEOUT_SECONDS:=20}"
 : "${AI_COMPLETED_POLL_TIMEOUT_SECONDS:=30}"
+: "${AI_SYNC_WAIT_MS:=3000}"
+: "${AI_MAX_DURATION:=45s}"
+: "${EXPECTED_GEMINI_CALLS:=1}"
 : "${FAIL_FAST_AI_REPEAT:=false}"
-: "${REDIS_HOST:=localhost}"
-: "${REDIS_PORT:=6379}"
+: "${RATE_LIMIT_SLEEP_SECONDS:=0.05}"
+: "${P95_MS:=}"
 : "${RATE_LIMIT_SIGNUP_IP:=10.67.1.11}"
 : "${RATE_LIMIT_LOGIN_IP:=10.67.1.12}"
 : "${RATE_LIMIT_PASSWORD_RESET_IP:=10.67.1.13}"
+: "${RATE_LIMIT_IP_PREFIX:=10.67}"
+: "${READ_RETROSPECTIVE_IDS:=}"
 : "${TARGET_ENVIRONMENT:=local}"
 : "${ALLOW_REMOTE_LOAD_TEST:=false}"
 : "${REMOTE_TARGET_ALLOWLIST:=}"
 : "${COMMIT_SHA:=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo NOT_CAPTURED)}"
-: "${JAVA_VERSION:=$(java -version 2>&1 | head -n 1 || echo NOT_CAPTURED)}"
+: "${APPLICATION_BASELINE_SHA:=74f7941d8d28275b9abe38877f32c4216955350b}"
+: "${APPLICATION_WORKTREE:=$ROOT_DIR}"
+if [[ "$APPLICATION_WORKTREE" != /* ]]; then
+  APPLICATION_WORKTREE="$ROOT_DIR/$APPLICATION_WORKTREE"
+fi
+APPLICATION_WORKTREE="$(cd "$APPLICATION_WORKTREE" && pwd)"
+APPLICATION_COMMIT_SHA="$(git -C "$APPLICATION_WORKTREE" rev-parse HEAD 2>/dev/null || echo NOT_CAPTURED)"
+APPLICATION_GIT_DIRTY="$([[ -n "$(git -C "$APPLICATION_WORKTREE" status --porcelain 2>/dev/null)" ]] && echo true || echo false)"
+: "${JAVA_VERSION:=$(java -version 2>&1 | awk '/^(openjdk|java) version "/ { print; found=1; exit } END { if (!found) print "NOT_CAPTURED" }')}"
 : "${KOTLIN_VERSION:=1.9.25}"
 : "${K6_RUN_ID:=perf-$(date +%Y%m%d%H%M%S)}"
-: "${JVM_HEAP:=${JAVA_TOOL_OPTIONS:-NOT_CAPTURED}}"
+: "${APP_RUNTIME_MODE:=gradle-toolchain}"
+: "${APP_JAVA_VERSION:=17}"
+: "${APP_JVM_XMS:=512m}"
+: "${APP_JVM_XMX:=512m}"
+: "${APP_JVM_GC:=G1}"
+: "${APP_TIMEZONE:=Asia/Seoul}"
+: "${JVM_HEAP:=-Xms$APP_JVM_XMS -Xmx$APP_JVM_XMX}"
 : "${CPU_INFO:=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || lscpu 2>/dev/null | head -n 1 || echo NOT_CAPTURED)}"
 : "${MEMORY_INFO:=$(sysctl -n hw.memsize 2>/dev/null || grep MemTotal /proc/meminfo 2>/dev/null || echo NOT_CAPTURED)}"
 
 K6_EXPECTED_VERSION="$(tr -d '[:space:]' <"$K6_VERSION_FILE")"
 GIT_DIRTY="$([[ -n "$(git -C "$ROOT_DIR" status --porcelain 2>/dev/null)" ]] && echo true || echo false)"
 
-export BASE_URL WIREMOCK_URL MOCK_GEMINI_DELAY_MS MONGO_URI PERF_BOJ_ID PERF_AI_BOJ_ID_PREFIX
+export BASE_URL SERVER_PORT WIREMOCK_URL WIREMOCK_PORT MOCK_GEMINI_DELAY_MS
+export MONGO_URI MONGO_PORT PERF_BOJ_ID PERF_AI_BOJ_ID_PREFIX PERF_PASSWORD PERF_BCRYPT_PASSWORD
+export JWT_TTL_SECONDS
+export REDIS_HOST REDIS_PORT REDIS_DATABASE
+export SPRING_DATA_MONGODB_URI SPRING_DATA_REDIS_HOST SPRING_DATA_REDIS_PORT SPRING_DATA_REDIS_DATABASE
+export SPRING_PROFILES_ACTIVE SPRING_CONFIG_IMPORT
+export SPRING_MAIL_HOST SPRING_MAIL_PORT MAIL_PASSWORD
+export OAUTH_GOOGLE_ID OAUTH_GOOGLE_SECRET OAUTH_GITHUB_ID OAUTH_GITHUB_SECRET
+export OAUTH_NAVER_ID OAUTH_NAVER_SECRET SERVER_URL JWT_SECRET
+export JWT_ACCESS_TOKEN_EXPIRATION JWT_REFRESH_TOKEN_EXPIRATION JWT_EXPIRATION
+export ADMIN_SECRET_KEY AI_ENABLED GEMINI_API_KEY
+export GEMINI_API_URL GEMINI_CONNECT_TIMEOUT_MILLIS GEMINI_RESPONSE_TIMEOUT_SECONDS
+export GEMINI_READ_TIMEOUT_SECONDS GEMINI_WRITE_TIMEOUT_SECONDS GEMINI_MAX_RETRIES
+export GEMINI_RETRY_BACKOFF_MILLIS
+export AI_REVIEW_ASYNC_CORE_POOL_SIZE AI_REVIEW_ASYNC_MAX_POOL_SIZE AI_REVIEW_ASYNC_QUEUE_CAPACITY
 export RATE_LIMIT_SIGNUP_IP RATE_LIMIT_LOGIN_IP RATE_LIMIT_PASSWORD_RESET_IP
+export RATE_LIMIT_IP_PREFIX RATE_LIMIT_SLEEP_SECONDS P95_MS READ_RETROSPECTIVE_IDS
 export COMMIT_SHA JAVA_VERSION KOTLIN_VERSION K6_RUN_ID JVM_HEAP CPU_INFO MEMORY_INFO
+export APPLICATION_BASELINE_SHA APPLICATION_WORKTREE APPLICATION_COMMIT_SHA APPLICATION_GIT_DIRTY
+export APP_RUNTIME_MODE APP_JAVA_VERSION APP_JVM_XMS APP_JVM_XMX APP_JVM_GC APP_TIMEZONE
+export FIXTURE_VERSION PERF_FIXTURE_EPOCH PERF_FIXTURE_RETROSPECTIVES
+export MEASUREMENT_REPETITION_INDEX MEASUREMENT_REPETITION_TOTAL PERFORMANCE_PROTOCOL_ID
+export ALLOW_DIRTY_PERFORMANCE_RUN
+export AI_CONCURRENCY AI_REPEAT_COUNT AI_POLL_TIMEOUT_SECONDS AI_POLL_INTERVAL_MILLIS
+export AI_FAILED_POLL_TIMEOUT_SECONDS AI_COMPLETED_POLL_TIMEOUT_SECONDS
+export AI_SYNC_WAIT_MS AI_MAX_DURATION EXPECTED_GEMINI_CALLS FAIL_FAST_AI_REPEAT
 export K6_VERSION="$K6_EXPECTED_VERSION"
 export GIT_DIRTY
 export MONGO_ENVIRONMENT="${MONGO_ENVIRONMENT:-local}"
@@ -89,10 +204,42 @@ PY
 
 docker_compose() {
   if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
+    docker compose --project-name didimlog-performance "$@"
     return
   fi
-  docker-compose "$@"
+  docker-compose --project-name didimlog-performance "$@"
+}
+
+reset_performance_volumes() {
+  assert_local_fixture_environment
+  require_command docker
+  if [[ "$MOCK_GEMINI_MODE" != "wiremock" ]]; then
+    echo "Performance volume reset requires MOCK_GEMINI_MODE=wiremock." >&2
+    return 2
+  fi
+  if [[ "${CONFIRM_PERFORMANCE_VOLUME_RESET:-}" != "didimlog-performance" ]]; then
+    cat >&2 <<CONFIRM
+Refusing to reset volumes without explicit confirmation.
+Run:
+  CONFIRM_PERFORMANCE_VOLUME_RESET=didimlog-performance \
+    performance/k6/run-local.sh reset-volumes
+CONFIRM
+    return 2
+  fi
+
+  local configured_volumes
+  configured_volumes="$(
+    docker_compose -f "$MOCK_COMPOSE" config --volumes |
+      sed '/^[[:space:]]*$/d' |
+      LC_ALL=C sort
+  )"
+  if [[ "$configured_volumes" != "didimlog-performance-mongo-data" ]]; then
+    echo "Unexpected performance compose volumes; refusing reset:" >&2
+    printf '%s\n' "$configured_volumes" >&2
+    return 2
+  fi
+
+  docker_compose -f "$MOCK_COMPOSE" down --volumes
 }
 
 assert_safe_environment() {
@@ -169,7 +316,19 @@ PY
 }
 
 validate_number_config() {
-  python3 - "$AI_CONCURRENCY" "$AI_REPEAT_COUNT" "$MOCK_GEMINI_DELAY_MS" "${READ_VUS:-10}" "${RATE_LIMIT_OVERAGE_REQUESTS:-2}" "${READ_PAGE_SIZE:-10}" <<'PY'
+  python3 - \
+    "$AI_CONCURRENCY" \
+    "$AI_REPEAT_COUNT" \
+    "$MOCK_GEMINI_DELAY_MS" \
+    "${READ_VUS:-10}" \
+    "${RATE_LIMIT_OVERAGE_REQUESTS:-2}" \
+    "${READ_PAGE_SIZE:-10}" \
+    "$PERF_FIXTURE_EPOCH" \
+    "$FIXTURE_VERSION" \
+    "$MEASUREMENT_REPETITION_INDEX" \
+    "$MEASUREMENT_REPETITION_TOTAL" \
+    "$K6_RUN_ID" <<'PY'
+from datetime import datetime
 import re
 import sys
 
@@ -180,6 +339,8 @@ checks = [
     ("READ_VUS", sys.argv[4], 1, 500),
     ("RATE_LIMIT_OVERAGE_REQUESTS", sys.argv[5], 1, 20),
     ("READ_PAGE_SIZE", sys.argv[6], 1, 100),
+    ("MEASUREMENT_REPETITION_INDEX", sys.argv[9], 1, 100),
+    ("MEASUREMENT_REPETITION_TOTAL", sys.argv[10], 1, 100),
 ]
 for name, value, low, high in checks:
     if not re.fullmatch(r"0|[1-9]\d*", str(value)):
@@ -187,6 +348,22 @@ for name, value, low, high in checks:
     parsed = int(value)
     if parsed < low or parsed > high:
         raise SystemExit(f"{name} must be between {low} and {high}: {value}")
+
+if int(sys.argv[9]) > int(sys.argv[10]):
+    raise SystemExit("MEASUREMENT_REPETITION_INDEX cannot exceed MEASUREMENT_REPETITION_TOTAL")
+
+try:
+    epoch = datetime.fromisoformat(sys.argv[7].replace("Z", "+00:00"))
+except ValueError as error:
+    raise SystemExit(f"PERF_FIXTURE_EPOCH must be ISO-8601: {sys.argv[7]}") from error
+if epoch.tzinfo is None:
+    raise SystemExit("PERF_FIXTURE_EPOCH must include a timezone")
+
+if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", sys.argv[8]):
+    raise SystemExit(f"FIXTURE_VERSION must be a lowercase version identifier: {sys.argv[8]}")
+
+if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,80}", sys.argv[11]):
+    raise SystemExit("K6_RUN_ID must be 1-81 characters using letters, digits, dot, underscore, or hyphen")
 PY
 }
 
@@ -324,7 +501,10 @@ seed_fixture_with_mongosh() {
   mongosh "$MONGO_URI" --quiet --eval "
 const studentId = 'perf-student-1';
 const bojId = '$PERF_BOJ_ID';
-const now = new Date();
+const now = new Date('$PERF_FIXTURE_EPOCH');
+if (Number.isNaN(now.getTime())) {
+  throw new Error('invalid PERF_FIXTURE_EPOCH');
+}
 db.students.updateOne(
   { _id: studentId },
   {
@@ -381,13 +561,24 @@ seed_fixture_with_mongoimport() {
   require_command mongoimport
   local tmp_dir
   tmp_dir="$(mktemp -d)"
-  python3 - "$tmp_dir" "$PERF_BOJ_ID" "$PERF_BCRYPT_PASSWORD" "$PERF_FIXTURE_RETROSPECTIVES" <<'PY'
+  python3 - \
+    "$tmp_dir" \
+    "$PERF_BOJ_ID" \
+    "$PERF_BCRYPT_PASSWORD" \
+    "$PERF_FIXTURE_RETROSPECTIVES" \
+    "$PERF_FIXTURE_EPOCH" <<'PY'
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-tmp_dir, boj_id, password, count = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
-now = datetime.now(timezone.utc)
+tmp_dir, boj_id, password, count, fixture_epoch = (
+    sys.argv[1],
+    sys.argv[2],
+    sys.argv[3],
+    int(sys.argv[4]),
+    sys.argv[5],
+)
+now = datetime.fromisoformat(fixture_epoch.replace("Z", "+00:00"))
 
 student = {
     "_id": "perf-student-1",
@@ -458,6 +649,109 @@ VERSION
   fi
 }
 
+environment_manifest_path() {
+  printf '%s/environment-%s.json' "$RESULTS_DIR" "$K6_RUN_ID"
+}
+
+write_environment_manifest() {
+  assert_local_fixture_environment
+  validate_number_config
+  require_command python3
+  local output
+  output="$(environment_manifest_path)"
+  "$WRITE_ENVIRONMENT_MANIFEST" --output "$output"
+}
+
+ensure_environment_manifest() {
+  write_environment_manifest
+}
+
+start_application() {
+  assert_local_fixture_environment
+  validate_number_config
+  if [[ "$APP_RUNTIME_MODE" != "gradle-toolchain" ]]; then
+    echo "start-app requires APP_RUNTIME_MODE=gradle-toolchain." >&2
+    return 2
+  fi
+
+  local expected_java_tool_options
+  expected_java_tool_options="-Xms$APP_JVM_XMS -Xmx$APP_JVM_XMX -XX:+Use${APP_JVM_GC}GC"
+  if [[ "${JAVA_TOOL_OPTIONS:-}" != "$expected_java_tool_options" ]]; then
+    echo "JAVA_TOOL_OPTIONS must exactly match: $expected_java_tool_options" >&2
+    return 2
+  fi
+  if [[ -n "${_JAVA_OPTIONS:-}" || -n "${JDK_JAVA_OPTIONS:-}" ]]; then
+    echo "_JAVA_OPTIONS and JDK_JAVA_OPTIONS must be unset for start-app." >&2
+    return 2
+  fi
+  if [[ -n "${SPRING_APPLICATION_JSON:-}" ]]; then
+    echo "SPRING_APPLICATION_JSON must be unset for start-app." >&2
+    return 2
+  fi
+  if [[ ! -x "$APPLICATION_WORKTREE/gradlew" ]]; then
+    echo "Gradle wrapper is not executable: $APPLICATION_WORKTREE/gradlew" >&2
+    return 2
+  fi
+  if [[ -z "${HOME:-}" || -z "${PATH:-}" ]]; then
+    echo "HOME and PATH are required to start the application." >&2
+    return 2
+  fi
+
+  write_environment_manifest
+  local didimlog_gradle_home="/tmp/didimlog-performance/gradle-user-home"
+  mkdir -p "$didimlog_gradle_home"
+  local -a didimlog_application_env=(
+    env -i
+    "HOME=$HOME"
+    "PATH=$PATH"
+    "LANG=${LANG:-C}"
+    "TMPDIR=${TMPDIR:-/tmp}"
+    "GRADLE_USER_HOME=$didimlog_gradle_home"
+    "JAVA_TOOL_OPTIONS=$JAVA_TOOL_OPTIONS"
+    "TZ=$APP_TIMEZONE"
+    "SERVER_PORT=$SERVER_PORT"
+    "SPRING_PROFILES_ACTIVE=$SPRING_PROFILES_ACTIVE"
+    "SPRING_CONFIG_IMPORT=$SPRING_CONFIG_IMPORT"
+    "SPRING_DATA_MONGODB_URI=$SPRING_DATA_MONGODB_URI"
+    "SPRING_DATA_REDIS_HOST=$SPRING_DATA_REDIS_HOST"
+    "SPRING_DATA_REDIS_PORT=$SPRING_DATA_REDIS_PORT"
+    "SPRING_DATA_REDIS_DATABASE=$SPRING_DATA_REDIS_DATABASE"
+    "SPRING_MAIL_HOST=$SPRING_MAIL_HOST"
+    "SPRING_MAIL_PORT=$SPRING_MAIL_PORT"
+    "MAIL_PASSWORD=$MAIL_PASSWORD"
+    "OAUTH_GOOGLE_ID=$OAUTH_GOOGLE_ID"
+    "OAUTH_GOOGLE_SECRET=$OAUTH_GOOGLE_SECRET"
+    "OAUTH_GITHUB_ID=$OAUTH_GITHUB_ID"
+    "OAUTH_GITHUB_SECRET=$OAUTH_GITHUB_SECRET"
+    "OAUTH_NAVER_ID=$OAUTH_NAVER_ID"
+    "OAUTH_NAVER_SECRET=$OAUTH_NAVER_SECRET"
+    "SERVER_URL=$SERVER_URL"
+    "JWT_SECRET=$JWT_SECRET"
+    "JWT_ACCESS_TOKEN_EXPIRATION=$JWT_ACCESS_TOKEN_EXPIRATION"
+    "JWT_REFRESH_TOKEN_EXPIRATION=$JWT_REFRESH_TOKEN_EXPIRATION"
+    "JWT_EXPIRATION=$JWT_EXPIRATION"
+    "ADMIN_SECRET_KEY=$ADMIN_SECRET_KEY"
+    "AI_ENABLED=$AI_ENABLED"
+    "GEMINI_API_KEY=$GEMINI_API_KEY"
+    "GEMINI_API_URL=$GEMINI_API_URL"
+    "GEMINI_CONNECT_TIMEOUT_MILLIS=$GEMINI_CONNECT_TIMEOUT_MILLIS"
+    "GEMINI_RESPONSE_TIMEOUT_SECONDS=$GEMINI_RESPONSE_TIMEOUT_SECONDS"
+    "GEMINI_READ_TIMEOUT_SECONDS=$GEMINI_READ_TIMEOUT_SECONDS"
+    "GEMINI_WRITE_TIMEOUT_SECONDS=$GEMINI_WRITE_TIMEOUT_SECONDS"
+    "GEMINI_MAX_RETRIES=$GEMINI_MAX_RETRIES"
+    "GEMINI_RETRY_BACKOFF_MILLIS=$GEMINI_RETRY_BACKOFF_MILLIS"
+    "AI_REVIEW_ASYNC_CORE_POOL_SIZE=$AI_REVIEW_ASYNC_CORE_POOL_SIZE"
+    "AI_REVIEW_ASYNC_MAX_POOL_SIZE=$AI_REVIEW_ASYNC_MAX_POOL_SIZE"
+    "AI_REVIEW_ASYNC_QUEUE_CAPACITY=$AI_REVIEW_ASYNC_QUEUE_CAPACITY"
+  )
+  if [[ -n "${JAVA_HOME:-}" ]]; then
+    didimlog_application_env+=("JAVA_HOME=$JAVA_HOME")
+  fi
+
+  cd "$APPLICATION_WORKTREE"
+  exec "${didimlog_application_env[@]}" ./gradlew bootRun --no-daemon
+}
+
 run_k6() {
   local name="$1"
   local script="$2"
@@ -465,6 +759,7 @@ run_k6() {
   validate_number_config
   check_k6_version
   mkdir -p "$RESULTS_DIR"
+  ensure_environment_manifest
   SUMMARY_EXPORT="$RESULTS_DIR/$name-$K6_RUN_ID.json" k6 run "$K6_DIR/$script"
 }
 
@@ -768,7 +1063,10 @@ all() {
 
 case "${1:-help}" in
   start-mocks) start_mocks ;;
+  start-app) start_application ;;
   configure-mocks) configure_wiremock ;;
+  environment-manifest) write_environment_manifest ;;
+  reset-volumes) reset_performance_volumes ;;
   seed) seed_fixture ;;
   preflight) preflight ;;
   smoke) smoke ;;
@@ -785,7 +1083,11 @@ Usage: performance/k6/run-local.sh <command>
 
 Commands:
   start-mocks       Start local MongoDB, Redis, and WireMock Gemini mock.
+  start-app         Start the configured application worktree with the fixed JVM settings.
   configure-mocks   Reset WireMock journal and configure MOCK_GEMINI_DELAY_MS.
+  environment-manifest
+                    Write the allowlist-only environment manifest for K6_RUN_ID.
+  reset-volumes     Reset only the performance compose volume after explicit confirmation.
   seed              Seed local MongoDB with a test user and retrospectives.
   preflight         Verify app, JWT, fixtures, Redis, and Gemini mock readiness.
   smoke             Run k6 smoke checks.
