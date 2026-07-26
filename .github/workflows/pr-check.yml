@@ -95,10 +95,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Run integration tests
+      - name: Run integration tests and merged coverage
         env:
           SERVER_URL: https://dummy-server.com
-        run: ./gradlew integrationTest
+        run: ./gradlew clean check --no-daemon
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports-${{ github.sha }}
+          path: |
+            build/reports/jacoco/
+            build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 14
 
   performance-assets:
     runs-on: ubuntu-latest
