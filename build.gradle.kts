@@ -1,3 +1,5 @@
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+
 plugins {
 	kotlin("jvm") version "1.9.25"
 	kotlin("plugin.spring") version "1.9.25"
@@ -55,6 +57,19 @@ val jacocoCoreCoverageIncludes = listOf(
 val jacocoCoreCoverageExcludes = listOf(
 	"com/didimlog/application/problem/collector/**",
 	"**/*Test*"
+)
+
+val jacocoFullCoverageIncludes = listOf(
+	"com/didimlog/**"
+)
+
+val jacocoFullCoverageExcludes = listOf(
+	"**/*Test*"
+)
+
+val jacocoMergedExecutionData = files(
+	layout.buildDirectory.file("jacoco/test.exec"),
+	layout.buildDirectory.file("jacoco/integrationTest.exec")
 )
 
 java {
@@ -149,7 +164,7 @@ tasks.register<JacocoReport>("jacocoIntegrationTestReport") {
 	description = "Generates JaCoCo coverage report for integration tests"
 	dependsOn(integrationTestTask)
 
-	executionData(fileTree(layout.buildDirectory).include("jacoco/integrationTest.exec", "jacoco/integrationTest*.exec"))
+	executionData(layout.buildDirectory.file("jacoco/integrationTest.exec"))
 	sourceSets(sourceSets["main"])
 	classDirectories.setFrom(
 		files(
@@ -169,16 +184,10 @@ tasks.register<JacocoReport>("jacocoIntegrationTestReport") {
 
 tasks.register<JacocoReport>("jacocoMergedReport") {
 	group = "verification"
-	description = "Generates merged JaCoCo coverage report for unit + integration tests"
+	description = "Generates merged JaCoCo core-v1 coverage report for unit + integration tests"
 	dependsOn("test", integrationTestTask)
 
-	executionData(
-		fileTree(layout.buildDirectory).include(
-			"jacoco/test.exec",
-			"jacoco/integrationTest.exec",
-			"jacoco/*.exec"
-		)
-	)
+	executionData(jacocoMergedExecutionData)
 	sourceSets(sourceSets["main"])
 	classDirectories.setFrom(
 		files(
@@ -194,4 +203,108 @@ tasks.register<JacocoReport>("jacocoMergedReport") {
 		html.required.set(true)
 		csv.required.set(false)
 	}
+}
+
+tasks.register<JacocoReport>("jacocoFullMergedReport") {
+	group = "verification"
+	description = "Generates merged JaCoCo full-v1 coverage report for unit + integration tests"
+	dependsOn("test", integrationTestTask)
+
+	executionData(jacocoMergedExecutionData)
+	sourceSets(sourceSets["main"])
+	classDirectories.setFrom(
+		files(
+			sourceSets["main"].output.asFileTree.matching {
+				include(jacocoFullCoverageIncludes)
+				exclude(jacocoFullCoverageExcludes)
+			}
+		)
+	)
+
+	reports {
+		xml.required.set(true)
+		html.required.set(true)
+		csv.required.set(false)
+	}
+}
+
+tasks.register<JacocoCoverageVerification>("jacocoCoreCoverageVerification") {
+	group = "verification"
+	description = "Verifies the frozen JaCoCo core-v1 coverage baseline"
+	dependsOn("test", integrationTestTask)
+
+	executionData(jacocoMergedExecutionData)
+	classDirectories.setFrom(
+		files(
+			sourceSets["main"].output.asFileTree.matching {
+				include(jacocoCoreCoverageIncludes)
+				exclude(jacocoCoreCoverageExcludes)
+			}
+		)
+	)
+
+	violationRules {
+		rule {
+			limit {
+				counter = "LINE"
+				value = "COVEREDRATIO"
+				minimum = "0.78".toBigDecimal()
+			}
+			limit {
+				counter = "BRANCH"
+				value = "COVEREDRATIO"
+				minimum = "0.55".toBigDecimal()
+			}
+			limit {
+				counter = "CLASS"
+				value = "COVEREDRATIO"
+				minimum = "0.90".toBigDecimal()
+			}
+		}
+	}
+}
+
+tasks.register<JacocoCoverageVerification>("jacocoFullCoverageVerification") {
+	group = "verification"
+	description = "Verifies the frozen JaCoCo full-v1 coverage baseline"
+	dependsOn("test", integrationTestTask)
+
+	executionData(jacocoMergedExecutionData)
+	classDirectories.setFrom(
+		files(
+			sourceSets["main"].output.asFileTree.matching {
+				include(jacocoFullCoverageIncludes)
+				exclude(jacocoFullCoverageExcludes)
+			}
+		)
+	)
+
+	violationRules {
+		rule {
+			limit {
+				counter = "LINE"
+				value = "COVEREDRATIO"
+				minimum = "0.61".toBigDecimal()
+			}
+			limit {
+				counter = "BRANCH"
+				value = "COVEREDRATIO"
+				minimum = "0.42".toBigDecimal()
+			}
+			limit {
+				counter = "CLASS"
+				value = "COVEREDRATIO"
+				minimum = "0.74".toBigDecimal()
+			}
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn(
+		"jacocoMergedReport",
+		"jacocoFullMergedReport",
+		"jacocoCoreCoverageVerification",
+		"jacocoFullCoverageVerification"
+	)
 }

@@ -19,7 +19,7 @@ jobs:
 
     services:
       mongodb:
-        image: mongo:latest
+        image: mongo:7.0.16@sha256:c630c59342c1493d50345136df2af14a76b9e827dd5316bfabee07a0880a5f3a
         ports:
           - 27017:27017
         options: >-
@@ -29,7 +29,7 @@ jobs:
           --health-retries 5
           --log-driver none
       redis:
-        image: redis:latest
+        image: redis:7.2.5-alpine@sha256:6aaf3f5e6bc8a592fbfe2cccf19eb36d27c39d12dab4f4b01556b7449e7b1f44
         ports:
           - 6379:6379
         options: >-
@@ -62,7 +62,7 @@ jobs:
 
     services:
       mongodb:
-        image: mongo:latest
+        image: mongo:7.0.16@sha256:c630c59342c1493d50345136df2af14a76b9e827dd5316bfabee07a0880a5f3a
         ports:
           - 27017:27017
         options: >-
@@ -72,7 +72,7 @@ jobs:
           --health-retries 5
           --log-driver none
       redis:
-        image: redis:latest
+        image: redis:7.2.5-alpine@sha256:6aaf3f5e6bc8a592fbfe2cccf19eb36d27c39d12dab4f4b01556b7449e7b1f44
         ports:
           - 6379:6379
         options: >-
@@ -95,10 +95,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Run integration tests
+      - name: Run integration tests and merged coverage
         env:
           SERVER_URL: https://dummy-server.com
-        run: ./gradlew integrationTest
+        run: ./gradlew clean check --no-daemon
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports-${{ github.sha }}
+          path: |
+            build/reports/jacoco/
+            build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 14
 
   performance-assets:
     runs-on: ubuntu-latest
@@ -116,15 +127,23 @@ jobs:
       - name: Install pinned k6
         run: |
           K6_VERSION="$(cat performance/k6/K6_VERSION)"
-          curl -fsSLO "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz"
-          tar -xzf "k6-${K6_VERSION}-linux-amd64.tar.gz"
-          sudo mv "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          K6_TEMP_DIR="$(mktemp -d)"
+          curl -fsSL \
+            "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz" \
+            -o "$K6_TEMP_DIR/k6.tar.gz"
+          K6_SHA256="$(cat performance/k6/K6_LINUX_AMD64_SHA256)"
+          echo "$K6_SHA256  $K6_TEMP_DIR/k6.tar.gz" | sha256sum --check --strict
+          tar -xzf "$K6_TEMP_DIR/k6.tar.gz" -C "$K6_TEMP_DIR"
+          sudo mv "$K6_TEMP_DIR/k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
           k6 version
 
       - name: Validate performance assets
         run: |
           bash -n performance/k6/run-local.sh
+          bash -n performance/crawler/run-baseline.sh
+          bash -n performance/query/run-baseline.sh
           bash -n performance/verify/verify_ai_call_count.sh
+          bash -n performance/verify/write_environment_manifest.sh
           node --check performance/mock-external/gemini/node-mock/server.js
           find performance/k6 -name '*.js' -print0 | xargs -0 -n1 node --check
           python3 -m json.tool performance/mock-external/gemini/mappings/gemini-failure-once-start.json
@@ -136,4 +155,123 @@ jobs:
           k6 inspect performance/k6/read-workload.js
           k6 inspect performance/k6/ai-review-concurrency.js
           k6 inspect performance/k6/auth-rate-limit.js
+          ENV_FILE=performance/k6/env.example \
+            K6_RUN_ID="ci-${{ github.sha }}" \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-performance-environment.json
+          python3 -m json.tool /tmp/didimlog-performance-environment.json
+          python3 - /tmp/didimlog-performance-environment.json <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          raw = path.read_text(encoding="utf-8")
+          manifest = json.loads(raw)
+
+          expected_images = {
+              "mongo": "mongo:7.0.16@sha256:c630c59342c1493d50345136df2af14a76b9e827dd5316bfabee07a0880a5f3a",
+              "redis": "redis:7.2.5-alpine@sha256:6aaf3f5e6bc8a592fbfe2cccf19eb36d27c39d12dab4f4b01556b7449e7b1f44",
+              "wiremock": "wiremock/wiremock:3.9.1@sha256:8fe02bc3f9b63deb1454d41750dbaf081adf4b3e8c74fd8e31f790bee5647b88",
+          }
+          source = manifest["source"]
+          assert source["applicationBaselineSha"] == "74f7941d8d28275b9abe38877f32c4216955350b"
+          assert source["applicationCommitSha"] == os.environ["GITHUB_SHA"]
+          assert source["applicationGitDirty"] is False
+          assert source["harnessCommitSha"] == os.environ["GITHUB_SHA"]
+          assert source["harnessGitDirty"] is False
+          assert len(source["harnessContentSha256"]) == 64
+          assert manifest["runtime"]["configuredAppJavaVersion"] == "17"
+          assert manifest["runtime"]["detectedAppJavaVersion"] == "17"
+          assert manifest["runtime"]["jvm"] == {
+              "heapInitial": "512m",
+              "heapMaximum": "512m",
+              "garbageCollector": "G1",
+              "javaToolOptionsValidated": True,
+              "ambientJavaOptionsRejected": True,
+              "timezone": "Asia/Seoul",
+          }
+          assert manifest["application"]["bindingsValidated"] == {
+              "mongo": True,
+              "redis": True,
+              "gemini": True,
+              "composePublishedPorts": True,
+              "springApplicationJsonAbsent": True,
+          }
+          assert manifest["application"]["launchMode"] == "isolated-env-allowlist"
+          assert manifest["application"]["geminiClient"]["maxRetries"] == 0
+          assert manifest["application"]["aiReviewExecutor"] == {
+              "corePoolSize": 8,
+              "maxPoolSize": 16,
+              "queueCapacity": 500,
+          }
+          assert manifest["containers"] == expected_images
+          assert manifest["mock"] == {"mode": "wiremock", "fixedDelayMillis": 500}
+          assert manifest["fixture"]["version"] == "be-refactor-phase0b-v1"
+          assert manifest["fixture"]["epoch"] == "2026-07-26T00:00:00Z"
+          assert manifest["fixture"]["retrospectiveCount"] == 100
+          assert manifest["fixture"]["bojId"] == "perfuser"
+          assert manifest["measurement"]["repetitionTotal"] == 5
+          assert manifest["measurement"]["ai"]["maxDuration"] == "45s"
+          assert manifest["measurement"]["rateLimit"]["sleepSeconds"] == 0.05
+          assert manifest["redaction"]["secretsRecorded"] is False
+          assert manifest["protocol"]["id"] == "be-refactor-phase0b-v1"
+          assert len(manifest["protocol"]["fingerprintSha256"]) == 64
+          for secret in (
+              "performance-secret-key-must-be-at-least-256-bits-long-1234567890",
+              "PerfPassword123!",
+              "local-gemini-key",
+          ):
+              assert secret not in raw
+          PY
+          if ENV_FILE=performance/k6/env.example \
+            K6_RUN_ID="ci-${{ github.sha }}" \
+            MEASUREMENT_REPETITION_INDEX=2 \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-performance-environment.json; then
+            echo "Stale manifest mismatch was not rejected" >&2
+            exit 1
+          fi
+          if ENV_FILE=/dev/null \
+            APP_JAVA_VERSION=21 \
+            JAVA_TOOL_OPTIONS='-Xms512m -Xmx512m -XX:+UseG1GC' \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-invalid-java-environment.json; then
+            echo "Java runtime mismatch was not rejected" >&2
+            exit 1
+          fi
+          if ENV_FILE=/dev/null \
+            JAVA_TOOL_OPTIONS='-Xms512m -Xmx512m -XX:+UseG1GC' \
+            SPRING_DATA_MONGODB_URI='mongodb://example.com:27017/other' \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-invalid-app-binding.json; then
+            echo "Application endpoint mismatch was not rejected" >&2
+            exit 1
+          fi
+          if ENV_FILE=/dev/null \
+            JAVA_TOOL_OPTIONS='-Xms512m -Xmx512m -XX:+UseG1GC' \
+            JDK_JAVA_OPTIONS='-Xmx2g' \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-invalid-ambient-jvm.json; then
+            echo "Ambient JVM override was not rejected" >&2
+            exit 1
+          fi
+          if ENV_FILE=/dev/null \
+            JAVA_TOOL_OPTIONS='-Xms512m -Xmx512m -XX:+UseG1GC' \
+            K6_RUN_ID='../escape' \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-invalid-run-id.json; then
+            echo "Unsafe K6_RUN_ID was not rejected" >&2
+            exit 1
+          fi
+          if ENV_FILE=/dev/null \
+            JAVA_TOOL_OPTIONS='-Xms512m -Xmx512m -XX:+UseG1GC' \
+            K6_RUN_ID="ci-protocol-drift-${{ github.sha }}" \
+            READ_VUS=11 \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-invalid-protocol-drift.json; then
+            echo "Paired protocol drift was not rejected" >&2
+            exit 1
+          fi
           git diff --check

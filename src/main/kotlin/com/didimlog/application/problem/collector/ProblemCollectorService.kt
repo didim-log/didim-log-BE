@@ -24,7 +24,6 @@ import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 import kotlin.math.min
-import kotlin.random.Random
 
 /**
  * 문제 데이터 수집 서비스
@@ -41,6 +40,7 @@ class ProblemCollectorService(
     private val redisTemplate: StringRedisTemplate,
     private val objectMapper: ObjectMapper,
     private val adminAuditService: AdminAuditService,
+    private val pacer: ProblemCollectorPacer,
     @param:Qualifier("taskExecutor")
     private val taskExecutor: Executor? = null
 ) {
@@ -107,7 +107,7 @@ class ProblemCollectorService(
                 failCount++
             }
 
-            Thread.sleep(500)
+            pacer.pauseMetadata()
         }
 
         log.info("문제 메타데이터 수집 완료: 성공=$successCount, 실패=$failCount")
@@ -134,8 +134,7 @@ class ProblemCollectorService(
                     sampleOutputs = details.sampleOutputs
                 )
                 problemRepository.save(updatedProblem)
-                val delay = 2000 + Random.nextInt(2000)
-                Thread.sleep(delay.toLong())
+                pacer.pauseDetails()
             } catch (e: Exception) {
                 log.error("문제 상세 정보 수집 실패: problemId=${problem.id.value}, error=${e.message}", e)
             }
@@ -555,7 +554,7 @@ class ProblemCollectorService(
 
                 processed++
                 updateProgress(jobId, processed, success, fail, problemId.toString())
-                Thread.sleep(500)
+                pacer.pauseMetadata()
             }
         }
     }
@@ -593,7 +592,7 @@ class ProblemCollectorService(
 
                 processed++
                 updateProgress(jobId, processed, success, fail, problem.id.value)
-                Thread.sleep((2000 + Random.nextInt(2000)).toLong())
+                pacer.pauseDetails()
             }
         }
     }
@@ -644,7 +643,7 @@ class ProblemCollectorService(
 
                 processed++
                 updateProgress(jobId, processed, success, fail, problem.id.value)
-                Thread.sleep((2000 + Random.nextInt(2000)).toLong())
+                pacer.pauseDetails()
             }
         }
     }

@@ -44,6 +44,7 @@ class ProblemCollectorServiceTest {
     private val valueOps: ValueOperations<String, String> = mockk()
     private val zSetOps: ZSetOperations<String, String> = mockk()
     private val adminAuditService: AdminAuditService = mockk(relaxed = true)
+    private val pacer: ProblemCollectorPacer = mockk(relaxed = true)
 
     private val objectMapper = ObjectMapper().registerKotlinModule()
 
@@ -259,7 +260,8 @@ class ProblemCollectorServiceTest {
             redisTemplate = redisTemplate,
             objectMapper = objectMapper,
             adminAuditService = adminAuditService,
-            taskExecutor = taskExecutor
+            taskExecutor = taskExecutor,
+            pacer = pacer
         )
     }
 
