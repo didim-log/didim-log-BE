@@ -158,17 +158,13 @@ flowchart LR
 
 관리자 화면에서 메타데이터 수집과 상세 정보 수집을 실행하고, Redis 작업 상태와 MongoDB 저장 결과를 실제 FE 문제 상세 화면까지 연결합니다.
 
-[![문제 수집 파이프라인 영상 보기](./DOCS/assets/portfolio/02-crawler-pipeline_demo-poster.png)](./DOCS/assets/portfolio/02-crawler-pipeline_demo.mp4)
-
-[MP4 영상 열기](./DOCS/assets/portfolio/02-crawler-pipeline_demo.mp4) · [GIF 미리보기](./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif)
+![문제 수집 파이프라인](./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif)
 
 ### 카테고리 메타데이터 수집과 계층 검색
 
 6개 문제의 태그를 정규화해 MongoDB에 저장한 뒤, 실제 문제 목록 화면에서 계층 확장 검색과 대표·보조 카테고리 표시를 확인합니다.
 
-[![카테고리 메타데이터 파이프라인 영상 보기](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo-poster.png)](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.mp4)
-
-[MP4 영상 열기](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.mp4) · [GIF 미리보기](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
+![카테고리 메타데이터 파이프라인](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
 
 > 두 영상은 외부 BOJ/Solved.ac 응답만 `portfolio-fixture`의 고정 응답으로 대체했습니다. React FE, Spring Boot BE, Redis 작업 상태, MongoDB 문서 저장, JWT 발급·검증은 로컬 환경에서 실제로 실행했습니다.
 
