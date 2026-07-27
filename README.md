@@ -201,6 +201,22 @@ flowchart LR
 
 [상세 실행 조건과 결과](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)
 
+### 관리자 회원 조회 최적화
+
+회원별 회고 조회를 batch aggregation으로 바꾸고 `studentId` 단일 index를 실제로
+보장해, query 횟수와 회고 collection scan을 순서대로 제거했습니다.
+
+| 검증 항목 | Before | After |
+| :--- | :--- | :--- |
+| MongoDB read command (page size 10) | 11회 | 2회, 81.8% 감소 |
+| 회고 수 aggregation access | `COLLSCAN` | covered `IXSCAN (studentId)` |
+| 회고 document 검사 (12건 고정 fixture) | 12건 | 0건 |
+
+이는 로컬 합성 fixture의 query 구조 개선 결과이며 latency나 운영 처리량 개선율을
+의미하지 않습니다.
+
+[![관리자 회원 조회 N+1 제거와 studentId index 실행 계획](./DOCS/assets/refactoring/admin-query-optimization.svg)](./DOCS/refactoring/be-refactor/PHASE_1B_RETROSPECTIVE_STUDENT_INDEX.md)
+
 ## 8. 트러블 슈팅
 
 ### AI 리뷰 중복 생성 및 동시성 제어
