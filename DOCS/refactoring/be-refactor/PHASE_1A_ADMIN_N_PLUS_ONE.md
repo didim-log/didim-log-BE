@@ -123,9 +123,9 @@ performance/results/admin-query-phase1a-after-9d8dc167d7cd/
 
 ## 남은 범위
 
-- Phase 1B: 실제 `studentId` index 보장 후 `IXSCAN`, 검사 문서·key 수 비교
+- 완료: [Phase 1B — 회고 `studentId` 인덱스 보장](./PHASE_1B_RETROSPECTIVE_STUDENT_INDEX.md)
 - 별도 단계: 전체 회원 `findAll`, in-memory 검색·날짜 필터·페이징 개선
 - 별도 단계: latency와 처리량을 고정된 k6 protocol로 반복 측정
 
-README 요약은 Phase 1B까지 같은 조회 경로의 command와 query plan 개선을 마친 뒤
-문서 링크와 핵심 지표만 추가한다.
+README에는 Phase 1A·1B의 command와 query plan 개선을 합친 핵심 지표와 상세 문서
+링크만 반영했다.
