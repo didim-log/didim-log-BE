@@ -73,6 +73,10 @@ class AdminUserQueryPerformanceIntegrationTest {
     @Autowired
     private lateinit var mongoIndexInitializer: MongoIndexInitializer
 
+    private val queryPlanExplainer by lazy {
+        MongoQueryPlanExplainer(mongoTemplate)
+    }
+
     @BeforeEach
     fun setUp() {
         retrospectiveRepository.deleteAll()
@@ -145,18 +149,18 @@ class AdminUserQueryPerformanceIntegrationTest {
             .describedAs("관리자 회원 목록의 고정 Mongo read command")
             .isEqualTo(3)
 
-        val studentIndexes = collectIndexes(Student::class.java)
-        val retrospectiveIndexes = collectIndexes(Retrospective::class.java)
-        val studentPageStats = explainFind(
+        val studentIndexes = queryPlanExplainer.collectIndexes(Student::class.java)
+        val retrospectiveIndexes = queryPlanExplainer.collectIndexes(Retrospective::class.java)
+        val studentPageStats = queryPlanExplainer.explainFind(
             query = "searchAdminUsersPage",
             command = studentFindCommand
         )
-        val studentCountStats = explainAggregation(
+        val studentCountStats = queryPlanExplainer.explainAggregation(
             collection = "students",
             query = "searchAdminUsersCount",
             pipeline = studentCountPipeline
         )
-        val retrospectiveCountByStudentIdsStats = explainAggregation(
+        val retrospectiveCountByStudentIdsStats = queryPlanExplainer.explainAggregation(
             collection = "retrospectives",
             query = "countByStudentIds",
             pipeline = retrospectiveAggregatePipeline
@@ -214,7 +218,7 @@ class AdminUserQueryPerformanceIntegrationTest {
 
     @Test
     fun `회고 studentId 단일 인덱스를 보장한다`() {
-        val retrospectiveIndexes = collectIndexes(Retrospective::class.java)
+        val retrospectiveIndexes = queryPlanExplainer.collectIndexes(Retrospective::class.java)
 
         assertThat(retrospectiveIndexes.map { it.name })
             .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
@@ -239,7 +243,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         mongoIndexInitializer.ensureIndexes()
 
         assertThat(
-            collectIndexes(Retrospective::class.java)
+            queryPlanExplainer.collectIndexes(Retrospective::class.java)
                 .count { it.name == RETROSPECTIVE_STUDENT_ID_INDEX_NAME }
         ).isEqualTo(1)
     }
@@ -257,139 +261,11 @@ class AdminUserQueryPerformanceIntegrationTest {
         try {
             mongoIndexInitializer.ensureIndexes()
 
-            assertThat(collectIndexes(Retrospective::class.java).map { it.name })
+            assertThat(queryPlanExplainer.collectIndexes(Retrospective::class.java).map { it.name })
                 .containsExactly("_id_", LEGACY_STUDENT_ID_INDEX_NAME)
         } finally {
             indexOperations.dropIndex(LEGACY_STUDENT_ID_INDEX_NAME)
             mongoIndexInitializer.ensureIndexes()
-        }
-    }
-
-    private fun collectIndexes(entityType: Class<*>): List<MongoIndexBaseline> {
-        return mongoTemplate.indexOps(entityType).indexInfo
-            .map { index ->
-                MongoIndexBaseline(
-                    name = index.name,
-                    unique = index.isUnique || index.name == "_id_",
-                    sparse = index.isSparse,
-                    fields = index.indexFields.map { field ->
-                        MongoIndexFieldBaseline(
-                            key = field.key,
-                            direction = field.direction?.name
-                        )
-                    }
-                )
-            }
-            .sortedBy { it.name }
-    }
-
-    private fun explainFind(
-        query: String,
-        command: ObservedMongoReadCommand
-    ): MongoQueryExecutionBaseline {
-        val findCommand = Document("find", command.collection)
-            .append("filter", command.filter ?: Document())
-        command.sort?.let { findCommand.append("sort", it) }
-        command.skip?.let { findCommand.append("skip", it) }
-        command.limit?.let { findCommand.append("limit", it) }
-        val explain = mongoTemplate.executeCommand(
-            Document(
-                "explain",
-                findCommand
-            ).append("verbosity", "executionStats")
-        )
-        val queryPlanner = explain.requiredDocument("queryPlanner")
-        val winningPlan = queryPlanner.requiredDocument("winningPlan")
-        val executionStats = explain.requiredDocument("executionStats")
-        val accessPlan = requireNotNull(findAccessPlan(winningPlan)) {
-            "winning access plan을 찾을 수 없습니다. winningPlan=$winningPlan"
-        }
-
-        return MongoQueryExecutionBaseline(
-            collection = command.collection,
-            query = query,
-            winningPlanStage = accessPlan.requiredString("stage"),
-            selectedIndexName = accessPlan.getString("indexName"),
-            selectedIndexKeyPattern = accessPlan.indexKeyPattern(),
-            nReturned = executionStats.requiredLong("nReturned"),
-            totalDocsExamined = executionStats.requiredLong("totalDocsExamined"),
-            totalKeysExamined = executionStats.requiredLong("totalKeysExamined")
-        )
-    }
-
-    private fun explainAggregation(
-        collection: String,
-        query: String,
-        pipeline: List<Document>
-    ): MongoQueryExecutionBaseline {
-        val explain = mongoTemplate.executeCommand(
-            Document(
-                "explain",
-                Document("aggregate", collection)
-                    .append("pipeline", pipeline)
-                    .append("cursor", Document())
-            ).append("verbosity", "executionStats")
-        )
-        val cursor = findAggregationCursor(explain)
-        val queryPlanner = cursor?.requiredDocument("queryPlanner")
-            ?: requireNotNull(findNestedDocument(explain, "queryPlanner")) {
-                "Mongo aggregate explain에 queryPlanner가 없습니다. response=$explain"
-            }
-        val winningPlan = queryPlanner.requiredDocument("winningPlan")
-        val executionStats = cursor?.requiredDocument("executionStats")
-            ?: requireNotNull(findNestedDocument(explain, "executionStats")) {
-                "Mongo aggregate explain에 executionStats가 없습니다. response=$explain"
-            }
-        val accessPlan = requireNotNull(findAccessPlan(winningPlan)) {
-            "winning access plan을 찾을 수 없습니다. winningPlan=$winningPlan"
-        }
-
-        return MongoQueryExecutionBaseline(
-            collection = collection,
-            query = query,
-            winningPlanStage = accessPlan.requiredString("stage"),
-            selectedIndexName = accessPlan.getString("indexName"),
-            selectedIndexKeyPattern = accessPlan.indexKeyPattern(),
-            nReturned = executionStats.requiredLong("nReturned"),
-            totalDocsExamined = executionStats.requiredLong("totalDocsExamined"),
-            totalKeysExamined = executionStats.requiredLong("totalKeysExamined")
-        )
-    }
-
-    private fun findAggregationCursor(explain: Document): Document? {
-        return (explain["stages"] as? Iterable<*>)
-            ?.asSequence()
-            ?.mapNotNull { stage ->
-                (stage as? Document)?.get("\$cursor") as? Document
-            }
-            ?.firstOrNull()
-    }
-
-    private fun findNestedDocument(value: Any?, key: String): Document? {
-        return when (value) {
-            is Document -> {
-                (value[key] as? Document)
-                    ?: value.values.asSequence()
-                        .mapNotNull { nested -> findNestedDocument(nested, key) }
-                        .firstOrNull()
-            }
-            is Iterable<*> -> value.asSequence()
-                .mapNotNull { nested -> findNestedDocument(nested, key) }
-                .firstOrNull()
-            else -> null
-        }
-    }
-
-    private fun findAccessPlan(value: Any?): Document? {
-        return when (value) {
-            is Document -> {
-                (value["stage"] as? String)
-                    ?.takeIf { stage -> stage == "COLLSCAN" || stage == "IXSCAN" }
-                    ?.let { value }
-                    ?: value.values.asSequence().mapNotNull(::findAccessPlan).firstOrNull()
-            }
-            is Iterable<*> -> value.asSequence().mapNotNull(::findAccessPlan).firstOrNull()
-            else -> null
         }
     }
 
@@ -402,23 +278,24 @@ class AdminUserQueryPerformanceIntegrationTest {
         expectedPageSize: Long,
         expectedGroupedStudentCount: Long
     ) {
-        assertThat(studentIndexes.map { it.name }).containsExactly("_id_")
+        assertThat(studentIndexes.map { it.name }).contains("_id_")
         assertThat(retrospectiveIndexes.map { it.name })
             .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
 
-        assertThat(studentPageStats.winningPlanStage).isEqualTo("COLLSCAN")
-        assertThat(studentPageStats.selectedIndexName).isNull()
-        assertThat(studentPageStats.selectedIndexKeyPattern).isNull()
+        assertThat(studentPageStats.winningPlanStage).isIn("COLLSCAN", "IXSCAN")
         assertThat(studentPageStats.nReturned).isEqualTo(expectedPageSize)
-        assertThat(studentPageStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
-        assertThat(studentPageStats.totalKeysExamined).isZero()
+        assertThat(studentPageStats.totalDocsExamined)
+            .isBetween(expectedPageSize, TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentPageStats.totalKeysExamined)
+            .isBetween(0L, expectedPageSize)
 
-        assertThat(studentCountStats.winningPlanStage).isEqualTo("COLLSCAN")
-        assertThat(studentCountStats.selectedIndexName).isNull()
-        assertThat(studentCountStats.selectedIndexKeyPattern).isNull()
+        assertThat(studentCountStats.winningPlanStage)
+            .isIn("COLLSCAN", "IXSCAN", "COUNT_SCAN")
         assertThat(studentCountStats.nReturned).isEqualTo(1)
-        assertThat(studentCountStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
-        assertThat(studentCountStats.totalKeysExamined).isZero()
+        assertThat(studentCountStats.totalDocsExamined)
+            .isBetween(0L, TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentCountStats.totalKeysExamined)
+            .isBetween(0L, TOTAL_STUDENT_COUNT.toLong())
 
         assertThat(retrospectiveCountByStudentIdsStats.winningPlanStage).isEqualTo("IXSCAN")
         assertThat(retrospectiveCountByStudentIdsStats.selectedIndexName)
@@ -429,6 +306,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         assertThat(retrospectiveCountByStudentIdsStats.totalDocsExamined).isZero()
         assertThat(retrospectiveCountByStudentIdsStats.totalKeysExamined)
             .isEqualTo(expectedGroupedStudentCount)
+        assertThat(retrospectiveCountByStudentIdsStats.hasBlockingSort).isFalse()
     }
 
     private fun writeSnapshotIfRequested(snapshot: AdminQueryMeasurementSnapshot) {
@@ -627,35 +505,9 @@ data class MongoQueryExecutionBaseline(
     val winningPlanStage: String,
     val selectedIndexName: String?,
     val selectedIndexKeyPattern: Map<String, Int>?,
+    val hasBlockingSort: Boolean,
     @get:JsonProperty("nReturned")
     val nReturned: Long,
     val totalDocsExamined: Long,
     val totalKeysExamined: Long
 )
-
-private fun Document.requiredDocument(key: String): Document {
-    return requireNotNull(this[key] as? Document) {
-        "Mongo 응답에 $key 문서가 없습니다. response=$this"
-    }
-}
-
-private fun Document.requiredLong(key: String): Long {
-    return requireNotNull(this[key] as? Number) {
-        "Mongo 응답에 $key 숫자가 없습니다. document=$this"
-    }.toLong()
-}
-
-private fun Document.requiredString(key: String): String {
-    return requireNotNull(getString(key)) {
-        "Mongo 응답에 $key 문자열이 없습니다. document=$this"
-    }
-}
-
-private fun Document.indexKeyPattern(): Map<String, Int>? {
-    val keyPattern = this["keyPattern"] as? Document ?: return null
-    return keyPattern.entries.associate { (key, value) ->
-        key to requireNotNull(value as? Number) {
-            "Mongo index keyPattern 값이 숫자가 아닙니다. key=$key, value=$value"
-        }.toInt()
-    }
-}

@@ -65,6 +65,10 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
     @Autowired
     private lateinit var materializationCounter: StudentMaterializationCounter
 
+    private val queryPlanExplainer by lazy {
+        MongoQueryPlanExplainer(mongoTemplate)
+    }
+
     @BeforeEach
     fun setUp() {
         retrospectiveRepository.deleteAll()
@@ -112,6 +116,30 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
         assertThat(studentPageCommand.sortJson).isEqualTo("""{"rating": -1, "_id": 1}""")
         assertThat(studentPageCommand.skip).isNull()
         assertThat(studentPageCommand.limit).isEqualTo(PAGE_SIZE.toLong())
+        assertStudentQueryPlans(unfiltered, expectedPageOffset = 0)
+
+        val deepPage = measure(
+            scenario = "deep-page",
+            pageable = PageRequest.of(
+                DEEP_PAGE,
+                PAGE_SIZE,
+                Sort.by(Sort.Direction.DESC, "rating")
+            ),
+            search = null
+        )
+        assertSuccessfulPage(
+            snapshot = deepPage,
+            expectedPageSize = PAGE_SIZE,
+            expectedTotalElements = FIXTURE_STUDENT_COUNT.toLong()
+        )
+        assertThat(deepPage.outcome.firstStudentId).isEqualTo("phase1c-student-500")
+        assertThat(deepPage.outcome.lastStudentId).isEqualTo("phase1c-student-481")
+        assertThat(deepPage.studentEntitiesMaterialized).isEqualTo(PAGE_SIZE)
+        assertThat(deepPage.commandCounts).isEqualTo(pageCommandCounts())
+        val deepPageCommand = deepPage.studentReadCommands.single { it.command == "find" }
+        assertThat(deepPageCommand.skip).isEqualTo(DEEP_PAGE_OFFSET)
+        assertThat(deepPageCommand.limit).isEqualTo(PAGE_SIZE.toLong())
+        assertStudentQueryPlans(deepPage, expectedPageOffset = DEEP_PAGE_OFFSET)
 
         val searchEmpty = measure(
             scenario = "search-empty",
@@ -179,7 +207,16 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
             ),
             studentEntitiesMaterialized = materializationCounter.count(),
             commandCounts = commandCounts(),
-            studentReadCommands = studentReadCommands()
+            studentReadCommands = studentReadCommands(),
+            studentIndexes = queryPlanExplainer.collectIndexes(Student::class.java),
+            studentPage = commandCounter.studentReadCommands()
+                .singleOrNull { command -> command.command == "find" }
+                ?.let { command -> queryPlanExplainer.explainFind("$scenario-page", command) },
+            studentCount = queryPlanExplainer.explainAggregation(
+                collection = STUDENT_COLLECTION,
+                query = "$scenario-count",
+                pipeline = commandCounter.requireSingleAggregatePipeline(STUDENT_COLLECTION)
+            )
         )
 
         assertThat(snapshot.studentReadCommands)
@@ -218,6 +255,38 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
             retrospectiveGetMore = 0,
             totalRead = 1
         )
+    }
+
+    private fun pageCommandCounts(): Phase1cMongoCommandCounts {
+        return Phase1cMongoCommandCounts(
+            studentFind = 1,
+            studentAggregate = 1,
+            studentCount = 0,
+            studentGetMore = 0,
+            retrospectiveAggregate = 1,
+            retrospectiveGetMore = 0,
+            totalRead = 3
+        )
+    }
+
+    private fun assertStudentQueryPlans(
+        snapshot: Phase1cAdminQuerySnapshot,
+        expectedPageOffset: Long
+    ) {
+        assertThat(snapshot.studentIndexes.map { it.name }).contains("_id_")
+
+        val pagePlan = requireNotNull(snapshot.studentPage)
+        assertThat(pagePlan.winningPlanStage).isIn("COLLSCAN", "IXSCAN")
+        assertThat(pagePlan.nReturned).isEqualTo(PAGE_SIZE.toLong())
+        assertThat(pagePlan.totalDocsExamined)
+            .isBetween(PAGE_SIZE.toLong(), FIXTURE_STUDENT_COUNT.toLong())
+        assertThat(pagePlan.totalKeysExamined)
+            .isBetween(0L, expectedPageOffset + PAGE_SIZE)
+
+        assertThat(snapshot.studentCount.winningPlanStage).isIn("COLLSCAN", "IXSCAN")
+        assertThat(snapshot.studentCount.nReturned).isEqualTo(1)
+        assertThat(snapshot.studentCount.totalDocsExamined)
+            .isBetween(0L, FIXTURE_STUDENT_COUNT.toLong())
     }
 
     private fun successfulOutcome(result: Page<*>): Phase1cAdminQueryOutcome {
@@ -318,9 +387,11 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
     }
 
     companion object {
-        private const val SCHEMA_VERSION = 1
+        private const val SCHEMA_VERSION = 2
         private const val FIXTURE_STUDENT_COUNT = 1_000
         private const val PAGE_SIZE = 20
+        private const val DEEP_PAGE = 25
+        private const val DEEP_PAGE_OFFSET = 500L
         private const val OUT_OF_RANGE_PAGE = 51
         private const val NO_MATCH_SEARCH = "no-match-phase1c"
         private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
@@ -369,7 +440,10 @@ data class Phase1cAdminQuerySnapshot(
     val outcome: Phase1cAdminQueryOutcome,
     val studentEntitiesMaterialized: Int,
     val commandCounts: Phase1cMongoCommandCounts,
-    val studentReadCommands: List<Phase1cObservedMongoReadCommand>
+    val studentReadCommands: List<Phase1cObservedMongoReadCommand>,
+    val studentIndexes: List<MongoIndexBaseline>,
+    val studentPage: MongoQueryExecutionBaseline?,
+    val studentCount: MongoQueryExecutionBaseline
 )
 
 data class Phase1cBaselineSource(
