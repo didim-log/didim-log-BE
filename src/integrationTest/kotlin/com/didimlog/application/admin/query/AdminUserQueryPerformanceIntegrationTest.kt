@@ -210,13 +210,16 @@ class AdminUserQueryPerformanceIntegrationTest {
         val queryPlanner = explain.requiredDocument("queryPlanner")
         val winningPlan = queryPlanner.requiredDocument("winningPlan")
         val executionStats = explain.requiredDocument("executionStats")
+        val accessPlan = requireNotNull(findAccessPlan(winningPlan)) {
+            "winning access plan을 찾을 수 없습니다. winningPlan=$winningPlan"
+        }
 
         return MongoQueryExecutionBaseline(
             collection = collection,
             query = query,
-            winningPlanStage = requireNotNull(findAccessPlanStage(winningPlan)) {
-                "winning access plan stage를 찾을 수 없습니다. winningPlan=$winningPlan"
-            },
+            winningPlanStage = accessPlan.requiredString("stage"),
+            selectedIndexName = accessPlan.getString("indexName"),
+            selectedIndexKeyPattern = accessPlan.indexKeyPattern(),
             nReturned = executionStats.requiredLong("nReturned"),
             totalDocsExamined = executionStats.requiredLong("totalDocsExamined"),
             totalKeysExamined = executionStats.requiredLong("totalKeysExamined")
@@ -251,24 +254,39 @@ class AdminUserQueryPerformanceIntegrationTest {
                     .append("cursor", Document())
             ).append("verbosity", "executionStats")
         )
-        val queryPlanner = requireNotNull(findNestedDocument(explain, "queryPlanner")) {
-            "Mongo aggregate explain에 queryPlanner가 없습니다. response=$explain"
-        }
+        val cursor = findAggregationCursor(explain)
+        val queryPlanner = cursor?.requiredDocument("queryPlanner")
+            ?: requireNotNull(findNestedDocument(explain, "queryPlanner")) {
+                "Mongo aggregate explain에 queryPlanner가 없습니다. response=$explain"
+            }
         val winningPlan = queryPlanner.requiredDocument("winningPlan")
-        val executionStats = requireNotNull(findNestedDocument(explain, "executionStats")) {
-            "Mongo aggregate explain에 executionStats가 없습니다. response=$explain"
+        val executionStats = cursor?.requiredDocument("executionStats")
+            ?: requireNotNull(findNestedDocument(explain, "executionStats")) {
+                "Mongo aggregate explain에 executionStats가 없습니다. response=$explain"
+            }
+        val accessPlan = requireNotNull(findAccessPlan(winningPlan)) {
+            "winning access plan을 찾을 수 없습니다. winningPlan=$winningPlan"
         }
 
         return MongoQueryExecutionBaseline(
             collection = "retrospectives",
             query = "countByStudentIds",
-            winningPlanStage = requireNotNull(findAccessPlanStage(winningPlan)) {
-                "winning access plan stage를 찾을 수 없습니다. winningPlan=$winningPlan"
-            },
+            winningPlanStage = accessPlan.requiredString("stage"),
+            selectedIndexName = accessPlan.getString("indexName"),
+            selectedIndexKeyPattern = accessPlan.indexKeyPattern(),
             nReturned = executionStats.requiredLong("nReturned"),
             totalDocsExamined = executionStats.requiredLong("totalDocsExamined"),
             totalKeysExamined = executionStats.requiredLong("totalKeysExamined")
         )
+    }
+
+    private fun findAggregationCursor(explain: Document): Document? {
+        return (explain["stages"] as? Iterable<*>)
+            ?.asSequence()
+            ?.mapNotNull { stage ->
+                (stage as? Document)?.get("\$cursor") as? Document
+            }
+            ?.firstOrNull()
     }
 
     private fun findNestedDocument(value: Any?, key: String): Document? {
@@ -286,14 +304,15 @@ class AdminUserQueryPerformanceIntegrationTest {
         }
     }
 
-    private fun findAccessPlanStage(value: Any?): String? {
+    private fun findAccessPlan(value: Any?): Document? {
         return when (value) {
             is Document -> {
                 (value["stage"] as? String)
                     ?.takeIf { stage -> stage == "COLLSCAN" || stage == "IXSCAN" }
-                    ?: value.values.asSequence().mapNotNull(::findAccessPlanStage).firstOrNull()
+                    ?.let { value }
+                    ?: value.values.asSequence().mapNotNull(::findAccessPlan).firstOrNull()
             }
-            is Iterable<*> -> value.asSequence().mapNotNull(::findAccessPlanStage).firstOrNull()
+            is Iterable<*> -> value.asSequence().mapNotNull(::findAccessPlan).firstOrNull()
             else -> null
         }
     }
@@ -309,11 +328,15 @@ class AdminUserQueryPerformanceIntegrationTest {
         assertThat(retrospectiveIndexes.map { it.name }).containsExactly("_id_")
 
         assertThat(studentFindAllStats.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(studentFindAllStats.selectedIndexName).isNull()
+        assertThat(studentFindAllStats.selectedIndexKeyPattern).isNull()
         assertThat(studentFindAllStats.nReturned).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
         assertThat(studentFindAllStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
         assertThat(studentFindAllStats.totalKeysExamined).isZero()
 
         assertThat(retrospectiveCountByStudentIdsStats.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(retrospectiveCountByStudentIdsStats.selectedIndexName).isNull()
+        assertThat(retrospectiveCountByStudentIdsStats.selectedIndexKeyPattern).isNull()
         assertThat(retrospectiveCountByStudentIdsStats.nReturned).isEqualTo(expectedGroupedStudentCount)
         assertThat(retrospectiveCountByStudentIdsStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
         assertThat(retrospectiveCountByStudentIdsStats.totalKeysExamined).isZero()
@@ -450,6 +473,8 @@ data class MongoQueryExecutionBaseline(
     val collection: String,
     val query: String,
     val winningPlanStage: String,
+    val selectedIndexName: String?,
+    val selectedIndexKeyPattern: Map<String, Int>?,
     @get:JsonProperty("nReturned")
     val nReturned: Long,
     val totalDocsExamined: Long,
@@ -466,4 +491,19 @@ private fun Document.requiredLong(key: String): Long {
     return requireNotNull(this[key] as? Number) {
         "Mongo 응답에 $key 숫자가 없습니다. document=$this"
     }.toLong()
+}
+
+private fun Document.requiredString(key: String): String {
+    return requireNotNull(getString(key)) {
+        "Mongo 응답에 $key 문자열이 없습니다. document=$this"
+    }
+}
+
+private fun Document.indexKeyPattern(): Map<String, Int>? {
+    val keyPattern = this["keyPattern"] as? Document ?: return null
+    return keyPattern.entries.associate { (key, value) ->
+        key to requireNotNull(value as? Number) {
+            "Mongo index keyPattern 값이 숫자가 아닙니다. key=$key, value=$value"
+        }.toInt()
+    }
 }
