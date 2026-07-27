@@ -204,20 +204,24 @@ flowchart LR
 ### 관리자 회원 조회 최적화
 
 회원별 회고 조회를 batch aggregation으로 바꾸고 `studentId` 단일 index를 실제로
-보장한 뒤, 회원 검색·가입일 필터·정렬·페이징을 MongoDB로 이동했습니다.
+보장한 뒤, 회원 검색·가입일 필터·정렬·페이징을 MongoDB로 이동했습니다. 기본
+`rating DESC, _id ASC` 목록에는 정렬용 compound index를 추가했습니다.
 
 | 검증 항목 | Before | After |
 | :--- | :--- | :--- |
 | MongoDB read command (page size 10) | 11회 | 3회, 72.7% 감소 |
 | `Student` 매핑 (회원 1,000명 · page size 20) | 1,000건 | 20건, 98.0% 감소 |
+| 학생 page access | `COLLSCAN` + blocking `SORT` | `IXSCAN`, blocking `SORT` 제거 |
+| 학생 page + count document 검사 (회원 1,000명 · page size 20) | 2,000건 | 1,020건, 49.0% 감소 |
 | 회고 수 aggregation access | `COLLSCAN` | covered `IXSCAN (studentId)` |
 | 회고 document 검사 (12건 고정 fixture) | 12건 | 0건 |
 
 매핑 감소율은 로컬 합성 fixture에서 애플리케이션이 변환한 엔티티 수 기준입니다.
-학생 조회와 count는 아직 각각 `COLLSCAN`이므로 latency·메모리·운영 처리량
-개선율을 의미하지 않습니다.
+학생 page는 대상 index를 사용하지만 count는 `COLLSCAN`을 유지합니다. Document
+검사 감소율은 두 실행계획의 `totalDocsExamined` 합이며 latency·메모리·운영
+처리량 개선율을 의미하지 않습니다.
 
-[![관리자 회원 조회 N+1 제거, 회고 index, DB 페이징 결과](./DOCS/assets/refactoring/admin-query-optimization.svg)](./DOCS/refactoring/be-refactor/PHASE_1C_ADMIN_DB_PAGINATION.md)
+[![관리자 회원 조회 N+1 제거, 회고 index, DB 페이징과 정렬 index 결과](./DOCS/assets/refactoring/admin-query-optimization.svg)](./DOCS/refactoring/be-refactor/PHASE_1D_ADMIN_RATING_INDEX.md)
 
 ## 8. 트러블 슈팅
 

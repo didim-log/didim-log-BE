@@ -100,6 +100,7 @@ main() {
   test -f "$OUTPUT_DIR/admin-users-page-size-05.json"
   test -f "$OUTPUT_DIR/admin-users-page-size-10.json"
   test -f "$OUTPUT_DIR/admin-users-db-pagination-unfiltered.json"
+  test -f "$OUTPUT_DIR/admin-users-db-pagination-deep-page.json"
   test -f "$OUTPUT_DIR/admin-users-db-pagination-search-empty.json"
   test -f "$OUTPUT_DIR/admin-users-db-pagination-out-of-range.json"
 

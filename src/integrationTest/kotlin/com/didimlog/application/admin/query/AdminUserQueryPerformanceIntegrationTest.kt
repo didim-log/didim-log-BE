@@ -21,6 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentLinkedQueue
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.bson.BsonArray
 import org.bson.BsonDocument
 import org.bson.BsonNumber
@@ -42,6 +43,9 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.index.Index
+import org.springframework.data.mongodb.core.index.PartialIndexFilter
+import org.springframework.data.mongodb.core.query.Collation
+import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.test.context.ActiveProfiles
 
 @DisplayName("관리자 회원 목록 조회 command 성능 회귀")
@@ -72,6 +76,10 @@ class AdminUserQueryPerformanceIntegrationTest {
 
     @Autowired
     private lateinit var mongoIndexInitializer: MongoIndexInitializer
+
+    private val queryPlanExplainer by lazy {
+        MongoQueryPlanExplainer(mongoTemplate)
+    }
 
     @BeforeEach
     fun setUp() {
@@ -145,18 +153,18 @@ class AdminUserQueryPerformanceIntegrationTest {
             .describedAs("관리자 회원 목록의 고정 Mongo read command")
             .isEqualTo(3)
 
-        val studentIndexes = collectIndexes(Student::class.java)
-        val retrospectiveIndexes = collectIndexes(Retrospective::class.java)
-        val studentPageStats = explainFind(
+        val studentIndexes = queryPlanExplainer.collectIndexes(Student::class.java)
+        val retrospectiveIndexes = queryPlanExplainer.collectIndexes(Retrospective::class.java)
+        val studentPageStats = queryPlanExplainer.explainFind(
             query = "searchAdminUsersPage",
             command = studentFindCommand
         )
-        val studentCountStats = explainAggregation(
+        val studentCountStats = queryPlanExplainer.explainAggregation(
             collection = "students",
             query = "searchAdminUsersCount",
             pipeline = studentCountPipeline
         )
-        val retrospectiveCountByStudentIdsStats = explainAggregation(
+        val retrospectiveCountByStudentIdsStats = queryPlanExplainer.explainAggregation(
             collection = "retrospectives",
             query = "countByStudentIds",
             pipeline = retrospectiveAggregatePipeline
@@ -214,7 +222,7 @@ class AdminUserQueryPerformanceIntegrationTest {
 
     @Test
     fun `회고 studentId 단일 인덱스를 보장한다`() {
-        val retrospectiveIndexes = collectIndexes(Retrospective::class.java)
+        val retrospectiveIndexes = queryPlanExplainer.collectIndexes(Retrospective::class.java)
 
         assertThat(retrospectiveIndexes.map { it.name })
             .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
@@ -239,7 +247,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         mongoIndexInitializer.ensureIndexes()
 
         assertThat(
-            collectIndexes(Retrospective::class.java)
+            queryPlanExplainer.collectIndexes(Retrospective::class.java)
                 .count { it.name == RETROSPECTIVE_STUDENT_ID_INDEX_NAME }
         ).isEqualTo(1)
     }
@@ -257,7 +265,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         try {
             mongoIndexInitializer.ensureIndexes()
 
-            assertThat(collectIndexes(Retrospective::class.java).map { it.name })
+            assertThat(queryPlanExplainer.collectIndexes(Retrospective::class.java).map { it.name })
                 .containsExactly("_id_", LEGACY_STUDENT_ID_INDEX_NAME)
         } finally {
             indexOperations.dropIndex(LEGACY_STUDENT_ID_INDEX_NAME)
@@ -265,131 +273,176 @@ class AdminUserQueryPerformanceIntegrationTest {
         }
     }
 
-    private fun collectIndexes(entityType: Class<*>): List<MongoIndexBaseline> {
-        return mongoTemplate.indexOps(entityType).indexInfo
-            .map { index ->
-                MongoIndexBaseline(
-                    name = index.name,
-                    unique = index.isUnique || index.name == "_id_",
-                    sparse = index.isSparse,
-                    fields = index.indexFields.map { field ->
-                        MongoIndexFieldBaseline(
-                            key = field.key,
-                            direction = field.direction?.name
-                        )
-                    }
+    @Test
+    fun `학생 관리자 정렬 복합 인덱스를 보장한다`() {
+        val studentIndexes = queryPlanExplainer.collectIndexes(Student::class.java)
+
+        assertThat(studentIndexes.map { it.name })
+            .containsExactly("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
+
+        val adminRatingIndex = requireNotNull(
+            studentIndexes.singleOrNull { it.name == STUDENT_ADMIN_RATING_INDEX_NAME }
+        )
+        assertThat(adminRatingIndex.unique).isFalse()
+        assertThat(adminRatingIndex.sparse).isFalse()
+        assertThat(adminRatingIndex.fields)
+            .containsExactly(
+                MongoIndexFieldBaseline(
+                    key = "rating",
+                    direction = "DESC"
+                ),
+                MongoIndexFieldBaseline(
+                    key = "_id",
+                    direction = "ASC"
                 )
-            }
-            .sortedBy { it.name }
+            )
+
+        val rawAdminRatingIndex = mongoTemplate.indexOps(Student::class.java).indexInfo
+            .single { index -> index.name == STUDENT_ADMIN_RATING_INDEX_NAME }
+        assertThat(rawAdminRatingIndex.partialFilterExpression).isNull()
+        assertThat(rawAdminRatingIndex.collation).isEmpty
+        assertThat(rawAdminRatingIndex.isHidden).isFalse()
     }
 
-    private fun explainFind(
-        query: String,
-        command: ObservedMongoReadCommand
-    ): MongoQueryExecutionBaseline {
-        val findCommand = Document("find", command.collection)
-            .append("filter", command.filter ?: Document())
-        command.sort?.let { findCommand.append("sort", it) }
-        command.skip?.let { findCommand.append("skip", it) }
-        command.limit?.let { findCommand.append("limit", it) }
-        val explain = mongoTemplate.executeCommand(
-            Document(
-                "explain",
-                findCommand
-            ).append("verbosity", "executionStats")
-        )
-        val queryPlanner = explain.requiredDocument("queryPlanner")
-        val winningPlan = queryPlanner.requiredDocument("winningPlan")
-        val executionStats = explain.requiredDocument("executionStats")
-        val accessPlan = requireNotNull(findAccessPlan(winningPlan)) {
-            "winning access plan을 찾을 수 없습니다. winningPlan=$winningPlan"
-        }
+    @Test
+    fun `학생 관리자 정렬 인덱스 초기화는 반복 실행해도 중복되지 않는다`() {
+        mongoIndexInitializer.ensureIndexes()
+        mongoIndexInitializer.ensureIndexes()
 
-        return MongoQueryExecutionBaseline(
-            collection = command.collection,
-            query = query,
-            winningPlanStage = accessPlan.requiredString("stage"),
-            selectedIndexName = accessPlan.getString("indexName"),
-            selectedIndexKeyPattern = accessPlan.indexKeyPattern(),
-            nReturned = executionStats.requiredLong("nReturned"),
-            totalDocsExamined = executionStats.requiredLong("totalDocsExamined"),
-            totalKeysExamined = executionStats.requiredLong("totalKeysExamined")
-        )
+        assertThat(
+            queryPlanExplainer.collectIndexes(Student::class.java)
+                .count { it.name == STUDENT_ADMIN_RATING_INDEX_NAME }
+        ).isEqualTo(1)
     }
 
-    private fun explainAggregation(
-        collection: String,
-        query: String,
-        pipeline: List<Document>
-    ): MongoQueryExecutionBaseline {
-        val explain = mongoTemplate.executeCommand(
-            Document(
-                "explain",
-                Document("aggregate", collection)
-                    .append("pipeline", pipeline)
-                    .append("cursor", Document())
-            ).append("verbosity", "executionStats")
+    @Test
+    fun `학생 관리자 정렬 인덱스는 기존 이름이 달라도 재사용한다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .named(LEGACY_ADMIN_RATING_INDEX_NAME)
         )
-        val cursor = findAggregationCursor(explain)
-        val queryPlanner = cursor?.requiredDocument("queryPlanner")
-            ?: requireNotNull(findNestedDocument(explain, "queryPlanner")) {
-                "Mongo aggregate explain에 queryPlanner가 없습니다. response=$explain"
-            }
-        val winningPlan = queryPlanner.requiredDocument("winningPlan")
-        val executionStats = cursor?.requiredDocument("executionStats")
-            ?: requireNotNull(findNestedDocument(explain, "executionStats")) {
-                "Mongo aggregate explain에 executionStats가 없습니다. response=$explain"
-            }
-        val accessPlan = requireNotNull(findAccessPlan(winningPlan)) {
-            "winning access plan을 찾을 수 없습니다. winningPlan=$winningPlan"
-        }
 
-        return MongoQueryExecutionBaseline(
-            collection = collection,
-            query = query,
-            winningPlanStage = accessPlan.requiredString("stage"),
-            selectedIndexName = accessPlan.getString("indexName"),
-            selectedIndexKeyPattern = accessPlan.indexKeyPattern(),
-            nReturned = executionStats.requiredLong("nReturned"),
-            totalDocsExamined = executionStats.requiredLong("totalDocsExamined"),
-            totalKeysExamined = executionStats.requiredLong("totalKeysExamined")
-        )
-    }
+        try {
+            mongoIndexInitializer.ensureIndexes()
 
-    private fun findAggregationCursor(explain: Document): Document? {
-        return (explain["stages"] as? Iterable<*>)
-            ?.asSequence()
-            ?.mapNotNull { stage ->
-                (stage as? Document)?.get("\$cursor") as? Document
-            }
-            ?.firstOrNull()
-    }
-
-    private fun findNestedDocument(value: Any?, key: String): Document? {
-        return when (value) {
-            is Document -> {
-                (value[key] as? Document)
-                    ?: value.values.asSequence()
-                        .mapNotNull { nested -> findNestedDocument(nested, key) }
-                        .firstOrNull()
-            }
-            is Iterable<*> -> value.asSequence()
-                .mapNotNull { nested -> findNestedDocument(nested, key) }
-                .firstOrNull()
-            else -> null
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .containsExactly("_id_", LEGACY_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(LEGACY_ADMIN_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
         }
     }
 
-    private fun findAccessPlan(value: Any?): Document? {
-        return when (value) {
-            is Document -> {
-                (value["stage"] as? String)
-                    ?.takeIf { stage -> stage == "COLLSCAN" || stage == "IXSCAN" }
-                    ?.let { value }
-                    ?: value.values.asSequence().mapNotNull(::findAccessPlan).firstOrNull()
-            }
-            is Iterable<*> -> value.asSequence().mapNotNull(::findAccessPlan).firstOrNull()
-            else -> null
+    @Test
+    fun `회고 인덱스가 존재해도 누락된 학생 관리자 정렬 인덱스를 복구한다`() {
+        val studentIndexOperations = mongoTemplate.indexOps(Student::class.java)
+        studentIndexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+
+        try {
+            assertThat(
+                queryPlanExplainer.collectIndexes(Retrospective::class.java).map { it.name }
+            ).contains(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `단일 rating 인덱스는 관리자 정렬 복합 인덱스를 대체하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .named(SINGLE_RATING_INDEX_NAME)
+        )
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME, SINGLE_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(SINGLE_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `부분 인덱스는 관리자 정렬 복합 인덱스를 대체하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .partial(PartialIndexFilter.of(Criteria.where("rating").gt(0)))
+                .named(PARTIAL_ADMIN_RATING_INDEX_NAME)
+        )
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME, PARTIAL_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(PARTIAL_ADMIN_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `별도 collation 인덱스는 관리자 정렬 복합 인덱스를 대체하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .collation(Collation.of("en"))
+                .named(COLLATED_ADMIN_RATING_INDEX_NAME)
+        )
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME, COLLATED_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(COLLATED_ADMIN_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `숨김 인덱스는 관리자 정렬 복합 인덱스로 재사용하지 않고 충돌을 노출한다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .hidden()
+                .named(STUDENT_ADMIN_RATING_INDEX_NAME)
+        )
+
+        try {
+            assertThatThrownBy(mongoIndexInitializer::ensureIndexes)
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("숨김 상태")
+                .hasMessageContaining(STUDENT_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
         }
     }
 
@@ -402,22 +455,33 @@ class AdminUserQueryPerformanceIntegrationTest {
         expectedPageSize: Long,
         expectedGroupedStudentCount: Long
     ) {
-        assertThat(studentIndexes.map { it.name }).containsExactly("_id_")
+        assertThat(studentIndexes.map { it.name })
+            .containsExactly("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
         assertThat(retrospectiveIndexes.map { it.name })
             .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
 
-        assertThat(studentPageStats.winningPlanStage).isEqualTo("COLLSCAN")
-        assertThat(studentPageStats.selectedIndexName).isNull()
-        assertThat(studentPageStats.selectedIndexKeyPattern).isNull()
+        assertThat(studentPageStats.winningPlanStage).isEqualTo("IXSCAN")
+        assertThat(studentPageStats.selectedIndexName)
+            .isEqualTo(STUDENT_ADMIN_RATING_INDEX_NAME)
+        assertThat(studentPageStats.selectedIndexKeyPattern)
+            .containsExactlyEntriesOf(
+                mapOf(
+                    "rating" to -1,
+                    "_id" to 1
+                )
+            )
+        assertThat(studentPageStats.hasBlockingSort).isFalse()
         assertThat(studentPageStats.nReturned).isEqualTo(expectedPageSize)
-        assertThat(studentPageStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
-        assertThat(studentPageStats.totalKeysExamined).isZero()
+        assertThat(studentPageStats.totalDocsExamined).isEqualTo(expectedPageSize)
+        assertThat(studentPageStats.totalKeysExamined).isEqualTo(expectedPageSize)
 
         assertThat(studentCountStats.winningPlanStage).isEqualTo("COLLSCAN")
         assertThat(studentCountStats.selectedIndexName).isNull()
         assertThat(studentCountStats.selectedIndexKeyPattern).isNull()
+        assertThat(studentCountStats.hasBlockingSort).isFalse()
         assertThat(studentCountStats.nReturned).isEqualTo(1)
-        assertThat(studentCountStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentCountStats.totalDocsExamined)
+            .isEqualTo(TOTAL_STUDENT_COUNT.toLong())
         assertThat(studentCountStats.totalKeysExamined).isZero()
 
         assertThat(retrospectiveCountByStudentIdsStats.winningPlanStage).isEqualTo("IXSCAN")
@@ -429,6 +493,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         assertThat(retrospectiveCountByStudentIdsStats.totalDocsExamined).isZero()
         assertThat(retrospectiveCountByStudentIdsStats.totalKeysExamined)
             .isEqualTo(expectedGroupedStudentCount)
+        assertThat(retrospectiveCountByStudentIdsStats.hasBlockingSort).isFalse()
     }
 
     private fun writeSnapshotIfRequested(snapshot: AdminQueryMeasurementSnapshot) {
@@ -466,6 +531,11 @@ class AdminUserQueryPerformanceIntegrationTest {
         private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
         private const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId"
         private const val LEGACY_STUDENT_ID_INDEX_NAME = "studentId_1"
+        private const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
+        private const val LEGACY_ADMIN_RATING_INDEX_NAME = "legacy_admin_rating"
+        private const val SINGLE_RATING_INDEX_NAME = "rating_desc_only"
+        private const val PARTIAL_ADMIN_RATING_INDEX_NAME = "partial_admin_rating"
+        private const val COLLATED_ADMIN_RATING_INDEX_NAME = "collated_admin_rating"
     }
 }
 
@@ -627,35 +697,9 @@ data class MongoQueryExecutionBaseline(
     val winningPlanStage: String,
     val selectedIndexName: String?,
     val selectedIndexKeyPattern: Map<String, Int>?,
+    val hasBlockingSort: Boolean,
     @get:JsonProperty("nReturned")
     val nReturned: Long,
     val totalDocsExamined: Long,
     val totalKeysExamined: Long
 )
-
-private fun Document.requiredDocument(key: String): Document {
-    return requireNotNull(this[key] as? Document) {
-        "Mongo 응답에 $key 문서가 없습니다. response=$this"
-    }
-}
-
-private fun Document.requiredLong(key: String): Long {
-    return requireNotNull(this[key] as? Number) {
-        "Mongo 응답에 $key 숫자가 없습니다. document=$this"
-    }.toLong()
-}
-
-private fun Document.requiredString(key: String): String {
-    return requireNotNull(getString(key)) {
-        "Mongo 응답에 $key 문자열이 없습니다. document=$this"
-    }
-}
-
-private fun Document.indexKeyPattern(): Map<String, Int>? {
-    val keyPattern = this["keyPattern"] as? Document ?: return null
-    return keyPattern.entries.associate { (key, value) ->
-        key to requireNotNull(value as? Number) {
-            "Mongo index keyPattern 값이 숫자가 아닙니다. key=$key, value=$value"
-        }.toInt()
-    }
-}
