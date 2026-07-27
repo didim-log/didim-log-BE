@@ -165,7 +165,11 @@ performance/results/admin-query-phase1c-after-c563731-run-*/
 
 ## 남은 범위
 
-- `rating DESC, _id ASC` 정렬과 가입일 필터의 실제 index 설계·측정
+완료: [Phase 1D — 관리자 회원 정렬 인덱스](./PHASE_1D_ADMIN_RATING_INDEX.md)에서
+기본 `rating DESC, _id ASC` 정렬 index를 적용하고 첫 페이지와 깊은 페이지의
+실행계획을 측정했다.
+
+- 가입일 필터의 실제 index 설계·측정
 - 부분 문자열 검색에 적합한 검색 전략 검토
 - page size 상한 정책
 - latency·처리량·heap·network byte의 별도 paired protocol 측정
