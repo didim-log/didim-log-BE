@@ -1,6 +1,7 @@
 package com.didimlog.global.config.mongo
 
 import com.didimlog.domain.Retrospective
+import com.didimlog.domain.Student
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.data.domain.Sort
@@ -21,6 +22,11 @@ class MongoIndexInitializer(
     }
 
     fun ensureIndexes() {
+        ensureRetrospectiveStudentIdIndex()
+        ensureStudentAdminRatingIndex()
+    }
+
+    private fun ensureRetrospectiveStudentIdIndex() {
         val indexOperations = mongoTemplate.indexOps(Retrospective::class.java)
         val hasStudentIdIndex = indexOperations.indexInfo.any { index ->
             val field = index.indexFields.singleOrNull()
@@ -38,7 +44,32 @@ class MongoIndexInitializer(
             )
     }
 
+    private fun ensureStudentAdminRatingIndex() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        val hasAdminRatingIndex = indexOperations.indexInfo.any { index ->
+            index.indexFields.size == 2 &&
+                index.indexFields[0].key == "rating" &&
+                index.indexFields[0].direction == Sort.Direction.DESC &&
+                index.indexFields[1].key == "_id" &&
+                index.indexFields[1].direction == Sort.Direction.ASC &&
+                !index.isUnique &&
+                !index.isSparse
+        }
+        if (hasAdminRatingIndex) {
+            return
+        }
+
+        indexOperations
+            .ensureIndex(
+                Index()
+                    .on("rating", Sort.Direction.DESC)
+                    .on("_id", Sort.Direction.ASC)
+                    .named(STUDENT_ADMIN_RATING_INDEX_NAME)
+            )
+    }
+
     companion object {
         const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId"
+        const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
     }
 }

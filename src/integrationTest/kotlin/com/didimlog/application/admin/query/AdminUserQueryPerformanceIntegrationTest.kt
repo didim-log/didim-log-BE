@@ -269,6 +269,104 @@ class AdminUserQueryPerformanceIntegrationTest {
         }
     }
 
+    @Test
+    fun `학생 관리자 정렬 복합 인덱스를 보장한다`() {
+        val studentIndexes = queryPlanExplainer.collectIndexes(Student::class.java)
+
+        assertThat(studentIndexes.map { it.name })
+            .containsExactly("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
+
+        val adminRatingIndex = requireNotNull(
+            studentIndexes.singleOrNull { it.name == STUDENT_ADMIN_RATING_INDEX_NAME }
+        )
+        assertThat(adminRatingIndex.unique).isFalse()
+        assertThat(adminRatingIndex.sparse).isFalse()
+        assertThat(adminRatingIndex.fields)
+            .containsExactly(
+                MongoIndexFieldBaseline(
+                    key = "rating",
+                    direction = "DESC"
+                ),
+                MongoIndexFieldBaseline(
+                    key = "_id",
+                    direction = "ASC"
+                )
+            )
+    }
+
+    @Test
+    fun `학생 관리자 정렬 인덱스 초기화는 반복 실행해도 중복되지 않는다`() {
+        mongoIndexInitializer.ensureIndexes()
+        mongoIndexInitializer.ensureIndexes()
+
+        assertThat(
+            queryPlanExplainer.collectIndexes(Student::class.java)
+                .count { it.name == STUDENT_ADMIN_RATING_INDEX_NAME }
+        ).isEqualTo(1)
+    }
+
+    @Test
+    fun `학생 관리자 정렬 인덱스는 기존 이름이 달라도 재사용한다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .named(LEGACY_ADMIN_RATING_INDEX_NAME)
+        )
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .containsExactly("_id_", LEGACY_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(LEGACY_ADMIN_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `회고 인덱스가 존재해도 누락된 학생 관리자 정렬 인덱스를 복구한다`() {
+        val studentIndexOperations = mongoTemplate.indexOps(Student::class.java)
+        studentIndexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+
+        try {
+            assertThat(
+                queryPlanExplainer.collectIndexes(Retrospective::class.java).map { it.name }
+            ).contains(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `단일 rating 인덱스는 관리자 정렬 복합 인덱스를 대체하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .named(SINGLE_RATING_INDEX_NAME)
+        )
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME, SINGLE_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(SINGLE_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
     private fun assertQueryPlanBaseline(
         studentIndexes: List<MongoIndexBaseline>,
         retrospectiveIndexes: List<MongoIndexBaseline>,
@@ -278,24 +376,34 @@ class AdminUserQueryPerformanceIntegrationTest {
         expectedPageSize: Long,
         expectedGroupedStudentCount: Long
     ) {
-        assertThat(studentIndexes.map { it.name }).contains("_id_")
+        assertThat(studentIndexes.map { it.name })
+            .containsExactly("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
         assertThat(retrospectiveIndexes.map { it.name })
             .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
 
-        assertThat(studentPageStats.winningPlanStage).isIn("COLLSCAN", "IXSCAN")
+        assertThat(studentPageStats.winningPlanStage).isEqualTo("IXSCAN")
+        assertThat(studentPageStats.selectedIndexName)
+            .isEqualTo(STUDENT_ADMIN_RATING_INDEX_NAME)
+        assertThat(studentPageStats.selectedIndexKeyPattern)
+            .containsExactlyEntriesOf(
+                mapOf(
+                    "rating" to -1,
+                    "_id" to 1
+                )
+            )
+        assertThat(studentPageStats.hasBlockingSort).isFalse()
         assertThat(studentPageStats.nReturned).isEqualTo(expectedPageSize)
-        assertThat(studentPageStats.totalDocsExamined)
-            .isBetween(expectedPageSize, TOTAL_STUDENT_COUNT.toLong())
-        assertThat(studentPageStats.totalKeysExamined)
-            .isBetween(0L, expectedPageSize)
+        assertThat(studentPageStats.totalDocsExamined).isEqualTo(expectedPageSize)
+        assertThat(studentPageStats.totalKeysExamined).isEqualTo(expectedPageSize)
 
-        assertThat(studentCountStats.winningPlanStage)
-            .isIn("COLLSCAN", "IXSCAN", "COUNT_SCAN")
+        assertThat(studentCountStats.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(studentCountStats.selectedIndexName).isNull()
+        assertThat(studentCountStats.selectedIndexKeyPattern).isNull()
+        assertThat(studentCountStats.hasBlockingSort).isFalse()
         assertThat(studentCountStats.nReturned).isEqualTo(1)
         assertThat(studentCountStats.totalDocsExamined)
-            .isBetween(0L, TOTAL_STUDENT_COUNT.toLong())
-        assertThat(studentCountStats.totalKeysExamined)
-            .isBetween(0L, TOTAL_STUDENT_COUNT.toLong())
+            .isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentCountStats.totalKeysExamined).isZero()
 
         assertThat(retrospectiveCountByStudentIdsStats.winningPlanStage).isEqualTo("IXSCAN")
         assertThat(retrospectiveCountByStudentIdsStats.selectedIndexName)
@@ -344,6 +452,9 @@ class AdminUserQueryPerformanceIntegrationTest {
         private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
         private const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId"
         private const val LEGACY_STUDENT_ID_INDEX_NAME = "studentId_1"
+        private const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
+        private const val LEGACY_ADMIN_RATING_INDEX_NAME = "legacy_admin_rating"
+        private const val SINGLE_RATING_INDEX_NAME = "rating_desc_only"
     }
 }
 

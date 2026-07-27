@@ -273,20 +273,34 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
         snapshot: Phase1cAdminQuerySnapshot,
         expectedPageOffset: Long
     ) {
-        assertThat(snapshot.studentIndexes.map { it.name }).contains("_id_")
+        assertThat(snapshot.studentIndexes.map { it.name })
+            .containsExactly("_id_", MongoIndexInitializer.STUDENT_ADMIN_RATING_INDEX_NAME)
 
         val pagePlan = requireNotNull(snapshot.studentPage)
-        assertThat(pagePlan.winningPlanStage).isIn("COLLSCAN", "IXSCAN")
+        assertThat(pagePlan.winningPlanStage).isEqualTo("IXSCAN")
+        assertThat(pagePlan.selectedIndexName)
+            .isEqualTo(MongoIndexInitializer.STUDENT_ADMIN_RATING_INDEX_NAME)
+        assertThat(pagePlan.selectedIndexKeyPattern)
+            .containsExactlyEntriesOf(
+                mapOf(
+                    "rating" to -1,
+                    "_id" to 1
+                )
+            )
+        assertThat(pagePlan.hasBlockingSort).isFalse()
         assertThat(pagePlan.nReturned).isEqualTo(PAGE_SIZE.toLong())
-        assertThat(pagePlan.totalDocsExamined)
-            .isBetween(PAGE_SIZE.toLong(), FIXTURE_STUDENT_COUNT.toLong())
+        assertThat(pagePlan.totalDocsExamined).isEqualTo(PAGE_SIZE.toLong())
         assertThat(pagePlan.totalKeysExamined)
-            .isBetween(0L, expectedPageOffset + PAGE_SIZE)
+            .isEqualTo(expectedPageOffset + PAGE_SIZE)
 
-        assertThat(snapshot.studentCount.winningPlanStage).isIn("COLLSCAN", "IXSCAN")
+        assertThat(snapshot.studentCount.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(snapshot.studentCount.selectedIndexName).isNull()
+        assertThat(snapshot.studentCount.selectedIndexKeyPattern).isNull()
+        assertThat(snapshot.studentCount.hasBlockingSort).isFalse()
         assertThat(snapshot.studentCount.nReturned).isEqualTo(1)
         assertThat(snapshot.studentCount.totalDocsExamined)
-            .isBetween(0L, FIXTURE_STUDENT_COUNT.toLong())
+            .isEqualTo(FIXTURE_STUDENT_COUNT.toLong())
+        assertThat(snapshot.studentCount.totalKeysExamined).isZero()
     }
 
     private fun successfulOutcome(result: Page<*>): Phase1cAdminQueryOutcome {
