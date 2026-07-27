@@ -22,6 +22,8 @@ import java.nio.file.Path
 import java.util.concurrent.ConcurrentLinkedQueue
 import org.assertj.core.api.Assertions.assertThat
 import org.bson.BsonArray
+import org.bson.BsonDocument
+import org.bson.BsonNumber
 import org.bson.BsonString
 import org.bson.Document
 import org.junit.jupiter.api.AfterEach
@@ -99,26 +101,39 @@ class AdminUserQueryPerformanceIntegrationTest {
         commandCounter.reset()
     }
 
-    @ParameterizedTest(name = "page size {0}이어도 Mongo read command는 2번 실행된다")
+    @ParameterizedTest(name = "page size {0}이어도 Mongo read command는 3번 실행된다")
     @ValueSource(ints = [1, 5, 10])
     fun `회원 목록 조회는 회고 수를 한 번에 집계한다`(pageSize: Int) {
-        val result = adminService.getAllUsers(PageRequest.of(0, pageSize))
+        val result = adminService.getAllUsers(
+            PageRequest.of(
+                0,
+                pageSize,
+                Sort.by(Sort.Direction.DESC, "rating")
+            )
+        )
 
         assertThat(result.content).hasSize(pageSize)
         assertThat(result.totalElements).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(result.content.first().id).isEqualTo("baseline-student-12")
         assertThat(result.content).allSatisfy { user ->
             assertThat(user.solvedCount).isZero()
             assertThat(user.retrospectiveCount).isEqualTo(1)
         }
 
         val studentFindCount = commandCounter.countCommands("find", "students")
+        val studentAggregateCount = commandCounter.countCommands("aggregate", "students")
         val retrospectiveFindCount = commandCounter.countCommands("find", "retrospectives")
         val retrospectiveAggregateCount = commandCounter.countCommands("aggregate", "retrospectives")
         val totalReadCommandCount = commandCounter.countReadCommands()
+        val studentFindCommand = commandCounter.requireSingleFindCommand("students")
+        val studentCountPipeline = commandCounter.requireSingleAggregatePipeline("students")
         val retrospectiveAggregatePipeline = commandCounter.requireSingleAggregatePipeline("retrospectives")
 
         assertThat(studentFindCount)
-            .describedAs("회원 전체 조회 command")
+            .describedAs("페이지 회원 조회 command")
+            .isEqualTo(1)
+        assertThat(studentAggregateCount)
+            .describedAs("필터된 회원 전체 수 count command")
             .isEqualTo(1)
         assertThat(retrospectiveFindCount)
             .describedAs("페이지 회원별 회고 조회 command")
@@ -128,24 +143,32 @@ class AdminUserQueryPerformanceIntegrationTest {
             .isEqualTo(1)
         assertThat(totalReadCommandCount)
             .describedAs("관리자 회원 목록의 고정 Mongo read command")
-            .isEqualTo(2)
+            .isEqualTo(3)
 
         val studentIndexes = collectIndexes(Student::class.java)
         val retrospectiveIndexes = collectIndexes(Retrospective::class.java)
-        val studentFindAllStats = explainFind(
-            collection = "students",
-            query = "findAll",
-            filter = Document()
+        val studentPageStats = explainFind(
+            query = "searchAdminUsersPage",
+            command = studentFindCommand
         )
-        val retrospectiveCountByStudentIdsStats = explainRetrospectiveCountAggregation(
+        val studentCountStats = explainAggregation(
+            collection = "students",
+            query = "searchAdminUsersCount",
+            pipeline = studentCountPipeline
+        )
+        val retrospectiveCountByStudentIdsStats = explainAggregation(
+            collection = "retrospectives",
+            query = "countByStudentIds",
             pipeline = retrospectiveAggregatePipeline
         )
 
         assertQueryPlanBaseline(
             studentIndexes = studentIndexes,
             retrospectiveIndexes = retrospectiveIndexes,
-            studentFindAllStats = studentFindAllStats,
+            studentPageStats = studentPageStats,
+            studentCountStats = studentCountStats,
             retrospectiveCountByStudentIdsStats = retrospectiveCountByStudentIdsStats,
+            expectedPageSize = pageSize.toLong(),
             expectedGroupedStudentCount = result.content.count { it.retrospectiveCount > 0 }.toLong()
         )
 
@@ -159,13 +182,15 @@ class AdminUserQueryPerformanceIntegrationTest {
                 pageSize = pageSize,
                 commandCounts = MongoCommandCounts(
                     studentFind = studentFindCount,
+                    studentAggregate = studentAggregateCount,
                     retrospectiveFind = retrospectiveFindCount,
                     retrospectiveAggregate = retrospectiveAggregateCount,
                     totalRead = totalReadCommandCount
                 ),
                 studentIndexes = studentIndexes,
                 retrospectiveIndexes = retrospectiveIndexes,
-                studentFindAll = studentFindAllStats,
+                studentPage = studentPageStats,
+                studentCount = studentCountStats,
                 retrospectiveCountByStudentIds = retrospectiveCountByStudentIdsStats
             )
         )
@@ -180,7 +205,8 @@ class AdminUserQueryPerformanceIntegrationTest {
 
         assertThat(result.content).isEmpty()
         assertThat(result.totalElements).isZero()
-        assertThat(commandCounter.countCommands("find", "students")).isEqualTo(1)
+        assertThat(commandCounter.countCommands("find", "students")).isZero()
+        assertThat(commandCounter.countCommands("aggregate", "students")).isEqualTo(1)
         assertThat(commandCounter.countCommands("find", "retrospectives")).isZero()
         assertThat(commandCounter.countCommands("aggregate", "retrospectives")).isZero()
         assertThat(commandCounter.countReadCommands()).isEqualTo(1)
@@ -258,15 +284,18 @@ class AdminUserQueryPerformanceIntegrationTest {
     }
 
     private fun explainFind(
-        collection: String,
         query: String,
-        filter: Document
+        command: ObservedMongoReadCommand
     ): MongoQueryExecutionBaseline {
+        val findCommand = Document("find", command.collection)
+            .append("filter", command.filter ?: Document())
+        command.sort?.let { findCommand.append("sort", it) }
+        command.skip?.let { findCommand.append("skip", it) }
+        command.limit?.let { findCommand.append("limit", it) }
         val explain = mongoTemplate.executeCommand(
             Document(
                 "explain",
-                Document("find", collection)
-                    .append("filter", filter)
+                findCommand
             ).append("verbosity", "executionStats")
         )
         val queryPlanner = explain.requiredDocument("queryPlanner")
@@ -277,7 +306,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         }
 
         return MongoQueryExecutionBaseline(
-            collection = collection,
+            collection = command.collection,
             query = query,
             winningPlanStage = accessPlan.requiredString("stage"),
             selectedIndexName = accessPlan.getString("indexName"),
@@ -288,13 +317,15 @@ class AdminUserQueryPerformanceIntegrationTest {
         )
     }
 
-    private fun explainRetrospectiveCountAggregation(
+    private fun explainAggregation(
+        collection: String,
+        query: String,
         pipeline: List<Document>
     ): MongoQueryExecutionBaseline {
         val explain = mongoTemplate.executeCommand(
             Document(
                 "explain",
-                Document("aggregate", "retrospectives")
+                Document("aggregate", collection)
                     .append("pipeline", pipeline)
                     .append("cursor", Document())
             ).append("verbosity", "executionStats")
@@ -314,8 +345,8 @@ class AdminUserQueryPerformanceIntegrationTest {
         }
 
         return MongoQueryExecutionBaseline(
-            collection = "retrospectives",
-            query = "countByStudentIds",
+            collection = collection,
+            query = query,
             winningPlanStage = accessPlan.requiredString("stage"),
             selectedIndexName = accessPlan.getString("indexName"),
             selectedIndexKeyPattern = accessPlan.indexKeyPattern(),
@@ -365,20 +396,29 @@ class AdminUserQueryPerformanceIntegrationTest {
     private fun assertQueryPlanBaseline(
         studentIndexes: List<MongoIndexBaseline>,
         retrospectiveIndexes: List<MongoIndexBaseline>,
-        studentFindAllStats: MongoQueryExecutionBaseline,
+        studentPageStats: MongoQueryExecutionBaseline,
+        studentCountStats: MongoQueryExecutionBaseline,
         retrospectiveCountByStudentIdsStats: MongoQueryExecutionBaseline,
+        expectedPageSize: Long,
         expectedGroupedStudentCount: Long
     ) {
         assertThat(studentIndexes.map { it.name }).containsExactly("_id_")
         assertThat(retrospectiveIndexes.map { it.name })
             .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
 
-        assertThat(studentFindAllStats.winningPlanStage).isEqualTo("COLLSCAN")
-        assertThat(studentFindAllStats.selectedIndexName).isNull()
-        assertThat(studentFindAllStats.selectedIndexKeyPattern).isNull()
-        assertThat(studentFindAllStats.nReturned).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
-        assertThat(studentFindAllStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
-        assertThat(studentFindAllStats.totalKeysExamined).isZero()
+        assertThat(studentPageStats.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(studentPageStats.selectedIndexName).isNull()
+        assertThat(studentPageStats.selectedIndexKeyPattern).isNull()
+        assertThat(studentPageStats.nReturned).isEqualTo(expectedPageSize)
+        assertThat(studentPageStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentPageStats.totalKeysExamined).isZero()
+
+        assertThat(studentCountStats.winningPlanStage).isEqualTo("COLLSCAN")
+        assertThat(studentCountStats.selectedIndexName).isNull()
+        assertThat(studentCountStats.selectedIndexKeyPattern).isNull()
+        assertThat(studentCountStats.nReturned).isEqualTo(1)
+        assertThat(studentCountStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
+        assertThat(studentCountStats.totalKeysExamined).isZero()
 
         assertThat(retrospectiveCountByStudentIdsStats.winningPlanStage).isEqualTo("IXSCAN")
         assertThat(retrospectiveCountByStudentIdsStats.selectedIndexName)
@@ -463,6 +503,12 @@ class MongoCommandCounter : CommandListener {
             ObservedMongoReadCommand(
                 command = event.commandName,
                 collection = collection,
+                filter = (event.command["filter"] as? BsonDocument)
+                    ?.let { Document.parse(it.toJson()) },
+                sort = (event.command["sort"] as? BsonDocument)
+                    ?.let { Document.parse(it.toJson()) },
+                skip = (event.command["skip"] as? BsonNumber)?.longValue(),
+                limit = (event.command["limit"] as? BsonNumber)?.longValue(),
                 pipeline = (event.command["pipeline"] as? BsonArray)
                     ?.values
                     ?.map { stage -> Document.parse(stage.asDocument().toJson()) }
@@ -482,6 +528,16 @@ class MongoCommandCounter : CommandListener {
 
     fun countReadCommands(): Int = readCommands.size
 
+    fun requireSingleFindCommand(collection: String): ObservedMongoReadCommand {
+        val commands = readCommands.filter { observed ->
+            observed.command == "find" && observed.collection == collection
+        }
+        check(commands.size == 1) {
+            "$collection find command가 정확히 1개가 아닙니다. commands=$commands"
+        }
+        return commands.single()
+    }
+
     fun requireSingleAggregatePipeline(collection: String): List<Document> {
         val commands = readCommands.filter { observed ->
             observed.command == "aggregate" && observed.collection == collection
@@ -498,6 +554,10 @@ class MongoCommandCounter : CommandListener {
 data class ObservedMongoReadCommand(
     val command: String,
     val collection: String,
+    val filter: Document?,
+    val sort: Document?,
+    val skip: Long?,
+    val limit: Long?,
     val pipeline: List<Document>?
 )
 
@@ -508,7 +568,8 @@ data class AdminQueryMeasurementSnapshot(
     val commandCounts: MongoCommandCounts,
     val studentIndexes: List<MongoIndexBaseline>,
     val retrospectiveIndexes: List<MongoIndexBaseline>,
-    val studentFindAll: MongoQueryExecutionBaseline,
+    val studentPage: MongoQueryExecutionBaseline,
+    val studentCount: MongoQueryExecutionBaseline,
     val retrospectiveCountByStudentIds: MongoQueryExecutionBaseline
 )
 
@@ -519,6 +580,7 @@ data class BaselineSource(
 
 data class MongoCommandCounts(
     val studentFind: Int,
+    val studentAggregate: Int,
     val retrospectiveFind: Int,
     val retrospectiveAggregate: Int,
     val totalRead: Int

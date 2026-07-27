@@ -103,6 +103,23 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
             expectedPageSize = PAGE_SIZE,
             expectedTotalElements = FIXTURE_STUDENT_COUNT.toLong()
         )
+        assertThat(unfiltered.studentEntitiesMaterialized).isEqualTo(PAGE_SIZE)
+        assertThat(unfiltered.commandCounts).isEqualTo(
+            Phase1cMongoCommandCounts(
+                studentFind = 1,
+                studentAggregate = 1,
+                studentCount = 0,
+                studentGetMore = 0,
+                retrospectiveAggregate = 1,
+                retrospectiveGetMore = 0,
+                totalRead = 3
+            )
+        )
+        val studentPageCommand = unfiltered.studentReadCommands.single { it.command == "find" }
+        assertThat(studentPageCommand.filterJson).isEqualTo("{}")
+        assertThat(studentPageCommand.sortJson).isEqualTo("""{"rating": -1, "_id": 1}""")
+        assertThat(studentPageCommand.skip).isNull()
+        assertThat(studentPageCommand.limit).isEqualTo(PAGE_SIZE.toLong())
 
         val searchEmpty = measure(
             scenario = "search-empty",
@@ -114,6 +131,8 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
             expectedPageSize = 0,
             expectedTotalElements = 0
         )
+        assertThat(searchEmpty.studentEntitiesMaterialized).isZero()
+        assertThat(searchEmpty.commandCounts).isEqualTo(countOnlyCommandCounts())
 
         val outOfRange = measure(
             scenario = "out-of-range",
@@ -125,6 +144,8 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
             search = null
         )
         assertOutOfRangeOutcome(outOfRange)
+        assertThat(outOfRange.studentEntitiesMaterialized).isZero()
+        assertThat(outOfRange.commandCounts).isEqualTo(countOnlyCommandCounts())
     }
 
     private fun measure(
@@ -188,18 +209,23 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
     }
 
     private fun assertOutOfRangeOutcome(snapshot: Phase1cAdminQuerySnapshot) {
-        when (snapshot.outcome.status) {
-            Phase1cOutcomeStatus.SUCCESS -> {
-                assertThat(snapshot.outcome.resultPageSize).isZero()
-                assertThat(snapshot.outcome.totalElements)
-                    .isEqualTo(FIXTURE_STUDENT_COUNT.toLong())
-                assertThat(snapshot.outcome.exceptionType).isNull()
-            }
-            Phase1cOutcomeStatus.EXCEPTION -> {
-                assertThat(snapshot.outcome.exceptionType)
-                    .isEqualTo(IllegalArgumentException::class.qualifiedName)
-            }
-        }
+        assertThat(snapshot.outcome.status).isEqualTo(Phase1cOutcomeStatus.SUCCESS)
+        assertThat(snapshot.outcome.resultPageSize).isZero()
+        assertThat(snapshot.outcome.totalElements)
+            .isEqualTo(FIXTURE_STUDENT_COUNT.toLong())
+        assertThat(snapshot.outcome.exceptionType).isNull()
+    }
+
+    private fun countOnlyCommandCounts(): Phase1cMongoCommandCounts {
+        return Phase1cMongoCommandCounts(
+            studentFind = 0,
+            studentAggregate = 1,
+            studentCount = 0,
+            studentGetMore = 0,
+            retrospectiveAggregate = 0,
+            retrospectiveGetMore = 0,
+            totalRead = 1
+        )
     }
 
     private fun successfulOutcome(result: Page<*>): Phase1cAdminQueryOutcome {

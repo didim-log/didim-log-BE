@@ -8,7 +8,7 @@ import java.util.Optional
 import org.springframework.data.mongodb.repository.MongoRepository
 import java.time.LocalDateTime
 
-interface StudentRepository : MongoRepository<Student, String> {
+interface StudentRepository : MongoRepository<Student, String>, StudentRepositoryCustom {
 
     fun findByBojId(bojId: BojId): Optional<Student>
 
