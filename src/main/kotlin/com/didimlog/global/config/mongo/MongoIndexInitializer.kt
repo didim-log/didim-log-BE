@@ -46,7 +46,7 @@ class MongoIndexInitializer(
 
     private fun ensureStudentAdminRatingIndex() {
         val indexOperations = mongoTemplate.indexOps(Student::class.java)
-        val hasAdminRatingIndex = indexOperations.indexInfo.any { index ->
+        val existingAdminRatingIndex = indexOperations.indexInfo.firstOrNull { index ->
             index.indexFields.size == 2 &&
                 index.indexFields[0].key == "rating" &&
                 index.indexFields[0].direction == Sort.Direction.DESC &&
@@ -55,10 +55,12 @@ class MongoIndexInitializer(
                 !index.isUnique &&
                 !index.isSparse &&
                 index.partialFilterExpression == null &&
-                index.collation.isEmpty &&
-                !index.isHidden
+                index.collation.isEmpty
         }
-        if (hasAdminRatingIndex) {
+        if (existingAdminRatingIndex != null) {
+            check(!existingAdminRatingIndex.isHidden) {
+                "관리자 회원 정렬 인덱스가 숨김 상태입니다: ${existingAdminRatingIndex.name}"
+            }
             return
         }
 

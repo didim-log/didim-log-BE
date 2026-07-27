@@ -21,6 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentLinkedQueue
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.bson.BsonArray
 import org.bson.BsonDocument
 import org.bson.BsonNumber
@@ -418,6 +419,29 @@ class AdminUserQueryPerformanceIntegrationTest {
                 .contains(STUDENT_ADMIN_RATING_INDEX_NAME, COLLATED_ADMIN_RATING_INDEX_NAME)
         } finally {
             indexOperations.dropIndex(COLLATED_ADMIN_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `숨김 인덱스는 관리자 정렬 복합 인덱스로 재사용하지 않고 충돌을 노출한다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .hidden()
+                .named(STUDENT_ADMIN_RATING_INDEX_NAME)
+        )
+
+        try {
+            assertThatThrownBy(mongoIndexInitializer::ensureIndexes)
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("숨김 상태")
+                .hasMessageContaining(STUDENT_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
             mongoIndexInitializer.ensureIndexes()
         }
     }
