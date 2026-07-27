@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-labelledby="title description">
   <title id="title">관리자 회원 조회 최적화</title>
-  <desc id="description">MongoDB 읽기 명령 11회에서 2회, 회고 집계 COLLSCAN에서 IXSCAN, 문서 검사 12건에서 0건으로 개선</desc>
+  <desc id="description">MongoDB 읽기 명령 11회에서 3회, Student 매핑 1000건에서 20건, 회고 집계 COLLSCAN에서 IXSCAN으로 개선</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#101828"/>
@@ -16,13 +16,13 @@
   <rect x="0" y="0" width="10" height="340" rx="5" fill="url(#accent)"/>
 
   <text x="54" y="50" fill="#b692f6" font-family="sans-serif" font-size="18" font-weight="700" letter-spacing="1.4">
-    BACKEND REFACTORING · PHASE 1A + 1B
+    BACKEND REFACTORING · PHASE 1A + 1B + 1C
   </text>
   <text x="54" y="91" fill="#f9fafb" font-family="sans-serif" font-size="30" font-weight="700">
     관리자 회원 조회 최적화
   </text>
   <text x="54" y="122" fill="#98a2b3" font-family="sans-serif" font-size="17">
-    N+1 batch 집계와 studentId index를 독립적으로 측정했습니다.
+    N+1 batch 집계, studentId index, DB 페이징을 독립적으로 측정했습니다.
   </text>
 
   <rect x="54" y="151" width="336" height="119" rx="16" fill="#1f2a3d" stroke="#344054"/>
@@ -30,29 +30,32 @@
     MONGODB READ · PAGE 10
   </text>
   <text x="78" y="229" fill="#f9fafb" font-family="sans-serif" font-size="34" font-weight="700">
-    11 → 2
+    11 → 3
   </text>
   <text x="270" y="229" fill="#32d583" font-family="sans-serif" font-size="18" font-weight="700">
-    -81.8%
+    -72.7%
   </text>
 
   <rect x="414" y="151" width="336" height="119" rx="16" fill="#1f2a3d" stroke="#344054"/>
   <text x="438" y="181" fill="#98a2b3" font-family="sans-serif" font-size="15">
-    RETROSPECTIVE AGGREGATION
+    STUDENT MAPPING · 1000 / PAGE 20
   </text>
-  <text x="438" y="229" fill="#f9fafb" font-family="sans-serif" font-size="27" font-weight="700">
-    COLLSCAN → IXSCAN
+  <text x="438" y="229" fill="#f9fafb" font-family="sans-serif" font-size="32" font-weight="700">
+    1000 → 20
+  </text>
+  <text x="655" y="229" fill="#32d583" font-family="sans-serif" font-size="18" font-weight="700">
+    -98.0%
   </text>
 
   <rect x="774" y="151" width="372" height="119" rx="16" fill="#1f2a3d" stroke="#344054"/>
   <text x="798" y="181" fill="#98a2b3" font-family="sans-serif" font-size="15">
-    DOCS EXAMINED · FIXTURE 12
+    RETROSPECTIVE AGGREGATION
   </text>
-  <text x="798" y="229" fill="#f9fafb" font-family="sans-serif" font-size="34" font-weight="700">
-    12 → 0
+  <text x="798" y="222" fill="#f9fafb" font-family="sans-serif" font-size="27" font-weight="700">
+    COLLSCAN → IXSCAN
   </text>
-  <text x="991" y="229" fill="#53b1fd" font-family="sans-serif" font-size="17" font-weight="700">
-    COVERED
+  <text x="798" y="250" fill="#53b1fd" font-family="sans-serif" font-size="14" font-weight="700">
+    COVERED QUERY
   </text>
 
   <text x="54" y="311" fill="#d0d5dd" font-family="sans-serif" font-size="16">
