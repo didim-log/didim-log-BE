@@ -53,7 +53,10 @@ class MongoIndexInitializer(
                 index.indexFields[1].key == "_id" &&
                 index.indexFields[1].direction == Sort.Direction.ASC &&
                 !index.isUnique &&
-                !index.isSparse
+                !index.isSparse &&
+                index.partialFilterExpression == null &&
+                index.collation.isEmpty &&
+                !index.isHidden
         }
         if (hasAdminRatingIndex) {
             return

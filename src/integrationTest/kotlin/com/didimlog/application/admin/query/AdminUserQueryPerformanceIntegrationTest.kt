@@ -42,6 +42,9 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.index.Index
+import org.springframework.data.mongodb.core.index.PartialIndexFilter
+import org.springframework.data.mongodb.core.query.Collation
+import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.test.context.ActiveProfiles
 
 @DisplayName("관리자 회원 목록 조회 command 성능 회귀")
@@ -292,6 +295,12 @@ class AdminUserQueryPerformanceIntegrationTest {
                     direction = "ASC"
                 )
             )
+
+        val rawAdminRatingIndex = mongoTemplate.indexOps(Student::class.java).indexInfo
+            .single { index -> index.name == STUDENT_ADMIN_RATING_INDEX_NAME }
+        assertThat(rawAdminRatingIndex.partialFilterExpression).isNull()
+        assertThat(rawAdminRatingIndex.collation).isEmpty
+        assertThat(rawAdminRatingIndex.isHidden).isFalse()
     }
 
     @Test
@@ -363,6 +372,52 @@ class AdminUserQueryPerformanceIntegrationTest {
                 .contains(STUDENT_ADMIN_RATING_INDEX_NAME, SINGLE_RATING_INDEX_NAME)
         } finally {
             indexOperations.dropIndex(SINGLE_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `부분 인덱스는 관리자 정렬 복합 인덱스를 대체하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .partial(PartialIndexFilter.of(Criteria.where("rating").gt(0)))
+                .named(PARTIAL_ADMIN_RATING_INDEX_NAME)
+        )
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME, PARTIAL_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(PARTIAL_ADMIN_RATING_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `별도 collation 인덱스는 관리자 정렬 복합 인덱스를 대체하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Student::class.java)
+        indexOperations.dropIndex(STUDENT_ADMIN_RATING_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("rating", Sort.Direction.DESC)
+                .on("_id", Sort.Direction.ASC)
+                .collation(Collation.of("en"))
+                .named(COLLATED_ADMIN_RATING_INDEX_NAME)
+        )
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
+                .contains(STUDENT_ADMIN_RATING_INDEX_NAME, COLLATED_ADMIN_RATING_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(COLLATED_ADMIN_RATING_INDEX_NAME)
             mongoIndexInitializer.ensureIndexes()
         }
     }
@@ -455,6 +510,8 @@ class AdminUserQueryPerformanceIntegrationTest {
         private const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
         private const val LEGACY_ADMIN_RATING_INDEX_NAME = "legacy_admin_rating"
         private const val SINGLE_RATING_INDEX_NAME = "rating_desc_only"
+        private const val PARTIAL_ADMIN_RATING_INDEX_NAME = "partial_admin_rating"
+        private const val COLLATED_ADMIN_RATING_INDEX_NAME = "collated_admin_rating"
     }
 }
 
