@@ -21,7 +21,16 @@ class MongoIndexInitializer(
     }
 
     fun ensureIndexes() {
-        mongoTemplate.indexOps(Retrospective::class.java)
+        val indexOperations = mongoTemplate.indexOps(Retrospective::class.java)
+        val hasStudentIdIndex = indexOperations.indexInfo.any { index ->
+            val field = index.indexFields.singleOrNull()
+            field?.key == "studentId" && field.direction == Sort.Direction.ASC
+        }
+        if (hasStudentIdIndex) {
+            return
+        }
+
+        indexOperations
             .ensureIndex(
                 Index()
                     .on("studentId", Sort.Direction.ASC)
@@ -30,6 +39,6 @@ class MongoIndexInitializer(
     }
 
     companion object {
-        const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId_1"
+        const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId"
     }
 }

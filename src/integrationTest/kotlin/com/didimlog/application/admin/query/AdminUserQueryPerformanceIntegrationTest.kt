@@ -21,6 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentLinkedQueue
 import org.assertj.core.api.Assertions.assertThat
+import org.bson.BsonArray
 import org.bson.BsonString
 import org.bson.Document
 import org.junit.jupiter.api.AfterEach
@@ -36,7 +37,9 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.data.mongodb.core.index.Index
 import org.springframework.test.context.ActiveProfiles
 
 @DisplayName("관리자 회원 목록 조회 command 성능 회귀")
@@ -112,6 +115,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         val retrospectiveFindCount = commandCounter.countCommands("find", "retrospectives")
         val retrospectiveAggregateCount = commandCounter.countCommands("aggregate", "retrospectives")
         val totalReadCommandCount = commandCounter.countReadCommands()
+        val retrospectiveAggregatePipeline = commandCounter.requireSingleAggregatePipeline("retrospectives")
 
         assertThat(studentFindCount)
             .describedAs("회원 전체 조회 command")
@@ -134,7 +138,7 @@ class AdminUserQueryPerformanceIntegrationTest {
             filter = Document()
         )
         val retrospectiveCountByStudentIdsStats = explainRetrospectiveCountAggregation(
-            studentIds = result.content.map { it.id }
+            pipeline = retrospectiveAggregatePipeline
         )
 
         assertQueryPlanBaseline(
@@ -214,6 +218,27 @@ class AdminUserQueryPerformanceIntegrationTest {
         ).isEqualTo(1)
     }
 
+    @Test
+    fun `회고 studentId 인덱스는 기존 이름이 달라도 재사용한다`() {
+        val indexOperations = mongoTemplate.indexOps(Retrospective::class.java)
+        indexOperations.dropIndex(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("studentId", Sort.Direction.ASC)
+                .named(LEGACY_STUDENT_ID_INDEX_NAME)
+        )
+
+        try {
+            mongoIndexInitializer.ensureIndexes()
+
+            assertThat(collectIndexes(Retrospective::class.java).map { it.name })
+                .containsExactly("_id_", LEGACY_STUDENT_ID_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(LEGACY_STUDENT_ID_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
     private fun collectIndexes(entityType: Class<*>): List<MongoIndexBaseline> {
         return mongoTemplate.indexOps(entityType).indexInfo
             .map { index ->
@@ -264,25 +289,8 @@ class AdminUserQueryPerformanceIntegrationTest {
     }
 
     private fun explainRetrospectiveCountAggregation(
-        studentIds: List<String>
+        pipeline: List<Document>
     ): MongoQueryExecutionBaseline {
-        val pipeline = listOf(
-            Document(
-                "\$match",
-                Document("studentId", Document("\$in", studentIds))
-            ),
-            Document(
-                "\$group",
-                Document("_id", "\$studentId")
-                    .append("retrospectiveCount", Document("\$sum", 1))
-            ),
-            Document(
-                "\$project",
-                Document("_id", 0)
-                    .append("studentId", "\$_id")
-                    .append("retrospectiveCount", 1)
-            )
-        )
         val explain = mongoTemplate.executeCommand(
             Document(
                 "explain",
@@ -416,7 +424,8 @@ class AdminUserQueryPerformanceIntegrationTest {
     companion object {
         private const val TOTAL_STUDENT_COUNT = 12
         private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
-        private const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId_1"
+        private const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId"
+        private const val LEGACY_STUDENT_ID_INDEX_NAME = "studentId_1"
     }
 }
 
@@ -453,7 +462,10 @@ class MongoCommandCounter : CommandListener {
         readCommands.add(
             ObservedMongoReadCommand(
                 command = event.commandName,
-                collection = collection
+                collection = collection,
+                pipeline = (event.command["pipeline"] as? BsonArray)
+                    ?.values
+                    ?.map { stage -> Document.parse(stage.asDocument().toJson()) }
             )
         )
     }
@@ -469,11 +481,24 @@ class MongoCommandCounter : CommandListener {
     }
 
     fun countReadCommands(): Int = readCommands.size
+
+    fun requireSingleAggregatePipeline(collection: String): List<Document> {
+        val commands = readCommands.filter { observed ->
+            observed.command == "aggregate" && observed.collection == collection
+        }
+        check(commands.size == 1) {
+            "$collection aggregate command가 정확히 1개가 아닙니다. commands=$commands"
+        }
+        return requireNotNull(commands.single().pipeline) {
+            "$collection aggregate command에 pipeline이 없습니다."
+        }
+    }
 }
 
 data class ObservedMongoReadCommand(
     val command: String,
-    val collection: String
+    val collection: String,
+    val pipeline: List<Document>?
 )
 
 data class AdminQueryMeasurementSnapshot(
