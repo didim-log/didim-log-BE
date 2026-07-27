@@ -13,25 +13,16 @@ import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.config.PasswordEncoderConfig
 import com.didimlog.global.config.mongo.MongoIndexInitializer
 import com.didimlog.ui.dto.AdminUserResponse
-import com.mongodb.MongoClientSettings
-import com.mongodb.event.CommandListener
-import com.mongodb.event.CommandStartedEvent
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDateTime
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import org.assertj.core.api.Assertions.assertThat
-import org.bson.BsonArray
-import org.bson.BsonDocument
-import org.bson.BsonNumber
-import org.bson.BsonString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.autoconfigure.mongo.MongoClientSettingsBuilderCustomizer
 import org.springframework.boot.test.autoconfigure.data.mongo.DataMongoTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
@@ -51,6 +42,7 @@ import org.springframework.test.context.ActiveProfiles
     AdminService::class,
     PasswordEncoderConfig::class,
     MongoIndexInitializer::class,
+    AdminQueryMongoCommandConfiguration::class,
     Phase1cAdminQueryMeasurementConfiguration::class
 )
 class AdminUserDbPaginationPerformanceIntegrationTest {
@@ -68,7 +60,7 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
     private lateinit var mongoTemplate: MongoTemplate
 
     @Autowired
-    private lateinit var commandObserver: Phase1cMongoCommandObserver
+    private lateinit var commandCounter: MongoCommandCounter
 
     @Autowired
     private lateinit var materializationCounter: StudentMaterializationCounter
@@ -186,8 +178,8 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
                 onFailure = ::failedOutcome
             ),
             studentEntitiesMaterialized = materializationCounter.count(),
-            commandCounts = commandObserver.commandCounts(),
-            studentReadCommands = commandObserver.studentReadCommands()
+            commandCounts = commandCounts(),
+            studentReadCommands = studentReadCommands()
         )
 
         assertThat(snapshot.studentReadCommands)
@@ -270,8 +262,35 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
     }
 
     private fun resetMeasurements() {
-        commandObserver.reset()
+        commandCounter.reset()
         materializationCounter.reset()
+    }
+
+    private fun commandCounts(): Phase1cMongoCommandCounts {
+        return Phase1cMongoCommandCounts(
+            studentFind = commandCounter.countCommands("find", STUDENT_COLLECTION),
+            studentAggregate = commandCounter.countCommands("aggregate", STUDENT_COLLECTION),
+            studentCount = commandCounter.countCommands("count", STUDENT_COLLECTION),
+            studentGetMore = commandCounter.countCommands("getMore", STUDENT_COLLECTION),
+            retrospectiveAggregate = commandCounter.countCommands("aggregate", RETROSPECTIVE_COLLECTION),
+            retrospectiveGetMore = commandCounter.countCommands("getMore", RETROSPECTIVE_COLLECTION),
+            totalRead = commandCounter.countReadCommands()
+        )
+    }
+
+    private fun studentReadCommands(): List<Phase1cObservedMongoReadCommand> {
+        return commandCounter.studentReadCommands().map { observed ->
+            Phase1cObservedMongoReadCommand(
+                command = observed.command,
+                collection = observed.collection,
+                filterJson = observed.filterJson,
+                sortJson = observed.sortJson,
+                pipelineJson = observed.pipelineJson,
+                skip = observed.skip,
+                limit = observed.limit,
+                batchSize = observed.batchSize
+            )
+        }
     }
 
     private fun firstPage(): Pageable {
@@ -305,6 +324,8 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
         private const val OUT_OF_RANGE_PAGE = 51
         private const val NO_MATCH_SEARCH = "no-match-phase1c"
         private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
+        private const val STUDENT_COLLECTION = "students"
+        private const val RETROSPECTIVE_COLLECTION = "retrospectives"
         private val FIXTURE_CREATED_AT: LocalDateTime = LocalDateTime.of(2026, 1, 1, 0, 0)
     }
 }
@@ -313,101 +334,8 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
 class Phase1cAdminQueryMeasurementConfiguration {
 
     @Bean
-    fun phase1cMongoCommandObserver(): Phase1cMongoCommandObserver {
-        return Phase1cMongoCommandObserver()
-    }
-
-    @Bean
-    fun phase1cMongoCommandObserverCustomizer(
-        commandObserver: Phase1cMongoCommandObserver
-    ): MongoClientSettingsBuilderCustomizer {
-        return MongoClientSettingsBuilderCustomizer { builder: MongoClientSettings.Builder ->
-            builder.addCommandListener(commandObserver)
-        }
-    }
-
-    @Bean
     fun studentMaterializationCounter(): StudentMaterializationCounter {
         return StudentMaterializationCounter()
-    }
-}
-
-class Phase1cMongoCommandObserver : CommandListener {
-
-    private val commands = ConcurrentLinkedQueue<Phase1cObservedMongoReadCommand>()
-
-    override fun commandStarted(event: CommandStartedEvent) {
-        if (event.commandName !in TRACKED_READ_COMMANDS) {
-            return
-        }
-
-        val collection = event.collectionName() ?: return
-        if (collection != STUDENT_COLLECTION && collection != RETROSPECTIVE_COLLECTION) {
-            return
-        }
-
-        val command = event.command
-        commands.add(
-            Phase1cObservedMongoReadCommand(
-                command = event.commandName,
-                collection = collection,
-                filterJson = command.documentJson("filter") ?: command.documentJson("query"),
-                sortJson = command.documentJson("sort"),
-                pipelineJson = command.arrayJson("pipeline"),
-                skip = command.longValue("skip"),
-                limit = command.longValue("limit"),
-                batchSize = command.longValue("batchSize")
-            )
-        )
-    }
-
-    fun reset() {
-        commands.clear()
-    }
-
-    fun commandCounts(): Phase1cMongoCommandCounts {
-        return Phase1cMongoCommandCounts(
-            studentFind = count("find", STUDENT_COLLECTION),
-            studentAggregate = count("aggregate", STUDENT_COLLECTION),
-            studentCount = count("count", STUDENT_COLLECTION),
-            studentGetMore = count("getMore", STUDENT_COLLECTION),
-            retrospectiveAggregate = count("aggregate", RETROSPECTIVE_COLLECTION),
-            retrospectiveGetMore = count("getMore", RETROSPECTIVE_COLLECTION),
-            totalRead = commands.size
-        )
-    }
-
-    fun studentReadCommands(): List<Phase1cObservedMongoReadCommand> {
-        return commands.filter { observed -> observed.collection == STUDENT_COLLECTION }
-    }
-
-    private fun count(command: String, collection: String): Int {
-        return commands.count { observed ->
-            observed.command == command && observed.collection == collection
-        }
-    }
-
-    private fun CommandStartedEvent.collectionName(): String? {
-        val collectionField = if (commandName == "getMore") "collection" else commandName
-        return (command[collectionField] as? BsonString)?.value
-    }
-
-    private fun BsonDocument.documentJson(key: String): String? {
-        return (this[key] as? BsonDocument)?.toJson()
-    }
-
-    private fun BsonDocument.arrayJson(key: String): String? {
-        return (this[key] as? BsonArray)?.toString()
-    }
-
-    private fun BsonDocument.longValue(key: String): Long? {
-        return (this[key] as? BsonNumber)?.longValue()
-    }
-
-    companion object {
-        private val TRACKED_READ_COMMANDS = setOf("find", "aggregate", "count", "getMore")
-        private const val STUDENT_COLLECTION = "students"
-        private const val RETROSPECTIVE_COLLECTION = "retrospectives"
     }
 }
 

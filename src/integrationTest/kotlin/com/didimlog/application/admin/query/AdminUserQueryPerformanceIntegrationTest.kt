@@ -490,26 +490,37 @@ class MongoCommandCounter : CommandListener {
     private val readCommands = ConcurrentLinkedQueue<ObservedMongoReadCommand>()
 
     override fun commandStarted(event: CommandStartedEvent) {
-        if (event.commandName != "find" && event.commandName != "aggregate") {
+        if (event.commandName !in TRACKED_READ_COMMANDS) {
             return
         }
 
-        val collection = (event.command[event.commandName] as? BsonString)?.value ?: return
+        val collectionField = if (event.commandName == "getMore") {
+            "collection"
+        } else {
+            event.commandName
+        }
+        val collection = (event.command[collectionField] as? BsonString)?.value ?: return
         if (collection != "students" && collection != "retrospectives") {
             return
         }
 
+        val pipeline = event.command["pipeline"] as? BsonArray
         readCommands.add(
             ObservedMongoReadCommand(
                 command = event.commandName,
                 collection = collection,
                 filter = (event.command["filter"] as? BsonDocument)
                     ?.let { Document.parse(it.toJson()) },
+                filterJson = (event.command["filter"] as? BsonDocument)?.toJson()
+                    ?: (event.command["query"] as? BsonDocument)?.toJson(),
                 sort = (event.command["sort"] as? BsonDocument)
                     ?.let { Document.parse(it.toJson()) },
+                sortJson = (event.command["sort"] as? BsonDocument)?.toJson(),
                 skip = (event.command["skip"] as? BsonNumber)?.longValue(),
                 limit = (event.command["limit"] as? BsonNumber)?.longValue(),
-                pipeline = (event.command["pipeline"] as? BsonArray)
+                batchSize = (event.command["batchSize"] as? BsonNumber)?.longValue(),
+                pipelineJson = pipeline?.toString(),
+                pipeline = pipeline
                     ?.values
                     ?.map { stage -> Document.parse(stage.asDocument().toJson()) }
             )
@@ -527,6 +538,10 @@ class MongoCommandCounter : CommandListener {
     }
 
     fun countReadCommands(): Int = readCommands.size
+
+    fun studentReadCommands(): List<ObservedMongoReadCommand> {
+        return readCommands.filter { observed -> observed.collection == "students" }
+    }
 
     fun requireSingleFindCommand(collection: String): ObservedMongoReadCommand {
         val commands = readCommands.filter { observed ->
@@ -549,15 +564,23 @@ class MongoCommandCounter : CommandListener {
             "$collection aggregate command에 pipeline이 없습니다."
         }
     }
+
+    companion object {
+        private val TRACKED_READ_COMMANDS = setOf("find", "aggregate", "count", "getMore")
+    }
 }
 
 data class ObservedMongoReadCommand(
     val command: String,
     val collection: String,
     val filter: Document?,
+    val filterJson: String?,
     val sort: Document?,
+    val sortJson: String?,
     val skip: Long?,
     val limit: Long?,
+    val batchSize: Long?,
+    val pipelineJson: String?,
     val pipeline: List<Document>?
 )
 
