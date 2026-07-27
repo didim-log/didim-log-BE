@@ -13,6 +13,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.config.PasswordEncoderConfig
+import com.didimlog.global.config.mongo.MongoIndexInitializer
 import com.mongodb.MongoClientSettings
 import com.mongodb.event.CommandListener
 import com.mongodb.event.CommandStartedEvent
@@ -44,6 +45,7 @@ import org.springframework.test.context.ActiveProfiles
 @Import(
     AdminService::class,
     PasswordEncoderConfig::class,
+    MongoIndexInitializer::class,
     AdminQueryMongoCommandConfiguration::class
 )
 class AdminUserQueryPerformanceIntegrationTest {
@@ -62,6 +64,9 @@ class AdminUserQueryPerformanceIntegrationTest {
 
     @Autowired
     private lateinit var mongoTemplate: MongoTemplate
+
+    @Autowired
+    private lateinit var mongoIndexInitializer: MongoIndexInitializer
 
     @BeforeEach
     fun setUp() {
@@ -175,6 +180,38 @@ class AdminUserQueryPerformanceIntegrationTest {
         assertThat(commandCounter.countCommands("find", "retrospectives")).isZero()
         assertThat(commandCounter.countCommands("aggregate", "retrospectives")).isZero()
         assertThat(commandCounter.countReadCommands()).isEqualTo(1)
+    }
+
+    @Test
+    fun `회고 studentId 단일 인덱스를 보장한다`() {
+        val retrospectiveIndexes = collectIndexes(Retrospective::class.java)
+
+        assertThat(retrospectiveIndexes.map { it.name })
+            .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+
+        val studentIdIndex = requireNotNull(
+            retrospectiveIndexes.singleOrNull { it.name == RETROSPECTIVE_STUDENT_ID_INDEX_NAME }
+        )
+        assertThat(studentIdIndex.unique).isFalse()
+        assertThat(studentIdIndex.sparse).isFalse()
+        assertThat(studentIdIndex.fields)
+            .containsExactly(
+                MongoIndexFieldBaseline(
+                    key = "studentId",
+                    direction = "ASC"
+                )
+            )
+    }
+
+    @Test
+    fun `회고 studentId 인덱스 초기화는 반복 실행해도 중복되지 않는다`() {
+        mongoIndexInitializer.ensureIndexes()
+        mongoIndexInitializer.ensureIndexes()
+
+        assertThat(
+            collectIndexes(Retrospective::class.java)
+                .count { it.name == RETROSPECTIVE_STUDENT_ID_INDEX_NAME }
+        ).isEqualTo(1)
     }
 
     private fun collectIndexes(entityType: Class<*>): List<MongoIndexBaseline> {
@@ -325,7 +362,8 @@ class AdminUserQueryPerformanceIntegrationTest {
         expectedGroupedStudentCount: Long
     ) {
         assertThat(studentIndexes.map { it.name }).containsExactly("_id_")
-        assertThat(retrospectiveIndexes.map { it.name }).containsExactly("_id_")
+        assertThat(retrospectiveIndexes.map { it.name })
+            .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
 
         assertThat(studentFindAllStats.winningPlanStage).isEqualTo("COLLSCAN")
         assertThat(studentFindAllStats.selectedIndexName).isNull()
@@ -334,12 +372,15 @@ class AdminUserQueryPerformanceIntegrationTest {
         assertThat(studentFindAllStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
         assertThat(studentFindAllStats.totalKeysExamined).isZero()
 
-        assertThat(retrospectiveCountByStudentIdsStats.winningPlanStage).isEqualTo("COLLSCAN")
-        assertThat(retrospectiveCountByStudentIdsStats.selectedIndexName).isNull()
-        assertThat(retrospectiveCountByStudentIdsStats.selectedIndexKeyPattern).isNull()
+        assertThat(retrospectiveCountByStudentIdsStats.winningPlanStage).isEqualTo("IXSCAN")
+        assertThat(retrospectiveCountByStudentIdsStats.selectedIndexName)
+            .isEqualTo(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+        assertThat(retrospectiveCountByStudentIdsStats.selectedIndexKeyPattern)
+            .containsExactlyEntriesOf(mapOf("studentId" to 1))
         assertThat(retrospectiveCountByStudentIdsStats.nReturned).isEqualTo(expectedGroupedStudentCount)
-        assertThat(retrospectiveCountByStudentIdsStats.totalDocsExamined).isEqualTo(TOTAL_STUDENT_COUNT.toLong())
-        assertThat(retrospectiveCountByStudentIdsStats.totalKeysExamined).isZero()
+        assertThat(retrospectiveCountByStudentIdsStats.totalDocsExamined).isZero()
+        assertThat(retrospectiveCountByStudentIdsStats.totalKeysExamined)
+            .isEqualTo(expectedGroupedStudentCount)
     }
 
     private fun writeSnapshotIfRequested(snapshot: AdminQueryMeasurementSnapshot) {
@@ -375,6 +416,7 @@ class AdminUserQueryPerformanceIntegrationTest {
     companion object {
         private const val TOTAL_STUDENT_COUNT = 12
         private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
+        private const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId_1"
     }
 }
 
