@@ -91,6 +91,7 @@ main() {
 
   "$ROOT_DIR/gradlew" integrationTest \
     --tests com.didimlog.application.admin.query.AdminUserQueryPerformanceIntegrationTest \
+    --tests com.didimlog.application.admin.query.AdminUserDbPaginationPerformanceIntegrationTest \
     --tests com.didimlog.domain.repository.RetrospectiveRankingIntegrationTest \
     --rerun-tasks \
     --no-daemon
@@ -98,6 +99,9 @@ main() {
   test -f "$OUTPUT_DIR/admin-users-page-size-01.json"
   test -f "$OUTPUT_DIR/admin-users-page-size-05.json"
   test -f "$OUTPUT_DIR/admin-users-page-size-10.json"
+  test -f "$OUTPUT_DIR/admin-users-db-pagination-unfiltered.json"
+  test -f "$OUTPUT_DIR/admin-users-db-pagination-search-empty.json"
+  test -f "$OUTPUT_DIR/admin-users-db-pagination-out-of-range.json"
 
   echo "Admin query baseline completed: $OUTPUT_DIR"
 }
