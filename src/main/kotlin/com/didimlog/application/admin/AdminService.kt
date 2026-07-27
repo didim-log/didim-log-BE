@@ -54,53 +54,30 @@ class AdminService(
         startDate: String? = null,
         endDate: String? = null
     ): Page<AdminUserResponse> {
-        var students = studentRepository.findAll().toList()
-
-        // 검색어 필터링
-        if (!search.isNullOrBlank()) {
-            val searchLower = search.lowercase()
-            students = students.filter { student ->
-                student.nickname.value.lowercase().contains(searchLower) ||
-                        student.bojId?.value?.lowercase()?.contains(searchLower) == true ||
-                        student.email?.lowercase()?.contains(searchLower) == true
-            }
-        }
-
-        // 날짜 범위 필터링
-        if (!startDate.isNullOrBlank()) {
-            val startDateTime = parseDate(startDate).atStartOfDay()
-            students = students.filter { student ->
-                student.createdAt.isAfter(startDateTime) || student.createdAt.isEqual(startDateTime)
-            }
-        }
-
-        if (!endDate.isNullOrBlank()) {
-            val endDateTime = parseDate(endDate).atTime(23, 59, 59)
-            students = students.filter { student ->
-                student.createdAt.isBefore(endDateTime) || student.createdAt.isEqual(endDateTime)
-            }
-        }
-
-        // 페이징 적용
-        val start = pageable.pageNumber * pageable.pageSize
-        val end = minOf(start + pageable.pageSize, students.size)
-        val pagedStudents = students.subList(start, end)
-        val studentIds = pagedStudents.mapNotNull { it.id }.toSet()
+        val createdAtFrom = startDate
+            ?.takeUnless(String::isBlank)
+            ?.let { parseDate(it).atStartOfDay() }
+        val createdAtTo = endDate
+            ?.takeUnless(String::isBlank)
+            ?.let { parseDate(it).atTime(23, 59, 59) }
+        val studentPage = studentRepository.searchAdminUsers(
+            pageable = pageable,
+            search = search,
+            createdAtFrom = createdAtFrom,
+            createdAtTo = createdAtTo
+        )
+        val studentIds = studentPage.content.mapNotNull { it.id }.toSet()
         val retrospectiveCounts = if (studentIds.isEmpty()) {
             emptyMap()
         } else {
             retrospectiveRepository.countByStudentIds(studentIds)
         }
 
-        return org.springframework.data.domain.PageImpl(
-            pagedStudents.map { student ->
-                val solvedCount = calculateSolvedCount(student)
-                val retrospectiveCount = student.id?.let { retrospectiveCounts[it] } ?: 0L
-                AdminUserResponse.from(student, solvedCount, retrospectiveCount)
-            },
-            pageable,
-            students.size.toLong()
-        )
+        return studentPage.map { student ->
+            val solvedCount = calculateSolvedCount(student)
+            val retrospectiveCount = student.id?.let { retrospectiveCounts[it] } ?: 0L
+            AdminUserResponse.from(student, solvedCount, retrospectiveCount)
+        }
     }
 
     /**

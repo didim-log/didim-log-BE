@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import org.springframework.security.crypto.password.PasswordEncoder
+import java.time.LocalDateTime
 import java.util.*
 
 @DisplayName("AdminService 테스트")
@@ -145,7 +146,9 @@ class AdminServiceTest {
         )
         val pageable = PageRequest.of(0, 20)
 
-        every { studentRepository.findAll() } returns students
+        every {
+            studentRepository.searchAdminUsers(pageable, null, null, null)
+        } returns PageImpl(students, pageable, students.size.toLong())
         every {
             retrospectiveRepository.countByStudentIds(setOf("student1", "student2", "student3"))
         } returns linkedMapOf(
@@ -164,7 +167,9 @@ class AdminServiceTest {
         assertThat(result.content[1].retrospectiveCount).isEqualTo(1)
         assertThat(result.content[2].nickname).isEqualTo("user3")
         assertThat(result.content[2].retrospectiveCount).isZero()
-        verify(exactly = 1) { studentRepository.findAll() }
+        verify(exactly = 1) {
+            studentRepository.searchAdminUsers(pageable, null, null, null)
+        }
         verify(exactly = 1) {
             retrospectiveRepository.countByStudentIds(setOf("student1", "student2", "student3"))
         }
@@ -176,7 +181,9 @@ class AdminServiceTest {
     fun `빈 회원 목록은 회고 수를 집계하지 않음`() {
         // given
         val pageable = PageRequest.of(0, 20)
-        every { studentRepository.findAll() } returns emptyList()
+        every {
+            studentRepository.searchAdminUsers(pageable, null, null, null)
+        } returns PageImpl(emptyList(), pageable, 0)
 
         // when
         val result = adminService.getAllUsers(pageable)
@@ -184,9 +191,60 @@ class AdminServiceTest {
         // then
         assertThat(result.content).isEmpty()
         assertThat(result.totalElements).isZero()
-        verify(exactly = 1) { studentRepository.findAll() }
+        verify(exactly = 1) {
+            studentRepository.searchAdminUsers(pageable, null, null, null)
+        }
         verify(exactly = 0) { retrospectiveRepository.countByStudentIds(any()) }
         verify(exactly = 0) { retrospectiveRepository.findAllByStudentId(any()) }
+    }
+
+    @Test
+    @DisplayName("관리자 회원 조회 조건을 DB 조회용 값으로 변환한다")
+    fun `회원 검색과 가입일 조건 전달`() {
+        // given
+        val pageable = PageRequest.of(1, 20)
+        val search = "User.1"
+        val startDate = "2026-01-02"
+        val endDate = "2026-01-03"
+        every {
+            studentRepository.searchAdminUsers(
+                pageable = pageable,
+                search = search,
+                createdAtFrom = LocalDateTime.of(2026, 1, 2, 0, 0),
+                createdAtTo = LocalDateTime.of(2026, 1, 3, 23, 59, 59)
+            )
+        } returns PageImpl(emptyList(), pageable, 0)
+
+        // when
+        adminService.getAllUsers(pageable, search, startDate, endDate)
+
+        // then
+        verify(exactly = 1) {
+            studentRepository.searchAdminUsers(
+                pageable = pageable,
+                search = search,
+                createdAtFrom = LocalDateTime.of(2026, 1, 2, 0, 0),
+                createdAtTo = LocalDateTime.of(2026, 1, 3, 23, 59, 59)
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("가입일 형식이 잘못되면 DB를 조회하지 않는다")
+    fun `잘못된 가입일 형식 거부`() {
+        // given
+        val pageable = PageRequest.of(0, 20)
+
+        // when
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            adminService.getAllUsers(pageable, startDate = "2026/01/02")
+        }
+
+        // then
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        verify(exactly = 0) {
+            studentRepository.searchAdminUsers(any(), any(), any(), any())
+        }
     }
 
     @Test

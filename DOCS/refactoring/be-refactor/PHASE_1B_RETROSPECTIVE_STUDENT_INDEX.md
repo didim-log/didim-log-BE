@@ -138,5 +138,6 @@ performance/results/admin-query-phase1b-after-2370494e9d7c-run-*/
   `createIndex` 권한과 collection 크기를 확인해야 한다.
 - EC2 배포와 운영 index 생성 확인은 이번 로컬 리팩터링 범위에서 제외했다.
 
-다음 조회 최적화 단계에서는 학생 검색·정렬·페이징을 MongoDB query로 이동하고,
-별도의 clean before/after protocol로 측정한다.
+완료: [Phase 1C — 관리자 회원 조회 DB 페이징](./PHASE_1C_ADMIN_DB_PAGINATION.md)에서
+학생 검색·정렬·페이징을 MongoDB query로 이동하고 별도의 clean before/after
+protocol로 측정했다.
