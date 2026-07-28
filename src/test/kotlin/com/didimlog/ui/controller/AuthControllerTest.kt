@@ -58,6 +58,9 @@ class AuthControllerTest {
     private lateinit var findAccountService: FindAccountService
 
     @Autowired
+    private lateinit var bojOwnershipVerificationService: BojOwnershipVerificationService
+
+    @Autowired
     private lateinit var rateLimitService: com.didimlog.global.ratelimit.RateLimitService
 
     @TestConfiguration
@@ -101,7 +104,12 @@ class AuthControllerTest {
     @DisplayName("회원가입 요청 시 200 OK와 토큰을 반환한다")
     fun `회원가입 성공`() {
         // given
-        val request = SignupRequest(bojId = "testuser", password = "ValidPassword123!", email = "test@example.com")
+        val request = SignupRequest(
+            bojId = "testuser",
+            password = "ValidPassword123!",
+            email = "test@example.com",
+            verificationSessionId = "verification-session"
+        )
         val authResult = AuthService.AuthResult(
             token = "jwt-token",
             refreshToken = "refresh-token",
@@ -110,7 +118,9 @@ class AuthControllerTest {
             tierLevel = 3
         )
 
-        every { authService.signup(request.bojId, request.password, request.email) } returns authResult
+        every {
+            authService.signup(request.bojId, request.password, request.email, request.verificationSessionId)
+        } returns authResult
 
         // when & then
         mockMvc.perform(
@@ -125,14 +135,21 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.tier").value("BRONZE"))
             .andExpect(jsonPath("$.message").value("회원가입이 완료되었습니다."))
 
-        verify(exactly = 1) { authService.signup(request.bojId, request.password, request.email) }
+        verify(exactly = 1) {
+            authService.signup(request.bojId, request.password, request.email, request.verificationSessionId)
+        }
     }
 
     @Test
     @DisplayName("회원가입 요청 시 BOJ ID가 비어있으면 400 Bad Request를 반환한다")
     fun `회원가입 요청 유효성 검증 실패 - BOJ ID 누락`() {
         // given
-        val request = SignupRequest(bojId = "", password = "ValidPassword123!", email = "test@example.com")
+        val request = SignupRequest(
+            bojId = "",
+            password = "ValidPassword123!",
+            email = "test@example.com",
+            verificationSessionId = "verification-session"
+        )
         clearMocks(authService)
 
         // when & then
@@ -143,14 +160,19 @@ class AuthControllerTest {
         )
             .andExpect(status().isBadRequest)
 
-        verify(exactly = 0) { authService.signup(any(), any(), any()) }
+        verify(exactly = 0) { authService.signup(any(), any(), any(), any()) }
     }
 
     @Test
     @DisplayName("회원가입 요청 시 비밀번호가 8자 미만이면 400 Bad Request를 반환한다")
     fun `회원가입 요청 유효성 검증 실패 - 비밀번호 길이 부족`() {
         // given
-        val request = SignupRequest(bojId = "testuser", password = "short", email = "test@example.com")
+        val request = SignupRequest(
+            bojId = "testuser",
+            password = "short",
+            email = "test@example.com",
+            verificationSessionId = "verification-session"
+        )
         clearMocks(authService)
 
         // when & then
@@ -161,7 +183,80 @@ class AuthControllerTest {
         )
             .andExpect(status().isBadRequest)
 
-        verify(exactly = 0) { authService.signup(any(), any(), any()) }
+        verify(exactly = 0) { authService.signup(any(), any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("회원가입 요청에 BOJ 인증 세션이 없으면 400 Bad Request를 반환한다")
+    fun `회원가입 요청 유효성 검증 실패 - 인증 세션 누락`() {
+        clearMocks(authService)
+        val request = mapOf(
+            "bojId" to "testuser",
+            "password" to "ValidPassword123!",
+            "email" to "test@example.com"
+        )
+
+        mockMvc.perform(
+            post("/api/v1/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { authService.signup(any(), any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("가입 마무리 경로는 서비스를 호출하지 않고 410 Gone을 반환한다")
+    fun `가입 마무리 경로 폐쇄`() {
+        clearMocks(authService)
+        val request = mapOf(
+            "email" to "test@example.com",
+            "provider" to "GITHUB",
+            "providerId" to "github-user-id",
+            "nickname" to "testuser",
+            "bojId" to "testuser",
+            "termsAgreed" to true
+        )
+
+        mockMvc.perform(
+            post("/api/v1/auth/signup/finalize")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isGone)
+
+        verify(exactly = 0) {
+            authService.finalizeSignup(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    @DisplayName("BOJ 인증 코드 발급은 전달 헤더가 아닌 연결 주소로 제한한다")
+    fun `BOJ 인증 코드 발급은 remoteAddr를 사용한다`() {
+        clearMocks(bojOwnershipVerificationService)
+        every {
+            bojOwnershipVerificationService.issueVerificationCode("198.51.100.20")
+        } returns BojOwnershipVerificationService.IssuedCode(
+            sessionId = "verification-session",
+            code = "DIDIM-LOG-ABC123",
+            expiresInSeconds = 300L
+        )
+
+        mockMvc.perform(
+            post("/api/v1/auth/boj/code")
+                .header("X-Forwarded-For", "203.0.113.10, 10.0.0.1")
+                .with { request ->
+                    request.remoteAddr = "198.51.100.20"
+                    request
+                }
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.sessionId").value("verification-session"))
+
+        verify(exactly = 1) {
+            bojOwnershipVerificationService.issueVerificationCode("198.51.100.20")
+        }
     }
 
     @Test
@@ -495,4 +590,3 @@ class AuthControllerTest {
             .andExpect(status().isBadRequest)
     }
 }
-

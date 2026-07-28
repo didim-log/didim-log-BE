@@ -30,6 +30,8 @@ class SuperAdminTest {
     private val emailService: EmailService = mockk()
     private val passwordResetCodeRepository: PasswordResetCodeRepository = mockk()
     private val refreshTokenService: RefreshTokenService = mockk()
+    private val bojOwnershipVerificationService =
+        mockk<com.didimlog.application.auth.boj.BojOwnershipVerificationService>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient,
@@ -38,7 +40,8 @@ class SuperAdminTest {
         passwordEncoder,
         emailService,
         passwordResetCodeRepository,
-        refreshTokenService
+        refreshTokenService,
+        bojOwnershipVerificationService
     )
 
     @Test
@@ -81,6 +84,9 @@ class SuperAdminTest {
             studentRepository.save(
                 match<Student> { it.role == Role.ADMIN }
             )
+        }
+        verify(exactly = 0) {
+            bojOwnershipVerificationService.consumeVerifiedBojId(any(), any())
         }
         unmockkObject(com.didimlog.global.util.PasswordValidator)
     }

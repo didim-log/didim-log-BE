@@ -1,6 +1,7 @@
 package com.didimlog.global.util
 
 import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletRequestWrapper
 
 /**
  * HTTP 요청 관련 유틸리티
@@ -27,9 +28,23 @@ object HttpRequestUtil {
 
         return request.remoteAddr ?: "unknown"
     }
+
+    /**
+     * 전달 헤더를 적용한 래퍼를 벗겨 실제 연결 주소를 반환한다.
+     * 신뢰 프록시 설정이 없으면 forwarded header를 사용하지 않으므로 프록시 뒤의 요청은 raw peer 주소 기준으로 묶인다.
+     */
+    fun getConnectionRemoteAddress(request: HttpServletRequest): String {
+        var current: HttpServletRequest = request
+        while (current is HttpServletRequestWrapper) {
+            val wrapped = current.request
+            if (wrapped !is HttpServletRequest || wrapped === current) {
+                break
+            }
+            current = wrapped
+        }
+        return current.remoteAddr ?: "unknown"
+    }
 }
-
-
 
 
 

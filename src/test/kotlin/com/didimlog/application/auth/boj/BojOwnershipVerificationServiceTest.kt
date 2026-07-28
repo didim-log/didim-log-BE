@@ -24,8 +24,7 @@ class BojOwnershipVerificationServiceTest {
     @DisplayName("인증 코드를 발급하면 sessionId와 함께 저장한다")
     fun `issue code saves into store`() {
         val identifier = "127.0.0.1"
-        every { codeStore.getRateLimitCount(any()) } returns 0L
-        every { codeStore.incrementRateLimitCount(any(), any()) } just runs
+        every { codeStore.incrementRateLimitCount(any(), any()) } returns 1L
         every { codeStore.save(any(), any(), any()) } just runs
 
         val issued = service.issueVerificationCode(identifier)
@@ -33,7 +32,6 @@ class BojOwnershipVerificationServiceTest {
         assertThat(issued.sessionId).isNotBlank()
         assertThat(issued.code).startsWith("DIDIM-LOG-")
         assertThat(issued.code.length).isGreaterThan("DIDIM-LOG-".length) // 코드 길이 확인
-        verify(exactly = 1) { codeStore.getRateLimitCount(any()) }
         verify(exactly = 1) { codeStore.incrementRateLimitCount(any(), any()) }
         verify(exactly = 1) { codeStore.save(issued.sessionId, issued.code, issued.expiresInSeconds) }
     }
@@ -50,8 +48,7 @@ class BojOwnershipVerificationServiceTest {
             fixtureCode = "DIDIM-LOG-DEMO42",
             environment = environment
         )
-        every { codeStore.getRateLimitCount(any()) } returns 0L
-        every { codeStore.incrementRateLimitCount(any(), any()) } just runs
+        every { codeStore.incrementRateLimitCount(any(), any()) } returns 1L
         every { codeStore.save(any(), any(), any()) } just runs
 
         val issued = fixtureService.issueVerificationCode("127.0.0.1")
@@ -71,8 +68,7 @@ class BojOwnershipVerificationServiceTest {
             fixtureCode = "DIDIM-LOG-DEMO42",
             environment = environment
         )
-        every { codeStore.getRateLimitCount(any()) } returns 0L
-        every { codeStore.incrementRateLimitCount(any(), any()) } just runs
+        every { codeStore.incrementRateLimitCount(any(), any()) } returns 1L
         every { codeStore.save(any(), any(), any()) } just runs
 
         val issued = productionService.issueVerificationCode("127.0.0.1")
@@ -85,7 +81,7 @@ class BojOwnershipVerificationServiceTest {
     @DisplayName("Rate Limit 초과 시 예외를 던진다")
     fun `rate limit exceeded throws exception`() {
         val identifier = "127.0.0.1"
-        every { codeStore.getRateLimitCount(any()) } returns 5L
+        every { codeStore.incrementRateLimitCount(any(), any()) } returns 6L
 
         assertThatThrownBy { service.issueVerificationCode(identifier) }
             .isInstanceOf(BusinessException::class.java)
@@ -152,12 +148,13 @@ class BojOwnershipVerificationServiceTest {
         every { profileStatusMessageClient.fetchStatusMessage(bojId) } returns BojProfileStatusMessageFetchResult.Found(
             BojProfileStatusMessage("코드: $storedCode")
         )
+        every { codeStore.consume(sessionId) } returns storedCode
         every { codeStore.save(any(), any(), any()) } just runs
-        every { codeStore.delete(sessionId) } just runs
 
         val verifiedBojId = service.verifyOwnership(sessionId = sessionId, bojId = bojId)
 
         assertThat(verifiedBojId).isEqualTo(bojId)
+        verify(exactly = 1) { codeStore.consume(sessionId) }
         verify(exactly = 1) { 
             codeStore.save(
                 "boj:verified:$sessionId",
@@ -165,7 +162,95 @@ class BojOwnershipVerificationServiceTest {
                 300L
             )
         }
-        verify(exactly = 1) { codeStore.delete(sessionId) }
+    }
+
+    @Test
+    @DisplayName("동시에 인증 코드를 사용하면 코드를 claim한 요청만 인증 세션을 저장한다")
+    fun `verifyOwnership saves proof only after claiming code`() {
+        val storedCode = "DIDIM-LOG-ABC123"
+        every { codeStore.find("session") } returns storedCode
+        every { profileStatusMessageClient.fetchStatusMessage("mekazon") } returns
+            BojProfileStatusMessageFetchResult.Found(BojProfileStatusMessage(storedCode))
+        every { codeStore.consume("session") } returns null
+
+        assertThatThrownBy {
+            service.verifyOwnership(sessionId = "session", bojId = "mekazon")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageContaining("이미 사용")
+
+        verify(exactly = 0) {
+            codeStore.save("boj:verified:session", any(), any())
+        }
+    }
+
+    @Test
+    @DisplayName("인증한 BOJ ID와 가입 요청의 BOJ ID가 같으면 인증 세션을 소비한다")
+    fun `consumeVerifiedBojId consumes matching session`() {
+        every { codeStore.find("boj:verified:session") } returns "mekazon"
+        every { codeStore.consume("boj:verified:session") } returns "mekazon"
+
+        service.consumeVerifiedBojId(verificationSessionId = "session", bojId = "mekazon")
+
+        verify(exactly = 1) { codeStore.find("boj:verified:session") }
+        verify(exactly = 1) { codeStore.consume("boj:verified:session") }
+    }
+
+    @Test
+    @DisplayName("인증 세션이 만료되었거나 이미 사용됐으면 가입을 거부한다")
+    fun `consumeVerifiedBojId rejects missing session`() {
+        every { codeStore.find("boj:verified:session") } returns null
+
+        assertThatThrownBy {
+            service.consumeVerifiedBojId(verificationSessionId = "session", bojId = "mekazon")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageContaining("만료되었거나 이미 사용")
+            .hasMessageContaining("다시 진행")
+    }
+
+    @Test
+    @DisplayName("인증한 BOJ ID와 가입 요청의 BOJ ID가 다르면 가입을 거부한다")
+    fun `consumeVerifiedBojId rejects mismatched bojId`() {
+        every { codeStore.find("boj:verified:session") } returns "verifiedUser"
+
+        assertThatThrownBy {
+            service.consumeVerifiedBojId(verificationSessionId = "session", bojId = "otherUser")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageContaining("일치하지 않습니다")
+
+        verify(exactly = 0) { codeStore.consume("boj:verified:session") }
+    }
+
+    @Test
+    @DisplayName("한 번 사용한 인증 세션은 다시 사용할 수 없다")
+    fun `consumeVerifiedBojId rejects reused session`() {
+        every { codeStore.find("boj:verified:session") } returnsMany listOf("mekazon", null)
+        every { codeStore.consume("boj:verified:session") } returns "mekazon"
+
+        service.consumeVerifiedBojId(verificationSessionId = "session", bojId = "mekazon")
+
+        assertThatThrownBy {
+            service.consumeVerifiedBojId(verificationSessionId = "session", bojId = "mekazon")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageContaining("만료되었거나 이미 사용")
+
+        verify(exactly = 1) { codeStore.consume("boj:verified:session") }
+    }
+
+    @Test
+    @DisplayName("조회 뒤 다른 요청이 인증 세션을 소비하면 가입을 거부한다")
+    fun `consumeVerifiedBojId rejects concurrent consumption`() {
+        every { codeStore.find("boj:verified:session") } returns "mekazon"
+        every { codeStore.consume("boj:verified:session") } returns null
+
+        assertThatThrownBy {
+            service.consumeVerifiedBojId(verificationSessionId = "session", bojId = "mekazon")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageContaining("만료되었거나 이미 사용")
     }
 
 }

@@ -1,5 +1,6 @@
 package com.didimlog.application.auth
 
+import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
@@ -40,7 +41,8 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val emailService: EmailService,
     private val passwordResetCodeRepository: PasswordResetCodeRepository,
-    private val refreshTokenService: RefreshTokenService
+    private val refreshTokenService: RefreshTokenService,
+    private val bojOwnershipVerificationService: BojOwnershipVerificationService
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -63,12 +65,13 @@ class AuthService(
      * @param bojId BOJ ID
      * @param password 평문 비밀번호
      * @param email 이메일 주소 (필수)
+     * @param verificationSessionId BOJ 소유권 인증을 마친 세션 ID
      * @return 인증 결과 (토큰, Rating, Tier)
      * @throws BusinessException BOJ ID가 유효하지 않거나 이미 가입된 경우, 이메일이 중복된 경우
      */
     @Transactional
-    fun signup(bojId: String, password: String, email: String): AuthResult {
-        return registerBojAccount(bojId, password, email, Role.USER)
+    fun signup(bojId: String, password: String, email: String, verificationSessionId: String): AuthResult {
+        return registerBojAccount(bojId, password, email, Role.USER, verificationSessionId)
     }
 
     /**
@@ -339,7 +342,13 @@ class AuthService(
             .joinToString("")
     }
 
-    private fun registerBojAccount(bojId: String, password: String, email: String, role: Role): AuthResult {
+    private fun registerBojAccount(
+        bojId: String,
+        password: String,
+        email: String,
+        role: Role,
+        verificationSessionId: String? = null
+    ): AuthResult {
         val bojIdVo = BojId(bojId)
 
         PasswordValidator.validate(password)
@@ -377,6 +386,10 @@ class AuthService(
             termsAgreed = true
         )
 
+        // 저장 실패 시에도 인증 세션은 복구하지 않으며, 다음 가입 시 BOJ 인증을 다시 받아야 한다.
+        verificationSessionId?.let {
+            bojOwnershipVerificationService.consumeVerifiedBojId(it, bojIdVo.value)
+        }
         saveStudentOrThrowDuplicate(bojId, student)
         val token = jwtTokenProvider.createToken(bojId, role.value)
         

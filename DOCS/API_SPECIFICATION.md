@@ -50,17 +50,17 @@ Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/auth/signup` | BOJ ID와 비밀번호를 입력받아 Solved.ac API로 검증 후 회원가입을 진행하고 JWT 토큰을 발급합니다. 비밀번호는 BCrypt로 암호화되어 저장됩니다. Solved.ac의 Rating(점수)을 기반으로 티어를 자동 계산합니다. | **Request Body:**<br>`AuthRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - **비밀번호 정책:**<br>    - 영문, 숫자, 특수문자 중 **3종류 이상 조합**: 최소 **8자리** 이상<br>    - 영문, 숫자, 특수문자 중 **2종류 이상 조합**: 최소 **10자리** 이상<br>    - 공백 포함 불가 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
+| POST | `/api/v1/auth/signup` | BOJ 프로필 상태 메시지 인증을 마친 세션과 BOJ ID를 확인한 뒤 계정을 생성하고 JWT 토큰을 발급합니다. 인증 세션은 가입 시 한 번만 사용할 수 있습니다. | **Request Body:**<br>`SignupRequest`<br>- `bojId` (String, required): 인증한 BOJ ID<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)`<br>  - 영문·숫자·특수문자 조합 정책 적용<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email`<br>- `verificationSessionId` (String, required): `/boj/code`에서 발급받아 `/boj/verify`를 통과한 세션 ID | `AuthResponse`<br><br>- `token` (String): JWT Access Token<br>- `refreshToken` (String): Refresh Token<br>- `message` (String): 응답 메시지<br>- `rating` (Int): Solved.ac Rating<br>- `tier` (String): 티어명<br>- `tierLevel` (Int): 티어 레벨 | None |
 | POST | `/api/v1/auth/login` | BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 시 Solved.ac API를 통해 Rating 및 Tier 정보를 동기화합니다. | **Request Body:**<br>`AuthRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상) | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token<br>- `message` (String): 응답 메시지 ("로그인에 성공했습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | GET | `/api/v1/auth/check-duplicate` | 회원가입 전 BOJ ID 중복 여부를 조회합니다. | **Query Parameters:**<br>- `bojId` (String, required) | `BojIdDuplicateCheckResponse`<br>- `isDuplicate` (Boolean)<br>- `message` (String) | None |
 | POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
-| POST | `/api/v1/auth/signup/finalize` | 소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되며 정식 Access Token이 발급됩니다. | **Request Body:**<br>`SignupFinalizeRequest`<br>- `email` (String, required): 사용자 이메일<br>  - 유효성: `@NotBlank` (null/공백 불가)<br>  - **GitHub 비공개 이메일 등 제공자에서 이메일을 내려주지 않는 경우**: 프론트엔드에서 사용자가 직접 입력한 값을 전달해야 함<br>- `provider` (String, required): 소셜 로그인 제공자 (GOOGLE, GITHUB, NAVER)<br>  - 유효성: `@NotBlank`<br>- `providerId` (String, required): 제공자별 사용자 ID<br>  - 유효성: `@NotBlank`<br>- `nickname` (String, required): 설정할 닉네임<br>  - 유효성: `@NotBlank`<br>- `bojId` (String, optional): BOJ ID (선택)<br>  - 제공된 경우 Solved.ac API로 검증 및 Rating 조회<br>  - **중복 불가** (이미 존재하는 BOJ ID면 409 발생)<br>- `isAgreedToTerms` (Boolean, required): 약관 동의 여부<br>  - 유효성: `@NotNull`<br>  - 반드시 `true`여야 함 (약관 동의는 필수)<br><br>※ 서버는 호환성을 위해 `termsAgreed`도 함께 지원합니다. | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (USER role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수, BOJ ID가 제공된 경우)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER", "BRONZE")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
+| POST | `/api/v1/auth/signup/finalize` | 서버가 확인한 OAuth 가입 정보와 연결되지 않은 기존 경로이므로 현재 제공하지 않습니다. | 없음 | `410 Gone` | None |
 | POST | `/api/v1/auth/find-account` | 이메일을 입력받아 가입된 소셜 제공자(Provider)를 반환합니다. | **Request Body:**<br>`FindAccountRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindAccountResponse`<br>- `provider` (String)<br>- `message` (String) | None |
 | POST | `/api/v1/auth/find-id` | 이메일을 입력받아 BOJ ID를 조회합니다. | **Request Body:**<br>`FindIdRequest`<br>- `email` (String, required)<br>  - 유효성: `@NotBlank`, `@Email` | `FindIdPasswordResponse`<br>- `message` (String) | None |
 | POST | `/api/v1/auth/find-password` | 이메일과 BOJ ID를 검증한 뒤 비밀번호 재설정 코드를 발급하고 이메일로 전송합니다. | **Request Body:**<br>`FindPasswordRequest`<br>- `email` (String, required)<br>  - 유효성: `@NotBlank`, `@Email`<br>- `bojId` (String, required)<br>  - 유효성: `@NotBlank` | `FindIdPasswordResponse`<br>- `message` (String) | None |
 | POST | `/api/v1/auth/reset-password` | 비밀번호 재설정 코드와 새 비밀번호로 비밀번호를 변경합니다. | **Request Body:**<br>`ResetPasswordRequest`<br>- `resetCode` (String, required)<br>  - 유효성: `@NotBlank`<br>- `newPassword` (String, required)<br>  - 유효성: `@NotBlank`, `@Size(min=8)` | `FindIdPasswordResponse`<br>- `message` (String) | None |
 | POST | `/api/v1/auth/boj/code` | BOJ 프로필 상태 메시지 인증에 사용할 코드를 발급합니다. | 없음 | `BojCodeIssueResponse`<br>- `sessionId` (String)<br>- `code` (String)<br>- `expiresInSeconds` (Long) | None |
-| POST | `/api/v1/auth/boj/verify` | BOJ 프로필 상태 메시지에서 발급 코드 포함 여부를 확인하고 성공 시 소유권 인증을 완료합니다. | **Request Body:**<br>`BojVerifyRequest`<br>- `sessionId` (String, required)<br>- `bojId` (String, required) | `BojVerifyResponse`<br>- `verified` (Boolean) | None |
+| POST | `/api/v1/auth/boj/verify` | BOJ 프로필 상태 메시지에서 발급 코드 포함 여부를 확인합니다. 성공한 세션은 `/signup`에서 한 번만 사용할 수 있습니다. | **Request Body:**<br>`BojVerifyRequest`<br>- `sessionId` (String, required)<br>- `bojId` (String, required) | `BojVerifyResponse`<br>- `verified` (Boolean)<br>- `verifiedBojId` (String) | None |
 | POST | `/api/v1/auth/refresh` | Refresh Token으로 Access/Refresh Token을 재발급합니다. | **Headers:**<br>- `Authorization: Bearer {refreshToken}` (optional)<br>**Request Body:**<br>`RefreshTokenRequest`<br>- `refreshToken` (String, optional)<br><br>Body와 Header 중 하나에서 Refresh Token 제공 필요 | `AuthResponse`<br>- `token` (String)<br>- `refreshToken` (String)<br>- `message` (String) | None |
 
 **예시 요청 (회원가입):**
@@ -70,7 +70,9 @@ Content-Type: application/json
 
 {
   "bojId": "user123",
-  "password": "securePassword123"
+  "password": "securePassword123",
+  "email": "user@example.com",
+  "verificationSessionId": "6aaf55ee-9ee4-4aaa-9d0d-9c831ae84ef6"
 }
 ```
 
@@ -220,66 +222,11 @@ Content-Type: application/json
 }
 ```
 
-**예시 요청 (회원가입 마무리 - 신규 유저):**
+**중단된 가입 마무리 경로:**
 ```http
 POST /api/v1/auth/signup/finalize
-Content-Type: application/json
 
-{
-  "email": "user@example.com",
-  "provider": "GOOGLE",
-  "providerId": "123456789",
-  "nickname": "newuser",
-  "bojId": null,
-  "isAgreedToTerms": true
-}
-```
-
-**예시 요청 (회원가입 마무리 - BOJ ID 포함):**
-```http
-POST /api/v1/auth/signup/finalize
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "provider": "GOOGLE",
-  "providerId": "123456789",
-  "nickname": "newuser",
-  "bojId": "user123",
-  "isAgreedToTerms": true
-}
-```
-
-**예시 응답 (회원가입 마무리):**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdHVkZW50LTEyMyIsInJvbGUiOiJVU0VSIiwiaWF0IjoxNjE2MjM5MDIyLCJleHAiOjE2MTYzMjU0MjJ9.signature",
-  "message": "회원가입이 완료되었습니다.",
-  "rating": 0,
-  "tier": "BRONZE",
-  "tierLevel": 3
-}
-```
-
-**예시 응답 (BOJ ID 포함 시):**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdHVkZW50LTEyMyIsInJvbGUiOiJVU0VSIiwiaWF0IjoxNjE2MjM5MDIyLCJleHAiOjE2MTYzMjU0MjJ9.signature",
-  "message": "회원가입이 완료되었습니다.",
-  "rating": 1223,
-  "tier": "GOLD",
-  "tierLevel": 13
-}
-```
-
-**에러 응답 예시 (약관 동의 미완료):**
-```json
-{
-  "status": 400,
-  "error": "Bad Request",
-  "code": "COMMON_INVALID_INPUT",
-  "message": "약관 동의는 필수입니다."
-}
+HTTP/1.1 410 Gone
 ```
 
 **에러 응답 예시 (닉네임 중복):**
@@ -374,30 +321,12 @@ http://localhost:5173/oauth/callback?error=access_denied&error_description=사�
 - **콜백 URL**: 환경 변수 `app.oauth.redirect-uri`로 설정 (기본값: `http://localhost:5173/oauth/callback`)
 - **인증 경로**: `/oauth2/**` 경로는 인증 없이 접근 가능 (`permitAll`)
 
-### 회원가입 마무리 플로우
+### OAuth 가입 범위
 
-소셜 로그인 신규 유저의 경우, OAuth 인증 후 다음 단계를 거칩니다:
-
-1. **OAuth 인증 완료**: 신규 유저는 DB에 저장되지 않고, 쿼리 파라미터로 정보가 전달됨
-2. **회원가입 마무리**: 프론트엔드에서 `/api/v1/auth/signup/finalize` API를 호출하여 약관 동의 및 닉네임 설정
-3. **Student 엔티티 생성**: `finalizeSignup` API 호출 시 Student 엔티티가 생성되고 USER 권한 부여
-4. **JWT 토큰 발급**: 정식 Access Token이 발급되어 로그인 완료
-
-**기존 유저의 경우**: OAuth 인증 완료 시 즉시 JWT 토큰이 발급되어 로그인 완료
-
-### 사용자 정보
-
-소셜 로그인으로 가입한 사용자는 다음 정보를 가집니다:
-- `provider`: 인증 제공자 (GOOGLE, GITHUB, NAVER)
-- `email`: 소셜 계정 이메일 (공급자별로 다를 수 있음)
-- `bojId`: null 또는 BOJ ID (회원가입 마무리 시 선택적으로 연동 가능)
-- `role`: USER (약관 동의 완료 후 USER 권한 부여)
-
-### 주의사항
-
-- **신규 유저**: OAuth 인증 후 DB에 저장되지 않으며, `finalizeSignup` API를 통해 약관 동의 및 닉네임 설정 완료 시 Student 엔티티가 생성됩니다.
-- **기존 유저**: OAuth 인증 완료 시 즉시 JWT 토큰이 발급되어 로그인 완료됩니다.
-- OAuth2 인증은 Spring Security의 기본 동작을 따르므로, 공급자별 설정은 `application.yaml`에서 관리됩니다.
+- 이미 연결된 소셜 계정은 OAuth 인증 성공 후 JWT를 발급받습니다.
+- 신규 소셜 가입은 서버가 발급한 가입 표식으로 provider 정보를 확인하는 절차가 아직 없어 제공하지 않습니다.
+- 기존 `/api/v1/auth/signup/finalize`는 요청 본문의 provider 정보를 신뢰하지 않도록 `410 Gone`을 반환합니다.
+- 신규 사용자는 BOJ 상태 메시지 인증 후 `/api/v1/auth/signup`으로 가입합니다.
 
 ---
 

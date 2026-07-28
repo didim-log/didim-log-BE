@@ -29,6 +29,7 @@ class BojOwnershipVerificationService(
         private const val CODE_LENGTH = 6
         private const val DEFAULT_TTL_SECONDS = 5 * 60L
         private const val RATE_LIMIT_KEY_PREFIX = "boj:code:rate:"
+        private const val VERIFIED_BOJ_ID_KEY_PREFIX = "boj:verified:"
         private const val MAX_REQUESTS_PER_MINUTE = 5
         private const val RATE_LIMIT_TTL_SECONDS = 60L
     }
@@ -41,18 +42,15 @@ class BojOwnershipVerificationService(
 
     @Transactional(readOnly = true)
     fun issueVerificationCode(identifier: String?): IssuedCode {
-        // Rate Limiting 체크
         val rateLimitKey = RATE_LIMIT_KEY_PREFIX + (identifier ?: "unknown")
-        val currentCount = codeStore.getRateLimitCount(rateLimitKey)
+        val currentCount = codeStore.incrementRateLimitCount(rateLimitKey, RATE_LIMIT_TTL_SECONDS)
 
-        if (currentCount >= MAX_REQUESTS_PER_MINUTE) {
+        if (currentCount > MAX_REQUESTS_PER_MINUTE) {
             throw BusinessException(
                 ErrorCode.TOO_MANY_REQUESTS,
                 "요청이 너무 많습니다. 1분 후 다시 시도해주세요."
             )
         }
-
-        codeStore.incrementRateLimitCount(rateLimitKey, RATE_LIMIT_TTL_SECONDS)
 
         val sessionId = UUID.randomUUID().toString()
         val code = activeFixtureCode() ?: CODE_PREFIX + randomUpperAlphaNumeric(CODE_LENGTH)
@@ -67,7 +65,7 @@ class BojOwnershipVerificationService(
      * 회원가입 플로우:
      * 1. 이 API로 BOJ ID 인증 완료
      * 2. 인증된 BOJ ID를 프론트엔드에서 관리
-     * 3. /api/v1/auth/signup/finalize에서 인증된 BOJ ID로 회원가입 마무리
+     * 3. /api/v1/auth/signup에서 인증 세션과 BOJ ID로 회원가입
      * 
      * @param sessionId 인증 코드 발급 시 받은 세션 ID
      * @param bojId 인증할 BOJ ID
@@ -89,15 +87,46 @@ class BojOwnershipVerificationService(
             )
         }
 
-        // 인증 성공: 인증된 BOJ ID를 세션에 저장 (회원가입 마무리 시 사용)
-        val verifiedBojIdKey = "boj:verified:$sessionId"
+        val claimedCode = codeStore.consume(sessionId)
+        if (claimedCode != storedCode) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "인증 코드가 만료되었거나 이미 사용되었습니다."
+            )
+        }
+
+        // 인증 성공: 인증된 BOJ ID를 세션에 저장 (회원가입 시 사용)
+        val verifiedBojIdKey = VERIFIED_BOJ_ID_KEY_PREFIX + sessionId
         codeStore.save(verifiedBojIdKey, bojIdVo.value, DEFAULT_TTL_SECONDS)
-        
-        // 인증 코드는 삭제 (일회성)
-        codeStore.delete(sessionId)
 
         log.info("BOJ 소유권 인증 성공: bojId={}, sessionId={}", bojIdVo.value, sessionId)
         return bojIdVo.value
+    }
+
+    fun consumeVerifiedBojId(verificationSessionId: String, bojId: String) {
+        if (verificationSessionId.isBlank()) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "BOJ 인증 세션은 필수입니다.")
+        }
+
+        val expectedBojId = BojId(bojId.trim())
+        val verifiedBojIdKey = VERIFIED_BOJ_ID_KEY_PREFIX + verificationSessionId.trim()
+        val verifiedBojId = codeStore.find(verifiedBojIdKey)
+            ?: throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "BOJ 인증이 만료되었거나 이미 사용되었습니다. 가입에 실패했다면 BOJ 인증을 다시 진행해주세요."
+            )
+
+        if (verifiedBojId != expectedBojId.value) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "인증한 BOJ ID와 가입 요청의 BOJ ID가 일치하지 않습니다.")
+        }
+
+        val consumedBojId = codeStore.consume(verifiedBojIdKey)
+        if (consumedBojId != verifiedBojId) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "BOJ 인증이 만료되었거나 이미 사용되었습니다. 가입에 실패했다면 BOJ 인증을 다시 진행해주세요."
+            )
+        }
     }
 
     private fun fetchStatusMessageOrThrow(bojId: BojId): BojProfileStatusMessage {
