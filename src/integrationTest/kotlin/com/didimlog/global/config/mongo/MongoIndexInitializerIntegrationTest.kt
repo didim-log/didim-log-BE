@@ -428,7 +428,8 @@ class MongoIndexInitializerIntegrationTest {
         @DynamicPropertySource
         fun mongoProperties(registry: DynamicPropertyRegistry) {
             registry.add("spring.data.mongodb.uri") {
-                "mongodb://localhost:27017/$testDatabaseName"
+                val port = System.getenv("TEST_MONGO_PORT") ?: "27017"
+                "mongodb://localhost:$port/$testDatabaseName"
             }
         }
     }

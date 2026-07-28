@@ -273,10 +273,13 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | 인증 요청 제한 | 회원가입 5건/시간, 로그인 10건/시간, 비밀번호 재설정 3건/시간 | 허용 횟수 이후 요청 차단 |
 | 가입·회고 DB 정합성 | 실제 MongoDB, 같은 학생·문제 회고 2건 동시 insert | 학생 식별자 중복 거부, 회고 1건 저장, 기존 중복 데이터 자동 삭제 0건 |
 | Refresh Token 회전 | 실제 Redis 7.2.5, 같은 기존 토큰으로 20건 동시 교체 | 성공 1건, 기존 토큰 0건, 새 토큰 1건 |
+| 비밀번호 재설정 코드 소비 | 실제 MongoDB 7.0.16, 같은 코드로 20건 동시 재설정 | 성공 1건, 실패 19건, 코드 0건, 비밀번호 인코딩 1회 |
 
-이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증입니다. 실행 조건은 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼으며 운영 성능을 뜻하지 않습니다.
+이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
+AI 리뷰와 인증 요청 제한의 실행 조건은 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
 가입·회고 인덱스와 테스트 범위는 [가입·회고 데이터 정합성](./DOCS/refactoring/be-refactor/PHASE_2A_DATA_CONSISTENCY.md)에 정리했습니다.
 Refresh Token의 Lua 교체 순서와 경합 검증은 [Refresh Token 원자적 회전](./DOCS/refactoring/be-refactor/PHASE_2B_REFRESH_TOKEN_ATOMIC_ROTATION.md)에 정리했습니다.
+재설정 코드의 소비 순서와 실패 경계는 [비밀번호 재설정 코드 원자적 소비](./DOCS/refactoring/be-refactor/PHASE_2B_2_PASSWORD_RESET_ATOMIC_CONSUME.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
