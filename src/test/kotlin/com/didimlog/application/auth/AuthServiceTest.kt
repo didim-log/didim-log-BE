@@ -16,6 +16,7 @@ import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.slot
 import io.mockk.unmockkObject
 import io.mockk.verify
 import io.mockk.verifyOrder
@@ -23,6 +24,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.util.Optional
 
@@ -195,7 +197,8 @@ class AuthServiceTest {
         every { passwordEncoder.encode(password) } returns encodedPassword
         every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns token
         every { refreshTokenService.generateAndSave(bojId) } returns "refresh-token"
-        every { studentRepository.save(any()) } answers { firstArg() }
+        val savedStudent = slot<Student>()
+        every { studentRepository.save(capture(savedStudent)) } answers { firstArg() }
 
         // when
         val result = authService.signup(bojId, password, "test@example.com", "verification-session")
@@ -205,6 +208,7 @@ class AuthServiceTest {
         assertThat(result.rating).isEqualTo(100)
         assertThat(result.tier).isEqualTo(Tier.BRONZE)
         assertThat(result.tierLevel).isEqualTo(3)
+        assertThat(savedStudent.captured.isVerified).isTrue()
         verify(exactly = 1) {
             bojOwnershipVerificationService.consumeVerifiedBojId("verification-session", bojId)
         }
@@ -240,6 +244,65 @@ class AuthServiceTest {
             bojOwnershipVerificationService.consumeVerifiedBojId("verification-session", bojId)
             studentRepository.save(any())
         }
+        unmockkObject(PasswordValidator)
+    }
+
+    @Test
+    @DisplayName("동시 가입 중 이메일 유일성 충돌은 이메일 중복으로 안내한다")
+    fun `회원가입 이메일 유일성 충돌 분류`() {
+        val bojId = "newuser"
+        val password = "ValidPassword123!"
+        val bojIdVo = BojId(bojId)
+
+        mockkObject(PasswordValidator)
+        every { PasswordValidator.validate(password) } returns Unit
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 100,
+            tier = 3
+        )
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
+        every { studentRepository.findByEmail("test@example.com") } returns Optional.empty()
+        every { passwordEncoder.encode(password) } returns "encoded-password"
+        every { studentRepository.save(any()) } throws DuplicateKeyException(
+            "E11000 duplicate key error index: uniq_student_email"
+        )
+
+        assertThatThrownBy {
+            authService.signup(bojId, password, "test@example.com", "verification-session")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageContaining("이미 사용 중인 이메일입니다")
+
+        unmockkObject(PasswordValidator)
+    }
+
+    @Test
+    @DisplayName("동시 가입 중 닉네임 유일성 충돌은 닉네임 중복으로 안내한다")
+    fun `회원가입 닉네임 유일성 충돌 분류`() {
+        val bojId = "newuser"
+        val password = "ValidPassword123!"
+        val bojIdVo = BojId(bojId)
+
+        mockkObject(PasswordValidator)
+        every { PasswordValidator.validate(password) } returns Unit
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 100,
+            tier = 3
+        )
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
+        every { studentRepository.findByEmail("test@example.com") } returns Optional.empty()
+        every { passwordEncoder.encode(password) } returns "encoded-password"
+        every { studentRepository.save(any()) } throws DuplicateKeyException(
+            "E11000 duplicate key error index: uniq_student_nickname"
+        )
+
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            authService.signup(bojId, password, "test@example.com", "verification-session")
+        }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.DUPLICATE_NICKNAME)
+
         unmockkObject(PasswordValidator)
     }
 

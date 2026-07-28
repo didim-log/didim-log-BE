@@ -12,6 +12,7 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.config.mongo.MongoIndexInitializer
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.PasswordValidator
@@ -383,7 +384,8 @@ class AuthService(
             solvedAcTierLevel = SolvedAcTierLevel(tierLevel),
             currentTier = tier,
             role = role,
-            termsAgreed = true
+            termsAgreed = true,
+            isVerified = verificationSessionId != null
         )
 
         // 저장 실패 시에도 인증 세션은 복구하지 않으며, 다음 가입 시 BOJ 인증을 다시 받아야 한다.
@@ -446,13 +448,13 @@ class AuthService(
         } catch (e: MongoWriteException) {
             if (e.code == 11000) {
                 log.error("MongoDB 중복 키 에러 발생: bojId={}, errorCode={}, message={}", SensitiveDataMasker.maskId(bojId), e.code, e.message, e)
-                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 가입된 BOJ ID입니다. bojId=$bojId")
+                throw duplicateStudentException(bojId, e)
             }
             log.error("MongoDB 쓰기 에러 발생: bojId={}, errorCode={}, message={}", SensitiveDataMasker.maskId(bojId), e.code, e.message, e)
             throw e
         } catch (e: DuplicateKeyException) {
             log.error("중복 키 에러 발생: bojId={}, message={}", SensitiveDataMasker.maskId(bojId), e.message, e)
-            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 가입된 BOJ ID입니다. bojId=$bojId")
+            throw duplicateStudentException(bojId, e)
         } catch (e: Exception) {
             log.error(
                 "Student 저장 중 예외 발생: bojId={}, exceptionType={}, message={}",
@@ -462,6 +464,35 @@ class AuthService(
                 e
             )
             throw e
+        }
+    }
+
+    private fun duplicateStudentException(bojId: String, exception: Throwable): BusinessException {
+        return when {
+            exception.isDuplicateFor(
+                MongoIndexInitializer.STUDENT_EMAIL_UNIQUE_INDEX_NAME,
+                "email"
+            ) -> BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이미 사용 중인 이메일입니다.")
+
+            exception.isDuplicateFor(
+                MongoIndexInitializer.STUDENT_NICKNAME_UNIQUE_INDEX_NAME,
+                "nickname"
+            ) -> BusinessException(ErrorCode.DUPLICATE_NICKNAME)
+
+            else -> BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "이미 가입된 BOJ ID입니다. bojId=$bojId"
+            )
+        }
+    }
+
+    private fun Throwable.isDuplicateFor(indexName: String, field: String): Boolean {
+        return generateSequence(this) { it.cause }.any { cause ->
+            cause.message?.contains(indexName) == true ||
+                (cause as? MongoWriteException)?.error?.details?.let { details ->
+                    details.containsKey("keyPattern") &&
+                        details.getDocument("keyPattern").containsKey(field)
+                } == true
         }
     }
 

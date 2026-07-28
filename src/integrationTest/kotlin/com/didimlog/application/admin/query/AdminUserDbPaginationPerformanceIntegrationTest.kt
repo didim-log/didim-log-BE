@@ -274,7 +274,7 @@ class AdminUserDbPaginationPerformanceIntegrationTest {
         expectedPageOffset: Long
     ) {
         assertThat(snapshot.studentIndexes.map { it.name })
-            .containsExactly("_id_", MongoIndexInitializer.STUDENT_ADMIN_RATING_INDEX_NAME)
+            .contains("_id_", MongoIndexInitializer.STUDENT_ADMIN_RATING_INDEX_NAME)
 
         val pagePlan = requireNotNull(snapshot.studentPage)
         assertThat(pagePlan.winningPlanStage).isEqualTo("IXSCAN")
