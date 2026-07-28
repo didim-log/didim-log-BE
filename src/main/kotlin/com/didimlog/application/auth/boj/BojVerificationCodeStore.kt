@@ -11,22 +11,17 @@ interface BojVerificationCodeStore {
 
     fun find(sessionId: String): String?
 
-    fun delete(sessionId: String)
-
     /**
-     * Rate Limiting을 위한 요청 횟수를 가져온다.
-     *
-     * @param key Rate Limit 키 (예: IP 주소 또는 세션 ID)
-     * @return 현재 요청 횟수 (키가 없으면 0)
+     * 값을 조회하면서 같은 연산에서 삭제한다.
      */
-    fun getRateLimitCount(key: String): Long
+    fun consume(sessionId: String): String?
 
     /**
-     * Rate Limiting 요청 횟수를 증가시킨다.
+     * Rate Limiting 요청 횟수를 원자적으로 증가시킨다.
      *
      * @param key Rate Limit 키
      * @param ttlSeconds TTL (초)
+     * @return 증가 후 요청 횟수
      */
-    fun incrementRateLimitCount(key: String, ttlSeconds: Long)
+    fun incrementRateLimitCount(key: String, ttlSeconds: Long): Long
 }
-

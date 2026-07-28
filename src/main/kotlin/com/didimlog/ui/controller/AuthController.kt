@@ -26,7 +26,6 @@ import com.didimlog.ui.dto.LoginRequest
 import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.RefreshTokenRequest
 import com.didimlog.ui.dto.ResetPasswordRequest
-import com.didimlog.ui.dto.SignupFinalizeRequest
 import com.didimlog.ui.dto.SuperAdminRequest
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
@@ -34,12 +33,13 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
@@ -90,7 +90,12 @@ class AuthController(
         @Valid
         request: SignupRequest
     ): ResponseEntity<AuthResponse> {
-        val result = authService.signup(request.bojId, request.password, request.email)
+        val result = authService.signup(
+            request.bojId,
+            request.password,
+            request.email,
+            request.verificationSessionId
+        )
         val response = AuthResponse.signup(
             token = result.token,
             refreshToken = result.refreshToken,
@@ -208,46 +213,13 @@ class AuthController(
     }
 
     @Operation(
-        summary = "가입 마무리",
-        description = "소셜 로그인 후 약관 동의 및 닉네임 설정을 완료합니다. 신규 유저의 경우 Student 엔티티를 생성하고, 약관 동의가 완료되면 GUEST에서 USER로 역할이 변경되고 정식 Access Token이 발급됩니다."
+        summary = "가입 마무리(중단됨)",
+        description = "현재 제공하지 않는 경로입니다. BOJ 인증을 마친 뒤 /api/v1/auth/signup을 사용해주세요."
     )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "가입 마무리 성공"),
-            ApiResponse(
-                responseCode = "400",
-                description = "약관 동의 미완료, 닉네임 중복 또는 유효하지 않은 입력",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            ),
-            ApiResponse(
-                responseCode = "404",
-                description = "사용자를 찾을 수 없음",
-                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
-            )
-        ]
-    )
+    @ApiResponse(responseCode = "410", description = "더 이상 제공하지 않는 경로")
     @PostMapping("/signup/finalize")
-    fun finalizeSignup(
-        @RequestBody
-        @Valid
-        request: SignupFinalizeRequest
-    ): ResponseEntity<AuthResponse> {
-        val result = authService.finalizeSignup(
-            email = request.email,
-            provider = request.provider,
-            providerId = request.providerId,
-            nickname = request.nickname,
-            bojId = request.bojId,
-            termsAgreed = request.termsAgreed
-        )
-        val response = AuthResponse.signup(
-            token = result.token,
-            refreshToken = result.refreshToken,
-            rating = result.rating,
-            tier = result.tier.name,
-            tierLevel = result.tierLevel
-        )
-        return ResponseEntity.ok(response)
+    fun finalizeSignup(): ResponseEntity<Void> {
+        return ResponseEntity.status(HttpStatus.GONE).build()
     }
 
     @Operation(
@@ -388,9 +360,9 @@ class AuthController(
         description = "백준 프로필 상태 메시지 인증에 사용할 코드를 발급하고, sessionId와 함께 일정 시간 저장합니다."
     )
     @PostMapping("/boj/code")
-    fun issueBojVerificationCode(authentication: Authentication?): ResponseEntity<BojCodeIssueResponse> {
-        val identifier = authentication?.name
-        val issued = bojOwnershipVerificationService.issueVerificationCode(identifier)
+    fun issueBojVerificationCode(httpRequest: HttpServletRequest): ResponseEntity<BojCodeIssueResponse> {
+        val clientIp = HttpRequestUtil.getConnectionRemoteAddress(httpRequest)
+        val issued = bojOwnershipVerificationService.issueVerificationCode(clientIp)
         return ResponseEntity.ok(
             BojCodeIssueResponse(
                 sessionId = issued.sessionId,
@@ -402,7 +374,7 @@ class AuthController(
 
     @Operation(
         summary = "BOJ 소유권 인증 확인",
-        description = "백준 프로필 상태 메시지에 발급된 인증 코드가 포함되어 있는지 확인합니다. 인증 성공 시 인증된 BOJ ID를 반환하며, 이후 회원가입 마무리(/api/v1/auth/signup/finalize)에서 이 BOJ ID를 사용하여 계정을 생성합니다."
+        description = "백준 프로필 상태 메시지에 발급된 인증 코드가 포함되어 있는지 확인합니다. 인증 성공 시 인증된 BOJ ID를 반환하며, 이후 /api/v1/auth/signup에서 인증 세션과 BOJ ID를 사용하여 계정을 생성합니다."
     )
     @PostMapping("/boj/verify")
     fun verifyBojOwnership(

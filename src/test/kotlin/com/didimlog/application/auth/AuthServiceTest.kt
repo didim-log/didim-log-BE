@@ -18,6 +18,7 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
@@ -35,6 +36,8 @@ class AuthServiceTest {
     private val emailService: com.didimlog.infra.email.EmailService = mockk(relaxed = true)
     private val passwordResetCodeRepository: com.didimlog.domain.repository.PasswordResetCodeRepository = mockk(relaxed = true)
     private val refreshTokenService: RefreshTokenService = mockk(relaxed = true)
+    private val bojOwnershipVerificationService =
+        mockk<com.didimlog.application.auth.boj.BojOwnershipVerificationService>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient,
@@ -43,7 +46,8 @@ class AuthServiceTest {
         passwordEncoder,
         emailService,
         passwordResetCodeRepository,
-        refreshTokenService
+        refreshTokenService,
+        bojOwnershipVerificationService
     )
 
     @Test
@@ -75,7 +79,7 @@ class AuthServiceTest {
 
         // when & then
         val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
-            authService.signup(bojId, password, "test@example.com")
+            authService.signup(bojId, password, "test@example.com", "verification-session")
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
         assertThat(exception.message).contains("이미 가입된 BOJ ID입니다")
@@ -96,7 +100,7 @@ class AuthServiceTest {
 
         // when & then
         assertThatThrownBy {
-            authService.signup(bojId, invalidPassword, "test@example.com")
+            authService.signup(bojId, invalidPassword, "test@example.com", "verification-session")
         }.isInstanceOf(com.didimlog.global.exception.InvalidPasswordException::class.java)
             .isNotNull
         unmockkObject(PasswordValidator)
@@ -118,7 +122,7 @@ class AuthServiceTest {
 
         // when & then
         val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
-            authService.signup(bojId, password, "test@example.com")
+            authService.signup(bojId, password, "test@example.com", "verification-session")
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_RESOURCE_NOT_FOUND)
         assertThat(exception.message).contains("유효하지 않은 BOJ ID입니다")
@@ -194,14 +198,48 @@ class AuthServiceTest {
         every { studentRepository.save(any()) } answers { firstArg() }
 
         // when
-        val result = authService.signup(bojId, password, "test@example.com")
+        val result = authService.signup(bojId, password, "test@example.com", "verification-session")
 
         // then
         assertThat(result.token).isEqualTo(token)
         assertThat(result.rating).isEqualTo(100)
         assertThat(result.tier).isEqualTo(Tier.BRONZE)
         assertThat(result.tierLevel).isEqualTo(3)
+        verify(exactly = 1) {
+            bojOwnershipVerificationService.consumeVerifiedBojId("verification-session", bojId)
+        }
         verify(exactly = 1) { studentRepository.save(any()) }
+        unmockkObject(PasswordValidator)
+    }
+
+    @Test
+    @DisplayName("계정 저장이 실패해도 소비한 BOJ 인증 세션은 복구하지 않는다")
+    fun `회원가입 저장 실패 시 인증 세션 소비 유지`() {
+        val bojId = "newuser"
+        val password = "ValidPassword123!"
+        val bojIdVo = BojId(bojId)
+
+        mockkObject(PasswordValidator)
+        every { PasswordValidator.validate(password) } returns Unit
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 100,
+            tier = 3
+        )
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
+        every { studentRepository.findByEmail("test@example.com") } returns Optional.empty()
+        every { passwordEncoder.encode(password) } returns "encoded-password"
+        every { studentRepository.save(any()) } throws IllegalStateException("MongoDB unavailable")
+
+        assertThatThrownBy {
+            authService.signup(bojId, password, "test@example.com", "verification-session")
+        }
+            .isInstanceOf(IllegalStateException::class.java)
+
+        verifyOrder {
+            bojOwnershipVerificationService.consumeVerifiedBojId("verification-session", bojId)
+            studentRepository.save(any())
+        }
         unmockkObject(PasswordValidator)
     }
 

@@ -33,6 +33,8 @@ class AuthServiceFindIdPasswordTest {
     private val emailService = mockk<EmailService>(relaxed = true)
     private val passwordResetCodeRepository = mockk<PasswordResetCodeRepository>(relaxed = true)
     private val refreshTokenService = mockk<RefreshTokenService>(relaxed = true)
+    private val bojOwnershipVerificationService =
+        mockk<com.didimlog.application.auth.boj.BojOwnershipVerificationService>(relaxed = true)
 
     private val authService = AuthService(
         solvedAcClient = solvedAcClient,
@@ -41,7 +43,8 @@ class AuthServiceFindIdPasswordTest {
         passwordEncoder = passwordEncoder,
         emailService = emailService,
         passwordResetCodeRepository = passwordResetCodeRepository,
-        refreshTokenService = refreshTokenService
+        refreshTokenService = refreshTokenService,
+        bojOwnershipVerificationService = bojOwnershipVerificationService
     )
 
     @Test
@@ -248,5 +251,4 @@ class AuthServiceFindIdPasswordTest {
         verify(exactly = 0) { emailService.sendEmail(any(), any(), any()) }
     }
 }
-
 
