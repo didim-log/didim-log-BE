@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.nio.charset.StandardCharsets
 import java.util.Date
+import java.util.UUID
 import javax.crypto.SecretKey
 
 /**
@@ -100,6 +101,7 @@ class JwtTokenProvider(
 
         return Jwts.builder()
             .subject(subject)
+            .id(UUID.randomUUID().toString())
             .claim("type", "refresh")
             .issuedAt(now)
             .expiration(expiryDate)

@@ -4,8 +4,6 @@ import com.didimlog.application.auth.AuthService
 import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ui.dto.RefreshTokenRequest
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -48,12 +46,6 @@ class AuthControllerRefreshTest {
     private lateinit var refreshTokenService: RefreshTokenService
 
     @Autowired
-    private lateinit var jwtTokenProvider: JwtTokenProvider
-
-    @Autowired
-    private lateinit var studentRepository: StudentRepository
-
-    @Autowired
     private lateinit var objectMapper: ObjectMapper
 
     @TestConfiguration
@@ -69,12 +61,6 @@ class AuthControllerRefreshTest {
 
         @Bean
         fun refreshTokenService(): RefreshTokenService = mockk(relaxed = true)
-
-        @Bean
-        fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
-
-        @Bean
-        fun studentRepository(): StudentRepository = mockk(relaxed = true)
 
         @Bean
         fun methodValidationPostProcessor(): MethodValidationPostProcessor {
@@ -98,24 +84,19 @@ class AuthControllerRefreshTest {
     @DisplayName("유효한 Refresh Token으로 토큰 갱신 시 200 OK 및 새 토큰 반환")
     fun `토큰 갱신 성공`() {
         // given
-        clearMocks(refreshTokenService, jwtTokenProvider, studentRepository)
+        clearMocks(refreshTokenService)
         val refreshToken = "valid-refresh-token"
         val newAccessToken = "new-access-token"
         val newRefreshToken = "new-refresh-token"
-        val bojId = "test123"
-        val student = com.didimlog.domain.Student(
-            nickname = com.didimlog.domain.valueobject.Nickname("test"),
-            provider = com.didimlog.domain.enums.Provider.BOJ,
-            providerId = bojId,
-            bojId = com.didimlog.domain.valueobject.BojId(bojId),
-            password = "encoded-password",
-            currentTier = com.didimlog.domain.enums.Tier.BRONZE,
-            role = com.didimlog.domain.enums.Role.USER
+        val result = RefreshTokenService.RefreshResult(
+            accessToken = newAccessToken,
+            refreshToken = newRefreshToken,
+            rating = 30,
+            tier = com.didimlog.domain.enums.Tier.BRONZE,
+            tierLevel = 3
         )
 
-        every { refreshTokenService.refresh(refreshToken) } returns Pair(newAccessToken, newRefreshToken)
-        every { jwtTokenProvider.getSubject(newAccessToken) } returns bojId
-        every { studentRepository.findByBojId(com.didimlog.domain.valueobject.BojId(bojId)) } returns java.util.Optional.of(student)
+        every { refreshTokenService.refresh(refreshToken) } returns result
 
         val requestBody = RefreshTokenRequest(refreshToken) // refreshToken은 이제 nullable이지만 테스트에서는 non-null 값 사용
 
@@ -129,12 +110,11 @@ class AuthControllerRefreshTest {
             .andExpect(jsonPath("$.token").value(newAccessToken))
             .andExpect(jsonPath("$.refreshToken").value(newRefreshToken))
             .andExpect(jsonPath("$.message").value("로그인에 성공했습니다."))
-            .andExpect(jsonPath("$.rating").exists())
-            .andExpect(jsonPath("$.tier").exists())
+            .andExpect(jsonPath("$.rating").value(30))
+            .andExpect(jsonPath("$.tier").value("BRONZE"))
+            .andExpect(jsonPath("$.tierLevel").value(3))
 
         verify(exactly = 1) { refreshTokenService.refresh(refreshToken) }
-        verify(exactly = 1) { jwtTokenProvider.getSubject(newAccessToken) }
-        verify(exactly = 1) { studentRepository.findByBojId(com.didimlog.domain.valueobject.BojId(bojId)) }
     }
 
     @Test
@@ -176,4 +156,3 @@ class AuthControllerRefreshTest {
         verify(exactly = 1) { refreshTokenService.refresh(refreshToken) }
     }
 }
-

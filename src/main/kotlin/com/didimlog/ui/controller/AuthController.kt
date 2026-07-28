@@ -4,9 +4,6 @@ import com.didimlog.application.auth.AuthService
 import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.ErrorResponse
@@ -58,8 +55,6 @@ class AuthController(
     private val findAccountService: FindAccountService,
     private val bojOwnershipVerificationService: BojOwnershipVerificationService,
     private val refreshTokenService: RefreshTokenService,
-    private val jwtTokenProvider: JwtTokenProvider,
-    private val studentRepository: StudentRepository,
     private val rateLimitService: RateLimitService,
     @Value("\${app.admin.secret-key:}")
     private val adminSecretKey: String
@@ -431,20 +426,14 @@ class AuthController(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 필요합니다.")
         }
 
-        val (newAccessToken, newRefreshToken) = refreshTokenService.refresh(refreshToken)
-
-        val bojId = jwtTokenProvider.getSubject(newAccessToken)
-        val student = studentRepository.findByBojId(BojId(bojId))
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. bojId=$bojId")
-            }
+        val result = refreshTokenService.refresh(refreshToken)
 
         val response = AuthResponse.login(
-            token = newAccessToken,
-            refreshToken = newRefreshToken,
-            rating = student.rating,
-            tier = student.tier().name,
-            tierLevel = student.solvedAcTierLevel.value
+            token = result.accessToken,
+            refreshToken = result.refreshToken,
+            rating = result.rating,
+            tier = result.tier.name,
+            tierLevel = result.tierLevel
         )
         return ResponseEntity.ok(response)
     }

@@ -56,6 +56,37 @@ class JwtTokenProviderTest {
     }
 
     @Test
+    @DisplayName("createRefreshToken은 고유한 jti를 포함한 Refresh Token을 생성한다")
+    fun `Refresh Token jti 생성`() {
+        // given
+        val jwtTokenProvider = createJwtTokenProvider()
+        val subject = "testuser"
+        val secretKey = Keys.hmacShaKeyFor(secret.toByteArray(StandardCharsets.UTF_8))
+        val parser = Jwts.parser()
+            .verifyWith(secretKey)
+            .build()
+
+        // when
+        val tokens = List(20) {
+            jwtTokenProvider.createRefreshToken(subject)
+        }
+        val claims = tokens.map { token ->
+            parser.parseSignedClaims(token).payload
+        }
+
+        // then
+        assertThat(claims.map { it.id })
+            .allSatisfy { jti -> assertThat(jti).isNotBlank() }
+            .doesNotHaveDuplicates()
+        assertThat(tokens).doesNotHaveDuplicates()
+        assertThat(claims.map { it.subject }).containsOnly(subject)
+        assertThat(claims.map { it["type"] }).containsOnly("refresh")
+        assertThat(tokens).allSatisfy { token ->
+            assertThat(jwtTokenProvider.isRefreshToken(token)).isTrue()
+        }
+    }
+
+    @Test
     @DisplayName("getSubject는 토큰에서 주체를 추출한다")
     fun `토큰에서 주체 추출 성공`() {
         // given
@@ -215,7 +246,6 @@ class JwtTokenProviderTest {
         }
     }
 }
-
 
 
 

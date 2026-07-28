@@ -73,21 +73,37 @@ class RefreshTokenServiceTest {
 
         every { jwtTokenProvider.validateToken(oldRefreshToken) } returns true
         every { jwtTokenProvider.isRefreshToken(oldRefreshToken) } returns true
-        every { refreshTokenStore.find(oldRefreshToken) } returns bojId
+        every { jwtTokenProvider.getSubject(oldRefreshToken) } returns bojId
+        every { refreshTokenStore.matches(oldRefreshToken, bojId) } returns true
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { refreshTokenStore.delete(oldRefreshToken) } returns Unit
         every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns newAccessToken
         every { jwtTokenProvider.createRefreshToken(bojId) } returns newRefreshToken
-        every { refreshTokenStore.save(newRefreshToken, bojId, 604800L) } returns Unit
+        every {
+            refreshTokenStore.rotate(
+                oldToken = oldRefreshToken,
+                newToken = newRefreshToken,
+                bojId = bojId,
+                ttlSeconds = 604800L
+            )
+        } returns true
 
         // when
         val result = refreshTokenService.refresh(oldRefreshToken)
 
         // then
-        assertThat(result.first).isEqualTo(newAccessToken)
-        assertThat(result.second).isEqualTo(newRefreshToken)
-        verify(exactly = 1) { refreshTokenStore.delete(oldRefreshToken) }
-        verify(exactly = 1) { refreshTokenStore.save(newRefreshToken, bojId, 604800L) }
+        assertThat(result.accessToken).isEqualTo(newAccessToken)
+        assertThat(result.refreshToken).isEqualTo(newRefreshToken)
+        assertThat(result.rating).isEqualTo(student.rating)
+        assertThat(result.tier).isEqualTo(student.tier())
+        assertThat(result.tierLevel).isEqualTo(student.solvedAcTierLevel.value)
+        verify(exactly = 1) {
+            refreshTokenStore.rotate(
+                oldToken = oldRefreshToken,
+                newToken = newRefreshToken,
+                bojId = bojId,
+                ttlSeconds = 604800L
+            )
+        }
     }
 
     @Test
@@ -105,7 +121,9 @@ class RefreshTokenServiceTest {
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
         assertThat(exception.message).contains("유효하지 않은 Refresh Token")
-        verify(exactly = 0) { refreshTokenStore.find(any()) }
+        verify(exactly = 0) { jwtTokenProvider.getSubject(any()) }
+        verify(exactly = 0) { refreshTokenStore.matches(any(), any()) }
+        verify(exactly = 0) { refreshTokenStore.rotate(any(), any(), any(), any()) }
     }
 
     @Test
@@ -124,7 +142,9 @@ class RefreshTokenServiceTest {
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
         assertThat(exception.message).contains("Refresh Token이 아닙니다")
-        verify(exactly = 0) { refreshTokenStore.find(any()) }
+        verify(exactly = 0) { jwtTokenProvider.getSubject(any()) }
+        verify(exactly = 0) { refreshTokenStore.matches(any(), any()) }
+        verify(exactly = 0) { refreshTokenStore.rotate(any(), any(), any(), any()) }
     }
 
     @Test
@@ -132,10 +152,12 @@ class RefreshTokenServiceTest {
     fun `존재하지 않는 Refresh Token으로 갱신 실패`() {
         // given
         val refreshToken = "refresh-token"
+        val bojId = "test123"
 
         every { jwtTokenProvider.validateToken(refreshToken) } returns true
         every { jwtTokenProvider.isRefreshToken(refreshToken) } returns true
-        every { refreshTokenStore.find(refreshToken) } returns null
+        every { jwtTokenProvider.getSubject(refreshToken) } returns bojId
+        every { refreshTokenStore.matches(refreshToken, bojId) } returns false
 
         // when & then
         val exception = assertThrows<BusinessException> {
@@ -144,7 +166,9 @@ class RefreshTokenServiceTest {
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
         assertThat(exception.message).contains("Refresh Token이 존재하지 않습니다")
-        // refreshTokenStore.find가 null을 반환하면 예외가 발생하고 studentRepository는 호출되지 않음
+        verify(exactly = 0) { studentRepository.findByBojId(BojId(bojId)) }
+        verify(exactly = 0) { jwtTokenProvider.createRefreshToken(any()) }
+        verify(exactly = 0) { refreshTokenStore.rotate(any(), any(), any(), any()) }
     }
 
     @Test
@@ -156,7 +180,8 @@ class RefreshTokenServiceTest {
 
         every { jwtTokenProvider.validateToken(refreshToken) } returns true
         every { jwtTokenProvider.isRefreshToken(refreshToken) } returns true
-        every { refreshTokenStore.find(refreshToken) } returns bojId
+        every { jwtTokenProvider.getSubject(refreshToken) } returns bojId
+        every { refreshTokenStore.matches(refreshToken, bojId) } returns true
         every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.empty()
 
         // when & then
@@ -166,7 +191,60 @@ class RefreshTokenServiceTest {
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
         assertThat(exception.message).contains("사용자를 찾을 수 없습니다")
-        verify(exactly = 0) { refreshTokenStore.delete(any()) }
+        verify(exactly = 0) { jwtTokenProvider.createRefreshToken(any()) }
+        verify(exactly = 0) { refreshTokenStore.rotate(any(), any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("refresh는 사전 확인 뒤 다른 요청이 먼저 교체하면 실패한다")
+    fun `동시 교체에서 뒤 요청 실패`() {
+        // given
+        val refreshToken = "refresh-token"
+        val bojId = "test123"
+        val newAccessToken = "new-access-token"
+        val newRefreshToken = "new-refresh-token"
+        val student = Student(
+            nickname = Nickname("test"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+
+        every { jwtTokenProvider.validateToken(refreshToken) } returns true
+        every { jwtTokenProvider.isRefreshToken(refreshToken) } returns true
+        every { jwtTokenProvider.getSubject(refreshToken) } returns bojId
+        every { refreshTokenStore.matches(refreshToken, bojId) } returns true
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns newAccessToken
+        every { jwtTokenProvider.createRefreshToken(bojId) } returns newRefreshToken
+        every {
+            refreshTokenStore.rotate(
+                oldToken = refreshToken,
+                newToken = newRefreshToken,
+                bojId = bojId,
+                ttlSeconds = 604800L
+            )
+        } returns false
+
+        // when & then
+        val exception = assertThrows<BusinessException> {
+            refreshTokenService.refresh(refreshToken)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        assertThat(exception.message).contains("Refresh Token이 존재하지 않습니다")
+        verify(exactly = 1) {
+            refreshTokenStore.rotate(
+                oldToken = refreshToken,
+                newToken = newRefreshToken,
+                bojId = bojId,
+                ttlSeconds = 604800L
+            )
+        }
+        verify(exactly = 0) { refreshTokenStore.save(newRefreshToken, bojId, any()) }
     }
 
     @Test
@@ -184,4 +262,3 @@ class RefreshTokenServiceTest {
         verify(exactly = 1) { refreshTokenStore.deleteByBojId(bojId) }
     }
 }
-

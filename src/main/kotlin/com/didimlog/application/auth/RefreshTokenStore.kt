@@ -14,19 +14,27 @@ interface RefreshTokenStore {
     fun save(token: String, bojId: String, ttlSeconds: Long)
 
     /**
-     * Refresh Token으로 사용자 BOJ ID를 조회한다.
+     * Refresh Token이 서명된 BOJ ID의 활성 토큰인지 확인한다.
      *
-     * @param token Refresh Token
-     * @return 사용자 BOJ ID (없으면 null)
+     * 원자적 교체 직전의 빠른 거절을 위한 조회이며, 최종 유효성은 rotate가 다시 확인한다.
      */
-    fun find(token: String): String?
+    fun matches(token: String, bojId: String): Boolean
 
     /**
-     * Refresh Token을 삭제한다.
+     * 기존 Refresh Token을 새 Refresh Token으로 교체한다.
      *
-     * @param token Refresh Token
+     * @param oldToken 기존 Refresh Token
+     * @param newToken 새 Refresh Token
+     * @param bojId 서명된 기존 토큰의 BOJ ID
+     * @param ttlSeconds 새 Refresh Token TTL (초 단위)
+     * @return 교체에 성공하면 true
      */
-    fun delete(token: String)
+    fun rotate(
+        oldToken: String,
+        newToken: String,
+        bojId: String,
+        ttlSeconds: Long
+    ): Boolean
 
     /**
      * 사용자의 모든 Refresh Token을 삭제한다.
@@ -35,8 +43,6 @@ interface RefreshTokenStore {
      */
     fun deleteByBojId(bojId: String)
 }
-
-
 
 
 
