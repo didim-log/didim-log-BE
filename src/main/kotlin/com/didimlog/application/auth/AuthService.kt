@@ -242,7 +242,6 @@ class AuthService(
      * @param bojId BOJ ID
      * @throws BusinessException 해당 이메일과 BOJ ID로 가입된 사용자가 없는 경우
      */
-    @Transactional(readOnly = true)
     fun findPassword(email: String, bojId: String) {
         val bojIdVo = BojId(bojId)
         val student = studentRepository.findByEmail(email)
@@ -293,29 +292,27 @@ class AuthService(
      * @param newPassword 새 비밀번호
      * @throws BusinessException 재설정 코드가 유효하지 않거나 만료된 경우, 비밀번호 정책 위반 시
      */
-    @Transactional
     fun resetPassword(resetCode: String, newPassword: String) {
-        val passwordResetCode = passwordResetCodeRepository.findByResetCode(resetCode)
-            .orElseThrow {
-                BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 재설정 코드입니다.")
-            }
+        PasswordValidator.validate(newPassword)
+
+        val passwordResetCode = passwordResetCodeRepository.consumeByResetCode(resetCode)
+            ?: throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "유효하지 않은 재설정 코드입니다."
+            )
 
         if (passwordResetCode.isExpired()) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "만료된 재설정 코드입니다.")
         }
 
-        val student = studentRepository.findById(passwordResetCode.studentId)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=${passwordResetCode.studentId}")
-            }
-
-        PasswordValidator.validate(newPassword)
         val encodedPassword = passwordEncoder.encode(newPassword)
 
-        val updatedStudent = student.copy(password = encodedPassword)
-        studentRepository.save(updatedStudent)
-
-        passwordResetCodeRepository.deleteByResetCode(resetCode)
+        if (!studentRepository.updatePasswordById(passwordResetCode.studentId, encodedPassword)) {
+            throw BusinessException(
+                ErrorCode.STUDENT_NOT_FOUND,
+                "학생을 찾을 수 없습니다. studentId=${passwordResetCode.studentId}"
+            )
+        }
 
         log.info("비밀번호 재설정 완료: studentId=${passwordResetCode.studentId}")
     }

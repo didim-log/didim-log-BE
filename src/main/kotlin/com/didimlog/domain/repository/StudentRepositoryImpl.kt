@@ -10,12 +10,19 @@ import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Repository
 
 @Repository
 class StudentRepositoryImpl(
     private val mongoTemplate: MongoTemplate
 ) : StudentRepositoryCustom {
+
+    override fun updatePasswordById(studentId: String, encodedPassword: String): Boolean {
+        val query = Query.query(Criteria.where("_id").`is`(studentId))
+        val update = Update.update("password", encodedPassword)
+        return mongoTemplate.updateFirst(query, update, Student::class.java).matchedCount == 1L
+    }
 
     override fun searchAdminUsers(
         pageable: Pageable,

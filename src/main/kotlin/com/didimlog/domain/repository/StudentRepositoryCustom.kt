@@ -7,6 +7,8 @@ import org.springframework.data.domain.Pageable
 
 interface StudentRepositoryCustom {
 
+    fun updatePasswordById(studentId: String, encodedPassword: String): Boolean
+
     fun searchAdminUsers(
         pageable: Pageable,
         search: String?,

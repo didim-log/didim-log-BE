@@ -286,7 +286,7 @@ class AuthController(
 
     @Operation(
         summary = "비밀번호 찾기",
-        description = "이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 비밀번호 재설정 코드(8자리 영문+숫자 조합)를 생성하여 Redis에 저장하고 이메일로 전송합니다. 코드는 30분간 유효합니다."
+        description = "이메일과 BOJ ID를 입력받아 일치하는 계정이 있으면 비밀번호 재설정 코드(8자리 영문+숫자 조합)를 생성하여 MongoDB에 저장하고 이메일로 전송합니다. 코드는 30분간 유효합니다."
     )
     @ApiResponses(
         value = [
