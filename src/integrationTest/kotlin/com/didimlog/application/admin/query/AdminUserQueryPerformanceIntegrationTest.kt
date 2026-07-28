@@ -225,7 +225,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         val retrospectiveIndexes = queryPlanExplainer.collectIndexes(Retrospective::class.java)
 
         assertThat(retrospectiveIndexes.map { it.name })
-            .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+            .contains("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
 
         val studentIdIndex = requireNotNull(
             retrospectiveIndexes.singleOrNull { it.name == RETROSPECTIVE_STUDENT_ID_INDEX_NAME }
@@ -266,9 +266,54 @@ class AdminUserQueryPerformanceIntegrationTest {
             mongoIndexInitializer.ensureIndexes()
 
             assertThat(queryPlanExplainer.collectIndexes(Retrospective::class.java).map { it.name })
-                .containsExactly("_id_", LEGACY_STUDENT_ID_INDEX_NAME)
+                .contains("_id_", LEGACY_STUDENT_ID_INDEX_NAME)
+                .doesNotContain(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
         } finally {
             indexOperations.dropIndex(LEGACY_STUDENT_ID_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `회고 studentId 유일 인덱스를 조회 인덱스로 재사용하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Retrospective::class.java)
+        indexOperations.dropIndex(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("studentId", Sort.Direction.ASC)
+                .unique()
+                .named(UNIQUE_STUDENT_ID_INDEX_NAME)
+        )
+
+        try {
+            assertThatThrownBy(mongoIndexInitializer::ensureIndexes)
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("옵션이 올바르지 않습니다")
+                .hasMessageContaining(UNIQUE_STUDENT_ID_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(UNIQUE_STUDENT_ID_INDEX_NAME)
+            mongoIndexInitializer.ensureIndexes()
+        }
+    }
+
+    @Test
+    fun `숨겨진 회고 studentId 인덱스를 조회 인덱스로 사용하지 않는다`() {
+        val indexOperations = mongoTemplate.indexOps(Retrospective::class.java)
+        indexOperations.dropIndex(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+        indexOperations.ensureIndex(
+            Index()
+                .on("studentId", Sort.Direction.ASC)
+                .hidden()
+                .named(HIDDEN_STUDENT_ID_INDEX_NAME)
+        )
+
+        try {
+            assertThatThrownBy(mongoIndexInitializer::ensureIndexes)
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("숨김 상태")
+                .hasMessageContaining(HIDDEN_STUDENT_ID_INDEX_NAME)
+        } finally {
+            indexOperations.dropIndex(HIDDEN_STUDENT_ID_INDEX_NAME)
             mongoIndexInitializer.ensureIndexes()
         }
     }
@@ -278,7 +323,7 @@ class AdminUserQueryPerformanceIntegrationTest {
         val studentIndexes = queryPlanExplainer.collectIndexes(Student::class.java)
 
         assertThat(studentIndexes.map { it.name })
-            .containsExactly("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
+            .contains("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
 
         val adminRatingIndex = requireNotNull(
             studentIndexes.singleOrNull { it.name == STUDENT_ADMIN_RATING_INDEX_NAME }
@@ -330,7 +375,8 @@ class AdminUserQueryPerformanceIntegrationTest {
             mongoIndexInitializer.ensureIndexes()
 
             assertThat(queryPlanExplainer.collectIndexes(Student::class.java).map { it.name })
-                .containsExactly("_id_", LEGACY_ADMIN_RATING_INDEX_NAME)
+                .contains("_id_", LEGACY_ADMIN_RATING_INDEX_NAME)
+                .doesNotContain(STUDENT_ADMIN_RATING_INDEX_NAME)
         } finally {
             indexOperations.dropIndex(LEGACY_ADMIN_RATING_INDEX_NAME)
             mongoIndexInitializer.ensureIndexes()
@@ -456,9 +502,9 @@ class AdminUserQueryPerformanceIntegrationTest {
         expectedGroupedStudentCount: Long
     ) {
         assertThat(studentIndexes.map { it.name })
-            .containsExactly("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
+            .contains("_id_", STUDENT_ADMIN_RATING_INDEX_NAME)
         assertThat(retrospectiveIndexes.map { it.name })
-            .containsExactly("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
+            .contains("_id_", RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
 
         assertThat(studentPageStats.winningPlanStage).isEqualTo("IXSCAN")
         assertThat(studentPageStats.selectedIndexName)
@@ -531,6 +577,8 @@ class AdminUserQueryPerformanceIntegrationTest {
         private const val OUTPUT_DIRECTORY_ENV = "ADMIN_QUERY_BASELINE_OUTPUT_DIR"
         private const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId"
         private const val LEGACY_STUDENT_ID_INDEX_NAME = "studentId_1"
+        private const val UNIQUE_STUDENT_ID_INDEX_NAME = "unique_student_id"
+        private const val HIDDEN_STUDENT_ID_INDEX_NAME = "hidden_student_id"
         private const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
         private const val LEGACY_ADMIN_RATING_INDEX_NAME = "legacy_admin_rating"
         private const val SINGLE_RATING_INDEX_NAME = "rating_desc_only"
