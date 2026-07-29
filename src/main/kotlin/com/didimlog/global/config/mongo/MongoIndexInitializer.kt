@@ -36,6 +36,7 @@ class MongoIndexInitializer(
         ensureStudentEmailUniqueIndex()
         ensureStudentAdminRatingIndex()
         ensurePasswordResetCodeUniqueIndex()
+        ensurePasswordResetStudentIdUniqueIndex()
         ensurePasswordResetCodeTtlIndex()
     }
 
@@ -196,6 +197,20 @@ class MongoIndexInitializer(
         }
     }
 
+    private fun ensurePasswordResetStudentIdUniqueIndex() {
+        ensureIndex(
+            indexOperations = mongoTemplate.indexOps(PasswordResetCode::class.java),
+            description = "학생별 비밀번호 재설정 코드 유일성",
+            definition = Index()
+                .on("studentId", Sort.Direction.ASC)
+                .unique()
+                .named(PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME)
+        ) { index ->
+            index.hasFields("studentId" to Sort.Direction.ASC) &&
+                index.isPlainIndex(unique = true)
+        }
+    }
+
     private fun ensurePasswordResetCodeTtlIndex() {
         ensureIndex(
             indexOperations = mongoTemplate.indexOps(PasswordResetCode::class.java),
@@ -280,6 +295,7 @@ class MongoIndexInitializer(
         const val STUDENT_EMAIL_UNIQUE_INDEX_NAME = "uniq_student_email"
         const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
         const val PASSWORD_RESET_CODE_UNIQUE_INDEX_NAME = "uniq_password_reset_code"
+        const val PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME = "uniq_password_reset_student_id"
         const val PASSWORD_RESET_CODE_TTL_INDEX_NAME = "ttl_password_reset_expires_at"
         private const val BSON_STRING_TYPE = 2
     }

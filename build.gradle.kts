@@ -248,7 +248,7 @@ tasks.register<JacocoCoverageVerification>("jacocoCoreCoverageVerification") {
 			limit {
 				counter = "LINE"
 				value = "COVEREDRATIO"
-				minimum = "0.80".toBigDecimal()
+				minimum = "0.81".toBigDecimal()
 			}
 			limit {
 				counter = "BRANCH"
