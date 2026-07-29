@@ -29,6 +29,7 @@ class SuperAdminTest {
     private val passwordEncoder: PasswordEncoder = mockk()
     private val emailService: EmailService = mockk()
     private val passwordResetCodeRepository: PasswordResetCodeRepository = mockk()
+    private val passwordResetCodeGenerator: PasswordResetCodeGenerator = mockk(relaxed = true)
     private val refreshTokenService: RefreshTokenService = mockk()
     private val bojOwnershipVerificationService =
         mockk<com.didimlog.application.auth.boj.BojOwnershipVerificationService>(relaxed = true)
@@ -40,6 +41,7 @@ class SuperAdminTest {
         passwordEncoder,
         emailService,
         passwordResetCodeRepository,
+        passwordResetCodeGenerator,
         refreshTokenService,
         bojOwnershipVerificationService
     )

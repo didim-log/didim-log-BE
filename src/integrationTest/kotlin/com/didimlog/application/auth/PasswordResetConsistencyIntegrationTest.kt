@@ -77,6 +77,7 @@ class PasswordResetConsistencyIntegrationTest {
             passwordEncoder = encoder,
             emailService = mockk<EmailService>(relaxed = true),
             passwordResetCodeRepository = passwordResetCodeRepository,
+            passwordResetCodeGenerator = mockk<PasswordResetCodeGenerator>(relaxed = true),
             refreshTokenService = mockk<RefreshTokenService>(relaxed = true),
             bojOwnershipVerificationService = mockk<BojOwnershipVerificationService>(relaxed = true)
         )

@@ -20,13 +20,13 @@ import com.didimlog.global.util.SensitiveDataMasker
 import com.didimlog.infra.email.EmailService
 import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import com.didimlog.infra.solvedac.SolvedAcClient
+import com.mongodb.MongoCommandException
+import com.mongodb.MongoWriteException
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import com.mongodb.MongoWriteException
-import kotlin.random.Random
 import java.time.LocalDateTime
 
 /**
@@ -42,6 +42,7 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val emailService: EmailService,
     private val passwordResetCodeRepository: PasswordResetCodeRepository,
+    private val passwordResetCodeGenerator: PasswordResetCodeGenerator,
     private val refreshTokenService: RefreshTokenService,
     private val bojOwnershipVerificationService: BojOwnershipVerificationService
 ) {
@@ -260,24 +261,21 @@ class AuthService(
         val studentId = student.id
             ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다.")
 
-        val resetCode = generateResetCode()
-        val expiresAt = LocalDateTime.now().plusMinutes(RESET_CODE_EXPIRES_MINUTES)
-
-        val passwordResetCode = PasswordResetCode(
-            resetCode = resetCode,
-            studentId = studentId,
-            expiresAt = expiresAt
-        )
-        passwordResetCodeRepository.save(passwordResetCode)
+        val passwordResetCode = issuePasswordResetCode(studentId)
 
         val variables = mapOf(
             "nickname" to student.nickname.value,
             "email" to email,
             "bojId" to bojId,
-            "resetCode" to resetCode
+            "resetCode" to passwordResetCode.resetCode
         )
 
-        emailService.sendTemplateEmail(email, RESET_PASSWORD_MAIL_SUBJECT, RESET_PASSWORD_MAIL_TEMPLATE, variables)
+        try {
+            emailService.sendTemplateEmail(email, RESET_PASSWORD_MAIL_SUBJECT, RESET_PASSWORD_MAIL_TEMPLATE, variables)
+        } catch (exception: Exception) {
+            compensatePasswordResetCodeAfterMailFailure(passwordResetCode, exception)
+            throw exception
+        }
         log.info(
             "비밀번호 재설정 코드 이메일 발송 완료: email={}, bojId={}",
             SensitiveDataMasker.maskEmail(email),
@@ -329,15 +327,109 @@ class AuthService(
         return studentRepository.existsByBojId(bojIdVo)
     }
 
-    /**
-     * 영문+숫자 조합의 8자리 비밀번호 재설정 코드를 생성한다.
-     *
-     * @return 재설정 코드 문자열
-     */
-    private fun generateResetCode(): String {
-        return (1..RESET_CODE_LENGTH)
-            .map { RESET_CODE_CHARS[Random.nextInt(RESET_CODE_CHARS.length)] }
-            .joinToString("")
+    private fun issuePasswordResetCode(studentId: String): PasswordResetCode {
+        var lastCollisionField: String? = null
+        var resetCode = passwordResetCodeGenerator.generate()
+        var issuedAt = LocalDateTime.now()
+
+        repeat(MAX_RESET_CODE_ISSUE_ATTEMPTS) { attempt ->
+            try {
+                return passwordResetCodeRepository.issueForStudent(
+                    studentId = studentId,
+                    resetCode = resetCode,
+                    expiresAt = issuedAt.plusMinutes(RESET_CODE_EXPIRES_MINUTES),
+                    createdAt = issuedAt
+                )
+            } catch (exception: RuntimeException) {
+                val collisionField = when {
+                    exception.isDuplicateFor(
+                        MongoIndexInitializer.PASSWORD_RESET_CODE_UNIQUE_INDEX_NAME,
+                        "resetCode"
+                    ) -> "resetCode"
+
+                    exception.isDuplicateFor(
+                        MongoIndexInitializer.PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME,
+                        "studentId"
+                    ) -> "studentId"
+
+                    else -> null
+                }
+                if (collisionField == null || !exception.isDuplicateKeyException()) {
+                    throw exception
+                }
+                lastCollisionField = collisionField
+
+                log.warn(
+                    "비밀번호 재설정 코드 충돌로 발급 재시도: studentId={}, field={}, attempt={}/{}",
+                    studentId,
+                    collisionField,
+                    attempt + 1,
+                    MAX_RESET_CODE_ISSUE_ATTEMPTS
+                )
+
+                if (collisionField == "resetCode" && attempt + 1 < MAX_RESET_CODE_ISSUE_ATTEMPTS) {
+                    resetCode = passwordResetCodeGenerator.generate()
+                    issuedAt = LocalDateTime.now()
+                }
+            }
+        }
+
+        log.error(
+            "비밀번호 재설정 코드 발급 재시도 소진: studentId={}, attempts={}, field={}",
+            studentId,
+            MAX_RESET_CODE_ISSUE_ATTEMPTS,
+            lastCollisionField
+        )
+        throw BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "비밀번호 재설정 코드를 생성하지 못했습니다."
+        )
+    }
+
+    private fun Throwable.isDuplicateKeyException(): Boolean {
+        var current: Throwable? = this
+        while (current != null) {
+            if (current is DuplicateKeyException) {
+                return true
+            }
+            if (current is MongoWriteException && current.code == MONGO_DUPLICATE_KEY_ERROR_CODE) {
+                return true
+            }
+            if (current is MongoCommandException &&
+                current.errorCode == MONGO_DUPLICATE_KEY_ERROR_CODE
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
+    }
+
+    private fun compensatePasswordResetCodeAfterMailFailure(
+        passwordResetCode: PasswordResetCode,
+        mailException: Exception
+    ) {
+        try {
+            val deleted = passwordResetCodeRepository.deleteIssuedCode(
+                studentId = passwordResetCode.studentId,
+                resetCode = passwordResetCode.resetCode
+            )
+            if (!deleted) {
+                log.warn(
+                    "메일 발송 실패 코드의 조건부 삭제 대상 없음: studentId={}",
+                    passwordResetCode.studentId
+                )
+            }
+        } catch (compensationException: Exception) {
+            if (compensationException !== mailException) {
+                mailException.addSuppressed(compensationException)
+            }
+            log.error(
+                "메일 발송 실패 코드의 조건부 삭제 중 예외 발생: studentId={}, exceptionType={}",
+                passwordResetCode.studentId,
+                compensationException.javaClass.simpleName
+            )
+        }
     }
 
     private fun registerBojAccount(
@@ -484,13 +576,30 @@ class AuthService(
     }
 
     private fun Throwable.isDuplicateFor(indexName: String, field: String): Boolean {
-        return generateSequence(this) { it.cause }.any { cause ->
-            cause.message?.contains(indexName) == true ||
-                (cause as? MongoWriteException)?.error?.details?.let { details ->
-                    details.containsKey("keyPattern") &&
-                        details.getDocument("keyPattern").containsKey(field)
-                } == true
+        var current: Throwable? = this
+        while (current != null) {
+            if (current.message?.contains(indexName) == true) {
+                return true
+            }
+            if (current is MongoWriteException) {
+                val details = current.error.details
+                if (details.containsKey("keyPattern") &&
+                    details.getDocument("keyPattern").containsKey(field)
+                ) {
+                    return true
+                }
+            }
+            if (current is MongoCommandException) {
+                val response = current.response
+                if (response.containsKey("keyPattern") &&
+                    response.getDocument("keyPattern").containsKey(field)
+                ) {
+                    return true
+                }
+            }
+            current = current.cause
         }
+        return false
     }
 
     private fun validateSignupFinalize(termsAgreed: Boolean, bojId: String?) {
@@ -595,8 +704,8 @@ class AuthService(
         private const val FIND_ID_MAIL_TEMPLATE = "mail/find-id"
         private const val RESET_PASSWORD_MAIL_TEMPLATE = "mail/find-password"
 
-        private const val RESET_CODE_LENGTH = 8
         private const val RESET_CODE_EXPIRES_MINUTES = 30L
-        private const val RESET_CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        private const val MAX_RESET_CODE_ISSUE_ATTEMPTS = 5
+        private const val MONGO_DUPLICATE_KEY_ERROR_CODE = 11000
     }
 }

@@ -32,6 +32,7 @@ class AuthServiceLoginSecurityTest {
     private val passwordEncoder = mockk<PasswordEncoder>(relaxed = true)
     private val emailService = mockk<EmailService>(relaxed = true)
     private val passwordResetCodeRepository = mockk<PasswordResetCodeRepository>(relaxed = true)
+    private val passwordResetCodeGenerator = mockk<PasswordResetCodeGenerator>(relaxed = true)
     private val refreshTokenService = mockk<RefreshTokenService>(relaxed = true)
     private val bojOwnershipVerificationService =
         mockk<com.didimlog.application.auth.boj.BojOwnershipVerificationService>(relaxed = true)
@@ -43,6 +44,7 @@ class AuthServiceLoginSecurityTest {
         passwordEncoder = passwordEncoder,
         emailService = emailService,
         passwordResetCodeRepository = passwordResetCodeRepository,
+        passwordResetCodeGenerator = passwordResetCodeGenerator,
         refreshTokenService = refreshTokenService,
         bojOwnershipVerificationService = bojOwnershipVerificationService
     )

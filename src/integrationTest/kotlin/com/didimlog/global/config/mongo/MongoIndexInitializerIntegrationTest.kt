@@ -95,6 +95,11 @@ class MongoIndexInitializerIntegrationTest {
             name = MongoIndexInitializer.PASSWORD_RESET_CODE_UNIQUE_INDEX_NAME,
             "resetCode" to Sort.Direction.ASC
         )
+        assertPlainUniqueIndex(
+            entityType = PasswordResetCode::class.java,
+            name = MongoIndexInitializer.PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME,
+            "studentId" to Sort.Direction.ASC
+        )
 
         val ttlIndex = requireIndex(
             PasswordResetCode::class.java,
@@ -296,6 +301,41 @@ class MongoIndexInitializerIntegrationTest {
             mongoTemplate.indexOps(Retrospective::class.java).indexInfo
                 .mapNotNull(IndexInfo::getName)
         ).doesNotContain(MongoIndexInitializer.RETROSPECTIVE_STUDENT_PROBLEM_UNIQUE_INDEX_NAME)
+    }
+
+    @Test
+    fun `같은 학생의 재설정 코드가 중복이면 문서를 보존하고 인덱스 초기화에 실패한다`() {
+        mongoTemplate.insert(
+            PasswordResetCode(
+                id = "reset-code-active",
+                resetCode = "ACTIVE01",
+                studentId = "duplicate-student",
+                expiresAt = LocalDateTime.now().plusMinutes(10)
+            )
+        )
+        mongoTemplate.insert(
+            PasswordResetCode(
+                id = "reset-code-expired",
+                resetCode = "EXPIRED1",
+                studentId = "duplicate-student",
+                expiresAt = LocalDateTime.now().minusMinutes(10)
+            )
+        )
+
+        assertThatThrownBy(mongoIndexInitializer::ensureIndexes)
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("학생별 비밀번호 재설정 코드 유일성")
+
+        assertThat(
+            mongoTemplate.count(
+                Query.query(Criteria.where("studentId").`is`("duplicate-student")),
+                PasswordResetCode::class.java
+            )
+        ).isEqualTo(2)
+        assertThat(
+            mongoTemplate.indexOps(PasswordResetCode::class.java).indexInfo
+                .mapNotNull(IndexInfo::getName)
+        ).doesNotContain(MongoIndexInitializer.PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME)
     }
 
     @Test
