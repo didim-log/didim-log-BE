@@ -8,8 +8,6 @@ interface ProblemRepository : MongoRepository<Problem, String>, ProblemRepositor
 
     fun findByLevelBetween(min: Int, max: Int): List<Problem>
 
-    fun findByLevelBetweenAndCategory(min: Int, max: Int, category: String): List<Problem>
-
     fun findByDescriptionHtmlIsNull(): List<Problem>
 
     /**

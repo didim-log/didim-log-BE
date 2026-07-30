@@ -71,10 +71,10 @@ worker의 갱신은 반영하지 않으며 `COMPLETED`, `FAILED`, `CANCELLED` �
 
 1. `ProblemController.recommendProblems`가 `category`, `language`, `filterMode`를 `RecommendationService.recommendProblemsDetailed`에 넘긴다.
 2. `AlgorithmHierarchyUtils.findCategoryEnglishName`은 `TagUtils`의 제한된 별칭과 enum 이름·영문명·한글명을 영문 정식명으로 맞춘다.
-3. `EXACT`는 `findByLevelBetweenAndCategory`만 호출해 대표 카테고리만 찾는다.
-4. `HIERARCHY`는 선택 카테고리의 직접 하위 태그를 `findByLevelBetweenAndTagsIn`의 MongoDB `$in` 조건에 추가한다.
-5. `RELATED`는 선택 항목의 부모와 형제를 대상 카테고리에 더한 뒤 각 대표 카테고리와 확장 태그 결과를 합친다.
-6. 난이도는 `max(1, tierLevel - 2)..tierLevel + 2` 범위로 제한하고, tier level이 0 이하면 1~2를 사용한다. 이후 언어와 이미 푼 문제를 제외하고 무작위로 요청 개수만 반환한다.
+3. `EXACT`는 대표 카테고리만, `HIERARCHY`는 선택 카테고리의 직접 하위 태그까지, `RELATED`는 부모와 형제 카테고리 및 각 확장 태그까지 대상 목록을 만든다.
+4. `findRecommendationCandidates`는 난이도 범위와 `category IN (...) OR tags IN (...)` 조건을 묶어 `problems`를 한 번 조회한다.
+5. `level`이 없는 이전 문서는 조회 결과에서만 `difficultyLevel`을 `level`로 사용하며, 두 필드가 함께 있으면 현재 `level`을 우선한다.
+6. 난이도는 `max(1, tierLevel - 2)..tierLevel + 2` 범위로 제한하고, tier level이 0 이하면 1~2를 사용한다. 이후 언어와 풀이 기록이 있는 문제를 제외하고 무작위로 요청 개수만 반환한다.
 7. `ProblemCategoryViewResolver`는 응답 표시용 `primaryCategory`, `secondaryCategories`, `normalizedTags`를 다시 계산한다.
 
 주요 구현 파일:
@@ -108,5 +108,7 @@ worker의 갱신은 반영하지 않으며 `COMPLETED`, `FAILED`, `CANCELLED` �
 - 한국어 표시명이 없는 solved.ac 태그 key도 `fromKorean`에 전달되므로 일부 태그가 `Unknown`으로 합쳐질 수 있다.
 - 계층은 코드에 하드코딩된 직접 부모·자식 관계다. `RELATED`는 유사도 검색이 아니라 부모·형제 확장이다.
 - `EXACT`는 보조 태그만 일치하는 문제를 찾지 않는다.
+- 추천 후보 조회는 한 번이지만 언어와 풀이 기록 필터 전에 후보를 모두 읽으며, `problems` 인덱스는 자동 생성되지 않는다.
+- `difficultyLevel`만 있는 이전 문제는 조회 결과에서만 보정하며 저장 문서는 바꾸지 않는다.
 - 알 수 없는 카테고리 입력은 오류로 거절하지 않고 빈 결과가 될 수 있다.
 - 응답 표시용 대표 카테고리는 별도 우선순위로 계산하므로 저장된 대표 `category`와 다를 수 있다.

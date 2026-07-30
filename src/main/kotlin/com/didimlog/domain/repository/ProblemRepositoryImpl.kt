@@ -1,6 +1,7 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.Problem
+import org.bson.Document
 import org.springframework.data.mongodb.core.FindAndModifyOptions
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
@@ -59,24 +60,45 @@ class ProblemRepositoryImpl(
     }
 
     override fun findByLevelBetweenFlexible(min: Int, max: Int): List<Problem> {
-        val levelCriteria = Criteria.where("level").gte(min).lte(max)
-        val legacyLevelCriteria = Criteria.where("difficultyLevel").gte(min).lte(max)
-        val criteria = Criteria().orOperator(levelCriteria, legacyLevelCriteria)
-
-        return mongoTemplate.find(Query(criteria), Problem::class.java)
+        return findProblems(Query(effectiveLevelCriteria(min, max)))
     }
 
-    override fun findByLevelBetweenAndTagsIn(min: Int, max: Int, expandedTags: List<String>): List<Problem> {
-        // MongoDB에서 배열 필드에 대해 $in 연산자를 사용하여 검색
-        // 문제의 tags 리스트 중 하나라도 expandedTags에 포함되면 검색됨
-        // 레거시 스키마(difficultyLevel)도 함께 지원한다.
-        val levelCriteria = Criteria.where("level").gte(min).lte(max)
-        val legacyLevelCriteria = Criteria.where("difficultyLevel").gte(min).lte(max)
-        val criteria = Criteria().orOperator(levelCriteria, legacyLevelCriteria)
-            .and("tags")
-            .`in`(expandedTags)
+    override fun findRecommendationCandidates(
+        min: Int,
+        max: Int,
+        targetCategories: List<String>,
+        expandedTags: List<String>
+    ): List<Problem> {
+        val primaryCategoryCriteria = Criteria.where("category").`in`(targetCategories)
+        val categoryCriteria = if (expandedTags.isEmpty()) {
+            primaryCategoryCriteria
+        } else {
+            Criteria().orOperator(
+                primaryCategoryCriteria,
+                Criteria.where("tags").`in`(expandedTags)
+            )
+        }
 
-        val query = Query(criteria)
-        return mongoTemplate.find(query, Problem::class.java)
+        val query = Query(Criteria().andOperator(effectiveLevelCriteria(min, max), categoryCriteria))
+        return findProblems(query)
+    }
+
+    private fun effectiveLevelCriteria(min: Int, max: Int): Criteria {
+        val currentLevelCriteria = Criteria.where("level").gte(min).lte(max)
+        val legacyLevelCriteria = Criteria().andOperator(
+            Criteria.where("level").`is`(null),
+            Criteria.where("difficultyLevel").gte(min).lte(max)
+        )
+        return Criteria().orOperator(currentLevelCriteria, legacyLevelCriteria)
+    }
+
+    private fun findProblems(query: Query): List<Problem> {
+        return mongoTemplate.find(query, Document::class.java, mongoTemplate.getCollectionName(Problem::class.java))
+            .map { document ->
+                if (document["level"] == null) {
+                    document["level"] = document["difficultyLevel"]
+                }
+                mongoTemplate.converter.read(Problem::class.java, document)
+            }
     }
 }

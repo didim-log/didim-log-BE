@@ -38,7 +38,7 @@ class ProblemController(
 
     @Operation(
         summary = "문제 추천",
-        description = "학생의 현재 티어보다 한 단계 높은 난이도(UserLevel + 1 ~ +2)의 문제 중, 아직 풀지 않은 문제를 추천합니다. 카테고리를 지정하면 해당 카테고리 문제만 추천합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
+        description = "학생의 현재 티어 레벨 -2 ~ +2 범위에서 아직 풀이 기록이 없는 문제를 추천합니다. 카테고리와 필터 모드로 대표 카테고리·확장 태그 범위를 정하며, JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(

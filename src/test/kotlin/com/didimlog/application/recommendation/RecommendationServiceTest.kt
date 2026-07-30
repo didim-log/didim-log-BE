@@ -262,22 +262,28 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
         val implementationProblems = listOf(
-            createProblem(id = "p1", tier = Tier.SILVER, level = 6, category = ProblemCategory.IMPLEMENTATION),
-            createProblem(id = "p2", tier = Tier.SILVER, level = 7, category = ProblemCategory.IMPLEMENTATION)
+            createProblem(id = "p1", tier = Tier.BRONZE, level = 1, category = ProblemCategory.IMPLEMENTATION),
+            createProblem(id = "p2", tier = Tier.BRONZE, level = 5, category = ProblemCategory.IMPLEMENTATION)
         )
         val graphProblems = listOf(
-            createProblem(id = "p3", tier = Tier.SILVER, level = 6, category = ProblemCategory.GRAPH_THEORY)
+            createProblem(id = "p3", tier = Tier.BRONZE, level = 3, category = ProblemCategory.GRAPH_THEORY)
         )
 
         every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
-        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.IMPLEMENTATION.englishName) } returns implementationProblems
-        every { problemRepository.findByLevelBetweenAndTagsIn(1, 5, match { it.contains(ProblemCategory.IMPLEMENTATION.englishName) }) } returns emptyList()
-        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.GRAPH_THEORY.englishName) } returns emptyList()
         every {
-            problemRepository.findByLevelBetweenAndTagsIn(
+            problemRepository.findRecommendationCandidates(
                 1,
                 5,
+                listOf(ProblemCategory.IMPLEMENTATION.englishName),
+                match { it.contains(ProblemCategory.IMPLEMENTATION.englishName) }
+            )
+        } returns implementationProblems
+        every {
+            problemRepository.findRecommendationCandidates(
+                1,
+                5,
+                listOf(ProblemCategory.GRAPH_THEORY.englishName),
                 match { tags ->
                     tags.contains(ProblemCategory.GRAPH_THEORY.englishName) &&
                         tags.contains(ProblemCategory.BFS.englishName) &&
@@ -296,8 +302,22 @@ class RecommendationServiceTest {
         assertThat(recommendedImplementation).allMatch { it.category == ProblemCategory.IMPLEMENTATION }
         assertThat(recommendedGraph).hasSize(1)
         assertThat(recommendedGraph).allMatch { it.category == ProblemCategory.GRAPH_THEORY }
-        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.IMPLEMENTATION.englishName) }
-        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.GRAPH_THEORY.englishName) }
+        verify {
+            problemRepository.findRecommendationCandidates(
+                1,
+                5,
+                listOf(ProblemCategory.IMPLEMENTATION.englishName),
+                any()
+            )
+        }
+        verify {
+            problemRepository.findRecommendationCandidates(
+                1,
+                5,
+                listOf(ProblemCategory.GRAPH_THEORY.englishName),
+                any()
+            )
+        }
     }
 
     @Test
@@ -314,8 +334,7 @@ class RecommendationServiceTest {
 
         every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
-        every { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) } returns emptyList()
-        every { problemRepository.findByLevelBetweenAndTagsIn(1, 5, any()) } returns emptyList()
+        every { problemRepository.findRecommendationCandidates(1, 5, any(), any()) } returns emptyList()
 
         // when
         val recommended = recommendationService.recommendProblems(
@@ -326,8 +345,7 @@ class RecommendationServiceTest {
 
         // then
         assertThat(recommended).isEmpty()
-        verify { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) }
-        verify { problemRepository.findByLevelBetweenAndTagsIn(1, 5, any()) }
+        verify(exactly = 1) { problemRepository.findRecommendationCandidates(1, 5, any(), any()) }
     }
 
     @Test
@@ -348,7 +366,14 @@ class RecommendationServiceTest {
         )
 
         every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
-        every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.BFS.englishName) } returns listOf(primaryMatch)
+        every {
+            problemRepository.findRecommendationCandidates(
+                1,
+                5,
+                listOf(ProblemCategory.BFS.englishName),
+                emptyList()
+            )
+        } returns listOf(primaryMatch)
 
         val recommended = recommendationService.recommendProblemsDetailed(
             studentId = requireNotNull(student.id),
@@ -360,7 +385,14 @@ class RecommendationServiceTest {
         assertThat(recommended).hasSize(1)
         assertThat(recommended.first().matchedByPrimary).isTrue()
         assertThat(recommended.first().matchedByTags).isFalse()
-        verify(exactly = 0) { problemRepository.findByLevelBetweenAndTagsIn(any(), any(), any()) }
+        verify(exactly = 1) {
+            problemRepository.findRecommendationCandidates(
+                1,
+                5,
+                listOf(ProblemCategory.BFS.englishName),
+                emptyList()
+            )
+        }
     }
 
     @Test
@@ -381,11 +413,14 @@ class RecommendationServiceTest {
         ).copy(tags = listOf(ProblemCategory.DFS.englishName))
 
         every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
-        every { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) } returns emptyList()
         every {
-            problemRepository.findByLevelBetweenAndTagsIn(
+            problemRepository.findRecommendationCandidates(
                 1,
                 5,
+                match { categories ->
+                    categories.contains(ProblemCategory.BFS.englishName) &&
+                        categories.contains(ProblemCategory.DFS.englishName)
+                },
                 match { tags ->
                     tags.contains(ProblemCategory.BFS.englishName) &&
                         tags.contains(ProblemCategory.DFS.englishName)
@@ -404,6 +439,9 @@ class RecommendationServiceTest {
         assertThat(recommended.first().matchedByPrimary).isTrue()
         assertThat(recommended.first().matchedByTags).isTrue()
         assertThat(recommended.first().expandedFrom).isNotEmpty()
+        verify(exactly = 1) {
+            problemRepository.findRecommendationCandidates(1, 5, any(), any())
+        }
     }
 
     @Test

@@ -117,14 +117,6 @@ class RecommendationService(
         val categoryEnglishName = AlgorithmHierarchyUtils.findCategoryEnglishName(category)
         val targetCategories = resolveTargetCategories(categoryEnglishName, filterMode)
 
-        val primaryMatchesByCategory = targetCategories.associateWith { targetCategory ->
-            problemRepository.findByLevelBetweenAndCategory(
-                min = minLevel,
-                max = maxLevel,
-                category = targetCategory
-            )
-        }
-
         val expandedTagsByCategory = if (filterMode == CategoryFilterMode.EXACT) {
             emptyMap()
         } else {
@@ -138,23 +130,17 @@ class RecommendationService(
             .flatten()
             .distinctByLowercase()
 
-        val tagMatches = if (allExpandedTags.isEmpty()) {
-            emptyList()
-        } else {
-            problemRepository.findByLevelBetweenAndTagsIn(
-                min = minLevel,
-                max = maxLevel,
-                expandedTags = allExpandedTags
-            )
-        }
-
-        val merged = (primaryMatchesByCategory.values.flatten() + tagMatches)
-            .distinctBy { it.id.value }
+        val candidates = problemRepository.findRecommendationCandidates(
+            min = minLevel,
+            max = maxLevel,
+            targetCategories = targetCategories,
+            expandedTags = allExpandedTags
+        )
 
         val filteredByLanguage = if (language != null) {
-            applyLanguageFilter(merged, language)
+            applyLanguageFilter(candidates, language)
         } else {
-            merged
+            candidates
         }
 
         return filteredByLanguage.map { problem ->
