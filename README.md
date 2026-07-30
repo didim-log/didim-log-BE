@@ -67,7 +67,7 @@ flowchart LR
 
 - solved.ac 문제 메타데이터 수집과 MongoDB upsert
 - BOJ 문제 본문·입력·출력·예제 HTML 수집
-- Redis 기반 작업 상태, TTL, sorted index, 진행률, heartbeat, checkpoint
+- Redis 기반 작업 상태의 Lua CAS 전이, TTL, sorted index, 진행률, heartbeat, checkpoint
 - 관리자 작업 목록·취소·재시도·감사 로그·운영 메트릭 API
 
 ### 학습 기록
@@ -134,14 +134,14 @@ sequenceDiagram
 
     Admin->>API: POST /api/v1/admin/problems/collect-metadata
     Note over Admin,API: 상세 본문은 POST /api/v1/admin/problems/collect-details
-    API->>Redis: PENDING 작업 저장
+    API->>Redis: PENDING 상태·작업 index 원자 저장
     API-)Worker: 수집 작업 제출
     API-->>Admin: jobId
     Worker->>Source: 문제 메타데이터 조회
     Worker->>Mapper: 태그 정규화
     Mapper-->>Worker: category + tags
     Worker->>Mongo: problems upsert
-    Worker->>Redis: 진행률·checkpoint 갱신
+    Worker->>Redis: CAS로 진행률·checkpoint 갱신
     Admin->>API: 작업 상태 조회
     API-->>Admin: PENDING / RUNNING / COMPLETED / FAILED / CANCELLED
 ```
@@ -323,6 +323,7 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 | 계정 삭제와 쓰기 경합 | 실제 MongoDB 7.0.16·Redis 7.2.5, 템플릿 생성 선행·계정 삭제 선행 신규 회고 | 충돌 요청 409, 재시도 삭제 뒤 Student·사용자 문서 0건 |
 | 기본 템플릿 삭제 정합성 | 실제 MongoDB 7.0.16·Redis 7.2.5, 양쪽 기본값·삭제 실패·설정/삭제 경합 | 참조 선행 해제, SYSTEM 참조 보존, 충돌 409, 재시도 뒤 깨진 참조 0건 |
 | 문제 상세·메타데이터 저장 경합 | 실제 MongoDB 7.0.16, 상세 대상 조회 뒤 메타데이터·언어 갱신 후 상세 저장 | 최신 메타데이터·언어 보존, 오래된 전체 문서 덮어쓰기 1건 → 0건, 삭제 대상 재생성 0건 |
+| 문제 수집 작업 상태 | 동일 Runnable 재실행, 실제 Redis 7.2.5의 두 서비스 상태 경합, 문제 6건 수집 명령 계측 | 외부 호출 2건 → 1건, 취소 성공 2건 → 1건, 취소 뒤 최종 상태 `COMPLETED` → `CANCELLED`, 작업당 index `ZADD` 9회 → 1회 |
 | 고아 데이터 읽기 전용 점검 | 실제 MongoDB 7.0.16 합성 fixture, 사용자 소유 관계 5개·기본 참조 2개 | fixture 기대 고아 6건·깨진 기본 참조 2건 일치, 쓰기 단계 0건·점검 필드 전후 hash 동일 |
 | 유지보수 설정 원자화 | 실제 Redis 7.2.5, 종료 시각 만료·유한→무기한 변경·두 서비스 동시 설정 | 설정 키 전체 만료, 무기한 설정 TTL 없음, 서로 다른 설정 조합 0건 |
 
@@ -349,6 +350,7 @@ AI 사용량의 예약·실패 반환 순서와 실제 Redis 경계 검증은 [A
 유지보수 설정의 단일 키 저장, 종료 시각 만료와 동시 갱신 검증은 [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md)에 정리했습니다.
 AI 리뷰 잠금 버전과 만료 뒤 완료·실패 차단은 [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md)에 정리했습니다.
 Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
+문제 수집 작업의 Redis CAS 전이와 중복 실행·취소 경합 검증은 [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -362,7 +364,8 @@ Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [G
 
 - 문제: 같은 클래스의 `private` 메서드에 `@Async`를 적용하면 Spring 프록시를 거치지 않아 수집이 요청 스레드에서 실행되고 응답이 지연될 수 있습니다.
 - 해결: 명시적으로 주입한 `TaskExecutor`에 수집 작업을 제출하고, API는 Redis job 생성 후 `jobId`를 반환하도록 분리했습니다.
-- 결과: 관리자 화면은 상태 API를 폴링하며 진행률과 checkpoint를 갱신합니다.
+- 상태 갱신은 Redis 원본 JSON을 기대값으로 비교하는 Lua CAS로 처리하며 종료 상태는 다시 변경하지 않습니다.
+- 결과: 관리자 화면은 상태 API를 폴링하며 진행률과 checkpoint를 갱신하고, 같은 작업의 중복 실행과 취소 뒤 상태 덮어쓰기를 막습니다.
 
 ### 인증 API 남용 방지
 
@@ -433,6 +436,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md)
 - [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md)
 - [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md)
+- [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

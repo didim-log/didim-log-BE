@@ -272,12 +272,17 @@ class ProblemCollectorBaselineIntegrationTest {
         assertThat(measurement.mongoCommands)
             .containsExactlyInAnyOrderEntriesOf(expectedMongoCommands)
 
-        assertThat(measurement.redisCommands)
+        val scriptCacheMisses = measurement.redisCommands["eval"] ?: 0L
+        assertThat(scriptCacheMisses).isBetween(0L, 2L)
+        assertThat(measurement.redisCommands - "eval")
             .containsExactlyInAnyOrderEntriesOf(
                 mapOf(
-                    "get" to (2L * ITEM_COUNT + 3L),
-                    "setex" to (ITEM_COUNT + 3L),
-                    "zadd" to (ITEM_COUNT + 3L)
+                    "evalsha" to (ITEM_COUNT + 3L),
+                    "exists" to 1L,
+                    "get" to (3L * ITEM_COUNT + 5L),
+                    "set" to (ITEM_COUNT + 3L),
+                    "type" to 1L,
+                    "zadd" to 1L
                 )
             )
     }

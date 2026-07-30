@@ -37,6 +37,7 @@ import org.junit.jupiter.api.assertThrows
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import org.springframework.data.redis.core.ZSetOperations
+import org.springframework.data.redis.core.script.RedisScript
 
 @DisplayName("ProblemCollectorService 테스트")
 class ProblemCollectorServiceTest {
@@ -66,6 +67,46 @@ class ProblemCollectorServiceTest {
     fun setUp() {
         every { redisTemplate.opsForValue() } returns valueOps
         every { redisTemplate.opsForZSet() } returns zSetOps
+        every {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                any<List<String>>(),
+                *anyVararg()
+            )
+        } answers {
+            val keys = secondArg<List<String>>()
+            val scriptArguments = thirdArg<Array<out Any>>()
+            synchronized(valueStore) {
+                when (keys.size) {
+                    2 -> {
+                        val jobKey = keys[0]
+                        if (valueStore.containsKey(jobKey)) {
+                            0L
+                        } else {
+                            val jobId = scriptArguments[3].toString()
+                            valueStore[jobKey] = scriptArguments[0].toString()
+                            zsetStore.computeIfAbsent(keys[1]) { mutableMapOf() }[jobId] =
+                                scriptArguments[2].toString().toDouble()
+                            1L
+                        }
+                    }
+
+                    1 -> {
+                        val current = valueStore[keys[0]]
+                        when {
+                            current == null -> -1L
+                            current != scriptArguments[0].toString() -> 0L
+                            else -> {
+                                valueStore[keys[0]] = scriptArguments[1].toString()
+                                1L
+                            }
+                        }
+                    }
+
+                    else -> error("Unexpected Redis script keys: $keys")
+                }
+            }
+        }
 
         every { valueOps.set(any(), any(), any<Duration>()) } answers {
             val key = firstArg<String>()
@@ -172,6 +213,25 @@ class ProblemCollectorServiceTest {
     }
 
     @Test
+    @DisplayName("동일한 메타데이터 수집 작업은 두 번 실행돼도 한 번만 처리한다")
+    fun `same metadata task runs only once`() {
+        var submittedTask: Runnable? = null
+        service = createService(Executor { task -> submittedTask = task })
+        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
+        val capturedTask = requireNotNull(submittedTask)
+
+        capturedTask.run()
+        capturedTask.run()
+
+        assertThat(service.getMetadataCollectJobStatus(jobId)?.status).isEqualTo(JobStatus.COMPLETED)
+        verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
+        verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+    }
+
+    @Test
     @DisplayName("executor가 작업을 거부하면 수집 작업을 FAILED로 전환한다")
     fun `collect metadata marks job failed when executor rejects`() {
         service = createService(Executor { throw RejectedExecutionException("queue full") })
@@ -271,6 +331,34 @@ class ProblemCollectorServiceTest {
 
         assertThat(outcomes.count { it == "OK" }).isEqualTo(1)
         assertThat(outcomes.count { it == ErrorCode.JOB_ALREADY_TERMINAL.code }).isEqualTo(1)
+    }
+
+    @Test
+    @DisplayName("작업 취소 CAS 충돌이 계속되면 재시도 가능한 409를 반환한다")
+    fun `cancel returns conflict after CAS retries are exhausted`() {
+        val jobId = "job-cas-conflict"
+        seedJob(sampleJob(jobId).copy(status = JobStatus.RUNNING, startedAt = 1700000001))
+        every {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                match<List<String>> { it == listOf("$JOB_KEY_PREFIX$jobId") },
+                *anyVararg()
+            )
+        } returns 0L
+
+        val exception = assertThrows<BusinessException> {
+            service.cancelJob(jobId, "admin", "127.0.0.1")
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(service.getJob(jobId)?.status).isEqualTo(JobStatus.RUNNING)
+        verify(exactly = 4) {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                listOf("$JOB_KEY_PREFIX$jobId"),
+                *anyVararg()
+            )
+        }
     }
 
     @Test
