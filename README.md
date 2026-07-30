@@ -286,6 +286,24 @@ Before·After 각각 5회 실행했으며 기능 결과 hash는 같았습니다.
 운영 처리량의 개선율이 아닙니다.
 비교 조건과 수치의 범위는 [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)에 정리했습니다.
 
+### 관리자 대시보드 차트 집계
+
+| 시나리오 | 직접 비교 항목 | Before | After | 변화 |
+| --- | --- | ---: | ---: | ---: |
+| 회원 월별 차트 | 반환 문서 | 240건 | 24건 | 90.00% 감소 |
+| 회원 월별 차트 | 반환 논리 BSON | 635,160 B | 792 B | 99.88% 감소 |
+| 해결 문제 월별 차트 | 반환 문서 | 240건 | 24건 | 90.00% 감소 |
+| 해결 문제 월별 차트 | 반환 논리 BSON | 635,160 B | 792 B | 99.88% 감소 |
+| 회고 월별 차트 | 반환 문서 | 1,200건 | 24건 | 98.00% 감소 |
+| 회고 월별 차트 | 반환 논리 BSON | 5,176,340 B | 792 B | 99.98% 감소 |
+
+전체 문서를 애플리케이션에서 묶는 대신 MongoDB가 기간 bucket만 반환합니다.
+해결 문제는 전체 회원의 고유 `problemId`를 최초 성공 시점에 한 번만 반영하며,
+주별 키는 ISO 주차 연도를 사용합니다. 수치는 회원 240명·회원별 풀이 24건·
+회고 1,200건·24개월의 로컬 MongoDB 7.0.16 fixture에서 raw 결과 문서의 BSON
+크기를 비교한 값입니다. 응답 시간이나 운영 처리량 개선율은 아닙니다.
+비교 조건과 정합성 수정은 [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)에 정리했습니다.
+
 ### 문제 메타데이터 저장 명령 축소
 
 | 시나리오 | 직접 비교 항목 | Before | After | 변화 |
@@ -351,6 +369,7 @@ AI 사용량의 예약·실패 반환 순서와 실제 Redis 경계 검증은 [A
 AI 리뷰 잠금 버전과 만료 뒤 완료·실패 차단은 [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md)에 정리했습니다.
 Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
 문제 수집 작업의 Redis CAS 전이와 중복 실행·취소 경합 검증은 [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md)에 정리했습니다.
+관리자 대시보드의 저장 경로, 고유 해결 문제 기준과 기간별 MongoDB 집계 결과는 [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -437,6 +456,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md)
 - [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md)
 - [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md)
+- [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
