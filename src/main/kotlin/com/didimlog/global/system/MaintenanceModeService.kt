@@ -1,12 +1,15 @@
 package com.didimlog.global.system
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Service
+import java.time.Duration
 import java.time.LocalDateTime
-import java.util.concurrent.TimeUnit
 
 /**
  * 유지보수 모드 서비스
@@ -20,13 +23,37 @@ class MaintenanceModeService(
     private val objectMapper = ObjectMapper().apply {
         registerModule(JavaTimeModule())
         registerModule(KotlinModule.Builder().build())
+        disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
     }
 
     companion object {
-        private const val MAINTENANCE_ENABLED_KEY = "maintenance:enabled"
-        private const val MAINTENANCE_START_TIME_KEY = "maintenance:startTime"
-        private const val MAINTENANCE_END_TIME_KEY = "maintenance:endTime"
-        private const val MAINTENANCE_NOTICE_ID_KEY = "maintenance:noticeId"
+        private const val MAINTENANCE_CONFIG_KEY = "maintenance:config"
+        private val LEGACY_MAINTENANCE_KEYS = listOf(
+            "maintenance:enabled",
+            "maintenance:startTime",
+            "maintenance:endTime",
+            "maintenance:noticeId"
+        )
+        private val ALL_MAINTENANCE_KEYS = listOf(
+            MAINTENANCE_CONFIG_KEY,
+            *LEGACY_MAINTENANCE_KEYS.toTypedArray()
+        )
+        private val WRITE_CONFIG_SCRIPT = DefaultRedisScript(
+            """
+            if ARGV[2] == '' then
+                redis.call('SET', KEYS[1], ARGV[1])
+            else
+                redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+            end
+
+            for index = 2, #KEYS do
+                redis.call('DEL', KEYS[index])
+            end
+            return 1
+            """.trimIndent(),
+            Long::class.java
+        )
     }
 
     /**
@@ -53,20 +80,44 @@ class MaintenanceModeService(
         endTime: LocalDateTime? = null,
         noticeId: String? = null
     ) {
-        redisTemplate.opsForValue().set(MAINTENANCE_ENABLED_KEY, enabled.toString())
-        
         if (!enabled) {
-            // 점검 모드 비활성화 시 모든 정보 삭제
-            redisTemplate.delete(MAINTENANCE_START_TIME_KEY)
-            redisTemplate.delete(MAINTENANCE_END_TIME_KEY)
-            redisTemplate.delete(MAINTENANCE_NOTICE_ID_KEY)
+            redisTemplate.delete(ALL_MAINTENANCE_KEYS)
             return
         }
-        
-        // 점검 모드 활성화 시 시간 정보 저장
-        setStartTimeIfPresent(startTime)
-        setEndTimeIfPresent(endTime)
-        setNoticeIdIfPresent(noticeId)
+
+        val config = MaintenanceConfig(
+            enabled = true,
+            startTime = startTime,
+            endTime = endTime,
+            noticeId = noticeId
+        )
+        val serializedConfig = objectMapper.writeValueAsString(config)
+        val ttlMillis = endTime?.let {
+            val ttl = Duration.between(LocalDateTime.now(), it)
+            if (ttl.isNegative || ttl.isZero || ttl.toMillis() == 0L) {
+                redisTemplate.delete(ALL_MAINTENANCE_KEYS)
+                return
+            }
+            ttl.toMillis().toString()
+        }.orEmpty()
+        redisTemplate.execute(
+            WRITE_CONFIG_SCRIPT,
+            ALL_MAINTENANCE_KEYS,
+            serializedConfig,
+            ttlMillis
+        )
+    }
+
+    private fun readConfig(serializedConfig: String): MaintenanceConfig {
+        val config = try {
+            objectMapper.readValue(
+                serializedConfig,
+                MaintenanceConfig::class.java
+            )
+        } catch (_: Exception) {
+            return MaintenanceConfig(false)
+        }
+        return normalize(config)
     }
 
     /**
@@ -75,27 +126,7 @@ class MaintenanceModeService(
      * @return 활성화되어 있으면 true
      */
     fun isMaintenanceMode(): Boolean {
-        val enabledStr = redisTemplate.opsForValue().get(MAINTENANCE_ENABLED_KEY)
-        if (enabledStr == null || enabledStr != "true") {
-            return false
-        }
-        
-        // 종료 시간이 지났으면 자동으로 비활성화
-        val endTimeStr = redisTemplate.opsForValue().get(MAINTENANCE_END_TIME_KEY)
-        if (endTimeStr != null) {
-            try {
-                val endTime = LocalDateTime.parse(endTimeStr)
-                if (LocalDateTime.now().isAfter(endTime)) {
-                    // 종료 시간이 지났으므로 비활성화
-                    setMaintenanceMode(false)
-                    return false
-                }
-            } catch (e: Exception) {
-                // 파싱 실패 시 기존 동작 유지
-            }
-        }
-        
-        return true
+        return getMaintenanceConfig().enabled
     }
 
     /**
@@ -104,64 +135,40 @@ class MaintenanceModeService(
      * @return 유지보수 모드 설정 정보
      */
     fun getMaintenanceConfig(): MaintenanceConfig {
-        val enabled = isMaintenanceMode()
-        val startTimeStr = redisTemplate.opsForValue().get(MAINTENANCE_START_TIME_KEY)
-        val endTimeStr = redisTemplate.opsForValue().get(MAINTENANCE_END_TIME_KEY)
-        val noticeId = redisTemplate.opsForValue().get(MAINTENANCE_NOTICE_ID_KEY)
-        
-        val startTime = startTimeStr?.let { 
-            try {
-                LocalDateTime.parse(it)
-            } catch (e: Exception) {
-                null
-            }
+        val storedValues = redisTemplate.opsForValue()
+            .multiGet(ALL_MAINTENANCE_KEYS)
+            ?: return MaintenanceConfig(false)
+        val serializedConfig = storedValues.getOrNull(0)
+        if (serializedConfig != null) {
+            return readConfig(serializedConfig)
         }
-        
-        val endTime = endTimeStr?.let {
-            try {
-                LocalDateTime.parse(it)
-            } catch (e: Exception) {
-                null
-            }
+
+        val legacyValues = storedValues.drop(1)
+        if (legacyValues.getOrNull(0) != "true") {
+            return MaintenanceConfig(false)
         }
-        
-        return MaintenanceConfig(
-            enabled = enabled,
-            startTime = startTime,
-            endTime = endTime,
-            noticeId = noticeId
+        return normalize(
+            MaintenanceConfig(
+                enabled = true,
+                startTime = legacyValues.getOrNull(1).toLocalDateTimeOrNull(),
+                endTime = legacyValues.getOrNull(2).toLocalDateTimeOrNull(),
+                noticeId = legacyValues.getOrNull(3)
+            )
         )
     }
-    
-    private fun setStartTimeIfPresent(startTime: LocalDateTime?) {
-        if (startTime == null) {
-            redisTemplate.delete(MAINTENANCE_START_TIME_KEY)
-            return
+
+    private fun normalize(config: MaintenanceConfig): MaintenanceConfig {
+        if (!config.enabled) {
+            return MaintenanceConfig(false)
         }
-        redisTemplate.opsForValue().set(MAINTENANCE_START_TIME_KEY, startTime.toString())
+        val endTime = config.endTime
+        if (endTime != null && !LocalDateTime.now().isBefore(endTime)) {
+            return MaintenanceConfig(false)
+        }
+        return config
     }
-    
-    private fun setEndTimeIfPresent(endTime: LocalDateTime?) {
-        if (endTime == null) {
-            redisTemplate.delete(MAINTENANCE_END_TIME_KEY)
-            return
-        }
-        redisTemplate.opsForValue().set(MAINTENANCE_END_TIME_KEY, endTime.toString())
-        // 종료 시간이 지나면 자동으로 비활성화되도록 TTL 설정 (최대 7일)
-        val ttlSeconds = java.time.Duration.between(LocalDateTime.now(), endTime).seconds
-        if (ttlSeconds > 0) {
-            redisTemplate.expire(MAINTENANCE_END_TIME_KEY, ttlSeconds, TimeUnit.SECONDS)
-        }
-    }
-    
-    private fun setNoticeIdIfPresent(noticeId: String?) {
-        if (noticeId == null) {
-            redisTemplate.delete(MAINTENANCE_NOTICE_ID_KEY)
-            return
-        }
-        redisTemplate.opsForValue().set(MAINTENANCE_NOTICE_ID_KEY, noticeId)
+
+    private fun String?.toLocalDateTimeOrNull(): LocalDateTime? {
+        return this?.let { runCatching(LocalDateTime::parse).getOrNull() }
     }
 }
-
-
-
