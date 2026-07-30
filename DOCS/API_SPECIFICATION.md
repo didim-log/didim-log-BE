@@ -1224,7 +1224,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | GET | `/api/v1/admin/problems/jobs` | 작업 목록을 조회합니다. | **Query:** `type`, `status`, `from`, `to`, `page`, `size` | `JobPageResponse<JobStatusUnifiedResponse>` | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/jobs/{jobId}` | 작업 단건을 조회합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/problems/jobs/{jobId}/cancel` | 작업을 취소합니다. (`PENDING/RUNNING -> CANCELLED`) | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/jobs/{jobId}/retry` | 작업을 체크포인트 기반으로 재시도합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/jobs/{jobId}/retry` | 종료 작업의 실패 항목과 체크포인트 이후 미처리 항목을 재시도합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/jobs/metrics` | 운영 메트릭을 조회합니다. | **Query:** `window=DAY|WEEK|MONTH` | `JobMetricsResponse` | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/jobs/audit` | 작업 감사 로그(실행자/시간/범위/결과)를 조회합니다. | **Query:** `type`, `status`, `from`, `to`, `page`, `size` | `JobPageResponse<JobAuditResponse>` | JWT Token (ADMIN) |
 
@@ -1245,7 +1245,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `estimatedRemainingSeconds` (Long, nullable)
 - `queuePosition` (Int, nullable)
 - `range` (Object, nullable): `{ "start": Int?, "end": Int? }`
-- `lastCheckpointId` (String, nullable)
+- `lastCheckpointId` (String, nullable): 현재 작업에서 마지막으로 처리한 문제 ID이며, 첫 항목 처리 전에는 `null`
 - `errorCode` (String, nullable)
 - `errorMessage` (String, nullable)
 - `createdBy` (String)
@@ -1255,6 +1255,20 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - 실행기 제출 실패: `PENDING -> FAILED`
 - 취소: `PENDING|RUNNING -> CANCELLED`
 - `COMPLETED|FAILED|CANCELLED`는 종료 상태이며 이후 변경되지 않습니다.
+
+**재시도 대상**
+- `COMPLETED`: 실패 원장에 기록된 문제 ID만 재시도합니다.
+- `FAILED|CANCELLED`: 실패 문제 ID와 `lastCheckpointId` 이후 미처리 대상을 합쳐
+  중복 제거 후 숫자 문제 ID 순서로 처리합니다.
+- 실패 원장이 도입되기 전에 생성된 `failCount > 0` 작업과 중단된 비메타데이터
+  작업은 원본 범위 또는 현재 조회 가능한 대상을 다시 처리합니다.
+- 비메타데이터 실패 문제가 재시도 전에 삭제됐다면 해당 문제는 제외합니다.
+- 실패 원장이 존재하지만 원장 크기와 `failCount`가 다르면
+  `409 RESOURCE_STATE_CONFLICT`를 반환하고 새 작업을 만들지 않습니다.
+- 실패 원장 key가 Redis Set이 아닌 경우에도 같은 409를 반환합니다.
+- 메타데이터 재시도의 `range`는 선택 ID의 최솟값과 최댓값, 상세 새로고침은
+  원본 범위입니다. 상세 수집·언어 갱신은 `range=null`입니다. 메타데이터 선택
+  ID가 떨어져 있으면 `totalCount`가 연속 범위 크기보다 작을 수 있습니다.
 
 **표준 에러 코드**
 - `INVALID_RANGE`

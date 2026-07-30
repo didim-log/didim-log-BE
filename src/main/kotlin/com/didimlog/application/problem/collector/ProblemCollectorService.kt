@@ -17,6 +17,7 @@ import com.didimlog.infra.solvedac.SolvedAcTierMapper
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.data.redis.connection.DataType
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Service
@@ -52,9 +53,11 @@ class ProblemCollectorService(
 
     companion object {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
+        private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
         private const val JOB_INDEX_KEY = "problem:job:index"
         private const val JOB_TTL_SECONDS = 86400L
         private const val MAX_JOB_STATE_RETRIES = 3
+        private const val JOB_FAILURE_LEDGER_INVALID = -2L
         private const val JOB_STATE_MISSING = -1L
         private const val JOB_STATE_CONFLICT = 0L
         private const val JOB_STATE_UPDATED = 1L
@@ -91,7 +94,21 @@ class ProblemCollectorService(
                 return 0
             end
 
+            if ARGV[4] ~= '' then
+                local failureType = redis.call('TYPE', KEYS[2])
+                if type(failureType) == 'table' then
+                    failureType = failureType['ok']
+                end
+                if failureType ~= 'none' and failureType ~= 'set' then
+                    return -2
+                end
+                redis.call('SADD', KEYS[2], ARGV[4])
+            end
+
             redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+            if ARGV[5] ~= '0' then
+                redis.call('EXPIRE', KEYS[2], ARGV[3])
+            end
             return 1
             """.trimIndent(),
             Long::class.java
@@ -101,6 +118,11 @@ class ProblemCollectorService(
     private data class JobSnapshot(
         val rawJson: String,
         val job: JobStatusUnifiedResponse
+    )
+
+    private data class FailureLedger(
+        val exists: Boolean,
+        val problemIds: Set<String>
     )
 
     /**
@@ -167,21 +189,16 @@ class ProblemCollectorService(
             createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, start, end) }
+        executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, start..end) }
         return job.jobId
     }
 
     fun collectDetailsBatchAsync(createdBy: String = "system", ipAddress: String = "unknown"): String {
-        val targetProblems = problemRepository.findByDescriptionHtmlIsNull()
-        val job = createJob(
-            type = ProblemJobType.COLLECT_DETAILS,
-            totalCount = targetProblems.size,
-            range = null,
-            createdBy = createdBy
-        )
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, targetProblems) }
-        return job.jobId
+        return startCollectDetailsWithTargets(
+            problemRepository.findByDescriptionHtmlIsNull(),
+            createdBy,
+            ipAddress
+        ).jobId
     }
 
     fun refreshDetailsBatchAsync(
@@ -192,29 +209,20 @@ class ProblemCollectorService(
     ): String {
         validateRange(start, end)
 
-        val targetProblems = filterProblemsByRange(problemRepository.findAll(), start, end)
-        val job = createJob(
-            type = ProblemJobType.REFRESH_DETAILS,
-            totalCount = targetProblems.size,
-            range = JobRange(start, end),
-            createdBy = createdBy
-        )
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, targetProblems) }
-        return job.jobId
+        return startRefreshDetailsWithTargets(
+            filterProblemsByRange(problemRepository.findAll(), start, end),
+            createdBy,
+            ipAddress,
+            JobRange(start, end)
+        ).jobId
     }
 
     fun updateLanguageBatchAsync(createdBy: String = "system", ipAddress: String = "unknown"): String {
-        val targetProblems = problemRepository.findAll()
-        val job = createJob(
-            type = ProblemJobType.UPDATE_LANGUAGE,
-            totalCount = targetProblems.size,
-            range = null,
-            createdBy = createdBy
-        )
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, targetProblems) }
-        return job.jobId
+        return startUpdateLanguageWithTargets(
+            problemRepository.findAll(),
+            createdBy,
+            ipAddress
+        ).jobId
     }
 
     fun getMetadataCollectJobStatus(jobId: String): JobStatusUnifiedResponse? {
@@ -307,6 +315,19 @@ class ProblemCollectorService(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "RUNNING/PENDING 작업은 재시도할 수 없습니다. jobId=$jobId")
         }
 
+        val failureLedger = readFailureLedger(jobId)
+        val failedProblemIds = failureLedger.problemIds
+        val interruptedNonMetadataJob = original.jobType != ProblemJobType.COLLECT_METADATA &&
+            original.status != JobStatus.COMPLETED
+        val usesLegacyRetryFallback = !failureLedger.exists &&
+            (original.failCount > 0 || interruptedNonMetadataJob)
+        if (!usesLegacyRetryFallback && failedProblemIds.size != original.failCount) {
+            throw BusinessException(
+                ErrorCode.RESOURCE_STATE_CONFLICT,
+                "실패 항목 기록이 작업 상태와 일치하지 않습니다. jobId=$jobId, failCount=${original.failCount}, recorded=${failedProblemIds.size}"
+            )
+        }
+
         val checkpointExclusive = original.lastCheckpointId?.toIntOrNull()
         val retryJobId = when (original.jobType) {
             ProblemJobType.COLLECT_METADATA -> {
@@ -314,36 +335,155 @@ class ProblemCollectorService(
                     ?: throw BusinessException(ErrorCode.INVALID_RANGE, "원본 작업의 start 범위를 찾을 수 없습니다. jobId=$jobId")
                 val end = original.range.end
                     ?: throw BusinessException(ErrorCode.INVALID_RANGE, "원본 작업의 end 범위를 찾을 수 없습니다. jobId=$jobId")
-                val retryStart = maxOf(start, (checkpointExclusive ?: (start - 1)) + 1)
-                if (retryStart > end) {
-                    createNoopCompletedJob(
-                        ProblemJobType.COLLECT_METADATA,
-                        JobRange(start, end),
-                        requestedBy,
-                        original.lastCheckpointId
+                validateRange(start, end)
+                val failedIds = failedProblemIds.map { failedId ->
+                    failedId.toIntOrNull()
+                        ?: throw BusinessException(
+                            ErrorCode.RESOURCE_STATE_CONFLICT,
+                            "메타데이터 실패 항목 ID가 숫자가 아닙니다. jobId=$jobId, problemId=$failedId"
+                        )
+                }.sorted()
+                if (failedIds.any { it !in start..end }) {
+                    throw BusinessException(
+                        ErrorCode.RESOURCE_STATE_CONFLICT,
+                        "메타데이터 실패 항목 ID가 원본 범위를 벗어났습니다. jobId=$jobId"
+                    )
+                }
+
+                when {
+                    usesLegacyRetryFallback -> startCollectMetadataWithTargets(
+                        targetIds = start..end,
+                        totalCount = end - start + 1,
+                        range = JobRange(start, end),
+                        createdBy = requestedBy,
+                        ipAddress = ipAddress
                     ).jobId
-                } else {
-                    collectMetadataAsync(retryStart, end, requestedBy, ipAddress)
+
+                    original.status == JobStatus.COMPLETED -> {
+                        if (failedIds.isEmpty()) {
+                            createNoopCompletedJob(
+                                ProblemJobType.COLLECT_METADATA,
+                                JobRange(start, end),
+                                requestedBy
+                            ).jobId
+                        } else {
+                            startCollectMetadataWithTargets(
+                                targetIds = failedIds,
+                                totalCount = failedIds.size,
+                                range = JobRange(failedIds.first(), failedIds.last()),
+                                createdBy = requestedBy,
+                                ipAddress = ipAddress
+                            ).jobId
+                        }
+                    }
+
+                    else -> {
+                        val invalidFailedCheckpoint = when {
+                            failedIds.isEmpty() -> false
+                            checkpointExclusive == null -> true
+                            else -> failedIds.any { failedId -> failedId > checkpointExclusive }
+                        }
+                        if (invalidFailedCheckpoint) {
+                            throw BusinessException(
+                                ErrorCode.RESOURCE_STATE_CONFLICT,
+                                "메타데이터 실패 항목과 체크포인트가 일치하지 않습니다. jobId=$jobId"
+                            )
+                        }
+                        val retryStart = when {
+                            checkpointExclusive == null -> start
+                            checkpointExclusive >= end -> null
+                            else -> maxOf(start, checkpointExclusive + 1)
+                        }
+                        val tailCount = retryStart?.let { end - it + 1 } ?: 0
+                        val totalCount = failedIds.size + tailCount
+                        if (totalCount == 0) {
+                            createNoopCompletedJob(
+                                ProblemJobType.COLLECT_METADATA,
+                                JobRange(start, end),
+                                requestedBy
+                            ).jobId
+                        } else {
+                            val targetIds = sequence {
+                                yieldAll(failedIds)
+                                if (retryStart != null) {
+                                    yieldAll(retryStart..end)
+                                }
+                            }.asIterable()
+                            startCollectMetadataWithTargets(
+                                targetIds = targetIds,
+                                totalCount = totalCount,
+                                range = JobRange(
+                                    failedIds.firstOrNull() ?: requireNotNull(retryStart),
+                                    if (retryStart == null) failedIds.last() else end
+                                ),
+                                createdBy = requestedBy,
+                                ipAddress = ipAddress
+                            ).jobId
+                        }
+                    }
                 }
             }
 
             ProblemJobType.COLLECT_DETAILS -> {
-                val checkpoint = checkpointExclusive
-                val targets = problemRepository.findByDescriptionHtmlIsNull()
-                    .filter { isAfterCheckpoint(it, checkpoint) }
-                startCollectDetailsWithTargets(targets, requestedBy, ipAddress, original.lastCheckpointId).jobId
+                val candidates = loadRetryProblemCandidates(
+                    problemRepository.findByDescriptionHtmlIsNull(),
+                    failedProblemIds,
+                    jobId
+                )
+                val targets = selectRetryProblems(
+                    original,
+                    candidates,
+                    failedProblemIds,
+                    checkpointExclusive,
+                    usesLegacyRetryFallback
+                )
+                startCollectDetailsWithTargets(
+                    targets,
+                    requestedBy,
+                    ipAddress
+                ).jobId
             }
 
             ProblemJobType.REFRESH_DETAILS -> {
                 val range = original.range
-                val targets = filterProblemsByRange(problemRepository.findAll(), range?.start, range?.end)
-                    .filter { isAfterCheckpoint(it, checkpointExclusive) }
-                startRefreshDetailsWithTargets(targets, requestedBy, ipAddress, range, original.lastCheckpointId).jobId
+                val candidates = loadRetryProblemCandidates(
+                    filterProblemsByRange(problemRepository.findAll(), range?.start, range?.end),
+                    failedProblemIds,
+                    jobId
+                )
+                val targets = selectRetryProblems(
+                    original,
+                    candidates,
+                    failedProblemIds,
+                    checkpointExclusive,
+                    usesLegacyRetryFallback
+                )
+                startRefreshDetailsWithTargets(
+                    targets,
+                    requestedBy,
+                    ipAddress,
+                    range
+                ).jobId
             }
 
             ProblemJobType.UPDATE_LANGUAGE -> {
-                val targets = problemRepository.findAll().filter { isAfterCheckpoint(it, checkpointExclusive) }
-                startUpdateLanguageWithTargets(targets, requestedBy, ipAddress, original.lastCheckpointId).jobId
+                val candidates = loadRetryProblemCandidates(
+                    problemRepository.findAll(),
+                    failedProblemIds,
+                    jobId
+                )
+                val targets = selectRetryProblems(
+                    original,
+                    candidates,
+                    failedProblemIds,
+                    checkpointExclusive,
+                    usesLegacyRetryFallback
+                )
+                startUpdateLanguageWithTargets(
+                    targets,
+                    requestedBy,
+                    ipAddress
+                ).jobId
             }
         }
 
@@ -453,18 +593,35 @@ class ProblemCollectorService(
     private fun startCollectDetailsWithTargets(
         targets: List<Problem>,
         createdBy: String,
-        ipAddress: String,
-        checkpointId: String?
+        ipAddress: String
     ): JobStatusUnifiedResponse {
+        val orderedTargets = orderProblems(targets)
         val job = createJob(
             type = ProblemJobType.COLLECT_DETAILS,
-            totalCount = targets.size,
+            totalCount = orderedTargets.size,
             range = null,
-            createdBy = createdBy,
-            checkpointId = checkpointId
+            createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, targets) }
+        executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
+        return job
+    }
+
+    private fun startCollectMetadataWithTargets(
+        targetIds: Iterable<Int>,
+        totalCount: Int,
+        range: JobRange,
+        createdBy: String,
+        ipAddress: String
+    ): JobStatusUnifiedResponse {
+        val job = createJob(
+            type = ProblemJobType.COLLECT_METADATA,
+            totalCount = totalCount,
+            range = range,
+            createdBy = createdBy
+        )
+        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
+        executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, targetIds) }
         return job
     }
 
@@ -472,46 +629,43 @@ class ProblemCollectorService(
         targets: List<Problem>,
         createdBy: String,
         ipAddress: String,
-        range: JobRange?,
-        checkpointId: String?
+        range: JobRange?
     ): JobStatusUnifiedResponse {
+        val orderedTargets = orderProblems(targets)
         val job = createJob(
             type = ProblemJobType.REFRESH_DETAILS,
-            totalCount = targets.size,
+            totalCount = orderedTargets.size,
             range = range,
-            createdBy = createdBy,
-            checkpointId = checkpointId
+            createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, targets) }
+        executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
 
     private fun startUpdateLanguageWithTargets(
         targets: List<Problem>,
         createdBy: String,
-        ipAddress: String,
-        checkpointId: String?
+        ipAddress: String
     ): JobStatusUnifiedResponse {
+        val orderedTargets = orderProblems(targets)
         val job = createJob(
             type = ProblemJobType.UPDATE_LANGUAGE,
-            totalCount = targets.size,
+            totalCount = orderedTargets.size,
             range = null,
-            createdBy = createdBy,
-            checkpointId = checkpointId
+            createdBy = createdBy
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, targets) }
+        executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
 
     private fun createNoopCompletedJob(
         type: ProblemJobType,
         range: JobRange?,
-        createdBy: String,
-        checkpointId: String?
+        createdBy: String
     ): JobStatusUnifiedResponse {
-        val created = createJob(type, 0, range, createdBy, checkpointId)
+        val created = createJob(type, 0, range, createdBy)
         if (markRunning(created.jobId)) {
             markCompleted(created.jobId)
         }
@@ -519,7 +673,7 @@ class ProblemCollectorService(
             ?: throw IllegalStateException("생성한 작업 상태를 찾을 수 없습니다. jobId=${created.jobId}")
     }
 
-    private fun collectMetadataAsyncInternal(jobId: String, start: Int, end: Int) {
+    private fun collectMetadataAsyncInternal(jobId: String, problemIds: Iterable<Int>) {
         runJobLoop(
             jobId = jobId,
             defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
@@ -528,21 +682,23 @@ class ProblemCollectorService(
             var success = 0
             var fail = 0
 
-            for (problemId in start..end) {
+            for (problemId in problemIds) {
                 if (isCancelled(jobId)) {
                     return@runJobLoop
                 }
 
+                var failedProblemId: String? = null
                 try {
                     upsertProblemMetadata(problemId)
                     success++
                 } catch (e: Exception) {
                     fail++
+                    failedProblemId = problemId.toString()
                     log.warn("metadata job item failed: jobId=$jobId, problemId=$problemId, error=${e.message}")
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problemId.toString())
+                updateProgress(jobId, processed, success, fail, problemId.toString(), failedProblemId)
                 pacer.pauseMetadata()
             }
         }
@@ -595,24 +751,28 @@ class ProblemCollectorService(
                     return@runJobLoop
                 }
 
+                var failedProblemId: String? = null
                 try {
                     val details = bojCrawler.crawlProblemDetails(problem.id.value)
                     if (details == null) {
                         fail++
+                        failedProblemId = problem.id.value
                     } else {
                         if (updateProblemDetails(problem.id.value, details) == null) {
                             fail++
+                            failedProblemId = problem.id.value
                         } else {
                             success++
                         }
                     }
                 } catch (e: Exception) {
                     fail++
+                    failedProblemId = problem.id.value
                     log.error("details job item failed: jobId=$jobId, problemId=${problem.id.value}, error=${e.message}", e)
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problem.id.value)
+                updateProgress(jobId, processed, success, fail, problem.id.value, failedProblemId)
                 pacer.pauseDetails()
             }
         }
@@ -629,10 +789,12 @@ class ProblemCollectorService(
                     return@runJobLoop
                 }
 
+                var failedProblemId: String? = null
                 try {
                     val details = bojCrawler.crawlProblemDetails(problem.id.value)
                     if (details == null) {
                         fail++
+                        failedProblemId = problem.id.value
                     } else {
                         val detectedLanguage = ProblemLanguageDetector.detectFromTexts(
                             listOf(
@@ -652,17 +814,19 @@ class ProblemCollectorService(
                             ) == null
                         ) {
                             fail++
+                            failedProblemId = problem.id.value
                         } else {
                             success++
                         }
                     }
                 } catch (e: Exception) {
                     fail++
+                    failedProblemId = problem.id.value
                     log.error("refresh job item failed: jobId=$jobId, problemId=${problem.id.value}, error=${e.message}", e)
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problem.id.value)
+                updateProgress(jobId, processed, success, fail, problem.id.value, failedProblemId)
                 pacer.pauseDetails()
             }
         }
@@ -679,6 +843,7 @@ class ProblemCollectorService(
                     return@runJobLoop
                 }
 
+                var failedProblemId: String? = null
                 try {
                     val detectedLanguage = ProblemLanguageDetector.detect(problem)
                     if (detectedLanguage == null || problem.language.equals(detectedLanguage, ignoreCase = true)) {
@@ -687,14 +852,16 @@ class ProblemCollectorService(
                         success++
                     } else {
                         fail++
+                        failedProblemId = problem.id.value
                     }
                 } catch (e: Exception) {
                     fail++
+                    failedProblemId = problem.id.value
                     log.error("language job item failed: jobId=$jobId, problemId=${problem.id.value}, error=${e.message}", e)
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problem.id.value)
+                updateProgress(jobId, processed, success, fail, problem.id.value, failedProblemId)
             }
         }
     }
@@ -742,8 +909,7 @@ class ProblemCollectorService(
         type: ProblemJobType,
         totalCount: Int,
         range: JobRange?,
-        createdBy: String,
-        checkpointId: String? = null
+        createdBy: String
     ): JobStatusUnifiedResponse {
         val now = nowEpochSeconds()
         val created = JobStatusUnifiedResponse(
@@ -762,7 +928,7 @@ class ProblemCollectorService(
             estimatedRemainingSeconds = estimateRemaining(type, JobStatus.PENDING, 0, totalCount),
             queuePosition = null,
             range = range,
-            lastCheckpointId = checkpointId,
+            lastCheckpointId = null,
             errorCode = null,
             errorMessage = null,
             createdBy = createdBy
@@ -840,7 +1006,8 @@ class ProblemCollectorService(
         processedCount: Int,
         successCount: Int,
         failCount: Int,
-        checkpointId: String?
+        checkpointId: String?,
+        failedProblemId: String?
     ) {
         val snapshot = readJobSnapshot(jobId) ?: return
         if (snapshot.job.status != JobStatus.RUNNING) {
@@ -855,11 +1022,28 @@ class ProblemCollectorService(
             lastCheckpointId = checkpointId ?: snapshot.job.lastCheckpointId,
             lastHeartbeatAt = now
         )
-        compareAndSetJob(snapshot, updated)
+        compareAndSetJob(snapshot, updated, failedProblemId)
     }
 
     private fun readJob(jobId: String): JobStatusUnifiedResponse? {
         return readJobSnapshot(jobId)?.job
+    }
+
+    private fun readFailureLedger(jobId: String): FailureLedger {
+        val key = failureKey(jobId)
+        return when (redisTemplate.type(key)) {
+            DataType.NONE -> FailureLedger(exists = false, problemIds = emptySet())
+
+            DataType.SET -> FailureLedger(
+                exists = true,
+                problemIds = redisTemplate.opsForSet().members(key).orEmpty()
+            )
+
+            else -> throw BusinessException(
+                ErrorCode.RESOURCE_STATE_CONFLICT,
+                "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=$jobId"
+            )
+        }
     }
 
     private fun readJobSnapshot(jobId: String): JobSnapshot? {
@@ -892,18 +1076,24 @@ class ProblemCollectorService(
 
     private fun compareAndSetJob(
         snapshot: JobSnapshot,
-        updated: JobStatusUnifiedResponse
+        updated: JobStatusUnifiedResponse,
+        failedProblemId: String? = null
     ): JobStatusUnifiedResponse? {
         val normalized = normalize(updated)
         val result = redisTemplate.execute(
             COMPARE_AND_SET_JOB_SCRIPT,
-            listOf(jobKey(normalized.jobId)),
+            listOf(jobKey(normalized.jobId), failureKey(normalized.jobId)),
             snapshot.rawJson,
             objectMapper.writeValueAsString(normalized),
-            JOB_TTL_SECONDS.toString()
+            JOB_TTL_SECONDS.toString(),
+            failedProblemId.orEmpty(),
+            normalized.failCount.toString()
         )
         return when (result) {
             JOB_STATE_UPDATED -> normalized
+            JOB_FAILURE_LEDGER_INVALID -> throw IllegalStateException(
+                "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=${normalized.jobId}"
+            )
             JOB_STATE_MISSING,
             JOB_STATE_CONFLICT -> null
             else -> throw IllegalStateException(
@@ -920,6 +1110,7 @@ class ProblemCollectorService(
             val job = readJob(jobId)
             if (job == null) {
                 redisTemplate.opsForZSet().remove(JOB_INDEX_KEY, jobId)
+                redisTemplate.delete(failureKey(jobId))
                 continue
             }
             jobs.add(job)
@@ -999,8 +1190,54 @@ class ProblemCollectorService(
         if (checkpointExclusive == null) {
             return true
         }
-        val numericId = problem.id.value.toIntOrNull() ?: return false
+        val numericId = problem.id.value.toIntOrNull() ?: return true
         return numericId > checkpointExclusive
+    }
+
+    private fun loadRetryProblemCandidates(
+        currentCandidates: List<Problem>,
+        failedProblemIds: Set<String>,
+        jobId: String
+    ): List<Problem> {
+        if (failedProblemIds.isEmpty()) {
+            return orderProblems(currentCandidates)
+        }
+
+        val failedProblems = problemRepository.findAllById(failedProblemIds)
+        val foundIds = failedProblems.mapTo(mutableSetOf()) { it.id.value }
+        val missingIds = failedProblemIds - foundIds
+        if (missingIds.isNotEmpty()) {
+            log.info("retry skips deleted failed problems: jobId=$jobId, missingCount=${missingIds.size}")
+        }
+        return orderProblems(currentCandidates + failedProblems)
+    }
+
+    private fun selectRetryProblems(
+        original: JobStatusUnifiedResponse,
+        candidates: List<Problem>,
+        failedProblemIds: Set<String>,
+        checkpointExclusive: Int?,
+        usesLegacyRetryFallback: Boolean
+    ): List<Problem> {
+        if (usesLegacyRetryFallback) {
+            return orderProblems(candidates)
+        }
+        return orderProblems(
+            candidates.filter { problem ->
+                failedProblemIds.contains(problem.id.value) ||
+                    (original.status != JobStatus.COMPLETED && isAfterCheckpoint(problem, checkpointExclusive))
+            }
+        )
+    }
+
+    private fun orderProblems(problems: List<Problem>): List<Problem> {
+        return problems
+            .distinctBy { it.id.value }
+            .sortedWith(
+                compareBy<Problem> { it.id.value.toIntOrNull() == null }
+                    .thenBy { it.id.value.toIntOrNull() ?: Int.MAX_VALUE }
+                    .thenBy { it.id.value }
+            )
     }
 
     private fun isTerminal(status: JobStatus): Boolean {
@@ -1043,6 +1280,10 @@ class ProblemCollectorService(
 
     private fun jobKey(jobId: String): String {
         return "$JOB_KEY_PREFIX$jobId"
+    }
+
+    private fun failureKey(jobId: String): String {
+        return "$JOB_FAILURE_KEY_PREFIX$jobId"
     }
 
     private fun nowEpochSeconds(): Long {

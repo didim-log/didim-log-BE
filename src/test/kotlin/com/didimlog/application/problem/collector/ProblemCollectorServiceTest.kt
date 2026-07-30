@@ -21,6 +21,7 @@ import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import java.time.Duration
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -34,6 +35,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.data.redis.connection.DataType
+import org.springframework.data.redis.core.SetOperations
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import org.springframework.data.redis.core.ZSetOperations
@@ -47,6 +50,7 @@ class ProblemCollectorServiceTest {
     private val bojCrawler: BojCrawler = mockk()
     private val redisTemplate: StringRedisTemplate = mockk()
     private val valueOps: ValueOperations<String, String> = mockk()
+    private val setOps: SetOperations<String, String> = mockk()
     private val zSetOps: ZSetOperations<String, String> = mockk()
     private val adminAuditService: AdminAuditService = mockk(relaxed = true)
     private val pacer: ProblemCollectorPacer = mockk(relaxed = true)
@@ -56,17 +60,26 @@ class ProblemCollectorServiceTest {
     private lateinit var service: ProblemCollectorService
 
     private val valueStore = ConcurrentHashMap<String, String>()
+    private val failureStore = ConcurrentHashMap<String, MutableSet<String>>()
     private val zsetStore = ConcurrentHashMap<String, MutableMap<String, Double>>()
 
     companion object {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
+        private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
         private const val JOB_INDEX_KEY = "problem:job:index"
     }
 
     @BeforeEach
     fun setUp() {
         every { redisTemplate.opsForValue() } returns valueOps
+        every { redisTemplate.opsForSet() } returns setOps
         every { redisTemplate.opsForZSet() } returns zSetOps
+        every { redisTemplate.type(any()) } answers {
+            if (failureStore.containsKey(firstArg())) DataType.SET else DataType.NONE
+        }
+        every { setOps.members(any()) } answers {
+            failureStore[firstArg()].orEmpty().toSet()
+        }
         every {
             redisTemplate.execute(
                 any<RedisScript<Long>>(),
@@ -77,8 +90,8 @@ class ProblemCollectorServiceTest {
             val keys = secondArg<List<String>>()
             val scriptArguments = thirdArg<Array<out Any>>()
             synchronized(valueStore) {
-                when (keys.size) {
-                    2 -> {
+                when {
+                    keys.size == 2 && keys[1] == JOB_INDEX_KEY -> {
                         val jobKey = keys[0]
                         if (valueStore.containsKey(jobKey)) {
                             0L
@@ -91,13 +104,18 @@ class ProblemCollectorServiceTest {
                         }
                     }
 
-                    1 -> {
+                    keys.size == 2 -> {
                         val current = valueStore[keys[0]]
                         when {
                             current == null -> -1L
                             current != scriptArguments[0].toString() -> 0L
                             else -> {
                                 valueStore[keys[0]] = scriptArguments[1].toString()
+                                val failedProblemId = scriptArguments[3].toString()
+                                if (failedProblemId.isNotEmpty()) {
+                                    failureStore.computeIfAbsent(keys[1]) { mutableSetOf() }
+                                        .add(failedProblemId)
+                                }
                                 1L
                             }
                         }
@@ -278,8 +296,8 @@ class ProblemCollectorServiceTest {
                 range = JobRange(1, 5),
                 totalCount = 5,
                 processedCount = 3,
-                successCount = 2,
-                failCount = 1,
+                successCount = 3,
+                failCount = 0,
                 lastCheckpointId = "3",
                 errorCode = ErrorCode.WORKER_UNAVAILABLE.code,
                 completedAt = 1700001000
@@ -301,6 +319,134 @@ class ProblemCollectorServiceTest {
         verify(exactly = 0) { solvedAcClient.fetchProblem(1) }
         verify(exactly = 0) { solvedAcClient.fetchProblem(2) }
         verify(exactly = 0) { solvedAcClient.fetchProblem(3) }
+    }
+
+    @Test
+    @DisplayName("부분 실패한 완료 작업은 실패 문제만 다시 수집한다")
+    fun `retry reprocesses only failed metadata items`() {
+        var problemTwoAttempts = 0
+        every { solvedAcClient.fetchProblem(any()) } answers {
+            val problemId = firstArg<Int>()
+            if (problemId == 2 && problemTwoAttempts++ == 0) {
+                throw IllegalStateException("temporary failure")
+            }
+            SolvedAcProblemResponse(problemId, "P$problemId", 1, emptyList())
+        }
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val sourceJobId = service.collectMetadataAsync(1, 5, "admin", "127.0.0.1")
+        val sourceJob = requireNotNull(service.getMetadataCollectJobStatus(sourceJobId))
+
+        assertThat(sourceJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(sourceJob.failCount).isEqualTo(1)
+        assertThat(sourceJob.lastCheckpointId).isEqualTo("5")
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(1)
+        assertThat(retryJob.range).isEqualTo(JobRange(2, 2))
+        assertThat(retryJob.successCount).isEqualTo(1)
+        assertThat(retryJob.failCount).isZero()
+        verify(exactly = 2) { solvedAcClient.fetchProblem(2) }
+        listOf(1, 3, 4, 5).forEach { problemId ->
+            verify(exactly = 1) { solvedAcClient.fetchProblem(problemId) }
+        }
+    }
+
+    @Test
+    @DisplayName("상세 새로고침 대상은 숫자 문제 ID 순서로 처리한다")
+    fun `detail refresh orders targets by numeric problem id`() {
+        val problem1005 = sampleProblem("1005")
+        val problem1001 = sampleProblem("1001")
+        val problem1003 = sampleProblem("1003")
+        every { problemRepository.findAll() } returns listOf(problem1005, problem1001, problem1003)
+        every { bojCrawler.crawlProblemDetails(any()) } returns sampleDetails()
+        every { problemRepository.updateDetails(any(), any()) } answers {
+            sampleProblem(firstArg())
+        }
+
+        service.refreshDetailsBatchAsync(createdBy = "admin", ipAddress = "127.0.0.1")
+
+        verifyOrder {
+            bojCrawler.crawlProblemDetails("1001")
+            bojCrawler.crawlProblemDetails("1003")
+            bojCrawler.crawlProblemDetails("1005")
+        }
+    }
+
+    @Test
+    @DisplayName("실패 원장이 없는 이전 상세 작업은 체크포인트와 관계없이 현재 대상을 다시 처리한다")
+    fun `legacy interrupted detail job retries all current targets in numeric order`() {
+        val sourceJobId = "job-legacy-unsorted-details"
+        val problem1005 = sampleProblem("1005")
+        val problem1001 = sampleProblem("1001")
+        val problem1003 = sampleProblem("1003")
+        seedJob(
+            sampleJob(sourceJobId).copy(
+                jobType = ProblemJobType.REFRESH_DETAILS,
+                status = JobStatus.CANCELLED,
+                totalCount = 3,
+                processedCount = 1,
+                successCount = 1,
+                progressPercentage = 33,
+                range = JobRange(1001, 1005),
+                lastCheckpointId = "1005",
+                completedAt = 1700001000
+            )
+        )
+        every {
+            problemRepository.findAll()
+        } returns listOf(problem1005, problem1001, problem1003)
+        every { bojCrawler.crawlProblemDetails(any()) } returns sampleDetails()
+        every { problemRepository.updateDetails(any(), any()) } answers {
+            sampleProblem(firstArg())
+        }
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(3)
+        verifyOrder {
+            bojCrawler.crawlProblemDetails("1001")
+            bojCrawler.crawlProblemDetails("1003")
+            bojCrawler.crawlProblemDetails("1005")
+        }
+    }
+
+    @Test
+    @DisplayName("삭제된 실패 문제는 제외하고 남아 있는 상세 수집 실패 문제를 재시도한다")
+    fun `detail retry skips deleted failed item and continues remaining failures`() {
+        val sourceJobId = "job-deleted-failed-item"
+        val remainingProblem = sampleProblem("1003")
+        seedJob(
+            sampleJob(sourceJobId).copy(
+                jobType = ProblemJobType.COLLECT_DETAILS,
+                status = JobStatus.COMPLETED,
+                totalCount = 2,
+                processedCount = 2,
+                failCount = 2,
+                progressPercentage = 100,
+                range = null,
+                lastCheckpointId = "1003",
+                completedAt = 1700001000
+            )
+        )
+        failureStore["$JOB_FAILURE_KEY_PREFIX$sourceJobId"] = mutableSetOf("1002", "1003")
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns emptyList()
+        every {
+            problemRepository.findAllById(setOf("1002", "1003"))
+        } returns listOf(remainingProblem)
+        every { bojCrawler.crawlProblemDetails("1003") } returns sampleDetails()
+        every { problemRepository.updateDetails("1003", any()) } returns remainingProblem
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(1)
+        assertThat(retryJob.successCount).isEqualTo(1)
+        verify(exactly = 1) { bojCrawler.crawlProblemDetails("1003") }
+        verify(exactly = 0) { bojCrawler.crawlProblemDetails("1002") }
     }
 
     @Test
@@ -341,7 +487,12 @@ class ProblemCollectorServiceTest {
         every {
             redisTemplate.execute(
                 any<RedisScript<Long>>(),
-                match<List<String>> { it == listOf("$JOB_KEY_PREFIX$jobId") },
+                match<List<String>> {
+                    it == listOf(
+                        "$JOB_KEY_PREFIX$jobId",
+                        "$JOB_FAILURE_KEY_PREFIX$jobId"
+                    )
+                },
                 *anyVararg()
             )
         } returns 0L
@@ -355,7 +506,10 @@ class ProblemCollectorServiceTest {
         verify(exactly = 4) {
             redisTemplate.execute(
                 any<RedisScript<Long>>(),
-                listOf("$JOB_KEY_PREFIX$jobId"),
+                listOf(
+                    "$JOB_KEY_PREFIX$jobId",
+                    "$JOB_FAILURE_KEY_PREFIX$jobId"
+                ),
                 *anyVararg()
             )
         }
@@ -432,6 +586,7 @@ class ProblemCollectorServiceTest {
         assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
         assertThat(status?.successCount).isZero()
         assertThat(status?.failCount).isEqualTo(1)
+        assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).containsExactly(problem.id.value)
         verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 
@@ -458,6 +613,23 @@ class ProblemCollectorServiceTest {
         assertThat(detailsSlot.captured.language).isEqualTo("en")
         assertThat(detailsSlot.captured.descriptionHtml).isEqualTo(details.descriptionHtml)
         verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("상세 새로고침 중 문제가 삭제되면 실패 문제를 원장에 기록한다")
+    fun `detail refresh records a deleted target in failure ledger`() {
+        val problem = sampleProblem("1007", title = "English problem title")
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns sampleDetails()
+        every { problemRepository.updateDetails(problem.id.value, any()) } returns null
+
+        val jobId = service.refreshDetailsBatchAsync(createdBy = "admin", ipAddress = "127.0.0.1")
+        val status = service.getDetailsRefreshJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isZero()
+        assertThat(status?.failCount).isEqualTo(1)
+        assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).containsExactly(problem.id.value)
     }
 
     @Test
@@ -489,6 +661,7 @@ class ProblemCollectorServiceTest {
         assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
         assertThat(status?.successCount).isZero()
         assertThat(status?.failCount).isEqualTo(1)
+        assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).containsExactly(problem.id.value)
         verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 

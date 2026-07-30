@@ -14,6 +14,7 @@
 | `GET /api/v1/admin/problems/collect-metadata/status/{jobId}` | 메타데이터 작업 상태 조회 | Redis |
 | `POST /api/v1/admin/problems/collect-details` | 상세 HTML이 없는 문제 비동기 수집 | MongoDB `problems`, Redis 작업 상태 |
 | `POST /api/v1/admin/problems/refresh-details` | 상세 강제 재수집 | MongoDB `problems`, Redis 작업 상태 |
+| `POST /api/v1/admin/problems/jobs/{jobId}/retry` | 종료 작업의 실패 항목·미처리 구간 재시도 | Redis 작업 상태·실패 원장 |
 | `GET /api/v1/problems/recommend` | 카테고리 정책을 적용한 추천 | `problems`, `students` 조회 |
 | `GET /api/v1/problems/categories/meta` | 부모·자식·연관 카테고리 메타 조회 | 코드의 정적 계층 정의 |
 
@@ -55,11 +56,12 @@ flowchart TD
 4. `ProblemCategoryMapper.extractTagsToEnglish`는 한국어 표시명을 `ProblemCategory`로 변환하고 영문 정식명 목록으로 중복 제거한다.
 5. `determineCategory`는 첫 번째 정규 태그를 대표 `category`로 사용한다. 태그가 없으면 `IMPLEMENTATION`이다.
 6. 신규·기존 문제 모두 메타데이터 소유 필드만 MongoDB modifier upsert로 갱신하며, 기존 상세·URL·언어는 보존한다.
-7. 처리 수, 성공·실패 수, 체크포인트는 항목마다 Redis 작업 상태에 반영한다.
+7. 처리 수, 성공·실패 수, 체크포인트와 실패 문제 ID는 항목마다 Redis에 함께 반영한다.
 
 상태 변경은 읽은 Redis JSON 원문을 기대값으로 비교하는 Lua CAS로 처리한다. 오래된
 worker의 갱신은 반영하지 않으며 `COMPLETED`, `FAILED`, `CANCELLED` 상태는 다시
-변경하지 않는다. sorted index는 작업을 만들 때 한 번만 기록한다.
+변경하지 않는다. 실패 ID는 작업별 Set에 24시간 보관하고 상태와 TTL을 맞춘다.
+sorted index는 작업을 만들 때 한 번만 기록한다.
 
 ### 2. 상세 보강
 
@@ -67,7 +69,23 @@ worker의 갱신은 반영하지 않으며 `COMPLETED`, `FAILED`, `CANCELLED` �
 2. worker의 `collectDetailsBatchAsyncInternal`이 `BojCrawler.crawlProblemDetails`를 호출한다.
 3. `#problem_description`, `#problem_input`, `#problem_output`과 최대 5개의 입출력 예제를 읽어 같은 `problems` 문서에 저장한다.
 
-### 3. 카테고리 추천 검색
+### 3. 실패 항목 재시도
+
+1. `COMPLETED` 작업은 실패 원장에 있는 문제만 다시 처리한다.
+2. `FAILED`·`CANCELLED` 작업은 실패 문제와 checkpoint 이후 미처리 대상을 합친다.
+3. 대상은 중복 제거 후 숫자 문제 ID 오름차순으로 실행한다.
+4. 원장이 도입되기 전에 생성된 부분 실패 작업과 중단된 비메타데이터 작업은
+   원본 범위 또는 현재 조회 가능한 대상을 보수적으로 다시 처리한다.
+5. 실패 문제가 그 사이 삭제됐다면 제외하고 남은 문제를 계속 처리한다.
+6. Set이 존재하지만 `failCount`와 원장 크기가 다르거나 원장 key가 Set이 아니면
+   새 작업을 만들지 않고 `409 RESOURCE_STATE_CONFLICT`를 반환한다.
+
+상태 JSON의 진행률 갱신과 실패 ID 추가는 같은 Lua에서 수행한다. 취소가 먼저
+반영되면 늦게 도착한 진행률과 실패 ID는 모두 폐기된다.
+
+[실패 항목 원장과 검증 결과](../refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)
+
+### 4. 카테고리 추천 검색
 
 1. `ProblemController.recommendProblems`가 `category`, `language`, `filterMode`를 `RecommendationService.recommendProblemsDetailed`에 넘긴다.
 2. `AlgorithmHierarchyUtils.findCategoryEnglishName`은 `TagUtils`의 제한된 별칭과 enum 이름·영문명·한글명을 영문 정식명으로 맞춘다.
@@ -99,10 +117,14 @@ worker의 갱신은 반영하지 않으며 `COMPLETED`, `FAILED`, `CANCELLED` �
 ## 알려진 제약
 
 - 항목 하나의 수집 실패는 `failCount`로 기록되지만 전체 작업은 `COMPLETED`가 될 수 있다.
+- 첫 재시도는 기록된 실패 ID만 선택하지만, 떨어진 ID를 묶은 재시도 작업이 다시
+  중단되면 연속 `range` 사이의 문제를 중복 처리할 수 있다. 정확한 대상 manifest는
+  아직 없다.
+- 같은 원본 작업의 재시도를 동시에 요청하면 여러 자식 작업이 만들어질 수 있다.
 - 취소는 항목 사이에서 상태를 확인하는 방식이라 진행 중 HTTP 호출이나 대기 시간을 즉시 중단하지 않는다.
 - 작업 상태는 24시간 TTL이며 서버 재시작 뒤 진행 중 작업을 복구하는 worker는 없다.
 - 상태 전이는 같은 Redis를 공유하는 여러 인스턴스에서 CAS로 조정한다. 구·신 worker의 혼합 실행은 지원하지 않으므로 전체 교체가 필요하다.
-- 작업 생성 시 상태 키와 sorted index를 함께 다루는 Lua는 standalone Redis 구성을 기준으로 한다.
+- 작업 생성·상태 갱신 시 여러 Redis key를 함께 다루는 Lua는 standalone Redis 구성을 기준으로 한다.
 - 작업 목록은 sorted index에서 ID를 조회한 뒤 상태를 ID별로 읽는 1+N 구조가 남아 있다.
 - 상세 대상은 worker 실행 전에 목록으로 고정되며, 예제는 최대 5쌍만 수집한다.
 - 한국어 표시명이 없는 solved.ac 태그 key도 `fromKorean`에 전달되므로 일부 태그가 `Unknown`으로 합쳐질 수 있다.
