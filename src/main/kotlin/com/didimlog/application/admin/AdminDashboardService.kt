@@ -96,9 +96,9 @@ class AdminDashboardService(
 
     private fun countDistinctSolvedProblems(): Long {
         val aggregation = Aggregation.newAggregation(
-            Aggregation.unwind("solutions.solutions"),
-            Aggregation.match(Criteria.where("solutions.solutions.result").`is`("SUCCESS")),
-            Aggregation.group("solutions.solutions.problemId.value"),
+            Aggregation.unwind("solutions.items"),
+            Aggregation.match(Criteria.where("solutions.items.result").`is`("SUCCESS")),
+            Aggregation.group("solutions.items.problemId"),
             Aggregation.count().`as`("count")
         )
 
