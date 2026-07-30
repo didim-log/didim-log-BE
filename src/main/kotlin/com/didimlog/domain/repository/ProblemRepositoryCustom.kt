@@ -53,15 +53,22 @@ interface ProblemRepositoryCustom {
     fun findByLevelBetweenFlexible(min: Int, max: Int): List<Problem>
 
     /**
-     * 레벨 범위와 확장된 태그 리스트로 문제를 검색한다.
-     * 문제의 tags 리스트 중 하나라도 확장된 태그 목록에 포함되면 검색된다.
+     * 추천 난이도 범위에서 대표 카테고리 또는 확장 태그가 일치하는 후보를 한 번에 조회한다.
+     *
+     * level이 없는 이전 문서는 difficultyLevel을 조회 결과의 level로 사용한다.
      *
      * @param min 최소 레벨
      * @param max 최대 레벨
-     * @param expandedTags 확장된 태그 리스트 (상위 카테고리 + 하위 태그들)
-     * @return 검색된 문제 목록
+     * @param targetCategories 대표 카테고리 목록
+     * @param expandedTags 확장 태그 목록
+     * @return 추천 후보 문제 목록
      */
-    fun findByLevelBetweenAndTagsIn(min: Int, max: Int, expandedTags: List<String>): List<Problem>
+    fun findRecommendationCandidates(
+        min: Int,
+        max: Int,
+        targetCategories: List<String>,
+        expandedTags: List<String>
+    ): List<Problem>
 }
 
 data class ProblemDetailsUpdate(
