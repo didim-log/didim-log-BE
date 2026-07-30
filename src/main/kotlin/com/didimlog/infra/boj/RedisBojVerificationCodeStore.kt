@@ -12,7 +12,6 @@ class RedisBojVerificationCodeStore(
 
     companion object {
         private const val KEY_PREFIX = "boj:verify:"
-        private const val RATE_LIMIT_KEY_PREFIX = "boj:rate:"
     }
 
     override fun save(sessionId: String, code: String, ttlSeconds: Long) {
@@ -27,21 +26,7 @@ class RedisBojVerificationCodeStore(
         return redisTemplate.opsForValue().getAndDelete(key(sessionId))
     }
 
-    override fun incrementRateLimitCount(key: String, ttlSeconds: Long): Long {
-        val rateLimitKey = rateLimitKey(key)
-        val currentCount = redisTemplate.opsForValue().increment(rateLimitKey) ?: 1L
-        if (currentCount == 1L) {
-            // 첫 요청인 경우 TTL 설정
-            redisTemplate.expire(rateLimitKey, Duration.ofSeconds(ttlSeconds))
-        }
-        return currentCount
-    }
-
     private fun key(sessionId: String): String {
         return KEY_PREFIX + sessionId
-    }
-
-    private fun rateLimitKey(key: String): String {
-        return RATE_LIMIT_KEY_PREFIX + key
     }
 }

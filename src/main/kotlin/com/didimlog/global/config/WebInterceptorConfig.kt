@@ -35,12 +35,7 @@ class WebInterceptorConfig(
         // Rate Limiting 인터셉터 (인증 API 보호)
         rateLimitInterceptorProvider.ifAvailable { interceptor ->
             registry.addInterceptor(interceptor)
-                .addPathPatterns(
-                    "/api/v1/auth/signup",
-                    "/api/v1/auth/login",
-                    "/api/v1/auth/find-account",
-                    "/api/v1/auth/reset-password"
-                )
+                .addPathPatterns("/api/v1/auth/**")
         }
 
         performanceMonitoringInterceptorProvider.ifAvailable { interceptor ->
@@ -49,7 +44,6 @@ class WebInterceptorConfig(
         }
     }
 }
-
 
 
 

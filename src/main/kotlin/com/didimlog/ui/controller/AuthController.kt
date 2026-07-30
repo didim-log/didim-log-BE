@@ -8,7 +8,8 @@ import com.didimlog.application.auth.oauth.OAuthExchangeService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.ErrorResponse
-import com.didimlog.global.ratelimit.RateLimitService
+import com.didimlog.global.ratelimit.RateLimitDecision
+import com.didimlog.global.ratelimit.RateLimitInterceptor
 import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.ui.dto.AuthResponse
 import com.didimlog.ui.dto.BojIdDuplicateCheckResponse
@@ -59,7 +60,6 @@ class AuthController(
     private val bojOwnershipVerificationService: BojOwnershipVerificationService,
     private val refreshTokenService: RefreshTokenService,
     private val oAuthExchangeService: OAuthExchangeService,
-    private val rateLimitService: RateLimitService,
     @Value("\${app.admin.secret-key:}")
     private val adminSecretKey: String
 ) {
@@ -136,7 +136,7 @@ class AuthController(
 
     @Operation(
         summary = "로그인",
-        description = "BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 성공 시 Rate Limit이 초기화되며, 로그인 실패 시 남은 시도 횟수가 응답 헤더와 바디에 포함됩니다."
+        description = "BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생하며, 로그인 실패 시 남은 시도 횟수가 응답 헤더와 바디에 포함됩니다."
     )
     @PostMapping("/login")
     fun login(
@@ -148,11 +148,7 @@ class AuthController(
     ): ResponseEntity<*> {
         return try {
             val result = authService.login(request.bojId, request.password)
-            
-            // 로그인 성공 시 Rate Limit 초기화 (정상 사용자임을 증명했으므로 실패 횟수 리셋)
-            val clientIp = HttpRequestUtil.getClientIpAddress(httpRequest)
-            rateLimitService.reset("login:$clientIp")
-            
+
             val response = AuthResponse.login(
                 token = result.token,
                 refreshToken = result.refreshToken,
@@ -162,20 +158,23 @@ class AuthController(
             )
             ResponseEntity.ok(response)
         } catch (e: BusinessException) {
-            // 로그인 실패 시 Rate Limit 정보 포함
-            val clientIp = HttpRequestUtil.getClientIpAddress(httpRequest)
-            val maxLoginRequests = 10
-            val remainingAttempts = rateLimitService.getRemainingRequests("login:$clientIp", maxLoginRequests)
-            
-            // 응답 헤더에 Rate Limit 정보 추가
-            httpResponse.setHeader("X-Rate-Limit-Remaining", remainingAttempts.toString())
-            httpResponse.setHeader("X-Rate-Limit-Limit", maxLoginRequests.toString())
-            
-            // 응답 바디에 Rate Limit 정보 포함
-            val errorResponse = ErrorResponse.of(
+            val rateLimitDecision = httpRequest.getAttribute(
+                RateLimitInterceptor.RATE_LIMIT_DECISION_ATTRIBUTE
+            ) as? RateLimitDecision
+            rateLimitDecision?.let {
+                httpResponse.setHeader("X-Rate-Limit-Remaining", it.remainingRequests.toString())
+                httpResponse.setHeader("X-Rate-Limit-Limit", it.limit.toString())
+            }
+
+            val errorResponse = rateLimitDecision?.let {
+                ErrorResponse.of(
+                    errorCode = e.errorCode,
+                    customMessage = e.message ?: e.errorCode.message,
+                    remainingAttempts = it.remainingRequests
+                )
+            } ?: ErrorResponse.of(
                 errorCode = e.errorCode,
-                customMessage = e.message ?: e.errorCode.message,
-                remainingAttempts = remainingAttempts
+                customMessage = e.message ?: e.errorCode.message
             )
             ResponseEntity.status(e.errorCode.status).body(errorResponse)
         }
@@ -389,15 +388,18 @@ class AuthController(
     )
     @PostMapping("/boj/code")
     fun issueBojVerificationCode(httpRequest: HttpServletRequest): ResponseEntity<BojCodeIssueResponse> {
-        val clientIp = HttpRequestUtil.getConnectionRemoteAddress(httpRequest)
+        val clientIp = HttpRequestUtil.getClientIpAddress(httpRequest)
         val issued = bojOwnershipVerificationService.issueVerificationCode(clientIp)
-        return ResponseEntity.ok(
-            BojCodeIssueResponse(
-                sessionId = issued.sessionId,
-                code = issued.code,
-                expiresInSeconds = issued.expiresInSeconds
+        return ResponseEntity.ok()
+            .header("X-Rate-Limit-Limit", issued.rateLimitDecision.limit.toString())
+            .header("X-Rate-Limit-Remaining", issued.rateLimitDecision.remainingRequests.toString())
+            .body(
+                BojCodeIssueResponse(
+                    sessionId = issued.sessionId,
+                    code = issued.code,
+                    expiresInSeconds = issued.expiresInSeconds
+                )
             )
-        )
     }
 
     @Operation(

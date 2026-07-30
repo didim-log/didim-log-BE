@@ -214,7 +214,13 @@ jobs:
           assert manifest["fixture"]["bojId"] == "perfuser"
           assert manifest["measurement"]["repetitionTotal"] == 5
           assert manifest["measurement"]["ai"]["maxDuration"] == "45s"
-          assert manifest["measurement"]["rateLimit"]["sleepSeconds"] == 0.05
+          assert manifest["measurement"]["rateLimit"] == {
+              "signupMax": 5,
+              "loginMax": 10,
+              "passwordResetMax": 3,
+              "overageRequests": 2,
+              "clientIp": "127.0.0.1",
+          }
           assert manifest["redaction"]["secretsRecorded"] is False
           assert manifest["protocol"]["id"] == "be-refactor-phase0b-v1"
           assert len(manifest["protocol"]["fingerprintSha256"]) == 64

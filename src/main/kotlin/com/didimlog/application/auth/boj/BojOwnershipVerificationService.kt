@@ -3,6 +3,9 @@ package com.didimlog.application.auth.boj
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.global.ratelimit.RateLimitDecision
+import com.didimlog.global.ratelimit.RateLimitException
+import com.didimlog.global.ratelimit.RateLimitService
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.env.Environment
@@ -16,6 +19,7 @@ import java.util.UUID
 class BojOwnershipVerificationService(
     private val codeStore: BojVerificationCodeStore,
     private val profileStatusMessageClient: BojProfileStatusMessageClient,
+    private val rateLimitService: RateLimitService,
     @Value("\${portfolio.fixture.boj-code:}")
     private val fixtureCode: String = "",
     private val environment: Environment? = null
@@ -28,34 +32,45 @@ class BojOwnershipVerificationService(
         private const val CODE_PREFIX = "DIDIM-LOG-"
         private const val CODE_LENGTH = 6
         private const val DEFAULT_TTL_SECONDS = 5 * 60L
-        private const val RATE_LIMIT_KEY_PREFIX = "boj:code:rate:"
+        private const val RATE_LIMIT_KEY_PREFIX = "boj_code:"
         private const val VERIFIED_BOJ_ID_KEY_PREFIX = "boj:verified:"
         private const val MAX_REQUESTS_PER_MINUTE = 5
-        private const val RATE_LIMIT_TTL_SECONDS = 60L
+        private const val RATE_LIMIT_WINDOW_MINUTES = 1
     }
 
     data class IssuedCode(
         val sessionId: String,
         val code: String,
-        val expiresInSeconds: Long
+        val expiresInSeconds: Long,
+        val rateLimitDecision: RateLimitDecision
     )
 
     @Transactional(readOnly = true)
     fun issueVerificationCode(identifier: String?): IssuedCode {
         val rateLimitKey = RATE_LIMIT_KEY_PREFIX + (identifier ?: "unknown")
-        val currentCount = codeStore.incrementRateLimitCount(rateLimitKey, RATE_LIMIT_TTL_SECONDS)
+        val decision = rateLimitService.checkAndRecord(
+            key = rateLimitKey,
+            maxRequests = MAX_REQUESTS_PER_MINUTE,
+            windowMinutes = RATE_LIMIT_WINDOW_MINUTES
+        )
 
-        if (currentCount > MAX_REQUESTS_PER_MINUTE) {
-            throw BusinessException(
-                ErrorCode.TOO_MANY_REQUESTS,
-                "요청이 너무 많습니다. 1분 후 다시 시도해주세요."
+        if (!decision.allowed) {
+            throw RateLimitException(
+                message = "요청이 너무 많습니다. 1분 후 다시 시도해주세요.",
+                retryAfterSeconds = decision.retryAfterSeconds,
+                limit = decision.limit
             )
         }
 
         val sessionId = UUID.randomUUID().toString()
         val code = activeFixtureCode() ?: CODE_PREFIX + randomUpperAlphaNumeric(CODE_LENGTH)
         codeStore.save(sessionId, code, DEFAULT_TTL_SECONDS)
-        return IssuedCode(sessionId = sessionId, code = code, expiresInSeconds = DEFAULT_TTL_SECONDS)
+        return IssuedCode(
+            sessionId = sessionId,
+            code = code,
+            expiresInSeconds = DEFAULT_TTL_SECONDS,
+            rateLimitDecision = decision
+        )
     }
 
     /**

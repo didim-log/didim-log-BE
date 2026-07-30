@@ -11,6 +11,9 @@ import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler
+import com.didimlog.global.ratelimit.RateLimitDecision
+import com.didimlog.global.ratelimit.RateLimitException
+import com.didimlog.global.ratelimit.RateLimitInterceptor
 import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.LoginRequest
 import com.didimlog.ui.dto.SignupRequest
@@ -61,9 +64,6 @@ class AuthControllerTest {
     @Autowired
     private lateinit var bojOwnershipVerificationService: BojOwnershipVerificationService
 
-    @Autowired
-    private lateinit var rateLimitService: com.didimlog.global.ratelimit.RateLimitService
-
     @TestConfiguration
     class TestConfig {
         @Bean
@@ -86,14 +86,6 @@ class AuthControllerTest {
 
         @Bean
         fun studentRepository(): StudentRepository = mockk(relaxed = true)
-
-        // WebConfig를 제외하기 위해 RateLimitInterceptor 관련 빈을 모킹
-        @Bean
-        fun rateLimitService(): com.didimlog.global.ratelimit.RateLimitService = mockk(relaxed = true) {
-            every { isAllowed(any(), any(), any()) } returns true
-            every { getRemainingRequests(any(), any()) } returns 9 // 기본값: 9회 남음
-            every { reset(any()) } just runs // 로그인 성공 시 초기화
-        }
 
         @Bean
         fun rateLimitInterceptor(): com.didimlog.global.ratelimit.RateLimitInterceptor = mockk(relaxed = true)
@@ -236,15 +228,21 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("BOJ 인증 코드 발급은 전달 헤더가 아닌 연결 주소로 제한한다")
-    fun `BOJ 인증 코드 발급은 remoteAddr를 사용한다`() {
+    @DisplayName("BOJ 인증 코드 발급은 서버가 검증한 주소로 제한한다")
+    fun `BOJ 인증 코드 발급은 서버의 remoteAddr를 사용한다`() {
         clearMocks(bojOwnershipVerificationService)
         every {
             bojOwnershipVerificationService.issueVerificationCode("198.51.100.20")
         } returns BojOwnershipVerificationService.IssuedCode(
             sessionId = "verification-session",
             code = "DIDIM-LOG-ABC123",
-            expiresInSeconds = 300L
+            expiresInSeconds = 300L,
+            rateLimitDecision = RateLimitDecision(
+                allowed = true,
+                limit = 5,
+                remainingRequests = 4,
+                retryAfterSeconds = null
+            )
         )
 
         mockMvc.perform(
@@ -254,9 +252,11 @@ class AuthControllerTest {
                     request.remoteAddr = "198.51.100.20"
                     request
                 }
-        )
+            )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.sessionId").value("verification-session"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Limit", "5"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Remaining", "4"))
 
         verify(exactly = 1) {
             bojOwnershipVerificationService.issueVerificationCode("198.51.100.20")
@@ -264,7 +264,35 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("로그인 요청 시 200 OK와 토큰을 반환하고 Rate Limit을 초기화한다")
+    @DisplayName("BOJ 인증 코드 발급 한도를 넘으면 재시도 시간을 반환한다")
+    fun `BOJ 인증 코드 발급 요청 제한`() {
+        clearMocks(bojOwnershipVerificationService)
+        every {
+            bojOwnershipVerificationService.issueVerificationCode("198.51.100.20")
+        } throws RateLimitException(
+            message = "요청이 너무 많습니다. 1분 후 다시 시도해주세요.",
+            retryAfterSeconds = 37L,
+            limit = 5
+        )
+
+        mockMvc.perform(
+            post("/api/v1/auth/boj/code")
+                .with { request ->
+                    request.remoteAddr = "198.51.100.20"
+                    request
+                }
+        )
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.code").value("RATE_LIMIT_EXCEEDED"))
+            .andExpect(jsonPath("$.remainingAttempts").value(0))
+            .andExpect(jsonPath("$.unlockTime").isNotEmpty())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Retry-After", "37"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Limit", "5"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Remaining", "0"))
+    }
+
+    @Test
+    @DisplayName("로그인 요청 시 200 OK와 토큰을 반환한다")
     fun `로그인 성공`() {
         // given
         val request = LoginRequest(bojId = "testuser", password = "ValidPassword123!")
@@ -277,7 +305,6 @@ class AuthControllerTest {
         )
 
         every { authService.login(request.bojId, request.password) } returns authResult
-        every { rateLimitService.reset(any()) } just runs
 
         // when & then
         mockMvc.perform(
@@ -293,7 +320,6 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.message").value("로그인에 성공했습니다."))
 
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
-        verify(exactly = 1) { rateLimitService.reset(any()) }
     }
 
     @Test
@@ -320,22 +346,27 @@ class AuthControllerTest {
     @DisplayName("로그인 요청 시 비밀번호가 일치하지 않으면 400 Bad Request를 반환한다")
     fun `로그인 실패 - 비밀번호 불일치`() {
         // given
-        clearMocks(authService, rateLimitService)
+        clearMocks(authService)
         val request = LoginRequest(bojId = "testuser", password = "WrongPassword123!")
 
         every {
             authService.login(request.bojId, request.password)
         } throws BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 일치하지 않습니다.")
 
-        every {
-            rateLimitService.getRemainingRequests(any(), any())
-        } returns 9
-
         // when & then
         mockMvc.perform(
             post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
+                .requestAttr(
+                    RateLimitInterceptor.RATE_LIMIT_DECISION_ATTRIBUTE,
+                    RateLimitDecision(
+                        allowed = true,
+                        limit = 10,
+                        remainingRequests = 9,
+                        retryAfterSeconds = null
+                    )
+                )
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
@@ -345,29 +376,33 @@ class AuthControllerTest {
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Limit", "10"))
 
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
-        verify(exactly = 1) { rateLimitService.getRemainingRequests(any(), any()) }
     }
 
     @Test
     @DisplayName("로그인 요청 시 존재하지 않는 BOJ ID면 404 Not Found를 반환한다")
     fun `로그인 실패 - 존재하지 않는 BOJ ID`() {
         // given
-        clearMocks(authService, rateLimitService)
+        clearMocks(authService)
         val request = LoginRequest(bojId = "nonexistent", password = "ValidPassword123!")
 
         every {
             authService.login(request.bojId, request.password)
         } throws BusinessException(ErrorCode.STUDENT_NOT_FOUND, "가입되지 않은 BOJ ID입니다.")
 
-        every {
-            rateLimitService.getRemainingRequests(any(), any())
-        } returns 9
-
         // when & then
         mockMvc.perform(
             post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
+                .requestAttr(
+                    RateLimitInterceptor.RATE_LIMIT_DECISION_ATTRIBUTE,
+                    RateLimitDecision(
+                        allowed = true,
+                        limit = 10,
+                        remainingRequests = 9,
+                        retryAfterSeconds = null
+                    )
+                )
         )
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.code").value("STUDENT_NOT_FOUND"))
@@ -377,7 +412,6 @@ class AuthControllerTest {
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Rate-Limit-Limit", "10"))
 
         verify(exactly = 1) { authService.login(request.bojId, request.password) }
-        verify(exactly = 1) { rateLimitService.getRemainingRequests(any(), any()) }
     }
 
     @Test
@@ -390,15 +424,20 @@ class AuthControllerTest {
             authService.login(request.bojId, request.password)
         } throws BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 일치하지 않습니다.")
 
-        every {
-            rateLimitService.getRemainingRequests(any(), any())
-        } returns 0 // 남은 횟수 0
-
         // when & then
         mockMvc.perform(
             post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
+                .requestAttr(
+                    RateLimitInterceptor.RATE_LIMIT_DECISION_ATTRIBUTE,
+                    RateLimitDecision(
+                        allowed = true,
+                        limit = 10,
+                        remainingRequests = 0,
+                        retryAfterSeconds = null
+                    )
+                )
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.remainingAttempts").value(0))

@@ -98,7 +98,7 @@ HARNESS_GIT_DIRTY="$([[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]] && echo
 : "${APP_TIMEZONE:=Asia/Seoul}"
 : "${MOCK_GEMINI_MODE:=wiremock}"
 : "${MOCK_GEMINI_DELAY_MS:=500}"
-: "${BASE_URL:=http://localhost:8080}"
+: "${BASE_URL:=http://127.0.0.1:8080}"
 : "${SERVER_PORT:=8080}"
 : "${WIREMOCK_URL:=http://localhost:8090}"
 : "${WIREMOCK_PORT:=8090}"
@@ -122,7 +122,7 @@ HARNESS_GIT_DIRTY="$([[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]] && echo
 : "${OAUTH_GITHUB_SECRET:=performance-github-secret}"
 : "${OAUTH_NAVER_ID:=performance-naver-id}"
 : "${OAUTH_NAVER_SECRET:=performance-naver-secret}"
-: "${SERVER_URL:=http://localhost:8080}"
+: "${SERVER_URL:=http://127.0.0.1:8080}"
 : "${JWT_SECRET:=performance-secret-key-must-be-at-least-256-bits-long-1234567890}"
 : "${JWT_ACCESS_TOKEN_EXPIRATION:=1800000}"
 : "${JWT_REFRESH_TOKEN_EXPIRATION:=604800000}"
@@ -177,11 +177,7 @@ HARNESS_GIT_DIRTY="$([[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]] && echo
 : "${RATE_LIMIT_LOGIN_MAX:=10}"
 : "${RATE_LIMIT_PASSWORD_RESET_MAX:=3}"
 : "${RATE_LIMIT_OVERAGE_REQUESTS:=2}"
-: "${RATE_LIMIT_SLEEP_SECONDS:=0.05}"
-: "${RATE_LIMIT_IP_PREFIX:=10.67}"
-: "${RATE_LIMIT_SIGNUP_IP:=10.67.1.11}"
-: "${RATE_LIMIT_LOGIN_IP:=10.67.1.12}"
-: "${RATE_LIMIT_PASSWORD_RESET_IP:=10.67.1.13}"
+: "${RATE_LIMIT_CLIENT_IP:=127.0.0.1}"
 : "${P95_MS:=}"
 
 export MONGO_PORT REDIS_PORT WIREMOCK_PORT
@@ -243,8 +239,7 @@ export AI_CONCURRENCY AI_REPEAT_COUNT AI_SYNC_WAIT_MS AI_MAX_DURATION AI_POLL_TI
 export AI_POLL_INTERVAL_MILLIS AI_FAILED_POLL_TIMEOUT_SECONDS AI_COMPLETED_POLL_TIMEOUT_SECONDS
 export EXPECTED_GEMINI_CALLS FAIL_FAST_AI_REPEAT
 export RATE_LIMIT_SIGNUP_MAX RATE_LIMIT_LOGIN_MAX RATE_LIMIT_PASSWORD_RESET_MAX
-export RATE_LIMIT_OVERAGE_REQUESTS RATE_LIMIT_SLEEP_SECONDS P95_MS
-export RATE_LIMIT_IP_PREFIX RATE_LIMIT_SIGNUP_IP RATE_LIMIT_LOGIN_IP RATE_LIMIT_PASSWORD_RESET_IP
+export RATE_LIMIT_OVERAGE_REQUESTS RATE_LIMIT_CLIENT_IP P95_MS
 export SHELL_JAVA_VERSION K6_ACTUAL_VERSION K6_EXPECTED_VERSION
 export HOST_OS HOST_ARCH HOST_CPU HOST_MEMORY_BYTES
 
@@ -610,19 +605,9 @@ if async_core_pool_size > async_max_pool_size:
 if value("READ_RETROSPECTIVE_IDS").strip():
     raise SystemExit("READ_RETROSPECTIVE_IDS must be empty so the fixed fixture determines detail IDs")
 
-rate_limit_ips = {
-    "prefix": value("RATE_LIMIT_IP_PREFIX"),
-    "signup": value("RATE_LIMIT_SIGNUP_IP"),
-    "login": value("RATE_LIMIT_LOGIN_IP"),
-    "passwordReset": value("RATE_LIMIT_PASSWORD_RESET_IP"),
-}
-if rate_limit_ips != {
-    "prefix": "10.67",
-    "signup": "10.67.1.11",
-    "login": "10.67.1.12",
-    "passwordReset": "10.67.1.13",
-}:
-    raise SystemExit("Rate Limit test IPs must match the fixed Phase 0B values")
+rate_limit_client_ip = value("RATE_LIMIT_CLIENT_IP")
+if rate_limit_client_ip != "127.0.0.1":
+    raise SystemExit("RATE_LIMIT_CLIENT_IP must match the raw local peer address 127.0.0.1")
 
 performance_root_path = pathlib.Path(performance_root).resolve()
 harness_files = []
@@ -783,8 +768,7 @@ manifest = {
             "loginMax": integer("RATE_LIMIT_LOGIN_MAX", 1),
             "passwordResetMax": integer("RATE_LIMIT_PASSWORD_RESET_MAX", 1),
             "overageRequests": integer("RATE_LIMIT_OVERAGE_REQUESTS", 1),
-            "sleepSeconds": number("RATE_LIMIT_SLEEP_SECONDS"),
-            "clientIps": rate_limit_ips,
+            "clientIp": rate_limit_client_ip,
         },
     },
     "redaction": {

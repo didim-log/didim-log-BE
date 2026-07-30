@@ -8,6 +8,10 @@ spring:
   data:
     mongodb:
       auto-index-creation: false
+    redis:
+      # 장애 시 인증 요청 스레드가 오래 대기하지 않도록 상한을 둔다.
+      connect-timeout: 2s
+      timeout: 2s
 
   # Swagger UI 접근을 위한 HTTP Basic Authentication 설정
   security:
@@ -77,7 +81,11 @@ logging:
     root: INFO
 
 server:
-  forward-headers-strategy: framework
+  # Docker Compose에서 고정한 Nginx 주소에서 온 전달 헤더만 반영한다.
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: ${TRUSTED_PROXY_IP_PATTERN:^172\.28\.0\.10$}
 
 app:
   server:

@@ -8,9 +8,9 @@ import com.didimlog.global.exception.ErrorCode
  */
 class RateLimitException(
     message: String,
-    val retryAfterSeconds: Long? = null
+    val retryAfterSeconds: Long? = null,
+    val limit: Int? = null
 ) : BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED, message)
-
 
 
 

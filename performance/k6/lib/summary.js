@@ -43,9 +43,17 @@ export function summaryHandlers(name) {
       mockGeminiDelayMs: __ENV.MOCK_GEMINI_DELAY_MS || "NOT_CAPTURED",
       scenario: __ENV.PERF_SCENARIO || name,
       executor: __ENV.K6_EXECUTOR || "NOT_CAPTURED",
-      vus: __ENV.K6_VUS || __ENV.READ_VUS || __ENV.AI_CONCURRENCY || "NOT_CAPTURED",
+      vus:
+        metricValue("vus_max", "max") ??
+        __ENV.K6_VUS ??
+        __ENV.READ_VUS ??
+        __ENV.AI_CONCURRENCY ??
+        "NOT_CAPTURED",
       iterations: metricCount("iterations"),
-      duration: __ENV.K6_DURATION || __ENV.READ_DURATION || "NOT_CAPTURED",
+      duration:
+        data.state?.testRunDurationMs !== undefined
+          ? `${data.state.testRunDurationMs}ms`
+          : __ENV.K6_DURATION || __ENV.READ_DURATION || "NOT_CAPTURED",
       requests: metricCount("http_reqs"),
       rps: metricRate("http_reqs"),
       errorRate: metricRate("http_req_failed"),
@@ -99,6 +107,12 @@ export function summaryHandlers(name) {
         passwordResetRejected: metricCount("rate_limit_password_reset_rejected"),
         unexpectedStatus: metricCount("rate_limit_unexpected_status"),
         policyMismatches: metricCount("rate_limit_policy_mismatches"),
+        signupBurstStartLagMaxMs: metricValue("rate_limit_signup_burst_start_lag_ms", "max"),
+        loginBurstStartLagMaxMs: metricValue("rate_limit_login_burst_start_lag_ms", "max"),
+        passwordResetBurstStartLagMaxMs: metricValue(
+          "rate_limit_password_reset_burst_start_lag_ms",
+          "max"
+        ),
       },
       geminiActualCallCount: metricValue("gemini_call_count", "value"),
       finalAiReviewCount: __ENV.FINAL_AI_REVIEW_COUNT || "VERIFY_SCRIPT_REQUIRED",

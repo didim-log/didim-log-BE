@@ -3,7 +3,7 @@ services:
     image: stdiodh/didim-log-be:latest
     container_name: didim-log-be-container
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     env_file:
       - .env
     networks:
@@ -38,11 +38,12 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./letsencrypt:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
     networks:
-      - didim-log-network
+      didim-log-network:
+        ipv4_address: 172.28.0.10
     restart: always
     depends_on:
       - didim-log-be
@@ -61,6 +62,9 @@ services:
 networks:
   didim-log-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
 
 volumes:
   mongodb-data:

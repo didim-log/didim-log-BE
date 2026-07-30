@@ -64,6 +64,13 @@ Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
 | POST | `/api/v1/auth/boj/verify` | BOJ 프로필 상태 메시지에서 발급 코드 포함 여부를 확인합니다. 성공한 세션은 `/signup`에서 한 번만 사용할 수 있습니다. | **Request Body:**<br>`BojVerifyRequest`<br>- `sessionId` (String, required)<br>- `bojId` (String, required) | `BojVerifyResponse`<br>- `verified` (Boolean)<br>- `verifiedBojId` (String) | None |
 | POST | `/api/v1/auth/refresh` | Refresh Token으로 Access/Refresh Token을 재발급합니다. | **Headers:**<br>- `Authorization: Bearer {refreshToken}` (optional)<br>**Request Body:**<br>`RefreshTokenRequest`<br>- `refreshToken` (String, optional)<br><br>Body와 Header 중 하나에서 Refresh Token 제공 필요 | `AuthResponse`<br>- `token` (String)<br>- `refreshToken` (String)<br>- `message` (String) | None |
 
+인증 요청 제한은 Tomcat이 신뢰한 내부 프록시의 전달 헤더를 반영한 `remoteAddr`를
+기준으로 적용합니다. `/signup`과 `/super-admin`은 합계 5건/60분,
+`/login`은 10건/60분, 네 계정 복구 경로는 합계 3건/60분입니다.
+`/boj/code`는 5건/1분, `/boj/verify`는 10건/1분입니다. 허용·차단 응답은
+`X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining`을 포함하며, 429 응답은
+`Retry-After`와 `unlockTime`도 반환합니다.
+
 **예시 요청 (회원가입):**
 ```http
 POST /api/v1/auth/signup
@@ -1776,6 +1783,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `TEMPLATE_RENDER_TIMEOUT` (504): 템플릿 렌더링 시간 초과 (`retryable=true`)
 - `TEMPLATE_CANNOT_DELETE_SYSTEM` (403): 시스템 템플릿은 삭제할 수 없음
 - `MAINTENANCE_MODE` (503): 서비스가 일시적으로 점검 중
+- `RATE_LIMIT_SERVICE_UNAVAILABLE` (503): 요청 제한 저장소에 연결할 수 없어 인증 요청을 처리할 수 없음 (`retryable=true`)
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
 
 **예시 에러 응답:**

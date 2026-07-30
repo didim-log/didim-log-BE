@@ -18,7 +18,7 @@ Controller와 테스트 코드 기준 경로는 다음과 같다.
 | 회고 상세 조회 | `GET /api/v1/retrospectives/{retrospectiveId}` | 코드상 Log 상세 API가 없어 read-workload의 `log_detail` 태그는 이 실제 경로를 사용 |
 | 회원가입 Rate Limit | `POST /api/v1/auth/signup` | IP key `rate_limit:signup:{ip}`, 5/hour |
 | 로그인 Rate Limit | `POST /api/v1/auth/login` | IP key `rate_limit:login:{ip}`, 10/hour |
-| 비밀번호 재설정 Rate Limit | `POST /api/v1/auth/reset-password` | IP key `rate_limit:password_reset:{ip}`, 3/hour |
+| 계정 복구 Rate Limit | `POST /api/v1/auth/find-account`, `/find-id`, `/find-password`, `/reset-password` | 공유 IP key `rate_limit:password_reset:{ip}`, 합계 3/hour |
 
 ## AI 회고 호출 흐름
 
@@ -110,11 +110,11 @@ performance/k6/run-local.sh cleanup
 
 ## Rate Limit Key Cleanup
 
-`auth-rate-limit.js`는 `RATE_LIMIT_SIGNUP_IP`, `RATE_LIMIT_LOGIN_IP`, `RATE_LIMIT_PASSWORD_RESET_IP`로 고정한 테스트 IP만 사용한다. `run-local.sh rate-limit`는 실행 전후에 아래 테스트 key만 삭제한다.
+`auth-rate-limit.js`는 위조 가능한 전달 헤더를 보내지 않고 `BASE_URL=http://127.0.0.1:8080`의 실제 연결 주소를 사용한다. 정책마다 VU 한 개가 요청 한 건만 보내고, 공통 시작 시각까지 기다린 뒤 500ms 안에 시작했는지 threshold로 확인한다. HTTP 실행은 경계 응답 수와 헤더 계약을 확인하며, Redis 연산의 원자성은 별도 통합 테스트에서 확인한다. `run-local.sh rate-limit`는 실행 전후에 아래 로컬 테스트 key만 삭제한다.
 
-- `rate_limit:signup:{RATE_LIMIT_SIGNUP_IP}`
-- `rate_limit:login:{RATE_LIMIT_LOGIN_IP}`
-- `rate_limit:password_reset:{RATE_LIMIT_PASSWORD_RESET_IP}`
+- `rate_limit:signup:{RATE_LIMIT_CLIENT_IP}`
+- `rate_limit:login:{RATE_LIMIT_CLIENT_IP}`
+- `rate_limit:password_reset:{RATE_LIMIT_CLIENT_IP}`
 
 ## 결과 검증
 
