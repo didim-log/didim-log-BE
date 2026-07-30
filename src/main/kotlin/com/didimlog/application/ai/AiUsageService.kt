@@ -3,12 +3,14 @@ package com.didimlog.application.ai
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.slf4j.LoggerFactory
-import org.springframework.data.redis.core.RedisOperations
-import org.springframework.data.redis.core.SessionCallback
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Service
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 /**
  * AI 사용량 추적 및 제한 서비스
@@ -28,14 +30,107 @@ class AiUsageService(
         private const val CONFIG_REQUIRE_BOJ_FOR_AI_REVIEW = "AI_CONFIG:REQUIRE_BOJ_FOR_AI_REVIEW"
         private const val USAGE_GLOBAL_PREFIX = "AI_USAGE:GLOBAL:"
         private const val USAGE_USER_PREFIX = "AI_USAGE:USER:"
+        private const val USAGE_RESERVATION_PREFIX = "AI_USAGE:RESERVATION:"
 
         // 기본값
         private const val DEFAULT_GLOBAL_LIMIT = 1000
         private const val DEFAULT_USER_LIMIT = 5
         private const val DEFAULT_ENABLED = true
         private const val DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW = true
+        private const val MAX_RESERVATION_KEY_ATTEMPTS = 3
+
+        private const val RESERVATION_SUCCEEDED = 0L
+        private const val SERVICE_DISABLED = 1L
+        private const val GLOBAL_LIMIT_EXCEEDED = 2L
+        private const val USER_LIMIT_EXCEEDED = 3L
+        private const val RESERVATION_KEY_COLLISION = 4L
+        private const val INVALID_USAGE_COUNTER = -1L
 
         private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+
+        private val RESERVE_USAGE_SCRIPT = DefaultRedisScript(
+            """
+            local function parseInteger(value, fallback)
+                if not value or not string.match(value, '^%-?%d+$') then
+                    return fallback
+                end
+                return tonumber(value) or fallback
+            end
+
+            local enabled = redis.call('GET', KEYS[1])
+            local globalLimit = parseInteger(redis.call('GET', KEYS[2]), tonumber(ARGV[1]))
+            local userLimit = parseInteger(redis.call('GET', KEYS[3]), tonumber(ARGV[2]))
+            local globalValue = redis.call('GET', KEYS[4])
+            local userValue = redis.call('GET', KEYS[5])
+            local globalUsage = parseInteger(globalValue, 0)
+            local userUsage = parseInteger(userValue, 0)
+            local ttlMillis = tonumber(ARGV[3])
+
+            if enabled and string.lower(enabled) ~= 'true' then
+                return 1
+            end
+            if globalUsage >= globalLimit then
+                return 2
+            end
+            if userUsage >= userLimit then
+                return 3
+            end
+            if not redis.call('SET', KEYS[6], '1', 'NX', 'PX', ttlMillis) then
+                return 4
+            end
+
+            redis.call('SET', KEYS[4], tostring(globalUsage + 1), 'PX', ttlMillis)
+            redis.call('SET', KEYS[5], tostring(userUsage + 1), 'PX', ttlMillis)
+            return 0
+            """.trimIndent(),
+            Long::class.java
+        )
+
+        private val RELEASE_USAGE_SCRIPT = DefaultRedisScript(
+            """
+            local function parseCounter(value)
+                if not value then
+                    return 0
+                end
+                if not string.match(value, '^%-?%d+$') then
+                    return nil
+                end
+                return tonumber(value)
+            end
+
+            if redis.call('EXISTS', KEYS[1]) == 0 then
+                return 0
+            end
+
+            local globalUsage = parseCounter(redis.call('GET', KEYS[2]))
+            local userUsage = parseCounter(redis.call('GET', KEYS[3]))
+            if not globalUsage or not userUsage then
+                return -1
+            end
+
+            redis.call('DEL', KEYS[1])
+
+            if globalUsage > 0 then
+                local remainingGlobalUsage = globalUsage - 1
+                if remainingGlobalUsage == 0 then
+                    redis.call('DEL', KEYS[2])
+                else
+                    redis.call('SET', KEYS[2], tostring(remainingGlobalUsage), 'KEEPTTL')
+                end
+            end
+
+            if userUsage > 0 then
+                local remainingUserUsage = userUsage - 1
+                if remainingUserUsage == 0 then
+                    redis.call('DEL', KEYS[3])
+                else
+                    redis.call('SET', KEYS[3], tostring(remainingUserUsage), 'KEEPTTL')
+                end
+            end
+            return 1
+            """.trimIndent(),
+            Long::class.java
+        )
     }
 
     /**
@@ -75,29 +170,85 @@ class AiUsageService(
     }
 
     /**
-     * AI 사용량을 증가시킵니다 (원자적 연산).
-     *
-     * @param userId 변경되지 않는 학생 ID
+     * AI 호출 전에 일일 사용량을 원자적으로 예약합니다.
      */
-    fun incrementUsage(userId: String) {
-        val today = LocalDate.now().format(DATE_FORMATTER)
-        val globalKey = "$USAGE_GLOBAL_PREFIX$today"
-        val userKey = "$USAGE_USER_PREFIX$userId:$today"
-        val ttlSeconds = getSecondsUntilMidnight()
+    fun reserveUsage(userId: String): UsageReservation {
+        val dailyKeys = createDailyUsageKeys(userId)
 
-        redisTemplate.executePipelined(object : SessionCallback<Unit> {
-            override fun <K : Any?, V : Any?> execute(operations: RedisOperations<K, V>): Unit? {
-                @Suppress("UNCHECKED_CAST")
-                val stringOps = operations as RedisOperations<String, String>
-                stringOps.opsForValue().increment(globalKey)
-                stringOps.opsForValue().increment(userKey)
-                stringOps.expire(globalKey, java.time.Duration.ofSeconds(ttlSeconds))
-                stringOps.expire(userKey, java.time.Duration.ofSeconds(ttlSeconds))
-                return null
+        repeat(MAX_RESERVATION_KEY_ATTEMPTS) {
+            val reservationKey =
+                "$USAGE_RESERVATION_PREFIX$userId:${dailyKeys.date}:${UUID.randomUUID()}"
+            val result = redisTemplate.execute(
+                RESERVE_USAGE_SCRIPT,
+                listOf(
+                    CONFIG_ENABLED,
+                    CONFIG_GLOBAL_LIMIT,
+                    CONFIG_USER_LIMIT,
+                    dailyKeys.globalUsageKey,
+                    dailyKeys.userUsageKey,
+                    reservationKey
+                ),
+                DEFAULT_GLOBAL_LIMIT.toString(),
+                DEFAULT_USER_LIMIT.toString(),
+                dailyKeys.ttlMillis.toString()
+            )
+
+            when (result) {
+                RESERVATION_SUCCEEDED -> {
+                    log.debug(
+                        "AI 사용량 예약: userId={}, globalKey={}, userKey={}",
+                        userId,
+                        dailyKeys.globalUsageKey,
+                        dailyKeys.userUsageKey
+                    )
+                    return UsageReservation(
+                        reservationKey = reservationKey,
+                        globalUsageKey = dailyKeys.globalUsageKey,
+                        userUsageKey = dailyKeys.userUsageKey
+                    )
+                }
+                SERVICE_DISABLED -> throw BusinessException(
+                    ErrorCode.AI_SERVICE_DISABLED,
+                    "AI 서비스가 일시 중지되었습니다."
+                )
+                GLOBAL_LIMIT_EXCEEDED -> throw BusinessException(
+                    ErrorCode.AI_GLOBAL_LIMIT_EXCEEDED,
+                    "현재 서비스 이용량이 많아 AI 기능이 일시 중지되었습니다."
+                )
+                USER_LIMIT_EXCEEDED -> {
+                    val userLimit = getAvailabilitySnapshot(userId).userLimit
+                    throw BusinessException(
+                        ErrorCode.AI_USER_LIMIT_EXCEEDED,
+                        "일일 AI 사용 횟수(${userLimit}회)를 초과했습니다. 내일 다시 이용해주세요."
+                    )
+                }
+                RESERVATION_KEY_COLLISION -> Unit
+                else -> throw IllegalStateException("알 수 없는 AI 사용량 예약 결과입니다. result=$result")
             }
-        })
+        }
 
-        log.debug("AI 사용량 증가: userId=$userId, globalKey=$globalKey, userKey=$userKey")
+        throw IllegalStateException("AI 사용량 예약 키를 생성할 수 없습니다.")
+    }
+
+    /**
+     * 실패한 AI 호출의 사용량 예약을 한 번만 반환합니다.
+     */
+    fun releaseUsage(reservation: UsageReservation): Boolean {
+        val result = redisTemplate.execute(
+            RELEASE_USAGE_SCRIPT,
+            listOf(
+                reservation.reservationKey,
+                reservation.globalUsageKey,
+                reservation.userUsageKey
+            )
+        )
+        if (result == INVALID_USAGE_COUNTER) {
+            throw IllegalStateException("AI 사용량 카운터가 올바른 정수가 아닙니다.")
+        }
+        val released = result == 1L
+
+        log.debug("AI 사용량 예약 해제: released={}", released)
+        return released
     }
 
     /**
@@ -248,13 +399,17 @@ class AiUsageService(
         val isServiceEnabled: Boolean
     )
 
-    /**
-     * 자정까지 남은 초를 계산합니다.
-     */
-    private fun getSecondsUntilMidnight(): Long {
-        val now = java.time.LocalDateTime.now()
+    private fun createDailyUsageKeys(userId: String): DailyUsageKeys {
+        val now = LocalDateTime.now()
+        val date = now.toLocalDate().format(DATE_FORMATTER)
         val midnight = now.toLocalDate().plusDays(1).atStartOfDay()
-        return java.time.Duration.between(now, midnight).seconds
+        val ttlMillis = Duration.between(now, midnight).toMillis().coerceAtLeast(1L)
+        return DailyUsageKeys(
+            date = date,
+            globalUsageKey = "$USAGE_GLOBAL_PREFIX$date",
+            userUsageKey = "$USAGE_USER_PREFIX$userId:$date",
+            ttlMillis = ttlMillis
+        )
     }
 
     private fun getAvailabilitySnapshot(userId: String?): AvailabilitySnapshot {
@@ -315,6 +470,19 @@ class AiUsageService(
         val userLimit: Int,
         val requireBojForAiReview: Boolean = DEFAULT_REQUIRE_BOJ_FOR_AI_REVIEW,
         val todayUserUsage: Int? = null
+    )
+
+    data class UsageReservation internal constructor(
+        internal val reservationKey: String,
+        internal val globalUsageKey: String,
+        internal val userUsageKey: String
+    )
+
+    private data class DailyUsageKeys(
+        val date: String,
+        val globalUsageKey: String,
+        val userUsageKey: String,
+        val ttlMillis: Long
     )
 
     private data class AvailabilitySnapshot(

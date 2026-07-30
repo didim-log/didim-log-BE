@@ -306,6 +306,7 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 | 검증 범위 | 조건 | 확인 결과 |
 | --- | --- | --- |
 | AI 리뷰 중복 생성 | 동일 로그 50건 동시 요청·10회 반복 | 각 회차 Gemini 호출 1회·저장 1건, 최종 `COMPLETED`, 잠금 잔존 0건 |
+| AI 일일 사용량 | 실제 Redis, 남은 사용자·전역 한도 각각 1회에서 20건 동시 예약·동일 예약 2회 반환 | 각 경계 성공 1건·거절 19건, 카운터 한도 유지, 동일 예약은 1회만 감소 |
 | 인증 요청 제한 | 실제 Redis 동일 키 20건 동시 요청·한도 1건 | 허용 1건·차단 19건, 최종 카운터 1 |
 | 가입·회고 DB 정합성 | 실제 MongoDB, 같은 학생·문제 회고 2건 동시 insert | 학생 식별자 중복 거부, 회고 1건 저장, 기존 중복 데이터 자동 삭제 0건 |
 | Refresh Token 회전 | 실제 Redis 7.2.5, 같은 기존 토큰으로 20건 동시 교체 | 성공 1건, 기존 토큰 0건, 새 토큰 1건 |
@@ -337,6 +338,7 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 기본 템플릿 삭제 순서, 계정 삭제 중간 실패와 목록 fallback 판정은 [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md)에 정리했습니다.
 통계 projection, 연도 범위 query와 복합 인덱스의 전후 측정은 [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)에 정리했습니다.
 문제 메타데이터의 부분 upsert와 저장 명령 전후 측정은 [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)에 정리했습니다.
+AI 사용량의 예약·실패 반환 순서와 실제 Redis 경계 검증은 [AI 사용량 원자적 예약](./DOCS/refactoring/be-refactor/PHASE_5A_AI_USAGE_ATOMIC_RESERVATION.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -415,6 +417,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md)
 - [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)
 - [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)
+- [AI 사용량 원자적 예약](./DOCS/refactoring/be-refactor/PHASE_5A_AI_USAGE_ATOMIC_RESERVATION.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

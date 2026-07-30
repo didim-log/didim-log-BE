@@ -48,8 +48,6 @@ class AiReviewService(
         }
 
         val userId = logEntity.studentId
-        checkAvailability(userId)
-
         val now = LocalDateTime.now()
         val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
         
@@ -57,8 +55,8 @@ class AiReviewService(
             return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
         }
 
-        // AI API 호출 및 사용량 증가는 generateAiReview 내부에서 처리
-        return generateAiReview(logId, code, logEntity.isSuccess, userId)
+        val reservation = reserveUsageAfterLock(logId, userId)
+        return generateAiReview(logId, code, logEntity.isSuccess, userId, reservation)
     }
 
     @Transactional
@@ -86,13 +84,8 @@ class AiReviewService(
             return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
         }
 
-        try {
-            checkAvailability(usageUserId)
-            scheduleAiReviewGeneration(logId, code, logEntity.isSuccess, usageUserId)
-        } catch (e: BusinessException) {
-            logAiReviewLockRepository.markFailed(logId)
-            throw e
-        }
+        val reservation = reserveUsageAfterLock(logId, usageUserId)
+        scheduleAiReviewGeneration(logId, code, logEntity.isSuccess, usageUserId, reservation)
 
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
     }
@@ -115,30 +108,41 @@ class AiReviewService(
         return requesterStudentId
     }
 
-    private fun checkAvailability(userId: String?) {
+    private fun reserveUsageAfterLock(
+        logId: String,
+        userId: String?
+    ): AiUsageService.UsageReservation? {
         if (userId == null) {
-            return
+            return null
         }
 
-        log.info("Checking AI availability for user: $userId")
-        try {
-            aiUsageService.checkAvailability(userId)
-        } catch (e: BusinessException) {
-            log.warn("AI availability check failed for user: $userId, reason: ${e.message}")
+        log.info("Reserving AI usage for user: $userId")
+        return try {
+            aiUsageService.reserveUsage(userId)
+        } catch (e: RuntimeException) {
+            log.warn("AI usage reservation failed for user: $userId, reason: ${e.message}")
+            logAiReviewLockRepository.markFailed(logId)
             throw e
         }
     }
 
-    private fun scheduleAiReviewGeneration(logId: String, code: String, isSuccess: Boolean?, userId: String?) {
+    private fun scheduleAiReviewGeneration(
+        logId: String,
+        code: String,
+        isSuccess: Boolean?,
+        userId: String?,
+        reservation: AiUsageService.UsageReservation?
+    ) {
         try {
             aiReviewTaskExecutor.execute {
                 try {
-                    generateAiReview(logId, code, isSuccess, userId)
+                    generateAiReview(logId, code, isSuccess, userId, reservation)
                 } catch (e: Exception) {
                     log.error("비동기 AI 리뷰 생성 실패: logId=$logId, userId=$userId", e)
                 }
             }
         } catch (e: Exception) {
+            releaseUsage(reservation, logId, userId)
             logAiReviewLockRepository.markFailed(logId)
             throw AiGenerationFailedException("AI 리뷰 작업 등록에 실패했습니다.", e)
         }
@@ -172,33 +176,54 @@ class AiReviewService(
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
     }
 
-    private fun generateAiReview(logId: String, code: String, isSuccess: Boolean?, userId: String?): AiReviewResult {
-        val language = detectCodeLanguage(code)
-        val prompt = buildPrompt(language, truncateCode(code), isSuccess)
-
+    private fun generateAiReview(
+        logId: String,
+        code: String,
+        isSuccess: Boolean?,
+        userId: String?,
+        reservation: AiUsageService.UsageReservation?
+    ): AiReviewResult {
         val startTime = System.currentTimeMillis()
         val response = try {
-            requestAiApiWithErrorHandling(logId, prompt, startTime, userId)
+            val language = detectCodeLanguage(code)
+            val prompt = buildPrompt(language, truncateCode(code), isSuccess)
+            requestAiApiWithErrorHandling(prompt, startTime, userId)
         } catch (e: Exception) {
-            // AI 호출 실패 시 사용량 증가하지 않음
+            releaseUsage(reservation, logId, userId)
+            logAiReviewLockRepository.markFailed(logId)
             log.error("AI API 호출 실패: logId=$logId, userId=$userId", e)
             throw e
         }
         val duration = System.currentTimeMillis() - startTime
-
-        // AI 호출 성공 후에만 사용량 증가
-        if (userId != null) {
-            log.info("Incrementing AI usage for user: $userId")
-            aiUsageService.incrementUsage(userId)
-        }
 
         val result = saveAiReviewResult(logId, response.review, duration)
         aiReviewCodeCacheService.cacheReview(code, isSuccess, result.review)
         return result
     }
 
-    private fun requestAiApiWithErrorHandling(
+    private fun releaseUsage(
+        reservation: AiUsageService.UsageReservation?,
         logId: String,
+        userId: String?
+    ) {
+        if (reservation == null) {
+            return
+        }
+
+        try {
+            val released = aiUsageService.releaseUsage(reservation)
+            log.debug(
+                "AI usage reservation release: logId={}, userId={}, released={}",
+                logId,
+                userId,
+                released
+            )
+        } catch (e: RuntimeException) {
+            log.error("AI 사용량 예약 해제 실패: logId=$logId, userId=$userId", e)
+        }
+    }
+
+    private fun requestAiApiWithErrorHandling(
         prompt: String,
         startTime: Long,
         userId: String?
@@ -207,7 +232,6 @@ class AiReviewService(
             aiApiClient.requestOneLineReview(prompt, timeoutSeconds = AI_TIMEOUT_SECONDS)
         } catch (e: java.util.concurrent.TimeoutException) {
             val duration = System.currentTimeMillis() - startTime
-            logAiReviewLockRepository.markFailed(logId)
             throw AiGenerationTimeoutException(duration, cause = e)
         } catch (e: HttpClientErrorException) {
             // Circuit Breaker: 429 (Too Many Requests) 또는 QuotaExceeded 시 긴급 중지
@@ -217,7 +241,6 @@ class AiReviewService(
                 log.error("AI API Quota 초과 감지. 긴급 중지 실행. userId=$userId", e)
                 aiUsageService.emergencyStop()
             }
-            logAiReviewLockRepository.markFailed(logId)
             throw AiGenerationFailedException(
                 message = "AI 리뷰 생성 실패 (소요 시간: ${System.currentTimeMillis() - startTime}ms)",
                 cause = e
@@ -229,7 +252,6 @@ class AiReviewService(
                 log.error("AI API Quota 초과 감지. 긴급 중지 실행. userId=$userId", e)
                 aiUsageService.emergencyStop()
             }
-            logAiReviewLockRepository.markFailed(logId)
             throw AiGenerationFailedException(
                 message = "AI 리뷰 생성 실패 (소요 시간: ${System.currentTimeMillis() - startTime}ms)",
                 cause = e
