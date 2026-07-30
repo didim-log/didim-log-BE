@@ -23,31 +23,19 @@ class JwtTokenProvider(
     private val refreshTokenExpiration: Long
 ) {
 
+    companion object {
+        private const val TOKEN_TYPE_CLAIM = "type"
+        private const val ACCESS_TOKEN_TYPE = "access"
+        private const val REFRESH_TOKEN_TYPE = "refresh"
+    }
+
     private val secretKey: SecretKey by lazy {
         Keys.hmacShaKeyFor(secret.toByteArray(StandardCharsets.UTF_8))
     }
 
     /**
-     * JWT 토큰을 생성한다.
-     *
-     * @param subject 토큰의 주체 (보통 사용자 ID 또는 BOJ ID)
-     * @return 생성된 JWT 토큰
-     */
-    fun createToken(subject: String): String {
-        val now = Date()
-        val expiryDate = Date(now.time + expiration)
-
-        return Jwts.builder()
-            .subject(subject)
-            .issuedAt(now)
-            .expiration(expiryDate)
-            .signWith(secretKey)
-            .compact()
-    }
-
-    /**
      * 사용자 ID와 Role을 기반으로 JWT 토큰을 생성한다.
-     * Role 정보를 Payload에 포함시켜 권한 기반 접근 제어에 사용한다.
+     * Access Token 용도와 Role 정보를 Payload에 포함시켜 인증과 권한 기반 접근 제어에 사용한다.
      *
      * @param subject 토큰의 주체 (보통 사용자 ID 또는 BOJ ID)
      * @param role 사용자 권한 (USER, ADMIN 등)
@@ -60,6 +48,7 @@ class JwtTokenProvider(
         return Jwts.builder()
             .subject(subject)
             .claim("role", role)
+            .claim(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE)
             .issuedAt(now)
             .expiration(expiryDate)
             .signWith(secretKey)
@@ -102,7 +91,7 @@ class JwtTokenProvider(
         return Jwts.builder()
             .subject(subject)
             .id(UUID.randomUUID().toString())
-            .claim("type", "refresh")
+            .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
             .issuedAt(now)
             .expiration(expiryDate)
             .signWith(secretKey)
@@ -133,7 +122,22 @@ class JwtTokenProvider(
     fun isRefreshToken(token: String): Boolean {
         return try {
             val claims = getClaims(token)
-            claims["type"] == "refresh"
+            claims[TOKEN_TYPE_CLAIM] == REFRESH_TOKEN_TYPE
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Access Token인지 확인한다.
+     *
+     * @param token JWT 토큰
+     * @return Access Token이면 true, 그렇지 않으면 false
+     */
+    fun isAccessToken(token: String): Boolean {
+        return try {
+            val claims = getClaims(token)
+            claims[TOKEN_TYPE_CLAIM] == ACCESS_TOKEN_TYPE
         } catch (e: Exception) {
             false
         }

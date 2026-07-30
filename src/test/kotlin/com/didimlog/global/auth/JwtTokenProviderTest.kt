@@ -16,25 +16,37 @@ class JwtTokenProviderTest {
     private val secret = "test-secret-key-for-jwt-token-provider-test-12345678901234567890"
     private val expiration = 3600000L // 1시간
     private val refreshTokenExpiration = 604800000L // 7일
+    private val secretKey: SecretKey =
+        Keys.hmacShaKeyFor(secret.toByteArray(StandardCharsets.UTF_8))
     
     private fun createJwtTokenProvider(): JwtTokenProvider {
         return JwtTokenProvider(secret, expiration, refreshTokenExpiration)
     }
 
     @Test
-    @DisplayName("createToken은 유효한 JWT 토큰을 생성한다")
+    @DisplayName("createToken은 Access Token 용도와 role을 포함한 JWT 토큰을 생성한다")
     fun `토큰 생성 성공`() {
         // given
         val jwtTokenProvider = createJwtTokenProvider()
         val subject = "testuser"
+        val role = "USER"
 
         // when
-        val token = jwtTokenProvider.createToken(subject)
+        val token = jwtTokenProvider.createToken(subject, role)
+        val claims = Jwts.parser()
+            .verifyWith(secretKey)
+            .build()
+            .parseSignedClaims(token)
+            .payload
 
         // then
         assertThat(token).isNotNull()
         assertThat(jwtTokenProvider.getSubject(token)).isEqualTo(subject)
+        assertThat(jwtTokenProvider.getRole(token)).isEqualTo(role)
         assertThat(jwtTokenProvider.validateToken(token)).isTrue()
+        assertThat(jwtTokenProvider.isAccessToken(token)).isTrue()
+        assertThat(jwtTokenProvider.isRefreshToken(token)).isFalse()
+        assertThat(claims["type"]).isEqualTo("access")
     }
 
     @Test
@@ -61,7 +73,6 @@ class JwtTokenProviderTest {
         // given
         val jwtTokenProvider = createJwtTokenProvider()
         val subject = "testuser"
-        val secretKey = Keys.hmacShaKeyFor(secret.toByteArray(StandardCharsets.UTF_8))
         val parser = Jwts.parser()
             .verifyWith(secretKey)
             .build()
@@ -83,6 +94,7 @@ class JwtTokenProviderTest {
         assertThat(claims.map { it["type"] }).containsOnly("refresh")
         assertThat(tokens).allSatisfy { token ->
             assertThat(jwtTokenProvider.isRefreshToken(token)).isTrue()
+            assertThat(jwtTokenProvider.isAccessToken(token)).isFalse()
         }
     }
 
@@ -92,7 +104,7 @@ class JwtTokenProviderTest {
         // given
         val jwtTokenProvider = createJwtTokenProvider()
         val subject = "testuser"
-        val token = jwtTokenProvider.createToken(subject)
+        val token = jwtTokenProvider.createToken(subject, "USER")
 
         // when
         val extractedSubject = jwtTokenProvider.getSubject(token)
@@ -123,7 +135,7 @@ class JwtTokenProviderTest {
         // given
         val jwtTokenProvider = createJwtTokenProvider()
         val subject = "testuser"
-        val token = jwtTokenProvider.createToken(subject)
+        val token = createSignedToken(subject, type = "access")
 
         // when
         val extractedRole = jwtTokenProvider.getRole(token)
@@ -138,13 +150,33 @@ class JwtTokenProviderTest {
         // given
         val jwtTokenProvider = createJwtTokenProvider()
         val subject = "testuser"
-        val token = jwtTokenProvider.createToken(subject)
+        val token = jwtTokenProvider.createToken(subject, "USER")
 
         // when
         val isValid = jwtTokenProvider.validateToken(token)
 
         // then
         assertThat(isValid).isTrue()
+    }
+
+    @Test
+    @DisplayName("isAccessToken은 type이 없는 기존 토큰을 거부한다")
+    fun `type 없는 토큰은 Access Token이 아님`() {
+        val jwtTokenProvider = createJwtTokenProvider()
+        val token = createSignedToken("testuser", role = "USER")
+
+        assertThat(jwtTokenProvider.validateToken(token)).isTrue()
+        assertThat(jwtTokenProvider.isAccessToken(token)).isFalse()
+    }
+
+    @Test
+    @DisplayName("isAccessToken은 type 값의 대소문자를 보정하지 않는다")
+    fun `잘못된 type 토큰은 Access Token이 아님`() {
+        val jwtTokenProvider = createJwtTokenProvider()
+        val token = createSignedToken("testuser", type = "ACCESS", role = "USER")
+
+        assertThat(jwtTokenProvider.validateToken(token)).isTrue()
+        assertThat(jwtTokenProvider.isAccessToken(token)).isFalse()
     }
 
     @Test
@@ -245,8 +277,29 @@ class JwtTokenProviderTest {
             jwtTokenProvider.getSubject(invalidToken)
         }
     }
-}
 
+    private fun createSignedToken(
+        subject: String,
+        type: String? = null,
+        role: String? = null
+    ): String {
+        val builder = Jwts.builder()
+            .subject(subject)
+            .issuedAt(Date())
+            .expiration(Date(System.currentTimeMillis() + expiration))
+
+        if (type != null) {
+            builder.claim("type", type)
+        }
+        if (role != null) {
+            builder.claim("role", role)
+        }
+
+        return builder
+            .signWith(secretKey)
+            .compact()
+    }
+}
 
 
 

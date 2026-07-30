@@ -22,7 +22,7 @@ class JwtTokenProviderIntegrationTest {
         val userId = "user123"
 
         // when
-        val token = jwtTokenProvider.createToken(userId)
+        val token = jwtTokenProvider.createToken(userId, "USER")
 
         // then
         assertThat(token).isNotBlank()
@@ -34,7 +34,7 @@ class JwtTokenProviderIntegrationTest {
     fun `getSubject로 사용자 ID 추출`() {
         // given
         val userId = "user123"
-        val token = jwtTokenProvider.createToken(userId)
+        val token = jwtTokenProvider.createToken(userId, "USER")
 
         // when
         val extractedUserId = jwtTokenProvider.getSubject(token)
@@ -48,7 +48,7 @@ class JwtTokenProviderIntegrationTest {
     fun `validateToken으로 유효한 토큰 검증`() {
         // given
         val userId = "user123"
-        val token = jwtTokenProvider.createToken(userId)
+        val token = jwtTokenProvider.createToken(userId, "USER")
 
         // when
         val isValid = jwtTokenProvider.validateToken(token)

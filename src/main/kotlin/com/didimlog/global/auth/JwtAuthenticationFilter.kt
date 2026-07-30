@@ -1,5 +1,6 @@
 package com.didimlog.global.auth
 
+import com.didimlog.domain.enums.Role
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -25,6 +26,7 @@ class JwtAuthenticationFilter(
 
     companion object {
         private const val BEARER_PREFIX = "Bearer "
+        private val ACCESS_TOKEN_ROLES = setOf(Role.USER.value, Role.ADMIN.value)
         
         /**
          * JWT 필터를 적용하지 않을 경로 목록
@@ -58,10 +60,19 @@ class JwtAuthenticationFilter(
 
         val token = extractToken(request)
 
-        if (token != null && jwtTokenProvider.validateToken(token)) {
+        if (
+            token != null &&
+            jwtTokenProvider.validateToken(token) &&
+            jwtTokenProvider.isAccessToken(token)
+        ) {
             try {
                 val userId = jwtTokenProvider.getSubject(token)
-                val role = jwtTokenProvider.getRole(token) ?: "USER" // 기본값: USER
+                val role = jwtTokenProvider.getRole(token)
+                if (userId.isBlank() || role !in ACCESS_TOKEN_ROLES) {
+                    SecurityContextHolder.clearContext()
+                    filterChain.doFilter(request, response)
+                    return
+                }
                 
                 // Authentication 객체 생성 (토큰의 role 정보를 기반으로 권한 설정)
                 val authorities = listOf(SimpleGrantedAuthority("ROLE_$role"))

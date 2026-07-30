@@ -4,7 +4,7 @@
 
 ## 실제 코드 기준 확인 사항
 
-- 인증 필터는 JWT 서명과 만료를 검증하고 `sub`를 BOJ ID로 사용한다.
+- 인증 필터는 JWT 서명과 만료, `type=access`, `role`을 검증하고 `sub`를 BOJ ID로 사용한다.
 - Dashboard, Statistics, Retrospective 목록/상세는 `StudentRepository.findByBojId(BojId(jwt.sub))`를 호출하므로 MongoDB에 같은 BOJ ID의 테스트 Student가 있어야 한다.
 - `POST /api/v1/logs`는 JWT subject를 `Log.bojId`로 저장한다.
 - `POST /api/v1/logs/{logId}/ai-review`는 요청자 BOJ ID와 로그 소유자 BOJ ID가 다르면 403을 반환한다.
