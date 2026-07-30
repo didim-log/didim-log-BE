@@ -187,20 +187,24 @@ data class Student(
     }
 
     /**
-     * 특정 문제의 풀이 기록을 제거한다.
-     * 회고 삭제 시 해당 문제의 풀이 기록도 함께 삭제하기 위해 사용한다.
-     *
-     * @param problemId 제거할 문제 ID
-     * @return 풀이 기록이 제거된 새로운 Student 인스턴스
+     * 특정 문제의 풀이 기록을 모두 제거하고 풀이 파생 상태를 다시 계산한다.
      */
-    fun removeSolutionByProblemId(problemId: ProblemId): Student {
-        val updatedSolutions = Solutions().apply {
-            solutions.getAll()
-                .filter { it.problemId != problemId }
-                .forEach { add(it) }
-        }
-        
-        return copy(solutions = updatedSolutions)
+    fun removeSolutionsByProblemId(problemId: ProblemId): Student {
+        val remainingSolutions = solutions.getAll()
+            .filterNot { it.problemId == problemId }
+        val updatedSolutions = toSolutionsInSolvedOrder(remainingSolutions)
+        val latestSolvedAt = remainingSolutions
+            .maxOfOrNull { it.solvedAt }
+            ?.toLocalDate()
+        val updatedConsecutiveDays = latestSolvedAt
+            ?.let { calculateRecordedConsecutiveDays(it, updatedSolutions) }
+            ?: 0
+
+        return copy(
+            solutions = updatedSolutions,
+            consecutiveSolveDays = updatedConsecutiveDays,
+            lastSolvedAt = latestSolvedAt
+        )
     }
 
     /**

@@ -314,6 +314,24 @@ class RetrospectiveControllerTest {
     }
 
     @Test
+    @DisplayName("존재하지 않는 회고 삭제 시 404 Not Found 반환")
+    fun `회고 삭제 실패 - 회고 없음`() {
+        val retrospectiveId = "missing-retro"
+        val studentId = "student1"
+        every {
+            retrospectiveService.deleteRetrospective(retrospectiveId, studentId)
+        } throws BusinessException(ErrorCode.RETROSPECTIVE_NOT_FOUND)
+
+        mockMvc.perform(
+            delete("/api/v1/retrospectives/$retrospectiveId")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code").value("RETROSPECTIVE_NOT_FOUND"))
+    }
+
+    @Test
     @DisplayName("북마크 토글 시 200 OK 및 Response JSON 구조 검증")
     fun `북마크 토글 성공`() {
         // given
@@ -331,6 +349,25 @@ class RetrospectiveControllerTest {
             .andExpect(jsonPath("$.isBookmarked").value(true))
 
         verify(exactly = 1) { retrospectiveService.toggleBookmark(retrospectiveId, studentId) }
+    }
+
+    @Test
+    @DisplayName("북마크 토글 중 회고 상태가 바뀌면 재시도 가능한 409 Conflict 반환")
+    fun `북마크 토글 실패 - 동시 상태 변경`() {
+        val retrospectiveId = "retro1"
+        val studentId = "student1"
+        every {
+            retrospectiveService.toggleBookmark(retrospectiveId, studentId)
+        } throws BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
+
+        mockMvc.perform(
+            post("/api/v1/retrospectives/$retrospectiveId/bookmark")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("RESOURCE_STATE_CONFLICT"))
+            .andExpect(jsonPath("$.retryable").value(true))
     }
 
     @Test

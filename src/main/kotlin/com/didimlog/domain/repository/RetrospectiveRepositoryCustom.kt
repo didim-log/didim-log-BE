@@ -12,6 +12,20 @@ import org.springframework.data.domain.Pageable
  */
 interface RetrospectiveRepositoryCustom {
 
+    fun upsertEditableFieldsByStudentAndProblem(retrospective: Retrospective): Retrospective
+
+    fun updateEditableFieldsByIdAndStudent(retrospective: Retrospective): Retrospective?
+
+    fun toggleBookmarkByIdAndStudentId(
+        retrospectiveId: String,
+        studentId: String
+    ): Retrospective?
+
+    fun findAndRemoveByIdAndStudentId(
+        retrospectiveId: String,
+        studentId: String
+    ): Retrospective?
+
     /**
      * 지정한 학생들의 회고 수를 한 번에 집계한다.
      *

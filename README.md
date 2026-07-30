@@ -174,7 +174,7 @@ flowchart LR
 - 같은 학생의 동시 제출은 `documentVersion` 조건부 갱신과 최대 3회 재시도로 최신 풀이 기록에 합칩니다.
 - 코딩 로그는 불변 `studentId`를 소유자로 두고 제목, 내용, 코드, 생성 시점 BOJ ID, 성공 여부를 별도 문서로 저장합니다.
 - AI 리뷰 조회·피드백은 캐시 반환 전에도 인증 principal의 `studentId`와 로그 소유자가 일치하는지 확인합니다.
-- 회고는 사용자·문제를 검증한 뒤 문제별로 생성하거나 기존 문서를 갱신합니다.
+- 회고는 사용자·문제를 검증한 뒤 문제 카테고리를 함께 저장하고, 원자 upsert 또는 소유자 조건 부분 갱신으로 생성·수정합니다.
 
 [풀이 결과·로그·회고 상세 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md)
 
@@ -285,6 +285,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | 비밀번호 변경과 토큰 소유자 고정 | 실제 MongoDB 7.0.16·Redis 7.2.5, 기존 Access/Refresh Token·지연 로그인·BOJ ID 재사용·과거 Student 저장 | 구 버전·다른 학생 토큰 거절, stale CAS·전체 저장 무변경 |
 | 로그인 프로필 동기화 | 실제 MongoDB, solved.ac 조회 대기 중 비밀번호 재설정 | 새 비밀번호 유지, rating·tier 필드만 갱신 |
 | 풀이 결과 동시 저장 | 실제 MongoDB 7.0.16, 같은 문서 버전의 다른 문제 2건·같은 문제 2건·비밀번호 변경 경합 | 다른 문제 2건 모두 보존, 같은 문제 당일 1건, 새 자격 증명 유지 |
+| 회고 동시 갱신·삭제 | 실제 MongoDB 7.0.16, 북마크 2건 동시 토글·최초 작성 2건·수정 중 선행 삭제 | 토글 2회 모두 반영, 회고 1건 저장, 삭제 뒤 기존 ID 미복원 |
 
 이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
 AI 리뷰 반복 실행과 인증 API 경계값 검사는 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
@@ -297,6 +298,7 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 로그인 중 solved.ac 프로필 동기화의 부분 갱신과 비밀번호 변경 경합은 [로그인 프로필 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_2C_2_LOGIN_PROFILE_PARTIAL_UPDATE.md)에 정리했습니다.
 인증 요청 제한의 Redis 원자 처리, 연결 주소 기준과 경로별 정책은 [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
 풀이 결과의 문서 버전 조건부 갱신과 충돌 재시도는 [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)에 정리했습니다.
+회고의 부분 갱신, 북마크 토글과 풀이 기록 삭제 경합은 [회고 원자 갱신과 풀이 기록 삭제 정합성](./DOCS/refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -369,6 +371,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [관리자 회원 조회 최적화](./DOCS/refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md)
 - [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)
 - [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)
+- [회고 원자 갱신과 풀이 기록 삭제 정합성](./DOCS/refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

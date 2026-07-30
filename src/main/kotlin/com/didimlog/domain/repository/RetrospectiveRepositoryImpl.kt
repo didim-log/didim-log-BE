@@ -9,8 +9,11 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
+import org.springframework.data.mongodb.core.FindAndModifyOptions
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.aggregation.Aggregation
+import org.springframework.data.mongodb.core.aggregation.AggregationUpdate
+import org.springframework.data.mongodb.core.aggregation.BooleanOperators
 import org.springframework.data.mongodb.core.aggregation.Aggregation.group
 import org.springframework.data.mongodb.core.aggregation.Aggregation.limit
 import org.springframework.data.mongodb.core.aggregation.Aggregation.lookup
@@ -22,6 +25,7 @@ import org.springframework.data.mongodb.core.aggregation.Aggregation.sort
 import org.springframework.data.mongodb.core.aggregation.Aggregation.unwind
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Repository
 
 /**
@@ -32,6 +36,82 @@ import org.springframework.stereotype.Repository
 class RetrospectiveRepositoryImpl(
     private val mongoTemplate: MongoTemplate
 ) : RetrospectiveRepositoryCustom {
+
+    override fun upsertEditableFieldsByStudentAndProblem(retrospective: Retrospective): Retrospective {
+        val query = Query.query(
+            Criteria.where("studentId").`is`(retrospective.studentId)
+                .and("problemId").`is`(retrospective.problemId)
+        )
+        val update = editableFieldsUpdate(retrospective)
+            .setOnInsert("createdAt", retrospective.createdAt)
+            .setOnInsert("isBookmarked", retrospective.isBookmarked)
+        return requireNotNull(
+            mongoTemplate.findAndModify(
+                query,
+                update,
+                FindAndModifyOptions.options().returnNew(true).upsert(true),
+                Retrospective::class.java
+            )
+        )
+    }
+
+    override fun updateEditableFieldsByIdAndStudent(retrospective: Retrospective): Retrospective? {
+        val query = ownedRetrospectiveQuery(
+            retrospectiveId = requireNotNull(retrospective.id),
+            studentId = retrospective.studentId
+        )
+        return mongoTemplate.findAndModify(
+            query,
+            editableFieldsUpdate(retrospective),
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Retrospective::class.java
+        )
+    }
+
+    override fun toggleBookmarkByIdAndStudentId(
+        retrospectiveId: String,
+        studentId: String
+    ): Retrospective? {
+        val update = AggregationUpdate.update()
+            .set("isBookmarked")
+            .toValue(BooleanOperators.Not.not("isBookmarked"))
+        return mongoTemplate.findAndModify(
+            ownedRetrospectiveQuery(retrospectiveId, studentId),
+            update,
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Retrospective::class.java
+        )
+    }
+
+    override fun findAndRemoveByIdAndStudentId(
+        retrospectiveId: String,
+        studentId: String
+    ): Retrospective? {
+        return mongoTemplate.findAndRemove(
+            ownedRetrospectiveQuery(retrospectiveId, studentId),
+            Retrospective::class.java
+        )
+    }
+
+    private fun editableFieldsUpdate(retrospective: Retrospective): Update {
+        return Update()
+            .set("content", retrospective.content)
+            .set("summary", retrospective.summary)
+            .set("mainCategory", retrospective.mainCategory?.englishName)
+            .set("solutionResult", retrospective.solutionResult?.name)
+            .set("solvedCategory", retrospective.solvedCategory)
+            .set("solveTime", retrospective.solveTime)
+    }
+
+    private fun ownedRetrospectiveQuery(
+        retrospectiveId: String,
+        studentId: String
+    ): Query {
+        return Query.query(
+            Criteria.where("_id").`is`(retrospectiveId)
+                .and("studentId").`is`(studentId)
+        )
+    }
 
     override fun countByStudentIds(studentIds: Set<String>): Map<String, Long> {
         if (studentIds.isEmpty()) {

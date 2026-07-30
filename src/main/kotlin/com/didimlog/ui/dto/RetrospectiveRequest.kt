@@ -17,7 +17,7 @@ data class RetrospectiveRequest(
     val summary: String, // 한 줄 요약 (필수)
     
     /**
-     * 풀이 결과 타입 (SUCCESS/FAIL)
+     * 풀이 결과 타입 (SUCCESS/FAIL/TIME_OVER)
      * 사용자가 직접 선택한 결과임을 명시한다.
      */
     val resultType: ProblemResult? = null,

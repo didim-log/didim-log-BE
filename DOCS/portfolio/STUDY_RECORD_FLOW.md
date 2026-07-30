@@ -54,7 +54,8 @@ sequenceDiagram
     User->>RetroCtrl: POST /api/v1/retrospectives?problemId=...
     Note over User,RetroCtrl: 앞선 두 요청과 독립된 회고 생성·수정
     RetroCtrl->>RetroSvc: studentId, problemId, 회고 내용
-    RetroSvc->>Retrospectives: 기존 문서 조회 후 생성·갱신
+    RetroSvc->>Retrospectives: studentId + problemId 조회
+    RetroSvc->>Retrospectives: 원자 upsert 또는 소유자 조건 부분 갱신
     RetroCtrl-->>User: 회고 응답
 ```
 
@@ -81,8 +82,11 @@ sequenceDiagram
 
 1. `RetrospectiveController.writeRetrospective`는 인증 principal의 불변 `studentId`를 사용한다.
 2. `RetrospectiveService.writeRetrospective`는 학생과 문제의 존재를 확인한다.
-3. `(studentId, problemId)` 회고가 있으면 본문과 풀이 정보를 갱신하고, 없으면 새 문서를 만든다.
-4. 저장 중 `DuplicateKeyException`이 발생하면 기존 문서를 다시 읽어 갱신을 시도한다. 애플리케이션 시작 시 `(studentId, problemId)` 유니크 인덱스를 확인하고 없으면 생성한다.
+3. Problem의 카테고리를 `mainCategory`에 함께 저장한다.
+4. `(studentId, problemId)` 회고가 있으면 `_id + studentId` 조건으로 본문과 풀이 정보만 갱신하고, 없으면 원자 upsert로 새 문서를 만든다.
+5. 신규 upsert의 유일 인덱스 충돌은 한 번 재시도하고, 반복 충돌은 재시도 가능한 409로 반환한다. 애플리케이션 시작 시 `(studentId, problemId)` 유일 인덱스를 확인하고 없으면 생성한다.
+6. 북마크는 MongoDB의 현재 값을 `$not`으로 반전해 동시에 요청한 토글을 모두 반영한다.
+7. 사용자 회고 삭제 API는 Student에서 같은 문제의 풀이를 모두 제거하고 남은 풀이로 마지막 풀이일·연속 풀이 일수를 다시 계산한다. 학생 문서 버전 CAS가 충돌하면 최신 Student에서 최대 3회 재계산한 뒤 소유자 조건으로 회고를 삭제한다.
 
 주요 구현 파일:
 
@@ -104,7 +108,7 @@ sequenceDiagram
 - 인증 principal에서 불변 `studentId` 추출
 - MongoDB 학생의 풀이 배열 갱신
 - `logs`, `retrospectives` 문서 생성
-- 같은 학생·문제의 기존 회고 조회 후 갱신
+- 같은 학생·문제 회고의 원자 upsert와 부분 갱신
 
 ## 알려진 제약
 
@@ -112,13 +116,16 @@ sequenceDiagram
 - 서버 채점기가 없다. `isSuccess`, 회고의 `resultType`, 풀이 시간은 사용자 입력을 신뢰한다.
 - 회고 작성은 먼저 `/study/submit`을 호출했는지 확인하지 않으며, 학생의 Solution과 결과·시간을 대조하지 않는다.
 - `Log`에는 `problemId`, `solutionId`, `retrospectiveId`가 없어 세 문서를 영속적으로 연결할 수 없다.
-- 회고 작성 경로는 `mainCategory`를 설정하지 않아 기본값 `null`로 남는다.
 - 기존 데이터에 같은 `(studentId, problemId)` 회고가 여러 건 있으면 초기화기는 문서를 정리하지 않고 시작을 중단한다.
 - 풀이 제출은 충돌 시 최대 3회 재시도한다. 같은 학생 문서에 변경이 계속 집중되면
   재시도 가능한 409가 발생할 수 있다.
 - 풀이 상태만 부분 갱신하지만 `solutions` 내장 배열 자체는 전체를 다시 쓴다.
-- 회고 삭제는 해당 문제의 학생 풀이 기록을 모두 제거하지만 연결 정보가 없는 로그는 삭제하지 않는다.
+- 사용자 회고 삭제 API는 해당 문제의 학생 풀이 기록을 모두 제거하지만 연결 정보가 없는 로그는 삭제하지 않는다. 보관 기간 정리 작업은 회고 문서만 일괄 삭제한다.
 
 풀이 저장 CAS 조건과 실제 MongoDB 동시성 결과는
 [풀이 결과 부분 갱신과 충돌 재시도](../refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)에
+정리했다.
+
+회고 부분 갱신, 북마크 토글과 풀이 기록 삭제의 경합 검증은
+[회고 원자 갱신과 풀이 기록 삭제 정합성](../refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md)에
 정리했다.

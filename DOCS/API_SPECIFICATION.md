@@ -484,7 +484,16 @@ Content-Type: application/json
 | GET | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 조회합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `RetrospectiveResponse` | JWT Token |
 | GET | `/api/v1/retrospectives/template` | 결과 타입에 맞는 기본 템플릿을 렌더링해 조회합니다. 서버 기본 선택 규칙: `SUCCESS`는 성공 기본 템플릿, `FAIL`/`TIME_OVER`는 실패 기본 템플릿을 사용하며, 사용자 기본값이 없거나 깨진 경우 시스템 기본 템플릿으로 fallback 합니다. 문제 메타 조회 실패 시에도 최소 문제 정보로 렌더링된 문자열을 반환합니다. 렌더링은 `app.template.render-timeout-millis`(기본 4000ms) 제한을 가지며, 타임아웃 시 `app.template.timeout-fallback-enabled=true`이면 기본 템플릿 fallback 본문을 `200`으로 반환하고(`fallbackUsed=true`), 비활성화 시 `TEMPLATE_RENDER_TIMEOUT(504)`를 반환합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Query Parameters:**<br>- `problemId` (Long, required): 문제 ID (`@Positive`)<br>- `resultType` (ProblemResult, required): SUCCESS/FAIL/TIME_OVER | `RetrospectiveTemplateResponse`<br>- `template` (String)<br>- `fallbackUsed` (Boolean): timeout fallback 적용 여부<br>- `fallbackReason` (String, nullable): fallback 사유 코드 (`TEMPLATE_RENDER_TIMEOUT`) | JWT Token |
 | POST | `/api/v1/retrospectives/{retrospectiveId}/bookmark` | 인증 사용자의 소유 회고 북마크 상태를 토글합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `BookmarkToggleResponse`<br>- `isBookmarked` (Boolean) | JWT Token |
+| PATCH | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고 본문과 풀이 정보를 수정합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required)<br>**Request Body:** `RetrospectiveRequest` | `RetrospectiveResponse` | JWT Token |
 | DELETE | `/api/v1/retrospectives/{retrospectiveId}` | 인증 사용자의 소유 회고를 삭제합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required)<br>**Path Variables:**<br>- `retrospectiveId` (String, required) | `204 No Content` | JWT Token |
+
+POST의 기존 회고 갱신과 PATCH·북마크 요청이 소유권 확인 뒤 선행 삭제와 겹치거나
+신규 POST의 유일 인덱스 충돌이 재시도 뒤에도 반복되면
+`409 RESOURCE_STATE_CONFLICT`, `retryable=true`를 반환합니다. DELETE는 최초 조회부터
+회고가 없으면 404, 풀이 기록 제거 전에 Student가 사라지면 재시도 가능한 409입니다.
+소유권 확인 뒤 다른 요청이 먼저 같은 회고를 삭제한 경우에는 이미 원하는 상태이므로
+204로 마칩니다. 사용자 회고 삭제 API는 Student의 같은 문제 풀이 기록을 제거하고,
+연결 식별자가 없는 Log와 보관 기간 정리 작업의 대상은 바꾸지 않습니다.
 
 **예시 요청 (회고 작성 - 성공 케이스):**
 ```http
@@ -521,7 +530,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Content-Type: application/json
 
 {
-  "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다."
+  "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
+  "summary": "두 수를 더하는 구현 문제"
 }
 ```
 
@@ -532,11 +542,12 @@ Content-Type: application/json
   "studentId": "student-123",
   "isOwner": true,
   "problemId": "1000",
+  "problemTitle": "A+B",
   "content": "이 문제는 두 수의 합을 구하는 간단한 구현 문제였습니다. 입력을 받아서 더하는 로직을 작성했습니다.",
   "summary": "두 수의 합을 구하는 기본 구현 문제",
   "createdAt": "2024-01-15T10:30:00",
   "isBookmarked": false,
-  "mainCategory": null,
+  "mainCategory": "IMPLEMENTATION",
   "solutionResult": "SUCCESS",
   "solvedCategory": "Implementation"
 }
