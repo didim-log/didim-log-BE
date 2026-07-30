@@ -5,16 +5,16 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,7 +27,6 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import java.util.Optional
 
 @DisplayName("StudyController 테스트")
 @WebMvcTest(
@@ -48,18 +47,17 @@ class StudyControllerTest {
     private lateinit var studyService: StudyService
 
     @Autowired
-    private lateinit var studentRepository: StudentRepository
-
-    @Autowired
     private lateinit var objectMapper: ObjectMapper
+
+    @BeforeEach
+    fun clearMockInvocations() {
+        clearMocks(studyService, answers = false)
+    }
 
     @TestConfiguration
     class TestConfig {
         @Bean
         fun studyService(): StudyService = mockk(relaxed = true)
-
-        @Bean
-        fun studentRepository(): StudentRepository = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
@@ -82,20 +80,15 @@ class StudyControllerTest {
         ) // problemId 누락
 
         // when & then
-        val result = mockMvc.perform(
+        mockMvc.perform(
             post("/api/v1/study/submit")
                 .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
-            .andReturn()
+            .andExpect(status().isBadRequest)
 
-        val status = result.response.status
-        assertThat(status).isIn(400, 200)
-
-        if (status == 400) {
-            verify(exactly = 0) { studyService.submitSolution(any(), any(), any(), any()) }
-        }
+        verify(exactly = 0) { studyService.submitSolution(any(), any(), any(), any()) }
     }
 
     @Test
@@ -109,16 +102,15 @@ class StudyControllerTest {
         )
 
         // when & then
-        val result = mockMvc.perform(
+        mockMvc.perform(
             post("/api/v1/study/submit")
                 .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
-            .andReturn()
+            .andExpect(status().isBadRequest)
 
-        val status = result.response.status
-        assertThat(status).isIn(400, 200)
+        verify(exactly = 0) { studyService.submitSolution(any(), any(), any(), any()) }
     }
 
     @Test
@@ -132,8 +124,7 @@ class StudyControllerTest {
         )
         val student = createStudent("student1", "bojId")
 
-        every { studyService.submitSolution("student-id", "1000", 120L, true) } returns Unit
-        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { studyService.submitSolution("student-id", "1000", 120L, true) } returns student
 
         // when & then
         mockMvc.perform(
@@ -148,7 +139,6 @@ class StudyControllerTest {
             .andExpect(jsonPath("$.currentTierLevel").exists())
 
         verify(exactly = 1) { studyService.submitSolution("student-id", "1000", 120L, true) }
-        verify(exactly = 1) { studentRepository.findById("student-id") }
     }
 
     private fun createStudent(id: String, bojId: String): Student {
@@ -165,8 +155,5 @@ class StudyControllerTest {
         )
     }
 }
-
-
-
 
 

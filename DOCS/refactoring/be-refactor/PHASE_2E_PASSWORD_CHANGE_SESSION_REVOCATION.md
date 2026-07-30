@@ -68,7 +68,9 @@ Access Token 서명·만료·필수 claim 1회 검증
   BOJ ID가 현재 값과 다르면 오래된 요청으로 보고 409로 중단한다.
 - Student 문서에는 별도의 `documentVersion`을 두고 모든 전체 저장에 낙관적 잠금을
   적용한다. 비밀번호 부분 갱신도 문서 버전을 증가시키므로, 변경 전 Student를 읽은
-  Study·Member·Template 등의 지연 저장은 새 비밀번호를 과거 값으로 되돌릴 수 없다.
+  Member·Template 등의 지연 전체 저장은 새 비밀번호를 과거 값으로 되돌릴 수 없다.
+  Study는 [풀이 결과 부분 갱신과 충돌 재시도](./PHASE_3A_STUDY_SOLUTION_CAS.md)부터
+  풀이 필드만 문서 버전 조건으로 갱신한다.
   기존 문서는 애플리케이션 시작 시 누락된 문서 버전을 0으로 채운다.
 - Refresh Token에는 변경되지 않는 `studentId`와 발급 시점의 `credentialVersion`을
   서명한다. Redis token 값과 사용자별 token set도 BOJ ID가 아닌 `studentId`를

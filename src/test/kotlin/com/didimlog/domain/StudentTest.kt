@@ -5,6 +5,8 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.TimeTakenSeconds
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -45,6 +47,143 @@ class StudentTest {
         val solvedProblemIds = updatedStudent.getSolvedProblemIds()
         assertThat(solvedProblemIds).contains(ProblemId("p-1"))
         assertThat(updatedStudent.tier()).isEqualTo(Tier.BRONZE) // 티어는 변경되지 않음 (외부 동기화 방식)
+    }
+
+    @Test
+    fun `같은 문제를 같은 날 다시 제출하면 고정된 제출 시각으로 한 건을 교체한다`() {
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            bojId = BojId("tester123"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val problem = Problem(
+            id = ProblemId("same-day"),
+            title = "Same Day",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/same-day"
+        )
+        val firstSubmittedAt = LocalDateTime.of(2026, 7, 30, 10, 0)
+            .withNano(123_456_789)
+        val secondSubmittedAt = firstSubmittedAt.plusHours(1)
+
+        val first = student.solveProblem(
+            problem,
+            TimeTakenSeconds(120),
+            isSuccess = false,
+            solvedAt = firstSubmittedAt
+        )
+        val second = first.solveProblem(
+            problem,
+            TimeTakenSeconds(90),
+            isSuccess = true,
+            solvedAt = secondSubmittedAt
+        )
+        val staleRetry = second.solveProblem(
+            problem,
+            TimeTakenSeconds(300),
+            isSuccess = false,
+            solvedAt = firstSubmittedAt.plusMinutes(30)
+        )
+
+        assertThat(staleRetry.solutions.getAll()).hasSize(1)
+        val solution = staleRetry.solutions.getAll().single()
+        assertThat(solution.timeTaken).isEqualTo(TimeTakenSeconds(90))
+        assertThat(solution.result).isEqualTo(ProblemResult.SUCCESS)
+        assertThat(solution.solvedAt).isEqualTo(secondSubmittedAt.truncatedTo(ChronoUnit.MILLIS))
+
+        val sameMillisecondFirst = student.solveProblem(
+            problem,
+            TimeTakenSeconds(70),
+            isSuccess = true,
+            solvedAt = firstSubmittedAt
+        )
+        val sameMillisecondRetry = sameMillisecondFirst.solveProblem(
+            problem,
+            TimeTakenSeconds(80),
+            isSuccess = false,
+            solvedAt = firstSubmittedAt.plusNanos(500_000)
+        )
+        val sameMillisecondSolution = sameMillisecondRetry.solutions.getAll().single()
+        assertThat(sameMillisecondSolution.timeTaken).isEqualTo(TimeTakenSeconds(70))
+        assertThat(sameMillisecondSolution.result).isEqualTo(ProblemResult.SUCCESS)
+    }
+
+    @Test
+    fun `연속 풀이 일수는 같은 날 유지하고 다음 날 증가하며 공백 뒤 초기화한다`() {
+        val problem = Problem(
+            id = ProblemId("streak"),
+            title = "Streak",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/streak"
+        )
+        val submittedAt = LocalDateTime.of(2026, 7, 30, 10, 0)
+        val baseStudent = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            bojId = BojId("tester123"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+
+        val nextDay = baseStudent.copy(
+            consecutiveSolveDays = 4,
+            lastSolvedAt = submittedAt.toLocalDate().minusDays(1)
+        ).solveProblem(problem, TimeTakenSeconds(100), true, submittedAt)
+        val sameDay = nextDay.solveProblem(
+            problem.copy(id = ProblemId("streak-2")),
+            TimeTakenSeconds(100),
+            true,
+            submittedAt.plusHours(1)
+        )
+        val afterGap = baseStudent.copy(
+            consecutiveSolveDays = 9,
+            lastSolvedAt = submittedAt.toLocalDate().minusDays(2)
+        ).solveProblem(problem, TimeTakenSeconds(100), true, submittedAt)
+        val previousDayRetry = sameDay.solveProblem(
+            problem.copy(id = ProblemId("streak-previous")),
+            TimeTakenSeconds(100),
+            true,
+            submittedAt.minusDays(1)
+        )
+        val twoDaysAgo = baseStudent.solveProblem(
+            problem.copy(id = ProblemId("streak-day-zero")),
+            TimeTakenSeconds(100),
+            true,
+            submittedAt.minusDays(2)
+        )
+        val todayBeforeYesterday = twoDaysAgo.solveProblem(
+            problem.copy(id = ProblemId("streak-day-two")),
+            TimeTakenSeconds(100),
+            true,
+            submittedAt
+        )
+        val bridgedDays = todayBeforeYesterday.solveProblem(
+            problem.copy(id = ProblemId("streak-day-one")),
+            TimeTakenSeconds(100),
+            true,
+            submittedAt.minusDays(1)
+        )
+
+        assertThat(nextDay.consecutiveSolveDays).isEqualTo(5)
+        assertThat(sameDay.consecutiveSolveDays).isEqualTo(5)
+        assertThat(afterGap.consecutiveSolveDays).isEqualTo(1)
+        assertThat(previousDayRetry.consecutiveSolveDays).isEqualTo(5)
+        assertThat(previousDayRetry.lastSolvedAt).isEqualTo(submittedAt.toLocalDate())
+        assertThat(previousDayRetry.solutions.getAll().map { it.solvedAt })
+            .isSorted()
+        assertThat(todayBeforeYesterday.consecutiveSolveDays).isEqualTo(1)
+        assertThat(bridgedDays.consecutiveSolveDays).isEqualTo(3)
+        assertThat(bridgedDays.lastSolvedAt).isEqualTo(submittedAt.toLocalDate())
     }
 
     @Test
@@ -175,4 +314,3 @@ class StudentTest {
         assertThat(student.credentialVersion).isEqualTo(3)
     }
 }
-

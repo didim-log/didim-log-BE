@@ -35,7 +35,14 @@ sequenceDiagram
 
     User->>Study: POST /api/v1/study/submit
     Study->>StudySvc: studentId, problemId, timeTaken, isSuccess
-    StudySvc->>Students: Student.solutions 갱신
+    StudySvc->>Students: Student와 documentVersion 조회
+    loop 최초 1회 + 충돌 시 최대 3회 재시도
+        StudySvc->>Students: _id + documentVersion으로 풀이 상태 갱신
+        Students-->>StudySvc: 갱신된 Student 또는 충돌
+        opt 충돌
+            StudySvc->>Students: 최신 Student 재조회
+        end
+    end
     Study-->>User: 풀이 결과 저장 응답
 
     User->>LogCtrl: POST /api/v1/logs
@@ -58,8 +65,11 @@ sequenceDiagram
 1. `StudyController.submitSolution`은 인증 principal 이름을 불변 `studentId`로 사용한다.
 2. `StudyService.submitSolution`은 `StudentRepository.findById`와 `ProblemRepository.findById`로 학생과 문제의 존재를 확인한다.
 3. `Student.solveProblem`은 요청의 boolean을 `SUCCESS` 또는 `FAIL`로 바꾼다.
-4. 같은 문제를 같은 날 다시 제출하면 기존 당일 기록을 새 시간·결과·시각으로 교체한다. 다른 날짜의 기록은 유지한다.
-5. 연속 풀이 일수와 마지막 풀이 날짜를 함께 갱신한 `Student` 전체를 저장한다.
+4. 같은 문제를 같은 날 다시 제출하면 더 늦은 `solvedAt`의 시간·결과·시각을 유지한다. 다른 날짜의 기록은 보존하고 배열은 풀이 시각순으로 정렬한다.
+5. 요청 시각을 한 번 고정하고 연속 풀이 일수와 마지막 풀이 날짜를 계산한다.
+6. 학생 ID와 `documentVersion`이 모두 일치할 때 `solutions`, `consecutiveSolveDays`, `lastSolvedAt`만 갱신하고 문서 버전을 증가시킨다.
+7. 충돌하면 최신 Student에서 다시 계산해 최대 3회 재시도한다. 모두 실패하면 재시도 가능한 409를 반환한다.
+8. 저장 연산이 반환한 Student로 응답을 만들어 Controller의 추가 학생 조회를 하지 않는다.
 
 ### 2. 코드 로그
 
@@ -104,6 +114,11 @@ sequenceDiagram
 - `Log`에는 `problemId`, `solutionId`, `retrospectiveId`가 없어 세 문서를 영속적으로 연결할 수 없다.
 - 회고 작성 경로는 `mainCategory`를 설정하지 않아 기본값 `null`로 남는다.
 - 기존 데이터에 같은 `(studentId, problemId)` 회고가 여러 건 있으면 초기화기는 문서를 정리하지 않고 시작을 중단한다.
-- 학생 문서 전체 저장에는 낙관적 잠금이 적용되어 동시 변경을 덮어쓰지는 않지만,
-  같은 학생의 동시 제출 중 한 요청은 충돌 응답을 받을 수 있다.
+- 풀이 제출은 충돌 시 최대 3회 재시도한다. 같은 학생 문서에 변경이 계속 집중되면
+  재시도 가능한 409가 발생할 수 있다.
+- 풀이 상태만 부분 갱신하지만 `solutions` 내장 배열 자체는 전체를 다시 쓴다.
 - 회고 삭제는 해당 문제의 학생 풀이 기록을 모두 제거하지만 연결 정보가 없는 로그는 삭제하지 않는다.
+
+풀이 저장 CAS 조건과 실제 MongoDB 동시성 결과는
+[풀이 결과 부분 갱신과 충돌 재시도](../refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)에
+정리했다.

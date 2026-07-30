@@ -1,9 +1,6 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.study.StudyService
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.global.exception.BusinessException
-import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.SolutionSubmitRequest
 import com.didimlog.ui.dto.SolutionSubmitResponse
 import io.swagger.v3.oas.annotations.Operation
@@ -26,8 +23,7 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/api/v1/study")
 class StudyController(
-    private val studyService: StudyService,
-    private val studentRepository: StudentRepository
+    private val studyService: StudyService
 ) {
 
     @Operation(
@@ -54,6 +50,11 @@ class StudyController(
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
+                responseCode = "409",
+                description = "동시 갱신 충돌로 풀이 결과를 저장하지 못함",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
                 responseCode = "500",
                 description = "서버 내부 오류",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
@@ -70,17 +71,12 @@ class StudyController(
     ): ResponseEntity<SolutionSubmitResponse> {
         val studentId = authentication.name
         
-        studyService.submitSolution(
+        val student = studyService.submitSolution(
             studentId = studentId,
             problemId = request.problemId,
             timeTaken = request.timeTaken,
             isSuccess = request.isSuccess
         )
-
-        val student = studentRepository.findById(studentId)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
-            }
 
         val response = SolutionSubmitResponse.from(student)
         return ResponseEntity.ok(response)

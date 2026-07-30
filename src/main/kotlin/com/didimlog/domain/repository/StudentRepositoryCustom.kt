@@ -1,11 +1,13 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.Student
+import com.didimlog.domain.Solutions
 import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
+import java.time.LocalDate
 import java.time.LocalDateTime
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -33,6 +35,14 @@ interface StudentRepositoryCustom {
         rating: Int,
         solvedAcTierLevel: SolvedAcTierLevel,
         currentTier: Tier
+    ): Student?
+
+    fun updateStudyProgressById(
+        studentId: String,
+        expectedDocumentVersion: Long,
+        solutions: Solutions,
+        consecutiveSolveDays: Int,
+        lastSolvedAt: LocalDate
     ): Student?
 
     fun searchAdminUsers(
