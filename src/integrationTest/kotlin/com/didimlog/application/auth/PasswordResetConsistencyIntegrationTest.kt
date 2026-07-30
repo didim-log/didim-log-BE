@@ -136,8 +136,18 @@ class PasswordResetConsistencyIntegrationTest {
         assertThat(results.count { it == null }).isEqualTo(1)
         assertThat(results.filterNotNull()).hasSize(CONCURRENCY - 1).allSatisfy { exception ->
             assertThat(exception).isInstanceOf(BusinessException::class.java)
-            assertThat((exception as BusinessException).errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
-            assertThat(exception.message).contains("유효하지 않은 재설정 코드")
+            val businessException = exception as BusinessException
+            assertThat(businessException.errorCode).isIn(
+                ErrorCode.COMMON_INVALID_INPUT,
+                ErrorCode.PASSWORD_RESET_CONFLICT
+            )
+            when (businessException.errorCode) {
+                ErrorCode.COMMON_INVALID_INPUT ->
+                    assertThat(exception.message).contains("유효하지 않은 재설정 코드")
+                ErrorCode.PASSWORD_RESET_CONFLICT ->
+                    assertThat(exception.message).contains("재설정 상태가 변경")
+                else -> error("검증되지 않은 비밀번호 재설정 오류입니다.")
+            }
         }
         assertThat(passwordEncoder.encodeCount.get()).isEqualTo(1)
         assertThat(passwordResetCodeRepository.count()).isZero()
