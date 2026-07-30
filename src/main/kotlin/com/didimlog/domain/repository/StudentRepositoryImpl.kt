@@ -147,15 +147,34 @@ class StudentRepositoryImpl(
     ): Student? {
         require(templateId.isNotBlank()) { "템플릿 ID는 필수입니다." }
 
-        val field = when (category) {
-            TemplateCategory.SUCCESS -> "defaultSuccessTemplateId"
-            TemplateCategory.FAIL -> "defaultFailTemplateId"
-        }
+        val field = defaultTemplateField(category)
         val update = Update()
             .set(field, templateId)
             .inc("documentVersion", 1)
         return mongoTemplate.findAndModify(
             Query.query(Criteria.where("_id").`is`(studentId)),
+            update,
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Student::class.java
+        )
+    }
+
+    override fun clearDefaultTemplateReferences(
+        studentId: String,
+        expectedTemplateId: String,
+        categories: Set<TemplateCategory>
+    ): Student? {
+        require(categories.isNotEmpty()) { "해제할 기본 템플릿 카테고리가 없습니다." }
+
+        val query = Query.query(Criteria.where("_id").`is`(studentId))
+        val update = Update().inc("documentVersion", 1)
+        categories.forEach { category ->
+            val field = defaultTemplateField(category)
+            query.addCriteria(Criteria.where(field).`is`(expectedTemplateId))
+            update.unset(field)
+        }
+        return mongoTemplate.findAndModify(
+            query,
             update,
             FindAndModifyOptions.options().returnNew(true).upsert(false),
             Student::class.java
@@ -244,6 +263,13 @@ class StudentRepositoryImpl(
 
     private fun newQuery(criteria: Criteria?): Query {
         return criteria?.let(::Query) ?: Query()
+    }
+
+    private fun defaultTemplateField(category: TemplateCategory): String {
+        return when (category) {
+            TemplateCategory.SUCCESS -> "defaultSuccessTemplateId"
+            TemplateCategory.FAIL -> "defaultFailTemplateId"
+        }
     }
 
     private fun stableSort(requestedSort: Sort): Sort {

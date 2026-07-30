@@ -4,6 +4,7 @@ import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -255,6 +256,20 @@ data class Student(
      * 현재 티어를 반환한다.
      */
     fun tier(): Tier = currentTier
+
+    /**
+     * 주어진 템플릿을 기본값으로 사용하는 카테고리를 반환한다.
+     */
+    fun defaultTemplateCategories(templateId: String): Set<TemplateCategory> {
+        return buildSet {
+            if (defaultSuccessTemplateId == templateId) {
+                add(TemplateCategory.SUCCESS)
+            }
+            if (defaultFailTemplateId == templateId) {
+                add(TemplateCategory.FAIL)
+            }
+        }
+    }
 
     /**
      * 외부(Solved.ac API)에서 가져온 Rating(점수) 정보로 티어를 업데이트한다.

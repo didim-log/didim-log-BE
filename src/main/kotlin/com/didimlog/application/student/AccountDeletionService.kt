@@ -1,6 +1,8 @@
 package com.didimlog.application.student
 
 import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.domain.Student
+import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
@@ -35,7 +37,7 @@ class AccountDeletionService(
 
     fun deleteAccount(studentId: String) {
         studentLifecycleCoordinator.execute(studentId) {
-            studentRepository.findById(studentId)
+            val student = studentRepository.findById(studentId)
                 .orElseThrow {
                     BusinessException(
                         ErrorCode.STUDENT_NOT_FOUND,
@@ -59,11 +61,35 @@ class AccountDeletionService(
             passwordResetCodeRepository.deleteAllByStudentId(studentId)
             retrospectiveRepository.deleteAllByStudentId(studentId)
             feedbackRepository.deleteAllByWriterId(studentId)
+            clearDefaultTemplateReferences(student)
             templateRepository.deleteAllByStudentId(studentId)
             logRepository.deleteAllByStudentId(studentId)
 
             // 연관 데이터 정리가 끝난 뒤 안정적인 ID로 학생 문서를 제거한다.
             studentRepository.deleteById(studentId)
         }
+    }
+
+    private fun clearDefaultTemplateReferences(student: Student) {
+        val studentId = requireNotNull(student.id)
+        val templateIds = setOfNotNull(
+            student.defaultSuccessTemplateId,
+            student.defaultFailTemplateId
+        )
+        templateIds
+            .filterNot { templateId ->
+                templateRepository.existsByIdAndType(templateId, TemplateOwnershipType.SYSTEM)
+            }
+            .forEach { templateId ->
+                val categories = student.defaultTemplateCategories(templateId)
+                studentRepository.clearDefaultTemplateReferences(
+                    studentId = studentId,
+                    expectedTemplateId = templateId,
+                    categories = categories
+                ) ?: throw BusinessException(
+                    ErrorCode.SESSION_STATE_CONFLICT,
+                    "기본 템플릿 참조가 변경되어 계정 삭제를 완료하지 못했습니다."
+                )
+            }
     }
 }

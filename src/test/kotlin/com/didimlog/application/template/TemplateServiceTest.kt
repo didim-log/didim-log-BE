@@ -23,6 +23,7 @@ import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
@@ -224,8 +225,8 @@ class TemplateServiceTest {
         assertThatThrownBy { 
             service.updateTemplate(templateId, studentId, "새 제목", "새 내용") 
         }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("시스템 템플릿은 수정할 수 없습니다")
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ACCESS_DENIED)
         verify { templateRepository.findById(templateId) }
     }
 
@@ -250,8 +251,8 @@ class TemplateServiceTest {
         assertThatThrownBy { 
             service.updateTemplate(templateId, otherStudentId, "새 제목", "새 내용") 
         }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("템플릿 소유자가 아닙니다")
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ACCESS_DENIED)
         verify { templateRepository.findById(templateId) }
     }
 
@@ -278,6 +279,71 @@ class TemplateServiceTest {
         // then
         verify { templateRepository.findById(templateId) }
         verify { templateRepository.delete(template) }
+        verify(exactly = 0) {
+            studentRepository.clearDefaultTemplateReferences(any(), any(), any())
+        }
+    }
+
+    @Test
+    @DisplayName("성공과 실패 기본값이 같은 템플릿이면 참조를 먼저 해제한 뒤 삭제한다")
+    fun `기본 템플릿 참조 해제 후 삭제`() {
+        val student = existingStudent.copy(
+            defaultSuccessTemplateId = templateId,
+            defaultFailTemplateId = templateId
+        )
+        val template = Template(
+            id = templateId,
+            studentId = studentId,
+            title = "기본 템플릿",
+            content = "기본 템플릿 내용",
+            type = TemplateOwnershipType.CUSTOM
+        )
+        val categories = setOf(TemplateCategory.SUCCESS, TemplateCategory.FAIL)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { templateRepository.findById(templateId) } returns Optional.of(template)
+        every {
+            studentRepository.clearDefaultTemplateReferences(studentId, templateId, categories)
+        } returns student.copy(
+            defaultSuccessTemplateId = null,
+            defaultFailTemplateId = null
+        )
+        every { templateRepository.delete(template) } returns Unit
+
+        service.deleteTemplate(templateId, studentId)
+
+        verifyOrder {
+            studentRepository.findById(studentId)
+            templateRepository.findById(templateId)
+            studentRepository.clearDefaultTemplateReferences(studentId, templateId, categories)
+            templateRepository.delete(template)
+        }
+    }
+
+    @Test
+    @DisplayName("기본 템플릿 참조가 달라졌으면 템플릿을 삭제하지 않는다")
+    fun `기본 템플릿 참조 변경 충돌`() {
+        val student = existingStudent.copy(defaultSuccessTemplateId = templateId)
+        val template = Template(
+            id = templateId,
+            studentId = studentId,
+            title = "기본 템플릿",
+            content = "기본 템플릿 내용",
+            type = TemplateOwnershipType.CUSTOM
+        )
+        val categories = setOf(TemplateCategory.SUCCESS)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { templateRepository.findById(templateId) } returns Optional.of(template)
+        every {
+            studentRepository.clearDefaultTemplateReferences(studentId, templateId, categories)
+        } returns null
+
+        assertThatThrownBy {
+            service.deleteTemplate(templateId, studentId)
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.SESSION_STATE_CONFLICT)
+
+        verify(exactly = 0) { templateRepository.delete(any<Template>()) }
     }
 
     @Test
@@ -301,6 +367,31 @@ class TemplateServiceTest {
             .isInstanceOf(BusinessException::class.java)
             .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TEMPLATE_CANNOT_DELETE_SYSTEM)
         verify { templateRepository.findById(templateId) }
+    }
+
+    @Test
+    @DisplayName("소유자가 아닌 경우 템플릿을 삭제할 수 없다")
+    fun `템플릿 삭제 실패 - 소유자가 아님`() {
+        val otherStudentId = "student2"
+        val template = Template(
+            id = templateId,
+            studentId = studentId,
+            title = "다른 사용자의 템플릿",
+            content = "다른 사용자의 템플릿 내용",
+            type = TemplateOwnershipType.CUSTOM
+        )
+        every { templateRepository.findById(templateId) } returns Optional.of(template)
+
+        assertThatThrownBy {
+            service.deleteTemplate(templateId, otherStudentId)
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ACCESS_DENIED)
+
+        verify(exactly = 0) {
+            studentRepository.clearDefaultTemplateReferences(any(), any(), any())
+            templateRepository.delete(any<Template>())
+        }
     }
 
     @Test
@@ -439,8 +530,8 @@ class TemplateServiceTest {
 
         // when & then
         assertThatThrownBy { service.setDefaultTemplate(templateId, TemplateCategory.SUCCESS, otherStudentId) }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("템플릿 소유자가 아닙니다")
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ACCESS_DENIED)
         verify { templateRepository.findById(templateId) }
     }
 
@@ -585,6 +676,43 @@ class TemplateServiceTest {
         verify { studentRepository.findById(studentId) }
         verify { templateRepository.findById(brokenTemplateId) }
         verify { templateRepository.findByType(TemplateOwnershipType.SYSTEM) }
+    }
+
+    @Test
+    @DisplayName("목록에 없는 기본 템플릿 ID는 시스템 기본값 ID로 해석한다")
+    fun `목록 기본 템플릿 ID fallback`() {
+        val brokenTemplateId = "missing-template"
+        val successTemplate = Template(
+            id = "system-success",
+            title = "성공 시스템 템플릿",
+            content = "성공 시스템 템플릿 내용",
+            type = TemplateOwnershipType.SYSTEM,
+            isDefaultSuccess = true
+        )
+        val failTemplate = Template(
+            id = "system-fail",
+            title = "실패 시스템 템플릿",
+            content = "실패 시스템 템플릿 내용",
+            type = TemplateOwnershipType.SYSTEM,
+            isDefaultFail = true
+        )
+        val student = existingStudent.copy(
+            defaultSuccessTemplateId = brokenTemplateId,
+            defaultFailTemplateId = null
+        )
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { templateRepository.findById(brokenTemplateId) } returns Optional.empty()
+        every {
+            templateRepository.findByType(TemplateOwnershipType.SYSTEM)
+        } returns listOf(successTemplate, failTemplate)
+
+        val resolved = service.resolveDefaultTemplateIds(
+            student = student,
+            availableTemplateIds = setOf("system-success", "system-fail")
+        )
+
+        assertThat(resolved.first).isEqualTo("system-success")
+        assertThat(resolved.second).isEqualTo("system-fail")
     }
 
     @Test

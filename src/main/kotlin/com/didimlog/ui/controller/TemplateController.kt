@@ -75,7 +75,9 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val templates = templateService.getTemplates(studentId)
-        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIds(student)
+        val availableTemplateIds = templates.mapNotNull { it.id }.toSet()
+        val (defaultSuccessTemplateId, defaultFailTemplateId) =
+            templateService.resolveDefaultTemplateIds(student, availableTemplateIds)
         val response = templates.map {
             TemplateResponse.from(
                 template = it,
@@ -106,7 +108,9 @@ class TemplateController(
         val student = getStudentFromAuthentication(authentication)
         val studentId = getStudentId(student)
         val summaries = templateService.getTemplateSummaries(studentId)
-        val (defaultSuccessTemplateId, defaultFailTemplateId) = resolveDefaultTemplateIdsForSummary(student, studentId)
+        val availableTemplateIds = summaries.map { it.id }.toSet()
+        val (defaultSuccessTemplateId, defaultFailTemplateId) =
+            templateService.resolveDefaultTemplateIds(student, availableTemplateIds)
         val response = summaries.map {
             TemplateSummaryResponse(
                 id = it.id,
@@ -345,7 +349,7 @@ class TemplateController(
             ApiResponse(responseCode = "200", description = "수정 성공"),
             ApiResponse(
                 responseCode = "400",
-                description = "요청 값 검증 실패 또는 시스템 템플릿 수정 시도",
+                description = "요청 값 검증 실패",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
@@ -355,7 +359,7 @@ class TemplateController(
             ),
             ApiResponse(
                 responseCode = "403",
-                description = "템플릿 소유자가 아님",
+                description = "템플릿 소유자가 아님 또는 시스템 템플릿 수정 시도",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
@@ -502,12 +506,12 @@ class TemplateController(
 
     @Operation(
         summary = "템플릿 삭제",
-        description = "커스텀 템플릿을 삭제합니다. 시스템 템플릿은 삭제할 수 없습니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
+        description = "커스텀 템플릿을 삭제합니다. 기본값으로 사용 중이면 Student 참조를 먼저 해제하며 이후 시스템 기본 템플릿을 사용합니다. 시스템 템플릿은 삭제할 수 없습니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "204", description = "삭제 성공"),
+            ApiResponse(responseCode = "204", description = "기본값 참조 해제를 포함한 삭제 성공"),
             ApiResponse(
                 responseCode = "401",
                 description = "인증 필요",
@@ -583,23 +587,6 @@ class TemplateController(
                 "유효하지 않은 카테고리입니다. category=$category (SUCCESS 또는 FAIL을 사용하세요)"
             )
         }
-    }
-
-    private fun resolveDefaultTemplateIds(student: Student): Pair<String?, String?> {
-        val studentId = getStudentId(student)
-        val successTemplateId = student.defaultSuccessTemplateId
-            ?: templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId).id
-        val failTemplateId = student.defaultFailTemplateId
-            ?: templateService.getDefaultTemplate(TemplateCategory.FAIL, studentId).id
-        return successTemplateId to failTemplateId
-    }
-
-    private fun resolveDefaultTemplateIdsForSummary(student: Student, studentId: String): Pair<String?, String?> {
-        val successTemplateId = student.defaultSuccessTemplateId
-            ?: templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId).id
-        val failTemplateId = student.defaultFailTemplateId
-            ?: templateService.getDefaultTemplate(TemplateCategory.FAIL, studentId).id
-        return successTemplateId to failTemplateId
     }
 
     private fun renderTemplateWithTimeout(renderAction: () -> String): String {

@@ -66,6 +66,26 @@ class TemplateService(
     }
 
     /**
+     * 목록에 포함된 템플릿을 기준으로 실제 기본 템플릿 ID를 결정한다.
+     * 삭제되었거나 다른 사용자가 소유한 ID는 시스템 기본값으로 대체한다.
+     */
+    @Transactional(readOnly = true)
+    fun resolveDefaultTemplateIds(
+        student: Student,
+        availableTemplateIds: Set<String>
+    ): Pair<String?, String?> {
+        val studentId = student.id
+            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다.")
+        val successTemplateId = student.defaultSuccessTemplateId
+            ?.takeIf(availableTemplateIds::contains)
+            ?: getDefaultTemplate(TemplateCategory.SUCCESS, studentId).id
+        val failTemplateId = student.defaultFailTemplateId
+            ?.takeIf(availableTemplateIds::contains)
+            ?: getDefaultTemplate(TemplateCategory.FAIL, studentId).id
+        return successTemplateId to failTemplateId
+    }
+
+    /**
      * 특정 템플릿을 조회한다.
      *
      * @param templateId 템플릿 ID
@@ -122,9 +142,12 @@ class TemplateService(
             getStudent(studentId)
             val template = getTemplate(templateId)
             if (template.type == TemplateOwnershipType.SYSTEM) {
-                throw IllegalArgumentException("시스템 템플릿은 수정할 수 없습니다.")
+                throw BusinessException(
+                    ErrorCode.ACCESS_DENIED,
+                    "시스템 템플릿은 수정할 수 없습니다."
+                )
             }
-            template.validateOwner(studentId)
+            validateOwner(template, studentId)
 
             templateRepository.save(template.update(title, content))
         }
@@ -141,7 +164,7 @@ class TemplateService(
     @Transactional
     fun deleteTemplate(templateId: String, studentId: String) {
         studentLifecycleCoordinator.execute(studentId) {
-            getStudent(studentId)
+            val student = getStudent(studentId)
             val template = getTemplate(templateId)
             if (template.type == TemplateOwnershipType.SYSTEM) {
                 throw BusinessException(
@@ -149,8 +172,19 @@ class TemplateService(
                     "시스템 템플릿은 삭제할 수 없습니다."
                 )
             }
-            template.validateOwner(studentId)
+            validateOwner(template, studentId)
 
+            val defaultCategories = student.defaultTemplateCategories(templateId)
+            if (defaultCategories.isNotEmpty()) {
+                studentRepository.clearDefaultTemplateReferences(
+                    studentId = studentId,
+                    expectedTemplateId = templateId,
+                    categories = defaultCategories
+                ) ?: throw BusinessException(
+                    ErrorCode.SESSION_STATE_CONFLICT,
+                    "기본 템플릿 참조가 변경되어 삭제를 완료하지 못했습니다."
+                )
+            }
             templateRepository.delete(template)
         }
     }
@@ -172,7 +206,7 @@ class TemplateService(
             getStudent(studentId)
             val template = getTemplate(templateId)
             if (template.type == TemplateOwnershipType.CUSTOM) {
-                template.validateOwner(studentId)
+                validateOwner(template, studentId)
             }
             studentRepository.updateDefaultTemplateById(studentId, category, templateId)
                 ?: throw BusinessException(
@@ -262,6 +296,15 @@ class TemplateService(
             return null
         }
         return template
+    }
+
+    private fun validateOwner(template: Template, studentId: String) {
+        if (!template.isOwner(studentId)) {
+            throw BusinessException(
+                ErrorCode.ACCESS_DENIED,
+                "본인이 소유한 템플릿만 변경할 수 있습니다."
+            )
+        }
     }
 
     /**
