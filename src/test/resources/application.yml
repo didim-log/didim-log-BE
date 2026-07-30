@@ -52,15 +52,18 @@ app:
   server:
     url: http://localhost:8080
   oauth:
-    redirect-uri: http://localhost:3000/oauth/callback
+    exchange-code-ttl-seconds: 120
   cors:
     allowed-origins: http://localhost:3000,http://localhost:5173
   admin:
     secret-key: test-admin-secret-key
+
+cors:
+  oauth:
+    redirect-uri: http://localhost:3000/oauth/callback
 
 # AI Rate Limiter 설정 (테스트용 - 더 짧은 간격 허용)
 ai:
   gemini:
     rate-limit:
       min-interval-seconds: 1  # 테스트에서는 1초 간격 허용 (운영에서는 2초)
-

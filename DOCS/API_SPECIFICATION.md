@@ -50,6 +50,7 @@ Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
+| POST | `/api/v1/auth/oauth/exchange` | OAuth 콜백에서 받은 120초 일회용 코드를 Access/Refresh Token으로 교환합니다. 코드는 한 번만 사용할 수 있습니다. | **Request Body:**<br>- `code` (String, required, max 128) | `OAuthCodeExchangeResponse`<br>- `token` (String)<br>- `refreshToken` (String)<br>- `message` (String)<br>- `rating` (Int)<br>- `tier` (String)<br>- `tierLevel` (Int)<br>- `provider` (String) | None |
 | POST | `/api/v1/auth/signup` | BOJ 프로필 상태 메시지 인증을 마친 세션과 BOJ ID를 확인한 뒤 계정을 생성하고 JWT 토큰을 발급합니다. 인증 세션은 가입 시 한 번만 사용할 수 있습니다. | **Request Body:**<br>`SignupRequest`<br>- `bojId` (String, required): 인증한 BOJ ID<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)`<br>  - 영문·숫자·특수문자 조합 정책 적용<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email`<br>- `verificationSessionId` (String, required): `/boj/code`에서 발급받아 `/boj/verify`를 통과한 세션 ID | `AuthResponse`<br><br>- `token` (String): JWT Access Token<br>- `refreshToken` (String): Refresh Token<br>- `message` (String): 응답 메시지<br>- `rating` (Int): Solved.ac Rating<br>- `tier` (String): 티어명<br>- `tierLevel` (Int): 티어 레벨 | None |
 | POST | `/api/v1/auth/login` | BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 시 Solved.ac API를 통해 Rating 및 Tier 정보를 동기화합니다. | **Request Body:**<br>`AuthRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상) | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token<br>- `message` (String): 응답 메시지 ("로그인에 성공했습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | GET | `/api/v1/auth/check-duplicate` | 회원가입 전 BOJ ID 중복 여부를 조회합니다. | **Query Parameters:**<br>- `bojId` (String, required) | `BojIdDuplicateCheckResponse`<br>- `isDuplicate` (Boolean)<br>- `message` (String) | None |
@@ -270,7 +271,8 @@ OAuth2 소셜 로그인을 지원합니다. Google, GitHub, Naver를 통한 소�
 1. **소셜 로그인 시작**: 프론트엔드에서 `/oauth2/authorization/{provider}` 엔드포인트로 리다이렉트
 2. **소셜 로그인 인증**: 각 공급자(Google/GitHub/Naver)의 인증 페이지로 이동
 3. **콜백 처리**: 인증 성공 후 백엔드가 프론트엔드 콜백 URL로 리다이렉트
-4. **토큰 전달**: JWT 토큰이 쿼리 파라미터로 전달됨
+4. **코드 전달**: 백엔드가 120초 일회용 코드만 프론트엔드 콜백 URL로 전달
+5. **토큰 교환**: 프론트엔드가 query를 지운 뒤 `POST /api/v1/auth/oauth/exchange` 호출
 
 ### 지원하는 공급자 (Provider)
 
@@ -280,45 +282,42 @@ OAuth2 소셜 로그인을 지원합니다. Google, GitHub, Naver를 통한 소�
 
 ### 콜백 처리
 
-인증 성공 시 백엔드는 프론트엔드 콜백 URL로 리다이렉트하며, 다음 쿼리 파라미터를 포함합니다:
+인증 성공 시 백엔드는 프론트엔드 콜백 URL로 리다이렉트하며, 다음 query를 포함합니다.
 
 **기존 유저 (성공 시):**
-- `token` (String, required): JWT Access Token
-- `isNewUser` (Boolean, required): `false`
+- `code` (String, required): 120초 동안 한 번 사용할 수 있는 OAuth 교환 코드
 
-**신규 유저 (성공 시):**
-- `isNewUser` (Boolean, required): `true`
-- `email` (String, required): 소셜 계정 이메일 (없으면 빈 문자열)
-- `provider` (String, required): 소셜 로그인 제공자 (예: `google`, `github`, `naver`)
-- `providerId` (String, required): 제공자별 사용자 ID
+**신규 또는 BOJ 미연동 유저:**
+- `error=oauth_signup_not_supported`
+- 이메일과 providerId는 URL에 포함하지 않습니다.
 
 **실패 시:**
 - `error` (String, required): 에러 코드
-- `error_description` (String, optional): 에러 설명
 
 **예시 URL (기존 유저 - 성공):**
 ```
-http://localhost:5173/oauth/callback?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...&isNewUser=false
+http://localhost:5173/oauth/callback?code=RrUVkFh0zGmKp2bPq9NwYx4L7tQ8aD3sE6cV1jH5uIo
 ```
 
-**예시 URL (신규 유저 - 성공):**
-```
-http://localhost:5173/oauth/callback?isNewUser=true&email=user@example.com&provider=google&providerId=123456789
-```
+**예시 요청 (토큰 교환):**
+```http
+POST /api/v1/auth/oauth/exchange
+Content-Type: application/json
 
-**예시 URL (신규 유저 - 이메일 미제공 케이스):**
-```
-http://localhost:5173/oauth/callback?isNewUser=true&email=&provider=github&providerId=123456789
+{
+  "code": "RrUVkFh0zGmKp2bPq9NwYx4L7tQ8aD3sE6cV1jH5uIo"
+}
 ```
 
 **예시 URL (실패):**
 ```
-http://localhost:5173/oauth/callback?error=access_denied&error_description=사용자가%20인증을%20거부했습니다
+http://localhost:5173/oauth/callback?error=oauth_signup_not_supported
 ```
 
 ### 설정
 
-- **콜백 URL**: 환경 변수 `app.oauth.redirect-uri`로 설정 (기본값: `http://localhost:5173/oauth/callback`)
+- **콜백 URL**: `cors.oauth.redirect-uri`로 설정하며 `OAUTH_REDIRECT_URI` 환경 변수를 사용합니다.
+- **교환 코드 TTL**: `app.oauth.exchange-code-ttl-seconds`로 설정하며 허용 범위는 60~120초입니다.
 - **인증 경로**: `/oauth2/**` 경로는 인증 없이 접근 가능 (`permitAll`)
 
 ### OAuth 가입 범위

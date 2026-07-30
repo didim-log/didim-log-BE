@@ -17,6 +17,7 @@ enum class ErrorCode(
     INVALID_PASSWORD(400, "INVALID_PASSWORD", "비밀번호 정책에 위배됩니다."),
     DUPLICATE_NICKNAME(400, "DUPLICATE_NICKNAME", "이미 사용 중인 닉네임입니다."),
     PASSWORD_MISMATCH(400, "PASSWORD_MISMATCH", "현재 비밀번호가 일치하지 않습니다."),
+    OAUTH_EXCHANGE_CODE_INVALID(400, "OAUTH_EXCHANGE_CODE_INVALID", "OAuth 로그인 요청이 만료되었거나 유효하지 않습니다."),
 
     // 401 Unauthorized
     UNAUTHORIZED(401, "UNAUTHORIZED", "인증이 필요합니다."),
