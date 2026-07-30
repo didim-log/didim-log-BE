@@ -1,10 +1,15 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.repository.RetrospectiveRepository
-import com.didimlog.domain.repository.StudentRepository
+import java.time.ZoneId
+import org.bson.Document
+import org.springframework.data.domain.Sort
+import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.data.mongodb.core.aggregation.Aggregation
+import org.springframework.data.mongodb.core.aggregation.AggregationExpression
+import org.springframework.data.mongodb.core.aggregation.DateOperators
+import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.format.DateTimeFormatter
 
 /**
  * 관리자 대시보드 차트 데이터 서비스
@@ -12,8 +17,7 @@ import java.time.format.DateTimeFormatter
  */
 @Service
 class AdminDashboardChartService(
-    private val studentRepository: StudentRepository,
-    private val retrospectiveRepository: RetrospectiveRepository
+    private val mongoTemplate: MongoTemplate
 ) {
 
     /**
@@ -36,107 +40,112 @@ class AdminDashboardChartService(
      * 회원 수 차트 데이터를 조회한다.
      */
     private fun getUserChartData(period: ChartPeriod): List<ChartDataPoint> {
-        val allStudents = studentRepository.findAll()
-        val dateFormatter = when (period) {
-            ChartPeriod.DAILY -> DateTimeFormatter.ofPattern("yyyy-MM-dd")
-            ChartPeriod.WEEKLY -> DateTimeFormatter.ofPattern("yyyy-'W'ww")
-            ChartPeriod.MONTHLY -> DateTimeFormatter.ofPattern("yyyy-MM")
-        }
+        val aggregation = Aggregation.newAggregation(
+            Aggregation.project()
+                .and(dateKey("createdAt", period, fallbackToNow = true))
+                .`as`(DATE_FIELD),
+            Aggregation.group(DATE_FIELD).count().`as`(COUNT_FIELD),
+            Aggregation.sort(Sort.Direction.ASC, "_id")
+        )
 
-        val grouped = allStudents.groupBy { student ->
-            val localDate = student.createdAt.toLocalDate()
-            when (period) {
-                ChartPeriod.DAILY -> localDate.format(dateFormatter)
-                ChartPeriod.WEEKLY -> {
-                    val year = localDate.year
-                    val week = localDate.get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear())
-                    "$year-W${week.toString().padStart(2, '0')}"
-                }
-                ChartPeriod.MONTHLY -> localDate.format(dateFormatter)
-            }
-        }
-
-        // 누적 합계로 변환
-        val sortedKeys = grouped.keys.sorted()
-        var cumulative = 0L
-        return sortedKeys.map { key ->
-            cumulative += grouped[key]!!.size
-            ChartDataPoint(date = key, value = cumulative)
-        }
+        return aggregateCumulative(STUDENT_COLLECTION, aggregation)
     }
 
     /**
      * 해결된 문제 수 차트 데이터를 조회한다.
      */
     private fun getSolutionChartData(period: ChartPeriod): List<ChartDataPoint> {
-        val allStudents = studentRepository.findAll()
-        val dateFormatter = when (period) {
-            ChartPeriod.DAILY -> DateTimeFormatter.ofPattern("yyyy-MM-dd")
-            ChartPeriod.WEEKLY -> DateTimeFormatter.ofPattern("yyyy-'W'ww")
-            ChartPeriod.MONTHLY -> DateTimeFormatter.ofPattern("yyyy-MM")
-        }
+        val aggregation = Aggregation.newAggregation(
+            Aggregation.unwind(SOLUTION_ITEMS_FIELD),
+            Aggregation.match(
+                Criteria.where(SOLUTION_RESULT_FIELD)
+                    .`is`("SUCCESS")
+            ),
+            Aggregation.group(SOLUTION_PROBLEM_ID_FIELD)
+                .min(SOLUTION_SOLVED_AT_FIELD)
+                .`as`(FIRST_SOLVED_AT_FIELD),
+            Aggregation.project()
+                .and(dateKey(FIRST_SOLVED_AT_FIELD, period))
+                .`as`(DATE_FIELD),
+            Aggregation.group(DATE_FIELD).count().`as`(COUNT_FIELD),
+            Aggregation.sort(Sort.Direction.ASC, "_id")
+        )
 
-        // 모든 학생의 성공한 Solution을 날짜별로 그룹화
-        val solutionMap = mutableMapOf<String, MutableSet<String>>() // 날짜 -> problemId Set
-
-        allStudents.forEach { student ->
-            student.solutions.getAll()
-                .filter { it.isSuccess() }
-                .forEach { solution ->
-                    val localDate = solution.solvedAt.toLocalDate()
-                    val dateKey = when (period) {
-                        ChartPeriod.DAILY -> localDate.format(dateFormatter)
-                        ChartPeriod.WEEKLY -> {
-                            val year = localDate.year
-                            val week = localDate.get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear())
-                            "$year-W${week.toString().padStart(2, '0')}"
-                        }
-                        ChartPeriod.MONTHLY -> localDate.format(dateFormatter)
-                    }
-                    solutionMap.getOrPut(dateKey) { mutableSetOf() }.add(solution.problemId.value)
-                }
-        }
-
-        // 누적 합계로 변환
-        val sortedKeys = solutionMap.keys.sorted()
-        var cumulative = 0L
-        return sortedKeys.map { key ->
-            cumulative += solutionMap[key]!!.size
-            ChartDataPoint(date = key, value = cumulative)
-        }
+        return aggregateCumulative(STUDENT_COLLECTION, aggregation)
     }
 
     /**
      * 회고 수 차트 데이터를 조회한다.
      */
     private fun getRetrospectiveChartData(period: ChartPeriod): List<ChartDataPoint> {
-        val allRetrospectives = retrospectiveRepository.findAll()
-        val dateFormatter = when (period) {
-            ChartPeriod.DAILY -> DateTimeFormatter.ofPattern("yyyy-MM-dd")
-            ChartPeriod.WEEKLY -> DateTimeFormatter.ofPattern("yyyy-'W'ww")
-            ChartPeriod.MONTHLY -> DateTimeFormatter.ofPattern("yyyy-MM")
-        }
+        val aggregation = Aggregation.newAggregation(
+            Aggregation.project()
+                .and(dateKey("createdAt", period))
+                .`as`(DATE_FIELD),
+            Aggregation.group(DATE_FIELD).count().`as`(COUNT_FIELD),
+            Aggregation.sort(Sort.Direction.ASC, "_id")
+        )
 
-        val grouped = allRetrospectives.groupBy { retrospective ->
-            val localDate = retrospective.createdAt.toLocalDate()
-            when (period) {
-                ChartPeriod.DAILY -> localDate.format(dateFormatter)
-                ChartPeriod.WEEKLY -> {
-                    val year = localDate.year
-                    val week = localDate.get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear())
-                    "$year-W${week.toString().padStart(2, '0')}"
+        return aggregateCumulative(RETROSPECTIVE_COLLECTION, aggregation)
+    }
+
+    private fun dateKey(
+        field: String,
+        period: ChartPeriod,
+        fallbackToNow: Boolean = false
+    ): AggregationExpression {
+        val formatBuilder = if (fallbackToNow) {
+            DateOperators.DateToString.dateOf(
+                AggregationExpression {
+                    Document(
+                        "\$ifNull",
+                        listOf("\$$field", "\$\$NOW")
+                    )
                 }
-                ChartPeriod.MONTHLY -> localDate.format(dateFormatter)
-            }
+            )
+        } else {
+            DateOperators.DateToString.dateOf(field)
         }
 
-        // 누적 합계로 변환
-        val sortedKeys = grouped.keys.sorted()
+        return formatBuilder
+            .toString(period.mongoDateFormat)
+            .withTimezone(DateOperators.Timezone.fromZone(ZoneId.systemDefault()))
+    }
+
+    private fun aggregateCumulative(
+        collection: String,
+        aggregation: Aggregation
+    ): List<ChartDataPoint> {
         var cumulative = 0L
-        return sortedKeys.map { key ->
-            cumulative += grouped[key]!!.size
-            ChartDataPoint(date = key, value = cumulative)
+        return mongoTemplate.aggregate(aggregation, collection, Document::class.java)
+            .mappedResults
+            .map { bucket ->
+                val count = (bucket[COUNT_FIELD] as Number).toLong()
+                cumulative += count
+                ChartDataPoint(
+                    date = bucket.getString("_id"),
+                    value = cumulative
+                )
+            }
+    }
+
+    private val ChartPeriod.mongoDateFormat: String
+        get() = when (this) {
+            ChartPeriod.DAILY -> "%Y-%m-%d"
+            ChartPeriod.WEEKLY -> "%G-W%V"
+            ChartPeriod.MONTHLY -> "%Y-%m"
         }
+
+    companion object {
+        private const val STUDENT_COLLECTION = "students"
+        private const val RETROSPECTIVE_COLLECTION = "retrospectives"
+        private const val SOLUTION_ITEMS_FIELD = "solutions.items"
+        private const val SOLUTION_RESULT_FIELD = "$SOLUTION_ITEMS_FIELD.result"
+        private const val SOLUTION_PROBLEM_ID_FIELD = "$SOLUTION_ITEMS_FIELD.problemId"
+        private const val SOLUTION_SOLVED_AT_FIELD = "$SOLUTION_ITEMS_FIELD.solvedAt"
+        private const val FIRST_SOLVED_AT_FIELD = "firstSolvedAt"
+        private const val DATE_FIELD = "date"
+        private const val COUNT_FIELD = "count"
     }
 }
 
@@ -165,4 +174,3 @@ data class ChartDataPoint(
     val date: String,   // 날짜 문자열 (형식은 period에 따라 다름)
     val value: Long     // 값
 )
-
