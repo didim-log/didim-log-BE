@@ -9,6 +9,15 @@ import com.didimlog.domain.Problem
 interface ProblemRepositoryCustom {
 
     /**
+     * solved.ac에서 받은 문제 메타데이터만 갱신한다.
+     *
+     * 기존 상세 정보, URL과 언어는 보존하고 문서가 없을 때만 기본값을 함께 생성한다.
+     *
+     * @param problem 갱신할 문제 메타데이터
+     */
+    fun upsertMetadata(problem: Problem)
+
+    /**
      * 레벨 범위로 문제를 검색한다.
      *
      * - 최신 스키마: level 필드 사용
@@ -31,4 +40,3 @@ interface ProblemRepositoryCustom {
      */
     fun findByLevelBetweenAndTagsIn(min: Int, max: Int, expandedTags: List<String>): List<Problem>
 }
-

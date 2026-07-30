@@ -38,7 +38,7 @@ class ProblemService(
             tags = tags
         )
 
-        problemRepository.save(problem)
+        problemRepository.upsertMetadata(problem)
     }
 
     fun syncUserTier(bojId: String) {
