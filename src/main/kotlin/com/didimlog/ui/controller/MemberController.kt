@@ -78,8 +78,8 @@ class MemberController(
         @Valid
         request: UpdateMyNicknameRequest
     ): ResponseEntity<Void> {
-        val bojId = authentication.name
-        memberService.updateMyNickname(bojId, request.nickname)
+        val studentId = authentication.name
+        memberService.updateMyNickname(studentId, request.nickname)
         return ResponseEntity.noContent().build()
     }
 
@@ -107,8 +107,8 @@ class MemberController(
     fun completeOnboarding(
         authentication: Authentication
     ): ResponseEntity<Void> {
-        val bojId = authentication.name
-        memberService.completeOnboarding(bojId)
+        val studentId = authentication.name
+        memberService.completeOnboarding(studentId)
         return ResponseEntity.noContent().build()
     }
 
@@ -136,8 +136,8 @@ class MemberController(
     fun resetOnboarding(
         authentication: Authentication
     ): ResponseEntity<Void> {
-        val bojId = authentication.name
-        memberService.resetOnboarding(bojId)
+        val studentId = authentication.name
+        memberService.resetOnboarding(studentId)
         return ResponseEntity.noContent().build()
     }
 }

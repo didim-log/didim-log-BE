@@ -22,15 +22,18 @@ Controller와 테스트 코드 기준 경로는 다음과 같다.
 
 ## AI 회고 호출 흐름
 
-`LogController.requestAiReview`는 `AiReviewService.requestOneLineReviewAsync(logId, requesterBojId)`를 호출한다.
+`LogController.requestAiReview`는
+`AiReviewService.requestOneLineReviewAsync(logId, requesterStudentId)`를 호출한다.
 
 1. `LogRepository.findById(logId)`로 로그를 찾는다.
-2. 기존 `aiReview` 또는 동일 코드 캐시가 있으면 외부 AI를 호출하지 않고 반환한다.
-3. `MongoLogAiReviewLockRepository.tryAcquireLock`이 `_id`, `aiReview == null`, lock 가능 조건으로 `aiReviewStatus=IN_PROGRESS`, `aiReviewLockExpiresAt=now+45s`를 원자적으로 설정한다.
-4. lock 획득 실패 시 다시 캐시를 확인하고 없으면 202 `inProgress=true`를 반환한다.
-5. lock 획득 성공 시 `aiReviewTaskExecutor`가 `AiApiClient.requestOneLineReview(prompt, timeoutSeconds=12)`를 비동기로 호출한다.
-6. 성공 시 `MongoLogAiReviewLockRepository.markCompleted`가 `aiReview`, `aiReviewStatus=COMPLETED`, `aiReviewDurationMillis`를 저장하고 `aiReviewLockExpiresAt`을 unset한다.
-7. 실패 또는 timeout 시 `markFailed`가 `aiReviewStatus=FAILED`로 변경하고 lock expiry를 unset한다. FAILED 상태는 다음 요청에서 lock 재획득 가능 조건이다.
+2. 요청자의 `studentId`와 로그 소유자의 `studentId`가 다르면 403을 반환한다.
+3. 기존 `aiReview` 또는 동일 코드 캐시가 있으면 외부 AI를 호출하지 않고 반환한다.
+4. `MongoLogAiReviewLockRepository.tryAcquireLock`이 `_id`, `aiReview == null`, lock 가능 조건으로 `aiReviewStatus=IN_PROGRESS`, `aiReviewLockExpiresAt=now+45s`를 원자적으로 설정한다.
+5. lock 획득 실패 시 다시 캐시를 확인하고 없으면 202 `inProgress=true`를 반환한다.
+6. lock 획득 성공 후 사용자·전역 일일 사용량을 확인한다. 제한을 넘으면 `markFailed`로 lock을 해제하고 429 또는 503을 반환한다.
+7. 사용 가능하면 `aiReviewTaskExecutor`가 `AiApiClient.requestOneLineReview(prompt, timeoutSeconds=12)`를 비동기로 호출한다.
+8. 성공 시 `MongoLogAiReviewLockRepository.markCompleted`가 `aiReview`, `aiReviewStatus=COMPLETED`, `aiReviewDurationMillis`를 저장하고 `aiReviewLockExpiresAt`을 unset한다.
+9. 실패 또는 timeout 시 `markFailed`가 `aiReviewStatus=FAILED`로 변경하고 lock expiry를 unset한다. FAILED 상태는 다음 요청에서 lock 재획득 가능 조건이다.
 
 Gemini 실제 활성화 조건은 `ai.gemini.api-key`와 `ai.gemini.url`이 모두 존재하는 경우다. 성능 실험은 `GEMINI_API_URL=http://localhost:8090/...`로 로컬 Gemini mock을 사용한다. `MOCK_GEMINI_MODE=auto|wiremock|node`를 지원하며, `auto`는 Docker Compose WireMock을 먼저 확인한 뒤 로컬 환경에서 WireMock만 실패하면 Node mock으로 fallback한다.
 
@@ -81,7 +84,7 @@ performance/k6/run-local.sh ai-retry
 # 9. Redis Rate Limit 정책 검증
 performance/k6/run-local.sh rate-limit
 
-# 10. Fixture와 테스트 key 정리
+# 10. Fixture와 현재 실행의 테스트 key 정리
 performance/k6/run-local.sh cleanup
 ```
 
@@ -91,7 +94,9 @@ performance/k6/run-local.sh cleanup
 - MongoDB/Redis: 같은 performance compose의 로컬 컨테이너를 사용한다. 운영 DB/Redis를 사용하지 않는다.
 - Gemini 지연시간: `MOCK_GEMINI_DELAY_MS`를 `POST /__admin/settings`의 `fixedDelay`로 설정한다.
 - Gemini 호출 횟수: `POST /__admin/requests/count`로 `urlPathPattern=/v1beta/models/.*:generateContent`를 조회한다.
-- Solved.ac: read/AI 실험은 로그인 없이 로컬 JWT를 사용한다. Rate Limit 실험은 validation 실패 요청만 보내 외부 조회 전 단계에서 끝낸다.
+- Solved.ac: read/AI 실험은 로그인 없이 fixture의 BOJ ID, Student ID,
+  자격 증명 버전 0을 서명한 로컬 Access Token을 사용한다. Rate Limit 실험은
+  validation 실패 요청만 보내 외부 조회 전 단계에서 끝낸다.
 - OAuth/SMTP: 실험 범위에서 제외한다.
 
 ## Threshold
@@ -115,6 +120,12 @@ performance/k6/run-local.sh cleanup
 - `rate_limit:signup:{RATE_LIMIT_CLIENT_IP}`
 - `rate_limit:login:{RATE_LIMIT_CLIENT_IP}`
 - `rate_limit:password_reset:{RATE_LIMIT_CLIENT_IP}`
+
+`run-local.sh cleanup`은 위 Rate Limit key와 함께 현재 `K6_RUN_ID`에서 파생된
+AI 테스트 사용자의 당일 `AI_USAGE:USER` key를 삭제한다. 삭제한 사용자 사용량의
+합계만 당일 `AI_USAGE:GLOBAL`에서 원자적으로 차감하므로 다른 로컬 사용자의 사용량은
+남긴다. AI 리뷰 캐시는 현재 실행의 고유 코드로 계산한 정확한
+`AI_REVIEW:CACHE:v1:{result}:{sha256}` key만 삭제하며 prefix 전체를 검색하지 않는다.
 
 ## 결과 검증
 
@@ -153,7 +164,11 @@ performance/verify/verify_ai_call_count.sh \
 
 FAILED 재시도 케이스는 `run-local.sh ai-retry`가 첫 요청, FAILED polling, 실제 `GeminiRateLimiter` 최소 간격 polling, 두 번째 요청, COMPLETED polling, 최종 cached 200 확인을 순서대로 실행한다. WireMock/Node mock은 `FORCE_GEMINI_FAILURE_ONCE` 마커가 포함된 요청의 첫 Gemini 호출만 500으로 응답하고, 다음 호출은 성공 응답을 반환한다. 이 케이스의 예상 Gemini 호출 수는 2회다.
 
-AI 10회 반복은 실제 사용자별 일일 제한과 코드 기반 AI 리뷰 캐시를 우회하려고 정책을 변경하지 않는다. 대신 `run-local.sh`가 회차별 JWT subject를 `PERF_AI_BOJ_ID_PREFIX` 기반으로 분리하고, k6가 회차별 고유 코드 주석을 넣어 매 회차를 독립 fixture로 만든다. 기본은 모든 회차를 실행한 뒤 실패 회차를 집계하며, `FAIL_FAST_AI_REPEAT=true`일 때만 중간 중단한다.
+AI 10회 반복은 실제 사용자별 일일 제한과 코드 기반 AI 리뷰 캐시를 우회하려고
+정책을 변경하지 않는다. `run-local.sh`는 회차별 BOJ ID와 Student ID를 만들고 해당
+Student를 MongoDB에 upsert한 뒤, 두 식별자와 자격 증명 버전 0을 담은 Access Token을
+사용한다. k6는 회차별 고유 코드 주석을 넣어 각 실행을 분리한다. 기본은 모든 회차를
+실행한 뒤 실패 회차를 집계하며, `FAIL_FAST_AI_REPEAT=true`일 때만 중간 중단한다.
 
 ## CI Static Validation
 

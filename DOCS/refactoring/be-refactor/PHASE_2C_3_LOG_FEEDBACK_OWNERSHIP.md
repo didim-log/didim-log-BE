@@ -20,13 +20,14 @@ Service도 로그 ID로 문서를 찾은 뒤 소유자를 확인하지 않고 �
 
 ## 변경
 
-Controller가 JWT subject인 BOJ ID를 Service까지 전달한다. Service는 다음 순서로
+현재 Controller는 인증 principal의 불변 `studentId`를 Service까지 전달한다.
+Service는 다음 순서로
 인증과 소유권을 확인한 뒤 피드백을 저장한다.
 
 ```text
-요청자 BOJ ID 확인
+요청자 studentId 확인
 → 로그 조회
-→ Log.bojId와 요청자 비교
+→ Log.studentId와 요청자 비교
 → 피드백 저장
 ```
 
@@ -40,6 +41,11 @@ Controller가 JWT subject인 BOJ ID를 Service까지 전달한다. Service는 �
 
 관리자도 이 사용자용 엔드포인트에서는 다른 사용자의 로그를 바꿀 수 없다. 소유자가
 없는 기존 로그도 소유권을 증명할 수 없으므로 변경을 허용하지 않는다.
+
+Phase 2E부터 BOJ ID는 생성 시점 표시값으로만 남긴다. 불변 소유자가 없는 이전 로그를
+현재 BOJ ID만으로 자동 연결하면 탈퇴·ID 변경 뒤 새 회원에게 소유권이 넘어갈 수 있다.
+따라서 자동 이관하지 않고 사용자 경로에서 접근을 거부하며, 보존이 필요하면 별도의
+신뢰 가능한 회원 매핑으로 `studentId`를 채워야 한다.
 
 Swagger 응답에 `403`을 추가하고 API 명세의 설명도 본인 로그만 변경할 수 있다는
 계약에 맞췄다.

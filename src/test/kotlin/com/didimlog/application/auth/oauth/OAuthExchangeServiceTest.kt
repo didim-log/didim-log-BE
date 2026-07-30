@@ -42,8 +42,10 @@ class OAuthExchangeServiceTest {
     @DisplayName("교환 코드는 URL-safe 256비트 값으로 TTL과 함께 저장한다")
     fun `교환 코드 발급 성공`() {
         val codeSlot = slot<String>()
+        val student = linkedStudent(role = Role.USER).copy(credentialVersion = 7)
+        every { studentRepository.findById(STUDENT_ID) } returns Optional.of(student)
         every {
-            exchangeCodeStore.save(capture(codeSlot), STUDENT_ID, 120L)
+            exchangeCodeStore.save(capture(codeSlot), identity(student), 120L)
         } returns true
 
         val code = service.issue(STUDENT_ID)
@@ -51,8 +53,9 @@ class OAuthExchangeServiceTest {
         assertThat(code).isEqualTo(codeSlot.captured)
         assertThat(code).matches("[A-Za-z0-9_-]{43}")
         assertThat(Base64.getUrlDecoder().decode(code)).hasSize(32)
+        verify(exactly = 1) { studentRepository.findById(STUDENT_ID) }
         verify(exactly = 1) {
-            exchangeCodeStore.save(code, STUDENT_ID, 120L)
+            exchangeCodeStore.save(code, identity(student), 120L)
         }
     }
 
@@ -77,10 +80,12 @@ class OAuthExchangeServiceTest {
     fun `유효한 코드 교환 성공`() {
         val code = "valid-exchange-code"
         val student = linkedStudent(role = Role.ADMIN)
-        every { exchangeCodeStore.consume(code) } returns STUDENT_ID
+        every { exchangeCodeStore.consume(code) } returns identity(student)
         every { studentRepository.findById(STUDENT_ID) } returns Optional.of(student)
-        every { jwtTokenProvider.createToken(BOJ_ID, Role.ADMIN.value) } returns "access-token"
-        every { refreshTokenService.generateAndSave(BOJ_ID) } returns "refresh-token"
+        every {
+            jwtTokenProvider.createToken(BOJ_ID, STUDENT_ID, student.credentialVersion, Role.ADMIN.value)
+        } returns "access-token"
+        every { refreshTokenService.generateAndSave(student) } returns "refresh-token"
 
         val result = service.exchange(code)
 
@@ -92,8 +97,10 @@ class OAuthExchangeServiceTest {
         assertThat(result.provider).isEqualTo(Provider.GITHUB)
         verify(exactly = 1) { exchangeCodeStore.consume(code) }
         verify(exactly = 1) { studentRepository.findById(STUDENT_ID) }
-        verify(exactly = 1) { jwtTokenProvider.createToken(BOJ_ID, Role.ADMIN.value) }
-        verify(exactly = 1) { refreshTokenService.generateAndSave(BOJ_ID) }
+        verify(exactly = 1) {
+            jwtTokenProvider.createToken(BOJ_ID, STUDENT_ID, student.credentialVersion, Role.ADMIN.value)
+        }
+        verify(exactly = 1) { refreshTokenService.generateAndSave(student) }
     }
 
     @Test
@@ -110,8 +117,8 @@ class OAuthExchangeServiceTest {
         assertThat(exception.message).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID.message)
         verify(exactly = 1) { exchangeCodeStore.consume(code) }
         verify(exactly = 0) { studentRepository.findById(any()) }
-        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
-        verify(exactly = 0) { refreshTokenService.generateAndSave(any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
     }
 
     @Test
@@ -119,10 +126,14 @@ class OAuthExchangeServiceTest {
     fun `교환 코드 재사용 실패`() {
         val code = "single-use-code"
         val student = linkedStudent(role = Role.USER)
-        every { exchangeCodeStore.consume(code) } returnsMany listOf(STUDENT_ID, null)
+        every {
+            exchangeCodeStore.consume(code)
+        } returnsMany listOf(identity(student), null)
         every { studentRepository.findById(STUDENT_ID) } returns Optional.of(student)
-        every { jwtTokenProvider.createToken(BOJ_ID, Role.USER.value) } returns "access-token"
-        every { refreshTokenService.generateAndSave(BOJ_ID) } returns "refresh-token"
+        every {
+            jwtTokenProvider.createToken(BOJ_ID, STUDENT_ID, student.credentialVersion, Role.USER.value)
+        } returns "access-token"
+        every { refreshTokenService.generateAndSave(student) } returns "refresh-token"
 
         val firstResult = service.exchange(code)
         val replayException = assertThrows<BusinessException> {
@@ -134,15 +145,19 @@ class OAuthExchangeServiceTest {
         assertThat(replayException.message).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID.message)
         verify(exactly = 2) { exchangeCodeStore.consume(code) }
         verify(exactly = 1) { studentRepository.findById(STUDENT_ID) }
-        verify(exactly = 1) { jwtTokenProvider.createToken(BOJ_ID, Role.USER.value) }
-        verify(exactly = 1) { refreshTokenService.generateAndSave(BOJ_ID) }
+        verify(exactly = 1) {
+            jwtTokenProvider.createToken(BOJ_ID, STUDENT_ID, student.credentialVersion, Role.USER.value)
+        }
+        verify(exactly = 1) { refreshTokenService.generateAndSave(student) }
     }
 
     @Test
     @DisplayName("코드가 가리키는 학생이 GUEST이면 토큰을 발급하지 않는다")
     fun `GUEST 학생 코드 교환 실패`() {
         val code = "guest-student-code"
-        every { exchangeCodeStore.consume(code) } returns STUDENT_ID
+        every {
+            exchangeCodeStore.consume(code)
+        } returns OAuthExchangeCodeIdentity(STUDENT_ID, BOJ_ID, 0, Role.USER)
         every { studentRepository.findById(STUDENT_ID) } returns Optional.of(linkedStudent(role = Role.GUEST))
 
         val exception = assertThrows<BusinessException> {
@@ -150,15 +165,17 @@ class OAuthExchangeServiceTest {
         }
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID)
-        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
-        verify(exactly = 0) { refreshTokenService.generateAndSave(any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
     }
 
     @Test
     @DisplayName("코드 소비 뒤 학생이 삭제됐으면 토큰을 발급하지 않는다")
     fun `삭제된 학생 코드 교환 실패`() {
         val code = "deleted-student-code"
-        every { exchangeCodeStore.consume(code) } returns STUDENT_ID
+        every {
+            exchangeCodeStore.consume(code)
+        } returns OAuthExchangeCodeIdentity(STUDENT_ID, BOJ_ID, 0, Role.USER)
         every { studentRepository.findById(STUDENT_ID) } returns Optional.empty()
 
         val exception = assertThrows<BusinessException> {
@@ -166,15 +183,17 @@ class OAuthExchangeServiceTest {
         }
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID)
-        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
-        verify(exactly = 0) { refreshTokenService.generateAndSave(any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
     }
 
     @Test
     @DisplayName("코드 소비 뒤 BOJ ID 연결이 사라졌으면 토큰을 발급하지 않는다")
     fun `BOJ 미연동 학생 코드 교환 실패`() {
         val code = "unlinked-student-code"
-        every { exchangeCodeStore.consume(code) } returns STUDENT_ID
+        every {
+            exchangeCodeStore.consume(code)
+        } returns OAuthExchangeCodeIdentity(STUDENT_ID, BOJ_ID, 0, Role.USER)
         every {
             studentRepository.findById(STUDENT_ID)
         } returns Optional.of(linkedStudent(role = Role.USER).copy(bojId = null))
@@ -184,8 +203,71 @@ class OAuthExchangeServiceTest {
         }
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID)
-        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
-        verify(exactly = 0) { refreshTokenService.generateAndSave(any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("발급 뒤 자격 증명 버전이 바뀐 코드는 토큰을 발급하지 않는다")
+    fun `자격 증명 버전 변경 전 코드 교환 실패`() {
+        val code = "stale-credential-code"
+        val issuedStudent = linkedStudent(role = Role.USER)
+        val currentStudent = issuedStudent.copy(credentialVersion = issuedStudent.credentialVersion + 1)
+        every { exchangeCodeStore.consume(code) } returns identity(issuedStudent)
+        every { studentRepository.findById(STUDENT_ID) } returns Optional.of(currentStudent)
+
+        val exception = assertThrows<BusinessException> {
+            service.exchange(code)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID)
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("발급 뒤 권한이 바뀐 코드는 새 권한 토큰을 발급하지 않는다")
+    fun `권한 변경 전 코드 교환 실패`() {
+        val code = "stale-role-code"
+        val issuedStudent = linkedStudent(role = Role.USER)
+        val currentStudent = issuedStudent.copy(role = Role.ADMIN)
+        every { exchangeCodeStore.consume(code) } returns identity(issuedStudent)
+        every { studentRepository.findById(STUDENT_ID) } returns Optional.of(currentStudent)
+
+        val exception = assertThrows<BusinessException> {
+            service.exchange(code)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID)
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("발급 뒤 BOJ ID가 바뀐 코드는 새 계정 정보로 토큰을 발급하지 않는다")
+    fun `BOJ ID 변경 전 코드 교환 실패`() {
+        val code = "stale-boj-code"
+        val issuedStudent = linkedStudent(role = Role.USER)
+        val currentStudent = issuedStudent.copy(bojId = BojId("renamed_oauth_boj"))
+        every { exchangeCodeStore.consume(code) } returns identity(issuedStudent)
+        every { studentRepository.findById(STUDENT_ID) } returns Optional.of(currentStudent)
+
+        val exception = assertThrows<BusinessException> {
+            service.exchange(code)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.OAUTH_EXCHANGE_CODE_INVALID)
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
+    }
+
+    private fun identity(student: Student): OAuthExchangeCodeIdentity {
+        return OAuthExchangeCodeIdentity(
+            studentId = requireNotNull(student.id),
+            bojId = requireNotNull(student.bojId).value,
+            credentialVersion = student.credentialVersion,
+            role = student.role
+        )
     }
 
     private fun linkedStudent(role: Role): Student {

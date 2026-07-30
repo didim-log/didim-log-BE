@@ -31,18 +31,20 @@ class LogServiceTest {
             title = "로그 제목",
             content = "   ",
             code = "print(1)",
+            studentId = "student-1",
             bojId = "tester1",
             isSuccess = true
         )
 
         assertThat(saved.content.value).isEqualTo("(empty)")
+        assertThat(saved.studentId).isEqualTo("student-1")
         assertThat(saved.bojId?.value).isEqualTo("tester1")
         assertThat(saved.isSuccess).isTrue()
         verify(exactly = 1) { logRepository.save(any()) }
     }
 
     @Test
-    fun `getLogTemplate 는 requesterBojId가 비어있으면 UNAUTHORIZED`() {
+    fun `getLogTemplate 는 requesterStudentId가 비어있으면 UNAUTHORIZED`() {
         assertThatThrownBy {
             logService.getLogTemplate("log-1", "")
         }.isInstanceOf(BusinessException::class.java)
@@ -62,7 +64,7 @@ class LogServiceTest {
     @Test
     fun `getLogTemplate 는 소유자가 다르면 ACCESS_DENIED`() {
         every { logRepository.findById("log-1") } returns Optional.of(
-            log(id = "log-1", bojId = BojId("owner1"), content = "비밀 회고")
+            log(id = "log-1", studentId = "owner-id", bojId = BojId("owner1"), content = "비밀 회고")
         )
 
         assertThatThrownBy {
@@ -74,20 +76,21 @@ class LogServiceTest {
     @Test
     fun `getLogTemplate 는 본인 로그면 content를 반환한다`() {
         every { logRepository.findById("log-1") } returns Optional.of(
-            log(id = "log-1", bojId = BojId("owner1"), content = "내 회고 템플릿")
+            log(id = "log-1", studentId = "owner-id", bojId = BojId("owner1"), content = "내 회고 템플릿")
         )
 
-        val template = logService.getLogTemplate("log-1", "owner1")
+        val template = logService.getLogTemplate("log-1", "owner-id")
 
         assertThat(template).isEqualTo("내 회고 템플릿")
     }
 
-    private fun log(id: String, bojId: BojId?, content: String): Log {
+    private fun log(id: String, studentId: String?, bojId: BojId?, content: String): Log {
         return Log(
             id = id,
             title = LogTitle("title"),
             content = LogContent(content),
             code = LogCode("fun main() = Unit"),
+            studentId = studentId,
             bojId = bojId
         )
     }

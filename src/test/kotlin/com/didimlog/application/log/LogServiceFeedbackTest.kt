@@ -29,15 +29,15 @@ class LogServiceFeedbackTest {
     fun `피드백 업데이트 성공 LIKE`() {
         // given
         val logId = "log-123"
-        val requesterBojId = "owner1"
-        val log = log(logId, BojId(requesterBojId))
+        val requesterStudentId = "owner-id"
+        val log = log(logId, requesterStudentId, BojId("owner1"))
         val updatedLog = log.updateFeedback(AiFeedbackStatus.LIKE, null)
 
         every { logRepository.findById(logId) } returns Optional.of(log)
         every { logRepository.save(updatedLog) } answers { firstArg() }
 
         // when
-        val result = logService.updateFeedback(logId, requesterBojId, AiFeedbackStatus.LIKE, null)
+        val result = logService.updateFeedback(logId, requesterStudentId, AiFeedbackStatus.LIKE, null)
 
         // then
         assertThat(result.aiFeedbackStatus).isEqualTo(AiFeedbackStatus.LIKE)
@@ -51,16 +51,16 @@ class LogServiceFeedbackTest {
     fun `피드백 업데이트 성공 DISLIKE with reason`() {
         // given
         val logId = "log-123"
-        val requesterBojId = "owner1"
+        val requesterStudentId = "owner-id"
         val reason = "INACCURATE"
-        val log = log(logId, BojId(requesterBojId))
+        val log = log(logId, requesterStudentId, BojId("owner1"))
         val updatedLog = log.updateFeedback(AiFeedbackStatus.DISLIKE, reason)
 
         every { logRepository.findById(logId) } returns Optional.of(log)
         every { logRepository.save(updatedLog) } answers { firstArg() }
 
         // when
-        val result = logService.updateFeedback(logId, requesterBojId, AiFeedbackStatus.DISLIKE, reason)
+        val result = logService.updateFeedback(logId, requesterStudentId, AiFeedbackStatus.DISLIKE, reason)
 
         // then
         assertThat(result.aiFeedbackStatus).isEqualTo(AiFeedbackStatus.DISLIKE)
@@ -88,7 +88,7 @@ class LogServiceFeedbackTest {
     }
 
     @Test
-    @DisplayName("인증 BOJ ID가 비어 있으면 로그를 조회하지 않는다")
+    @DisplayName("인증 학생 ID가 비어 있으면 로그를 조회하지 않는다")
     fun `피드백 업데이트 실패 인증 정보 없음`() {
         val exception = assertThrows<BusinessException> {
             logService.updateFeedback("log-123", " ", AiFeedbackStatus.LIKE, null)
@@ -103,7 +103,7 @@ class LogServiceFeedbackTest {
     @DisplayName("소유자가 없는 로그에는 피드백을 저장하지 않는다")
     fun `피드백 업데이트 실패 로그 소유자 없음`() {
         val logId = "log-123"
-        every { logRepository.findById(logId) } returns Optional.of(log(logId, null))
+        every { logRepository.findById(logId) } returns Optional.of(log(logId, null, BojId("owner1")))
 
         val exception = assertThrows<BusinessException> {
             logService.updateFeedback(logId, "owner1", AiFeedbackStatus.LIKE, null)
@@ -117,7 +117,9 @@ class LogServiceFeedbackTest {
     @DisplayName("다른 사용자의 로그에는 피드백을 저장하지 않는다")
     fun `피드백 업데이트 실패 소유자 불일치`() {
         val logId = "log-123"
-        every { logRepository.findById(logId) } returns Optional.of(log(logId, BojId("owner1")))
+        every {
+            logRepository.findById(logId)
+        } returns Optional.of(log(logId, "owner-id", BojId("owner1")))
 
         val exception = assertThrows<BusinessException> {
             logService.updateFeedback(logId, "other1", AiFeedbackStatus.DISLIKE, "INACCURATE")
@@ -127,18 +129,18 @@ class LogServiceFeedbackTest {
         verify(exactly = 0) { logRepository.save(any()) }
     }
 
-    private fun log(logId: String, bojId: BojId?): Log {
+    private fun log(logId: String, studentId: String?, bojId: BojId?): Log {
         return Log(
             id = logId,
             title = LogTitle("Test"),
             content = LogContent("Content"),
             code = LogCode("code"),
+            studentId = studentId,
             bojId = bojId,
             aiFeedbackStatus = AiFeedbackStatus.NONE
         )
     }
 }
-
 
 
 

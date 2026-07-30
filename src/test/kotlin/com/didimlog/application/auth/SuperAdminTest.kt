@@ -43,7 +43,8 @@ class SuperAdminTest {
         passwordResetCodeRepository,
         passwordResetCodeGenerator,
         refreshTokenService,
-        bojOwnershipVerificationService
+        bojOwnershipVerificationService,
+        ImmediateCredentialSessionCoordinator()
     )
 
     @Test
@@ -70,9 +71,13 @@ class SuperAdminTest {
         every { studentRepository.findByBojId(BojId(bojId)) } returns java.util.Optional.empty()
         every { studentRepository.findByEmail(email) } returns java.util.Optional.empty()
         every { passwordEncoder.encode(password) } returns encodedPassword
-        every { studentRepository.save(any<Student>()) } answers { firstArg() }
-        every { jwtTokenProvider.createToken(bojId, Role.ADMIN.value) } returns "admin-token"
-        every { refreshTokenService.generateAndSave(bojId) } returns "refresh-token"
+        every {
+            studentRepository.save(any<Student>())
+        } answers { firstArg<Student>().copy(id = "admin-student-id") }
+        every {
+            jwtTokenProvider.createToken(bojId, "admin-student-id", 0, Role.ADMIN.value)
+        } returns "admin-token"
+        every { refreshTokenService.generateAndSave(any<Student>()) } returns "refresh-token"
 
         // when
         val result = authService.createSuperAdmin(bojId, password, email, adminKey)

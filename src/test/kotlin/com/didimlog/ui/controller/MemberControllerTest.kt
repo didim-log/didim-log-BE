@@ -74,18 +74,45 @@ class MemberControllerTest {
     @Test
     @DisplayName("내 닉네임 변경 - 204 No Content")
     fun `내 닉네임 변경`() {
-        every { memberService.updateMyNickname("me", "user_01") } returns Unit
+        every { memberService.updateMyNickname("student-id", "user_01") } returns Unit
 
         mockMvc.perform(
             patch("/api/v1/members/me/nickname")
-                .principal(UsernamePasswordAuthenticationToken("me", null))
+                .principal(UsernamePasswordAuthenticationToken("student-id", null))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(UpdateMyNicknameRequest("user_01")))
         )
             .andExpect(status().isNoContent)
 
-        verify(exactly = 1) { memberService.updateMyNickname("me", "user_01") }
+        verify(exactly = 1) { memberService.updateMyNickname("student-id", "user_01") }
+    }
+
+    @Test
+    @DisplayName("온보딩 완료 - 인증 학생 ID 전달")
+    fun `온보딩 완료`() {
+        every { memberService.completeOnboarding("student-id") } returns Unit
+
+        mockMvc.perform(
+            patch("/api/v1/members/onboarding/complete")
+                .principal(UsernamePasswordAuthenticationToken("student-id", null))
+        )
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) { memberService.completeOnboarding("student-id") }
+    }
+
+    @Test
+    @DisplayName("온보딩 리셋 - 인증 학생 ID 전달")
+    fun `온보딩 리셋`() {
+        every { memberService.resetOnboarding("student-id") } returns Unit
+
+        mockMvc.perform(
+            patch("/api/v1/members/onboarding/reset")
+                .principal(UsernamePasswordAuthenticationToken("student-id", null))
+        )
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) { memberService.resetOnboarding("student-id") }
     }
 }
-
 

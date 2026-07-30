@@ -72,12 +72,53 @@ class MemberServiceTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(me)
+        every { studentRepository.findById(memberId) } returns Optional.of(me)
         every { studentRepository.findByNickname(Nickname(nickname)) } returns Optional.of(other)
 
-        assertThatThrownBy { memberService.updateMyNickname(bojId, nickname) }
+        assertThatThrownBy { memberService.updateMyNickname(memberId, nickname) }
             .isInstanceOf(DuplicateNicknameException::class.java)
             .hasMessageContaining("이미 사용 중인 닉네임입니다")
     }
-}
 
+    @Test
+    @DisplayName("온보딩 완료는 학생 ID로 본인을 조회한다")
+    fun `온보딩 완료 학생 ID 조회`() {
+        val student = member("member-id")
+        every { studentRepository.findById("member-id") } returns Optional.of(student)
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+
+        memberService.completeOnboarding("member-id")
+
+        verify(exactly = 1) { studentRepository.findById("member-id") }
+        verify(exactly = 1) {
+            studentRepository.save(match<Student> { it.isOnboardingFinished })
+        }
+    }
+
+    @Test
+    @DisplayName("온보딩 리셋은 학생 ID로 본인을 조회한다")
+    fun `온보딩 리셋 학생 ID 조회`() {
+        val student = member("member-id").copy(isOnboardingFinished = true)
+        every { studentRepository.findById("member-id") } returns Optional.of(student)
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+
+        memberService.resetOnboarding("member-id")
+
+        verify(exactly = 1) { studentRepository.findById("member-id") }
+        verify(exactly = 1) {
+            studentRepository.save(match<Student> { !it.isOnboardingFinished })
+        }
+    }
+
+    private fun member(id: String): Student {
+        return Student(
+            id = id,
+            nickname = Nickname("member01"),
+            provider = Provider.BOJ,
+            providerId = "member",
+            bojId = BojId("member"),
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+    }
+}

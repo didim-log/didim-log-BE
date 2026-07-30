@@ -5,7 +5,6 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.template.SectionPreset
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.TemplatePreviewRequest
@@ -504,14 +503,17 @@ class TemplateController(
     }
 
     private fun getStudentFromAuthentication(authentication: Authentication): Student {
-        val bojId = authentication.name
-        return getStudentByBojId(bojId)
+        return getStudentById(authentication.name)
     }
 
-    private fun getStudentByBojId(bojId: String): Student {
-        val bojIdVo = BojId(bojId)
-        return studentRepository.findByBojId(bojIdVo)
-            .orElseThrow { BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId") }
+    private fun getStudentById(studentId: String): Student {
+        return studentRepository.findById(studentId)
+            .orElseThrow {
+                BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "학생을 찾을 수 없습니다. studentId=$studentId"
+                )
+            }
     }
 
     private fun getStudentId(student: Student): String {

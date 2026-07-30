@@ -7,6 +7,8 @@ import com.didimlog.domain.valueobject.AiReview
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.ai.AiApiClient
 import com.didimlog.infra.ai.AiApiResponse
 import io.mockk.Called
@@ -185,6 +187,7 @@ class AiReviewServiceTest {
             title = LogTitle("제목"),
             content = LogContent("내용"),
             code = LogCode("0123456789"),
+            studentId = "user123",
             aiReview = null,
             bojId = null
         )
@@ -195,8 +198,6 @@ class AiReviewServiceTest {
             rawJson = """{"review":"ok"}""",
             review = "ok"
         )
-
-        every { aiUsageService.isRequireBojForAiReview() } returns false
         val result = aiReviewService.requestOneLineReviewAsync(logId, "user123")
 
         assertThat(result.inProgress).isTrue()
@@ -214,12 +215,11 @@ class AiReviewServiceTest {
             title = LogTitle("제목"),
             content = LogContent("내용"),
             code = LogCode("0123456789"),
+            studentId = "owner-id",
             aiReview = null,
             bojId = com.didimlog.domain.valueobject.BojId("owner123")
         )
         every { logRepository.findById(logId) } returns Optional.of(log)
-        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
-        every { lockRepository.markFailed(logId) } returns true
 
         assertThatThrownBy {
             aiReviewService.requestOneLineReviewAsync(logId, "attacker")
@@ -227,7 +227,58 @@ class AiReviewServiceTest {
             .isInstanceOf(com.didimlog.global.exception.BusinessException::class.java)
             .hasMessageContaining("본인이 작성한 로그")
 
-        verify(exactly = 1) { lockRepository.markFailed(logId) }
+        verify(exactly = 0) { lockRepository.tryAcquireLock(any(), any(), any()) }
+        verify(exactly = 0) { lockRepository.markFailed(any()) }
+        verify { aiApiClient wasNot Called }
+    }
+
+    @Test
+    @DisplayName("다른 학생은 로그에 저장된 AI 리뷰 캐시를 조회할 수 없다")
+    fun `entity cache is denied before return for different owner`() {
+        val logId = "log-cached-owner"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("0123456789"),
+            studentId = "owner-id",
+            aiReview = AiReview("cached")
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+
+        assertThatThrownBy {
+            aiReviewService.requestOneLineReviewAsync(logId, "attacker-id")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .matches { (it as BusinessException).errorCode == ErrorCode.ACCESS_DENIED }
+
+        verify(exactly = 0) { aiReviewCodeCacheService.getCachedReview(any(), any()) }
+        verify(exactly = 0) { lockRepository.tryAcquireLock(any(), any(), any()) }
+        verify { aiApiClient wasNot Called }
+    }
+
+    @Test
+    @DisplayName("다른 학생은 코드 해시 AI 리뷰 캐시를 조회할 수 없다")
+    fun `code cache is denied before lookup for different owner`() {
+        val logId = "log-code-cached-owner"
+        val code = "public class Main { public static void main(String[] args) { } }"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode(code),
+            studentId = "owner-id"
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+
+        assertThatThrownBy {
+            aiReviewService.requestOneLineReviewAsync(logId, "attacker-id")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .matches { (it as BusinessException).errorCode == ErrorCode.ACCESS_DENIED }
+
+        verify(exactly = 0) { aiReviewCodeCacheService.getCachedReview(any(), any()) }
+        verify(exactly = 0) { lockRepository.tryAcquireLock(any(), any(), any()) }
         verify { aiApiClient wasNot Called }
     }
 }

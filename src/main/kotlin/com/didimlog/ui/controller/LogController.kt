@@ -71,12 +71,13 @@ class LogController(
         @Valid
         request: LogCreateRequest
     ): ResponseEntity<LogResponse> {
-        val bojId = authentication?.name // JWT 토큰의 subject(bojId), null일 수 있음
+        val owner = requireOwner(authentication)
         val log = logService.createLog(
             title = request.title,
             content = request.content,
             code = request.code,
-            bojId = bojId?.takeIf { it.isNotBlank() },
+            studentId = owner.studentId,
+            bojId = owner.bojId,
             isSuccess = request.isSuccess
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(LogResponse.from(log))
@@ -115,9 +116,8 @@ class LogController(
         @NotBlank(message = "로그 ID는 필수입니다.")
         logId: String
     ): ResponseEntity<LogTemplateResponse> {
-        val requesterBojId = authentication?.name
-            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
-        val template = logService.getLogTemplate(logId, requesterBojId)
+        val studentId = requireStudentId(authentication)
+        val template = logService.getLogTemplate(logId, studentId)
         return ResponseEntity.ok(LogTemplateResponse(template = template))
     }
 
@@ -162,9 +162,8 @@ class LogController(
         @NotBlank(message = "로그 ID는 필수입니다.")
         logId: String
     ): ResponseEntity<AiReviewResponse> {
-        val requesterBojId = authentication?.name
-            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
-        val result = aiReviewService.requestOneLineReviewAsync(logId, requesterBojId)
+        val studentId = requireStudentId(authentication)
+        val result = aiReviewService.requestOneLineReviewAsync(logId, studentId)
         val response = AiReviewResponse(
             review = result.review,
             cached = result.cached,
@@ -220,9 +219,8 @@ class LogController(
         @Valid
         request: com.didimlog.ui.dto.LogFeedbackRequest
     ): ResponseEntity<Map<String, String>> {
-        val requesterBojId = authentication?.name?.takeIf { it.isNotBlank() }
-            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
-        logService.updateFeedback(logId, requesterBojId, request.status, request.reason)
+        val studentId = requireStudentId(authentication)
+        logService.updateFeedback(logId, studentId, request.status, request.reason)
         return ResponseEntity.ok(mapOf("message" to "피드백이 제출되었습니다."))
     }
 
@@ -251,10 +249,9 @@ class LogController(
         @Parameter(hidden = true)
         authentication: Authentication?
     ): ResponseEntity<com.didimlog.ui.dto.AiUsageResponse> {
-        val bojId = authentication?.name
-            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        val studentId = requireStudentId(authentication)
         
-        val usageInfo = aiUsageService.getUserUsage(bojId)
+        val usageInfo = aiUsageService.getUserUsage(studentId)
         
         return ResponseEntity.ok(
             com.didimlog.ui.dto.AiUsageResponse(
@@ -265,4 +262,31 @@ class LogController(
             )
         )
     }
+
+    private fun requireStudentId(authentication: Authentication?): String {
+        return authentication?.name?.takeIf { it.isNotBlank() }
+            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+    }
+
+    private fun requireOwner(authentication: Authentication?): AuthenticatedLogOwner {
+        val studentId = requireStudentId(authentication)
+        val student = studentRepository.findById(studentId)
+            .orElseThrow {
+                BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "학생을 찾을 수 없습니다. studentId=$studentId"
+                )
+            }
+        val bojId = student.bojId?.value
+            ?: throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "BOJ ID가 등록되지 않은 계정입니다."
+            )
+        return AuthenticatedLogOwner(studentId = studentId, bojId = bojId)
+    }
+
+    private data class AuthenticatedLogOwner(
+        val studentId: String,
+        val bojId: String
+    )
 }

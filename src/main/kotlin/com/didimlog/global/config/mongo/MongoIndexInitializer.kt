@@ -1,5 +1,6 @@
 package com.didimlog.global.config.mongo
 
+import com.didimlog.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
@@ -13,6 +14,9 @@ import org.springframework.data.mongodb.core.index.Index
 import org.springframework.data.mongodb.core.index.IndexInfo
 import org.springframework.data.mongodb.core.index.IndexOperations
 import org.springframework.data.mongodb.core.index.PartialIndexFilter
+import org.springframework.data.mongodb.core.query.Criteria
+import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Component
 
 /**
@@ -28,6 +32,7 @@ class MongoIndexInitializer(
     }
 
     fun ensureIndexes() {
+        backfillStudentDocumentVersion()
         ensureRetrospectiveStudentProblemUniqueIndex()
         ensureRetrospectiveStudentIdIndex()
         ensureStudentProviderIdentityUniqueIndex()
@@ -35,9 +40,19 @@ class MongoIndexInitializer(
         ensureStudentBojIdUniqueIndex()
         ensureStudentEmailUniqueIndex()
         ensureStudentAdminRatingIndex()
+        ensureLogBojSnapshotCreatedIndex()
+        ensureLogStudentCreatedIndex()
         ensurePasswordResetCodeUniqueIndex()
         ensurePasswordResetStudentIdUniqueIndex()
         ensurePasswordResetCodeTtlIndex()
+    }
+
+    private fun backfillStudentDocumentVersion() {
+        mongoTemplate.updateMulti(
+            Query.query(Criteria.where("documentVersion").exists(false)),
+            Update().set("documentVersion", 0L),
+            Student::class.java
+        )
     }
 
     private fun ensureRetrospectiveStudentProblemUniqueIndex() {
@@ -183,6 +198,38 @@ class MongoIndexInitializer(
             )
     }
 
+    private fun ensureLogBojSnapshotCreatedIndex() {
+        ensureIndex(
+            indexOperations = mongoTemplate.indexOps(Log::class.java),
+            description = "로그 BOJ 표시값 생성일 조회",
+            definition = Index()
+                .on("bojId", Sort.Direction.ASC)
+                .on("createdAt", Sort.Direction.DESC)
+                .named(LOG_BOJ_SNAPSHOT_CREATED_INDEX_NAME)
+        ) { index ->
+            index.hasFields(
+                "bojId" to Sort.Direction.ASC,
+                "createdAt" to Sort.Direction.DESC
+            ) && index.isPlainIndex(unique = false)
+        }
+    }
+
+    private fun ensureLogStudentCreatedIndex() {
+        ensureIndex(
+            indexOperations = mongoTemplate.indexOps(Log::class.java),
+            description = "로그 학생 생성일 조회",
+            definition = Index()
+                .on("studentId", Sort.Direction.ASC)
+                .on("createdAt", Sort.Direction.DESC)
+                .named(LOG_STUDENT_CREATED_INDEX_NAME)
+        ) { index ->
+            index.hasFields(
+                "studentId" to Sort.Direction.ASC,
+                "createdAt" to Sort.Direction.DESC
+            ) && index.isPlainIndex(unique = false)
+        }
+    }
+
     private fun ensurePasswordResetCodeUniqueIndex() {
         ensureIndex(
             indexOperations = mongoTemplate.indexOps(PasswordResetCode::class.java),
@@ -294,6 +341,8 @@ class MongoIndexInitializer(
         const val STUDENT_BOJ_ID_UNIQUE_INDEX_NAME = "uniq_student_boj_id"
         const val STUDENT_EMAIL_UNIQUE_INDEX_NAME = "uniq_student_email"
         const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
+        const val LOG_BOJ_SNAPSHOT_CREATED_INDEX_NAME = "log_boj_snapshot_created"
+        const val LOG_STUDENT_CREATED_INDEX_NAME = "log_student_created"
         const val PASSWORD_RESET_CODE_UNIQUE_INDEX_NAME = "uniq_password_reset_code"
         const val PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME = "uniq_password_reset_student_id"
         const val PASSWORD_RESET_CODE_TTL_INDEX_NAME = "ttl_password_reset_expires_at"

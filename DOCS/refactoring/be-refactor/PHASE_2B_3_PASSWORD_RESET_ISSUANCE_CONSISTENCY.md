@@ -166,4 +166,4 @@ Phase 2B-2와 비교하면 core-v1은 Line `+0.20%p`, Branch `+0.35%p`, Class
 
 - 재설정 코드 발급 API를 포함한 인증 Rate Limit 경로 정리
 - Redis 카운터 증가와 최초 TTL 설정의 원자화
-- 비밀번호 변경 뒤 기존 Refresh Token을 폐기하는 세션 정책
+- 완료: [Phase 2E — 비밀번호 변경과 토큰 소유자 고정](./PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md)

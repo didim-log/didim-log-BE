@@ -30,7 +30,7 @@ class StudyServiceTest {
     @DisplayName("submitSolution은 Student와 Problem을 조회하고 solveProblem과 save를 호출한다")
     fun `submitSolution 정상 흐름`() {
         // given
-        val bojId = "test123"
+        val studentId = "student-id"
         val problemId = "1000"
 
         val student = mockk<Student>(relaxed = true)
@@ -43,7 +43,7 @@ class StudyServiceTest {
             url = "https://www.acmicpc.net/problem/$problemId"
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         
         val savedStudentSlot: CapturingSlot<Student> = slot()
@@ -51,7 +51,7 @@ class StudyServiceTest {
 
         // when
         studyService.submitSolution(
-            bojId = bojId,
+            studentId = studentId,
             problemId = problemId,
             timeTaken = 120L,
             isSuccess = true
@@ -72,13 +72,13 @@ class StudyServiceTest {
     @DisplayName("학생이 존재하지 않으면 submitSolution은 예외를 발생시킨다")
     fun `학생이 없으면 예외`() {
         // given
-        val bojId = "missing"
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.empty()
+        val studentId = "missing"
+        every { studentRepository.findById(studentId) } returns Optional.empty()
 
         // expect
         assertThrows<com.didimlog.global.exception.BusinessException> {
             studyService.submitSolution(
-                bojId = bojId,
+                studentId = studentId,
                 problemId = "1000",
                 timeTaken = 100L,
                 isSuccess = true
@@ -90,8 +90,10 @@ class StudyServiceTest {
     @DisplayName("문제가 존재하지 않으면 submitSolution은 예외를 발생시킨다")
     fun `문제가 없으면 예외`() {
         // given
+        val studentId = "student-id"
         val bojId = "tester123"
         val student = Student(
+            id = studentId,
             nickname = Nickname("tester"),
             provider = Provider.BOJ,
             providerId = bojId,
@@ -100,13 +102,13 @@ class StudyServiceTest {
             currentTier = Tier.BRONZE,
             role = Role.USER
         )
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
         every { problemRepository.findById("missing-problem") } returns Optional.empty()
 
         // expect
         assertThrows<com.didimlog.global.exception.BusinessException> {
             studyService.submitSolution(
-                bojId = bojId,
+                studentId = studentId,
                 problemId = "missing-problem",
                 timeTaken = 100L,
                 isSuccess = true
@@ -114,5 +116,4 @@ class StudyServiceTest {
         }
     }
 }
-
 

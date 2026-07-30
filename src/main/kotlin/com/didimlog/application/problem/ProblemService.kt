@@ -64,6 +64,7 @@ class ProblemService(
         val studentId = student.id ?: return
         studentRepository.updateSolvedAcProfileById(
             studentId = studentId,
+            expectedBojId = targetBojId,
             rating = updatedStudent.rating,
             solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
             currentTier = updatedStudent.currentTier

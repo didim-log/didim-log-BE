@@ -80,8 +80,9 @@ flowchart LR
 ### 인증과 운영 안정성
 
 - BOJ 프로필 상태 메시지를 이용한 계정 소유권 인증
-- Access Token은 JWT로 발급하고 Refresh Token은 Redis에 저장
-- 보호 API는 `type=access`와 USER / ADMIN role을 가진 Access Token만 인증
+- Access/Refresh Token에 변경되지 않는 학생 ID와 자격 상태 변경 버전을 서명
+- 보호 API는 최신 학생의 BOJ ID·자격 상태 버전·권한이 모두 같은 Access Token만 인증
+- Refresh Token은 학생 ID를 소유자로 Redis에 저장하고 한 번씩 원자적으로 교체
 - 기존 연결 계정의 OAuth2 로그인과 USER / ADMIN 권한 분리
 - 인증 API별 Redis 고정 구간 Rate Limit과 동시 요청 원자 처리
 - AI 리뷰 잠금, 실패 상태 전환, 재시도 흐름
@@ -169,9 +170,9 @@ flowchart LR
     PROBLEMS -. 문제 존재 확인 .-> RETRO_API
 ```
 
-- 풀이 제출 시 인증 principal의 BOJ ID로 사용자를 찾고, 문제 존재 여부를 확인한 뒤 성공 여부와 소요 시간을 사용자 문서에 저장합니다. 웹 클라이언트에서는 JWT subject가 principal 이름입니다.
-- 코딩 로그는 제목, 내용, 코드, 성공 여부를 별도 문서로 저장합니다.
-- AI 리뷰 피드백은 인증 principal의 BOJ ID와 로그의 BOJ ID가 일치할 때만 변경합니다.
+- 풀이 제출 시 인증 principal의 불변 `studentId`로 사용자를 찾고, 문제 존재 여부를 확인한 뒤 성공 여부와 소요 시간을 사용자 문서에 저장합니다.
+- 코딩 로그는 불변 `studentId`를 소유자로 두고 제목, 내용, 코드, 생성 시점 BOJ ID, 성공 여부를 별도 문서로 저장합니다.
+- AI 리뷰 조회·피드백은 캐시 반환 전에도 인증 principal의 `studentId`와 로그 소유자가 일치하는지 확인합니다.
 - 회고는 사용자·문제를 검증한 뒤 문제별로 생성하거나 기존 문서를 갱신합니다.
 
 [풀이 결과·로그·회고 상세 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md)
@@ -280,6 +281,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | OAuth 로그인 코드 교환 | 실제 Redis, 같은 일회용 코드를 동시에 소비 | 성공 1건, 이후 요청은 같은 만료·재사용 오류 |
 | JWT 토큰 용도 분리 | 실제 Security Filter Chain에 Access·Refresh Token 전달 | Access Token 인증 성공, Refresh Token의 보호 API 접근 401 |
 | 비밀번호 재설정 코드 발급·소비 | 실제 MongoDB 7.0.16, 같은 회원 20건 동시 발급·같은 코드 20건 동시 재설정 | 발급 오류 0건·활성 코드 1건, 재설정 성공 1건·실패 19건 |
+| 비밀번호 변경과 토큰 소유자 고정 | 실제 MongoDB 7.0.16·Redis 7.2.5, 기존 Access/Refresh Token·지연 로그인·BOJ ID 재사용·과거 Student 저장 | 구 버전·다른 학생 토큰 거절, stale CAS·전체 저장 무변경 |
 | 로그인 프로필 동기화 | 실제 MongoDB, solved.ac 조회 대기 중 비밀번호 재설정 | 새 비밀번호 유지, rating·tier 필드만 갱신 |
 
 이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
@@ -289,6 +291,7 @@ Refresh Token의 Lua 교체 순서와 경합 검증은 [Refresh Token 원자적 
 OAuth 리다이렉트의 장기 토큰·개인정보 제거와 일회용 코드 소비 순서는 [OAuth 일회용 코드 교환](./DOCS/refactoring/be-refactor/PHASE_2C_4_OAUTH_CODE_EXCHANGE.md)에 정리했습니다.
 Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토큰 용도 분리](./DOCS/refactoring/be-refactor/PHASE_2C_1_JWT_TOKEN_PURPOSE.md)에 정리했습니다.
 재설정 코드의 발급·소비 순서와 실패 경계는 [비밀번호 재설정 코드 발급 정합성](./DOCS/refactoring/be-refactor/PHASE_2B_3_PASSWORD_RESET_ISSUANCE_CONSISTENCY.md)과 [비밀번호 재설정 코드 원자적 소비](./DOCS/refactoring/be-refactor/PHASE_2B_2_PASSWORD_RESET_ATOMIC_CONSUME.md)에 정리했습니다.
+비밀번호 변경 뒤 기존 세션을 정리하고 토큰 소유자를 고정하는 순서는 [비밀번호 변경과 토큰 소유자 고정](./DOCS/refactoring/be-refactor/PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md)에 정리했습니다.
 로그인 중 solved.ac 프로필 동기화의 부분 갱신과 비밀번호 변경 경합은 [로그인 프로필 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_2C_2_LOGIN_PROFILE_PARTIAL_UPDATE.md)에 정리했습니다.
 인증 요청 제한의 Redis 원자 처리, 연결 주소 기준과 경로별 정책은 [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
 
@@ -316,9 +319,13 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 
 ### 로컬 실행
 
-MongoDB와 Redis 연결 정보, JWT Secret, OAuth·메일의 로컬 설정을 환경 변수로 준비한 뒤 실행합니다.
+MongoDB와 Redis 연결 정보, JWT Secret, OAuth·메일의 로컬 설정과 Swagger 전용
+계정을 환경 변수로 준비한 뒤 실행합니다. Swagger 계정에는 기본값이 없으므로
+`SWAGGER_USERNAME`, `SWAGGER_PASSWORD`를 반드시 지정해야 합니다.
 
 ```bash
+export SWAGGER_USERNAME=local-swagger
+export SWAGGER_PASSWORD='replace-with-a-long-local-password'
 ./gradlew bootRun
 ```
 

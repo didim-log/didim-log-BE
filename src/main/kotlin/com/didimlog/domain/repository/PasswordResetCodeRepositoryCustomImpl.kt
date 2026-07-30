@@ -18,11 +18,15 @@ class PasswordResetCodeRepositoryCustomImpl(
         studentId: String,
         resetCode: String,
         expiresAt: LocalDateTime,
-        createdAt: LocalDateTime
+        createdAt: LocalDateTime,
+        credentialVersion: Long,
+        bojId: String
     ): PasswordResetCode {
         val query = Query.query(Criteria.where("studentId").`is`(studentId))
         val update = Update()
             .set("resetCode", resetCode)
+            .set("credentialVersion", credentialVersion)
+            .set("bojId", bojId)
             .set("expiresAt", expiresAt)
             .set("createdAt", createdAt)
         val options = FindAndModifyOptions.options()
@@ -41,8 +45,11 @@ class PasswordResetCodeRepositoryCustomImpl(
         }
     }
 
-    override fun consumeByResetCode(resetCode: String): PasswordResetCode? {
-        val query = Query.query(Criteria.where("resetCode").`is`(resetCode))
+    override fun consumeByResetCode(resetCode: String, expectedStudentId: String): PasswordResetCode? {
+        val query = Query.query(
+            Criteria.where("resetCode").`is`(resetCode)
+                .and("studentId").`is`(expectedStudentId)
+        )
         return mongoTemplate.findAndRemove(query, PasswordResetCode::class.java)
     }
 

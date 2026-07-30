@@ -42,8 +42,8 @@ name: didim-log-be Deploy CICD
 # - MAIL_PASSWORD: SMTP 이메일 발송 앱 비밀번호 (Gmail 앱 비밀번호 필수)
 #
 # === Swagger UI 설정 ===
-# - SWAGGER_USERNAME: Swagger UI 접근용 HTTP Basic Authentication 사용자명 (기본값: admin)
-# - SWAGGER_PASSWORD: Swagger UI 접근용 HTTP Basic Authentication 비밀번호 (프로덕션에서는 강력한 비밀번호 필수)
+# - SWAGGER_USERNAME: Swagger UI 접근용 HTTP Basic Authentication 사용자명 (필수)
+# - SWAGGER_PASSWORD: Swagger UI 접근용 HTTP Basic Authentication 비밀번호 (필수, 강력한 값 사용)
 #
 # === AI 서비스 설정 (선택사항) ===
 # - GEMINI_API_KEY: Gemini API Key

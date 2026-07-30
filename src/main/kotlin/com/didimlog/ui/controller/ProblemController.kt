@@ -84,8 +84,8 @@ class ProblemController(
         @RequestParam(defaultValue = "RELATED")
         filterMode: CategoryFilterMode
     ): ResponseEntity<List<ProblemResponse>> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val recommendation = recommendationService.recommendProblemsDetailed(bojId, count, category, language, filterMode)
+        val studentId = authentication.name
+        val recommendation = recommendationService.recommendProblemsDetailed(studentId, count, category, language, filterMode)
         val response = recommendation.map { item ->
             ProblemResponse.from(
                 problem = item.problem,

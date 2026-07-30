@@ -14,22 +14,27 @@ interface PasswordResetCodeRepositoryCustom {
      * @param resetCode 새 재설정 코드
      * @param expiresAt 코드 만료 시각
      * @param createdAt 코드 발급 시각
+     * @param credentialVersion 코드 발급 당시 학생 자격 증명 버전
+     * @param bojId 코드 발급 당시 학생 BOJ ID
      * @return 저장된 재설정 코드
      */
     fun issueForStudent(
         studentId: String,
         resetCode: String,
         expiresAt: LocalDateTime,
-        createdAt: LocalDateTime
+        createdAt: LocalDateTime,
+        credentialVersion: Long,
+        bojId: String
     ): PasswordResetCode
 
     /**
-     * 재설정 코드를 조회와 동시에 삭제한다.
+     * 재설정 코드와 조회 당시 학생 ID가 모두 일치할 때만 조회와 동시에 삭제한다.
      *
      * @param resetCode 소비할 재설정 코드
-     * @return 소비한 코드, 코드가 없으면 null
+     * @param expectedStudentId 조회 당시 코드 소유 학생 ID
+     * @return 소비한 코드, 두 조건에 맞는 코드가 없으면 null
      */
-    fun consumeByResetCode(resetCode: String): PasswordResetCode?
+    fun consumeByResetCode(resetCode: String, expectedStudentId: String): PasswordResetCode?
 
     /**
      * 이번 발급 요청이 저장한 코드가 여전히 활성 코드일 때만 삭제한다.

@@ -2,7 +2,6 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.study.StudyService
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.SolutionSubmitRequest
@@ -69,18 +68,19 @@ class StudyController(
         @Valid
         request: SolutionSubmitRequest
     ): ResponseEntity<SolutionSubmitResponse> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
+        val studentId = authentication.name
         
         studyService.submitSolution(
-            bojId = bojId,
+            studentId = studentId,
             problemId = request.problemId,
             timeTaken = request.timeTaken,
             isSuccess = request.isSuccess
         )
 
-        val bojIdVo = BojId(bojId)
-        val student = studentRepository.findByBojId(bojIdVo)
-            .orElseThrow { BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId") }
+        val student = studentRepository.findById(studentId)
+            .orElseThrow {
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
+            }
 
         val response = SolutionSubmitResponse.from(student)
         return ResponseEntity.ok(response)

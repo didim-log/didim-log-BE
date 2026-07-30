@@ -48,7 +48,8 @@ class AuthServiceLoginSecurityTest {
         passwordResetCodeRepository = passwordResetCodeRepository,
         passwordResetCodeGenerator = passwordResetCodeGenerator,
         refreshTokenService = refreshTokenService,
-        bojOwnershipVerificationService = bojOwnershipVerificationService
+        bojOwnershipVerificationService = bojOwnershipVerificationService,
+        credentialSessionCoordinator = ImmediateCredentialSessionCoordinator()
     )
 
     @Test
@@ -69,7 +70,7 @@ class AuthServiceLoginSecurityTest {
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
         assertThat(exception.message).contains("가입되지 않은 BOJ ID입니다")
         verify(exactly = 1) { studentRepository.findByBojId(bojIdVo) }
-        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
     }
 
     @Test
@@ -93,7 +94,7 @@ class AuthServiceLoginSecurityTest {
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
         assertThat(exception.message).contains("비밀번호가 일치하지 않습니다")
         verify(exactly = 1) { studentRepository.findByBojId(bojIdVo) }
-        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
     }
 
     @Test
@@ -107,6 +108,7 @@ class AuthServiceLoginSecurityTest {
         val expectedToken = "jwt-token-12345"
 
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
         every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
@@ -114,14 +116,18 @@ class AuthServiceLoginSecurityTest {
             rating = student.rating,
             tier = student.solvedAcTierLevel.value
         )
-        every { jwtTokenProvider.createToken(bojId, student.role.value) } returns expectedToken
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        } returns expectedToken
 
         // when
         val result = authService.login(bojId, password)
 
         // then
         assertThat(result.token).isEqualTo(expectedToken)
-        verify(exactly = 1) { jwtTokenProvider.createToken(bojId, student.role.value) }
+        verify(exactly = 1) {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        }
     }
 
     @Test
@@ -135,6 +141,7 @@ class AuthServiceLoginSecurityTest {
         val expectedToken = "jwt-token-with-admin-role"
 
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
         every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
@@ -142,14 +149,18 @@ class AuthServiceLoginSecurityTest {
             rating = student.rating,
             tier = student.solvedAcTierLevel.value
         )
-        every { jwtTokenProvider.createToken(bojId, Role.ADMIN.value) } returns expectedToken
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, Role.ADMIN.value)
+        } returns expectedToken
 
         // when
         val result = authService.login(bojId, password)
 
         // then
         assertThat(result.token).isEqualTo(expectedToken)
-        verify(exactly = 1) { jwtTokenProvider.createToken(bojId, Role.ADMIN.value) }
+        verify(exactly = 1) {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, Role.ADMIN.value)
+        }
     }
 
     @Test
@@ -162,6 +173,7 @@ class AuthServiceLoginSecurityTest {
         val student = createStudent(bojId = bojId, password = "encoded-password")
 
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
         every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
@@ -169,7 +181,7 @@ class AuthServiceLoginSecurityTest {
             rating = student.rating,
             tier = student.solvedAcTierLevel.value
         )
-        every { jwtTokenProvider.createToken(any(), any()) } returns "token"
+        every { jwtTokenProvider.createToken(any(), any(), any(), any()) } returns "token"
 
         // when
         authService.login(bojId, password)
@@ -178,7 +190,9 @@ class AuthServiceLoginSecurityTest {
         // 로그에 비밀번호가 포함되지 않았는지 확인
         // 실제로는 로그 파일을 확인해야 하지만, 여기서는 코드 검토로 대체
         // AuthService.login() 메서드에서 password를 로그에 기록하지 않음을 확인
-        verify(exactly = 1) { jwtTokenProvider.createToken(bojId, student.role.value) }
+        verify(exactly = 1) {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        }
     }
 
     @Test
@@ -203,12 +217,21 @@ class AuthServiceLoginSecurityTest {
         every {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojIdVo,
                 1200,
                 expectedStudent.solvedAcTierLevel,
                 Tier.GOLD
             )
         } returns expectedStudent
-        every { jwtTokenProvider.createToken(bojId, student.role.value) } returns "token"
+        every { studentRepository.findById("student-id") } returns Optional.of(expectedStudent)
+        every {
+            jwtTokenProvider.createToken(
+                bojId,
+                "student-id",
+                expectedStudent.credentialVersion,
+                expectedStudent.role.value
+            )
+        } returns "token"
 
         val result = authService.login(bojId, password)
 
@@ -218,6 +241,7 @@ class AuthServiceLoginSecurityTest {
         verify(exactly = 1) {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojIdVo,
                 1200,
                 expectedStudent.solvedAcTierLevel,
                 Tier.GOLD
@@ -245,20 +269,23 @@ class AuthServiceLoginSecurityTest {
         every {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojIdVo,
                 1200,
                 newTierLevel,
                 Tier.GOLD
             )
         } returns null
-        every { jwtTokenProvider.createToken(bojId, student.role.value) } returns "token"
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        } returns "token"
 
         val exception = assertThrows<BusinessException> {
             authService.login(bojId, password)
         }
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
-        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
-        verify(exactly = 0) { refreshTokenService.generateAndSave(any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
     }
 
     @Test
@@ -271,19 +298,50 @@ class AuthServiceLoginSecurityTest {
         val student = createStudent(bojId = bojId, password = "encoded-password")
 
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
         // syncUserTier 내부에서 발생하는 예외는 catch되어 로그만 남음
         // value class인 BojId는 any() 매처가 제대로 작동하지 않으므로 구체적인 객체 사용
         every { solvedAcClient.fetchUser(bojIdVo) } throws IllegalStateException("API 호출 실패")
-        every { jwtTokenProvider.createToken(bojId, student.role.value) } returns "token"
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        } returns "token"
 
         // when
         val result = authService.login(bojId, password)
 
         // then
         assertThat(result.token).isEqualTo("token")
-        verify(exactly = 1) { jwtTokenProvider.createToken(bojId, student.role.value) }
+        verify(exactly = 1) {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        }
+    }
+
+    @Test
+    @DisplayName("잠금 대기 중 BOJ ID가 바뀌면 이전 ID 로그인을 거절한다")
+    fun `BOJ ID 변경 뒤 이전 ID 로그인 거절`() {
+        val oldBojId = "testuser"
+        val password = "ValidPassword123!"
+        val student = createStudent(bojId = oldBojId, password = "encoded-password")
+        val renamedStudent = student.copy(bojId = BojId("renamed_user"))
+
+        every { studentRepository.findByBojId(BojId(oldBojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(renamedStudent)
+        every { passwordEncoder.matches(password, "encoded-password") } returns true
+        every { solvedAcClient.fetchUser(BojId(oldBojId)) } returns SolvedAcUserResponse(
+            handle = oldBojId,
+            rating = student.rating,
+            tier = student.solvedAcTierLevel.value
+        )
+
+        val exception = assertThrows<BusinessException> {
+            authService.login(oldBojId, password)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
     }
 
     private fun createStudent(

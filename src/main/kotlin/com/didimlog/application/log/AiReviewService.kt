@@ -47,7 +47,7 @@ class AiReviewService(
             return AiReviewResult(review = cachedByCode, cached = true)
         }
 
-        val userId = logEntity.bojId?.value
+        val userId = logEntity.studentId
         checkAvailability(userId)
 
         val now = LocalDateTime.now()
@@ -62,8 +62,9 @@ class AiReviewService(
     }
 
     @Transactional
-    fun requestOneLineReviewAsync(logId: String, requesterBojId: String): AiReviewResult {
+    fun requestOneLineReviewAsync(logId: String, requesterStudentId: String): AiReviewResult {
         val logEntity = findLogOrThrow(logId)
+        val usageUserId = requireOwner(logEntity, requesterStudentId)
 
         val cachedReview = logEntity.aiReviewTextOrNull()
         if (cachedReview != null) {
@@ -86,8 +87,6 @@ class AiReviewService(
         }
 
         try {
-            val logOwnerBojId = logEntity.bojId?.value
-            val usageUserId = resolveUsageUserId(requesterBojId, logOwnerBojId)
             checkAvailability(usageUserId)
             scheduleAiReviewGeneration(logId, code, logEntity.isSuccess, usageUserId)
         } catch (e: BusinessException) {
@@ -98,29 +97,22 @@ class AiReviewService(
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
     }
 
-    private fun resolveUsageUserId(requesterBojId: String, logOwnerBojId: String?): String {
-        if (requesterBojId.isBlank()) {
+    private fun requireOwner(
+        logEntity: com.didimlog.domain.Log,
+        requesterStudentId: String
+    ): String {
+        if (requesterStudentId.isBlank()) {
             throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
         }
 
-        if (logOwnerBojId == null) {
-            if (aiUsageService.isRequireBojForAiReview()) {
-                throw BusinessException(
-                    ErrorCode.COMMON_INVALID_INPUT,
-                    "BOJ 연동이 완료된 로그에서만 AI 리뷰를 요청할 수 있습니다."
-                )
-            }
-            return requesterBojId
-        }
-
-        if (requesterBojId != logOwnerBojId) {
+        if (logEntity.studentId != requesterStudentId) {
             throw BusinessException(
                 ErrorCode.ACCESS_DENIED,
                 "본인이 작성한 로그에 대해서만 AI 리뷰를 요청할 수 있습니다."
             )
         }
 
-        return logOwnerBojId
+        return requesterStudentId
     }
 
     private fun checkAvailability(userId: String?) {

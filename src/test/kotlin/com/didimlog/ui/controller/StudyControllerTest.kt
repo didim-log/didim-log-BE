@@ -84,7 +84,7 @@ class StudyControllerTest {
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/study/submit")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -111,7 +111,7 @@ class StudyControllerTest {
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/study/submit")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -132,13 +132,13 @@ class StudyControllerTest {
         )
         val student = createStudent("student1", "bojId")
 
-        every { studyService.submitSolution("bojId", "1000", 120L, true) } returns Unit
-        every { studentRepository.findByBojId(BojId("bojId")) } returns Optional.of(student)
+        every { studyService.submitSolution("student-id", "1000", 120L, true) } returns Unit
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
 
         // when & then
         mockMvc.perform(
             post("/api/v1/study/submit")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -147,7 +147,8 @@ class StudyControllerTest {
             .andExpect(jsonPath("$.currentTier").exists())
             .andExpect(jsonPath("$.currentTierLevel").exists())
 
-        verify(exactly = 1) { studyService.submitSolution("bojId", "1000", 120L, true) }
+        verify(exactly = 1) { studyService.submitSolution("student-id", "1000", 120L, true) }
+        verify(exactly = 1) { studentRepository.findById("student-id") }
     }
 
     private fun createStudent(id: String, bojId: String): Student {
@@ -164,7 +165,6 @@ class StudyControllerTest {
         )
     }
 }
-
 
 
 

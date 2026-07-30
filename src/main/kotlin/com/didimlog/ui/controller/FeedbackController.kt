@@ -1,9 +1,7 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.feedback.FeedbackService
-import com.didimlog.domain.enums.FeedbackType
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.FeedbackCreateRequest
@@ -40,17 +38,13 @@ class FeedbackController(
         request: FeedbackCreateRequest,
         authentication: Authentication
     ): ResponseEntity<FeedbackResponse> {
-        val bojId = authentication.name // JWT 토큰의 subject (BOJ ID)
-        val bojIdVo = BojId(bojId)
-        val student = studentRepository.findByBojId(bojIdVo)
+        val studentId = authentication.name
+        val student = studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
             }
         
-        val writerId = student.id
-            ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다.")
-        
-        val feedback = feedbackService.createFeedback(writerId, request.content, request.type)
+        val feedback = feedbackService.createFeedback(studentId, request.content, request.type)
         return ResponseEntity.status(HttpStatus.CREATED).body(FeedbackResponse.from(feedback, student))
     }
 }

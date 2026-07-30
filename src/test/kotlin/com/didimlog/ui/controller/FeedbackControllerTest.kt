@@ -96,7 +96,7 @@ class FeedbackControllerTest {
             updatedAt = LocalDateTime.now()
         )
 
-        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student1") } returns Optional.of(student)
         every { feedbackService.createFeedback("student1", feedback.content, feedback.type) } returns feedback
 
         // when & then
@@ -104,7 +104,7 @@ class FeedbackControllerTest {
             post("/api/v1/feedback")
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer test-token")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student1", null, emptyList()))
                 .content("""{"content":"${feedback.content}","type":"BUG"}""")
         )
             .andExpect(status().isCreated)
@@ -135,14 +135,14 @@ class FeedbackControllerTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student1") } returns Optional.of(student)
 
         // when & then
         mockMvc.perform(
             post("/api/v1/feedback")
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer test-token")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student1", null, emptyList()))
                 .content("""{"content":"짧음","type":"BUG"}""")
         )
             .andExpect(status().isBadRequest)
@@ -150,7 +150,6 @@ class FeedbackControllerTest {
         verify(exactly = 0) { feedbackService.createFeedback(any(), any(), any()) }
     }
 }
-
 
 
 

@@ -1,10 +1,11 @@
 package com.didimlog.application.student
 
+import com.didimlog.application.auth.CredentialSessionCoordinator
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Student
 import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.exception.BusinessException
@@ -26,7 +27,9 @@ class StudentService(
     private val retrospectiveRepository: RetrospectiveRepository,
     private val feedbackRepository: FeedbackRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val solvedAcClient: SolvedAcClient
+    private val solvedAcClient: SolvedAcClient,
+    private val refreshTokenService: RefreshTokenService,
+    private val credentialSessionCoordinator: CredentialSessionCoordinator
 ) {
 
     private val log = LoggerFactory.getLogger(StudentService::class.java)
@@ -35,7 +38,7 @@ class StudentService(
      * 학생의 프로필 정보를 수정한다.
      * 닉네임, 비밀번호, 주 언어를 선택적으로 변경할 수 있다.
      *
-     * @param bojId BOJ ID (JWT 토큰에서 추출)
+     * @param studentId 변경 불가능한 학생 ID (인증 principal)
      * @param nickname 변경할 닉네임 (null이면 변경하지 않음)
      * @param currentPassword 현재 비밀번호 (비밀번호 변경 시 필수)
      * @param newPassword 새로운 비밀번호 (null이면 변경하지 않음)
@@ -45,19 +48,19 @@ class StudentService(
      */
     @Transactional
     fun updateProfile(
-        bojId: String,
+        studentId: String,
         nickname: String?,
         currentPassword: String?,
         newPassword: String?,
         primaryLanguage: com.didimlog.domain.enums.PrimaryLanguage? = null
     ): Student {
-        val bojIdVo = BojId(bojId)
-        val student = studentRepository.findByBojId(bojIdVo)
+        val student = studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
             }
 
         var updatedStudent = student
+        var passwordChanged = false
 
         // 닉네임 변경 처리
         if (nickname != null && nickname.isNotBlank()) {
@@ -105,11 +108,39 @@ class StudentService(
             // 새 비밀번호 암호화
             val encodedNewPassword = passwordEncoder.encode(newPassword)
             updatedStudent = updatedStudent.copy(password = encodedNewPassword)
+            passwordChanged = true
         }
 
         // 주 언어 변경 처리
         if (primaryLanguage != null) {
             updatedStudent = updatedStudent.updatePrimaryLanguage(primaryLanguage)
+        }
+
+        if (passwordChanged) {
+            return credentialSessionCoordinator.execute(studentId) {
+                val latestStudent = studentRepository.findById(studentId)
+                    .orElseThrow {
+                        BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
+                    }
+                if (!latestStudent.matchPassword(requireNotNull(currentPassword), passwordEncoder)) {
+                    throw BusinessException(
+                        ErrorCode.PASSWORD_MISMATCH,
+                        "현재 비밀번호가 일치하지 않습니다."
+                    )
+                }
+
+                val savedStudent = studentRepository.updateProfileFieldsById(
+                    studentId = studentId,
+                    nickname = updatedStudent.nickname.takeIf { it != student.nickname },
+                    encodedPassword = updatedStudent.password,
+                    primaryLanguage = updatedStudent.primaryLanguage.takeIf {
+                        it != student.primaryLanguage
+                    },
+                    expectedCredentialVersion = latestStudent.credentialVersion
+                ) ?: throw BusinessException(ErrorCode.SESSION_STATE_CONFLICT)
+                refreshTokenService.revokeAllForStudent(studentId)
+                savedStudent
+            }
         }
 
         return studentRepository.save(updatedStudent)
@@ -122,53 +153,55 @@ class StudentService(
      * ⚠️ 이 작업은 복구할 수 없다.
      */
     @Transactional
-    fun withdraw(bojId: String) {
-        val bojIdVo = BojId(bojId)
-        val student = studentRepository.findByBojId(bojIdVo)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
-            }
+    fun withdraw(studentId: String) {
+        credentialSessionCoordinator.execute(studentId) {
+            val latestStudent = studentRepository.findById(studentId)
+                .orElseThrow {
+                    BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
+                }
+            val currentBojId = latestStudent.bojId?.value
 
-        val studentId = student.id
-            ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다.")
+            log.warn(
+                "회원 탈퇴 처리 시작(Hard Delete). 복구 불가. bojId={}, studentId={}",
+                currentBojId,
+                studentId
+            )
 
-        log.warn("회원 탈퇴 처리 시작(Hard Delete). 복구 불가. bojId={}, studentId={}", bojId, studentId)
+            // 세션 정리에 실패하면 DB 삭제를 시작하지 않는다.
+            refreshTokenService.revokeAllForStudent(studentId)
 
-        // 연관 데이터 삭제 (studentId 기반)
-        retrospectiveRepository.deleteAllByStudentId(studentId)
-        feedbackRepository.deleteAllByWriterId(studentId)
-
-        // 본인 데이터 삭제
-        studentRepository.delete(student)
+            // 연관 데이터 삭제 후, 문서 버전과 무관한 ID 삭제로 학생을 제거한다.
+            retrospectiveRepository.deleteAllByStudentId(studentId)
+            feedbackRepository.deleteAllByWriterId(studentId)
+            studentRepository.deleteById(studentId)
+        }
     }
 
     /**
      * BOJ 프로필 정보를 Solved.ac API에서 동기화한다.
      * Rating과 Tier 정보를 최신 상태로 업데이트한다.
      *
-     * @param bojId BOJ ID (JWT 토큰에서 추출)
+     * @param studentId 변경 불가능한 학생 ID (인증 principal)
      * @return 동기화된 Student 엔티티
      * @throws BusinessException 학생을 찾을 수 없거나, BOJ ID가 없는 경우
      */
     @Transactional
-    fun syncBojProfile(bojId: String): Student {
-        val bojIdVo = BojId(bojId)
-        val student = studentRepository.findByBojId(bojIdVo)
+    fun syncBojProfile(studentId: String): Student {
+        val student = studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
             }
 
-        if (student.bojId == null) {
-            throw BusinessException(
+        val bojId = student.bojId
+            ?: throw BusinessException(
                 ErrorCode.COMMON_INVALID_INPUT,
                 "BOJ 인증이 완료되지 않은 사용자입니다. BOJ 계정을 연동해주세요."
             )
-        }
 
-        log.info("BOJ 프로필 동기화 시작: bojId=${bojIdVo.value}")
+        log.info("BOJ 프로필 동기화 시작: bojId=${bojId.value}")
 
         try {
-            val userResponse = solvedAcClient.fetchUser(bojIdVo)
+            val userResponse = solvedAcClient.fetchUser(bojId)
             val newRating = userResponse.rating
             val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
             val updatedStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
@@ -180,7 +213,7 @@ class StudentService(
             ) {
                 log.debug(
                     "BOJ 프로필 동기화 완료 (변경 없음): bojId={}, rating={}, tierLevel={}",
-                    bojIdVo.value,
+                    bojId.value,
                     newRating,
                     newTierLevel.value
                 )
@@ -188,19 +221,19 @@ class StudentService(
             }
 
             val savedStudent = studentRepository.updateSolvedAcProfileById(
-                studentId = student.id
-                    ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다."),
+                studentId = studentId,
+                expectedBojId = bojId,
                 rating = updatedStudent.rating,
                 solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
                 currentTier = updatedStudent.currentTier
             ) ?: throw BusinessException(
                 ErrorCode.STUDENT_NOT_FOUND,
-                "프로필을 갱신할 학생을 찾을 수 없습니다. bojId=${bojIdVo.value}"
+                "프로필을 갱신할 학생을 찾을 수 없습니다. bojId=${bojId.value}"
             )
 
             log.info(
                 "BOJ 프로필 동기화 완료: bojId={}, oldRating={}, newRating={}, oldTierLevel={}, newTierLevel={}",
-                bojIdVo.value,
+                bojId.value,
                 student.rating,
                 newRating,
                 student.solvedAcTierLevel.value,
@@ -208,13 +241,13 @@ class StudentService(
             )
             return savedStudent
         } catch (e: BusinessException) {
-            log.error("BOJ 프로필 동기화 실패: bojId=${bojIdVo.value}, error=${e.message}", e)
+            log.error("BOJ 프로필 동기화 실패: bojId=${bojId.value}, error=${e.message}", e)
             throw e
         } catch (e: Exception) {
-            log.error("BOJ 프로필 동기화 중 예상치 못한 예외 발생: bojId=${bojIdVo.value}", e)
+            log.error("BOJ 프로필 동기화 중 예상치 못한 예외 발생: bojId=${bojId.value}", e)
             throw BusinessException(
                 ErrorCode.COMMON_INTERNAL_ERROR,
-                "BOJ 프로필 동기화에 실패했습니다. bojId=${bojIdVo.value}"
+                "BOJ 프로필 동기화에 실패했습니다. bojId=${bojId.value}"
             )
         }
     }

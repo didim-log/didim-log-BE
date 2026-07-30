@@ -26,7 +26,8 @@ class LogService(
      * @param title 로그 제목
      * @param content 로그 내용 (빈 문자열 허용)
      * @param code 사용자 코드
-     * @param bojId BOJ ID (선택, null 가능)
+     * @param studentId 변경되지 않는 로그 소유자 ID
+     * @param bojId 로그 생성 시점의 BOJ ID
      * @param isSuccess 풀이 성공 여부 (선택, null 가능)
      * @return 생성된 Log 엔티티
      */
@@ -35,9 +36,11 @@ class LogService(
         title: String,
         content: String,
         code: String,
+        studentId: String,
         bojId: String? = null,
         isSuccess: Boolean? = null
     ): Log {
+        require(studentId.isNotBlank()) { "학생 ID는 필수입니다." }
         // LogContent는 notBlank를 요구하므로, 빈 문자열인 경우 플레이스홀더를 사용한다.
         val logContent = when {
             content.isBlank() -> "(empty)"
@@ -48,6 +51,7 @@ class LogService(
             title = LogTitle(title),
             content = LogContent(logContent),
             code = LogCode(code),
+            studentId = studentId,
             bojId = bojIdVo,
             isSuccess = isSuccess
         )
@@ -58,7 +62,7 @@ class LogService(
      * AI 리뷰 피드백을 업데이트합니다.
      *
      * @param logId 로그 ID
-     * @param requesterBojId 요청자 BOJ ID
+     * @param requesterStudentId 요청자 학생 ID
      * @param status 피드백 상태 (LIKE/DISLIKE)
      * @param reason 부정적 피드백의 이유 (선택)
      * @return 업데이트된 Log 엔티티
@@ -67,11 +71,11 @@ class LogService(
     @Transactional
     fun updateFeedback(
         logId: String,
-        requesterBojId: String,
+        requesterStudentId: String,
         status: AiFeedbackStatus,
         reason: String? = null
     ): Log {
-        if (requesterBojId.isBlank()) {
+        if (requesterStudentId.isBlank()) {
             throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
         }
 
@@ -80,7 +84,7 @@ class LogService(
                 BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "로그를 찾을 수 없습니다. logId=$logId")
             }
 
-        if (log.bojId?.value != requesterBojId) {
+        if (log.studentId != requesterStudentId) {
             throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 피드백을 제출할 수 있습니다.")
         }
 
@@ -92,12 +96,12 @@ class LogService(
      * 로그 템플릿(로그 본문)을 조회합니다.
      *
      * @param logId 로그 ID
-     * @param requesterBojId 요청자 BOJ ID
+     * @param requesterStudentId 요청자 학생 ID
      * @return 로그 본문 문자열
      */
     @Transactional(readOnly = true)
-    fun getLogTemplate(logId: String, requesterBojId: String): String {
-        if (requesterBojId.isBlank()) {
+    fun getLogTemplate(logId: String, requesterStudentId: String): String {
+        if (requesterStudentId.isBlank()) {
             throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
         }
 
@@ -106,11 +110,7 @@ class LogService(
                 BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "로그를 찾을 수 없습니다. logId=$logId")
             }
 
-        val ownerBojId = log.bojId?.value
-        if (ownerBojId.isNullOrBlank()) {
-            throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 템플릿을 조회할 수 있습니다.")
-        }
-        if (ownerBojId != requesterBojId) {
+        if (log.studentId != requesterStudentId) {
             throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 템플릿을 조회할 수 있습니다.")
         }
 

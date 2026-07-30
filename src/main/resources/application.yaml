@@ -16,8 +16,8 @@ spring:
   # Swagger UI 접근을 위한 HTTP Basic Authentication 설정
   security:
     user:
-      name: ${SWAGGER_USERNAME:admin}
-      password: ${SWAGGER_PASSWORD:admin123}
+      name: ${SWAGGER_USERNAME}
+      password: ${SWAGGER_PASSWORD}
     oauth2:
       client:
         registration:

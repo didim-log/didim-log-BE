@@ -54,8 +54,8 @@ class StatisticsController(
     fun getStatistics(
         authentication: Authentication
     ): ResponseEntity<StatisticsResponse> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val statisticsInfo = statisticsService.getStatistics(bojId)
+        val studentId = authentication.name
+        val statisticsInfo = statisticsService.getStatistics(studentId)
         val response = StatisticsResponse.from(statisticsInfo)
         return ResponseEntity.ok(response)
     }
@@ -93,10 +93,9 @@ class StatisticsController(
         @Max(value = 2100, message = "연도는 2100년 이하여야 합니다.")
         year: Int
     ): ResponseEntity<List<com.didimlog.ui.dto.HeatmapDataResponse>> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val heatmapData = statisticsService.getHeatmapByYear(bojId, year)
+        val studentId = authentication.name
+        val heatmapData = statisticsService.getHeatmapByYear(studentId, year)
         val response = heatmapData.map { com.didimlog.ui.dto.HeatmapDataResponse.from(it) }
         return ResponseEntity.ok(response)
     }
 }
-

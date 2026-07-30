@@ -29,6 +29,7 @@ enum class ErrorCode(
     // 503 Service Unavailable
     MAINTENANCE_MODE(503, "MAINTENANCE_MODE", "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."),
     RATE_LIMIT_SERVICE_UNAVAILABLE(503, "RATE_LIMIT_SERVICE_UNAVAILABLE", "요청 제한 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.", retryable = true),
+    SESSION_STATE_UNAVAILABLE(503, "SESSION_STATE_UNAVAILABLE", "세션 상태를 확인할 수 없습니다. 잠시 후 다시 시도해주세요.", retryable = true),
     AI_GENERATION_FAILED(503, "AI_GENERATION_FAILED", "AI 리뷰 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
     AI_GENERATION_TIMEOUT(503, "AI_GENERATION_TIMEOUT", "AI 리뷰 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.", retryable = true),
     TEMPLATE_RENDER_TIMEOUT(504, "TEMPLATE_RENDER_TIMEOUT", "템플릿 렌더링 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.", retryable = true),
@@ -46,6 +47,9 @@ enum class ErrorCode(
     // 409 Conflict
     DUPLICATE_BOJ_ID(409, "DUPLICATE_BOJ_ID", "이미 가입된 백준 아이디입니다."),
     JOB_ALREADY_TERMINAL(409, "JOB_ALREADY_TERMINAL", "이미 종료된 작업입니다."),
+    SESSION_STATE_CONFLICT(409, "SESSION_STATE_CONFLICT", "로그인 또는 비밀번호 변경이 처리 중입니다. 잠시 후 다시 시도해주세요.", retryable = true),
+    PASSWORD_RESET_CONFLICT(409, "PASSWORD_RESET_CONFLICT", "비밀번호 재설정 상태가 변경되었습니다. 새 재설정 코드를 발급받아 다시 시도해주세요."),
+    RESOURCE_STATE_CONFLICT(409, "RESOURCE_STATE_CONFLICT", "요청 중 자원 상태가 변경되었습니다. 다시 시도해주세요.", retryable = true),
 
     // 400 Bad Request
     AI_CONTEXT_TOO_LARGE(400, "AI_CONTEXT_TOO_LARGE", "요청한 내용이 너무 깁니다. 코드를 간소화하거나 일부를 제거한 후 다시 시도해주세요."),
