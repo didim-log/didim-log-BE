@@ -1,7 +1,10 @@
 package com.didimlog.global.exception
 
+import com.didimlog.global.ratelimit.RateLimitException
+import com.didimlog.global.ratelimit.RateLimitUnavailableException
 import jakarta.validation.ConstraintViolation
 import jakarta.validation.ConstraintViolationException
+import org.springframework.http.HttpHeaders
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -15,6 +18,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.reactive.function.client.WebClientResponseException
 import reactor.core.Exceptions
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * 전역 예외 처리 핸들러
@@ -24,6 +30,39 @@ import reactor.core.Exceptions
 class GlobalExceptionHandler {
 
     private val log = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
+
+    @ExceptionHandler(RateLimitUnavailableException::class)
+    fun handleRateLimitUnavailableException(e: RateLimitUnavailableException): ResponseEntity<ErrorResponse> {
+        log.error("Rate Limit Redis를 사용할 수 없습니다.", e)
+        val errorResponse = ErrorResponse.of(ErrorCode.RATE_LIMIT_SERVICE_UNAVAILABLE)
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(errorResponse)
+    }
+
+    @ExceptionHandler(RateLimitException::class)
+    fun handleRateLimitException(e: RateLimitException): ResponseEntity<ErrorResponse> {
+        val headers = HttpHeaders()
+        e.retryAfterSeconds?.let {
+            headers.set(HttpHeaders.RETRY_AFTER, it.toString())
+        }
+        e.limit?.let {
+            headers.set("X-Rate-Limit-Limit", it.toString())
+            headers.set("X-Rate-Limit-Remaining", "0")
+        }
+        val unlockTime = e.retryAfterSeconds?.let {
+            ZonedDateTime.now(ZoneId.of("Asia/Seoul"))
+                .plusSeconds(it)
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        }
+        val errorResponse = ErrorResponse(
+            status = ErrorCode.RATE_LIMIT_EXCEEDED.status,
+            error = "Too Many Requests",
+            code = ErrorCode.RATE_LIMIT_EXCEEDED.code,
+            message = e.message ?: ErrorCode.RATE_LIMIT_EXCEEDED.message,
+            remainingAttempts = 0,
+            unlockTime = unlockTime
+        )
+        return ResponseEntity(errorResponse, headers, HttpStatus.TOO_MANY_REQUESTS)
+    }
 
     /**
      * 비밀번호 정책 위반 예외 처리

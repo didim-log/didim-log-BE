@@ -248,12 +248,12 @@ tasks.register<JacocoCoverageVerification>("jacocoCoreCoverageVerification") {
 			limit {
 				counter = "LINE"
 				value = "COVEREDRATIO"
-				minimum = "0.81".toBigDecimal()
+				minimum = "0.82".toBigDecimal()
 			}
 			limit {
 				counter = "BRANCH"
 				value = "COVEREDRATIO"
-				minimum = "0.58".toBigDecimal()
+				minimum = "0.60".toBigDecimal()
 			}
 			limit {
 				counter = "CLASS"
@@ -284,17 +284,17 @@ tasks.register<JacocoCoverageVerification>("jacocoFullCoverageVerification") {
 			limit {
 				counter = "LINE"
 				value = "COVEREDRATIO"
-				minimum = "0.64".toBigDecimal()
+				minimum = "0.66".toBigDecimal()
 			}
 			limit {
 				counter = "BRANCH"
 				value = "COVEREDRATIO"
-				minimum = "0.45".toBigDecimal()
+				minimum = "0.48".toBigDecimal()
 			}
 			limit {
 				counter = "CLASS"
 				value = "COVEREDRATIO"
-				minimum = "0.75".toBigDecimal()
+				minimum = "0.76".toBigDecimal()
 			}
 		}
 	}

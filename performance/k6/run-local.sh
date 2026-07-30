@@ -46,7 +46,7 @@ if [[ "$DIDIMLOG_CALLER_PROTOCOL_ID_SET" == "x" ]]; then
   PERFORMANCE_PROTOCOL_ID="$DIDIMLOG_CALLER_PROTOCOL_ID"
 fi
 
-: "${BASE_URL:=http://localhost:8080}"
+: "${BASE_URL:=http://127.0.0.1:8080}"
 : "${SERVER_PORT:=8080}"
 : "${WIREMOCK_URL:=http://localhost:8090}"
 : "${WIREMOCK_PORT:=8090}"
@@ -73,7 +73,7 @@ fi
 : "${OAUTH_GITHUB_SECRET:=performance-github-secret}"
 : "${OAUTH_NAVER_ID:=performance-naver-id}"
 : "${OAUTH_NAVER_SECRET:=performance-naver-secret}"
-: "${SERVER_URL:=http://localhost:8080}"
+: "${SERVER_URL:=http://127.0.0.1:8080}"
 : "${JWT_SECRET:=performance-secret-key-must-be-at-least-256-bits-long-1234567890}"
 : "${JWT_ACCESS_TOKEN_EXPIRATION:=1800000}"
 : "${JWT_REFRESH_TOKEN_EXPIRATION:=604800000}"
@@ -113,12 +113,8 @@ fi
 : "${AI_MAX_DURATION:=45s}"
 : "${EXPECTED_GEMINI_CALLS:=1}"
 : "${FAIL_FAST_AI_REPEAT:=false}"
-: "${RATE_LIMIT_SLEEP_SECONDS:=0.05}"
 : "${P95_MS:=}"
-: "${RATE_LIMIT_SIGNUP_IP:=10.67.1.11}"
-: "${RATE_LIMIT_LOGIN_IP:=10.67.1.12}"
-: "${RATE_LIMIT_PASSWORD_RESET_IP:=10.67.1.13}"
-: "${RATE_LIMIT_IP_PREFIX:=10.67}"
+: "${RATE_LIMIT_CLIENT_IP:=127.0.0.1}"
 : "${READ_RETROSPECTIVE_IDS:=}"
 : "${TARGET_ENVIRONMENT:=local}"
 : "${ALLOW_REMOTE_LOAD_TEST:=false}"
@@ -163,8 +159,7 @@ export GEMINI_API_URL GEMINI_CONNECT_TIMEOUT_MILLIS GEMINI_RESPONSE_TIMEOUT_SECO
 export GEMINI_READ_TIMEOUT_SECONDS GEMINI_WRITE_TIMEOUT_SECONDS GEMINI_MAX_RETRIES
 export GEMINI_RETRY_BACKOFF_MILLIS
 export AI_REVIEW_ASYNC_CORE_POOL_SIZE AI_REVIEW_ASYNC_MAX_POOL_SIZE AI_REVIEW_ASYNC_QUEUE_CAPACITY
-export RATE_LIMIT_SIGNUP_IP RATE_LIMIT_LOGIN_IP RATE_LIMIT_PASSWORD_RESET_IP
-export RATE_LIMIT_IP_PREFIX RATE_LIMIT_SLEEP_SECONDS P95_MS READ_RETROSPECTIVE_IDS
+export RATE_LIMIT_CLIENT_IP P95_MS READ_RETROSPECTIVE_IDS
 export COMMIT_SHA JAVA_VERSION KOTLIN_VERSION K6_RUN_ID JVM_HEAP CPU_INFO MEMORY_INFO
 export APPLICATION_BASELINE_SHA APPLICATION_WORKTREE APPLICATION_COMMIT_SHA APPLICATION_GIT_DIRTY
 export APP_RUNTIME_MODE APP_JAVA_VERSION APP_JVM_XMS APP_JVM_XMX APP_JVM_GC APP_TIMEZONE
@@ -211,7 +206,7 @@ docker_compose() {
 }
 
 reset_performance_volumes() {
-  assert_local_fixture_environment
+  assert_local_fixture_environment || return $?
   require_command docker
   if [[ "$MOCK_GEMINI_MODE" != "wiremock" ]]; then
     echo "Performance volume reset requires MOCK_GEMINI_MODE=wiremock." >&2
@@ -300,7 +295,7 @@ PY
 }
 
 assert_local_fixture_environment() {
-  assert_safe_environment
+  assert_safe_environment || return $?
   python3 - "$BASE_URL" "$MONGO_URI" <<'PY'
 import sys
 from urllib.parse import urlparse
@@ -377,39 +372,39 @@ ai_boj_id_for() {
 }
 
 start_mocks() {
-  assert_local_fixture_environment
-  validate_number_config
+  assert_local_fixture_environment || return $?
+  validate_number_config || return $?
   case "$MOCK_GEMINI_MODE" in
     auto)
       if command -v docker >/dev/null 2>&1; then
         if docker_compose -f "$MOCK_COMPOSE" up -d; then
           if wait_for_mock_admin 30; then
-            configure_wiremock
+            configure_wiremock || return $?
             return 0
           fi
           echo "WireMock health check failed in auto mode; falling back to Node Gemini mock." >&2
           stop_wiremock_container || true
-          start_local_gemini_mock
-          configure_wiremock
+          start_local_gemini_mock || return $?
+          configure_wiremock || return $?
           return 0
         fi
         echo "Docker Compose startup failed in auto mode; falling back to local services." >&2
       fi
-      start_local_mongo
-      start_local_redis
-      start_local_gemini_mock
+      start_local_mongo || return $?
+      start_local_redis || return $?
+      start_local_gemini_mock || return $?
       configure_wiremock
       ;;
     wiremock)
       require_command docker
-      docker_compose -f "$MOCK_COMPOSE" up -d
-      wait_for_mock_admin 30
+      docker_compose -f "$MOCK_COMPOSE" up -d || return $?
+      wait_for_mock_admin 30 || return $?
       configure_wiremock
       ;;
     node)
-      start_local_mongo
-      start_local_redis
-      start_local_gemini_mock
+      start_local_mongo || return $?
+      start_local_redis || return $?
+      start_local_gemini_mock || return $?
       configure_wiremock
       ;;
     *)
@@ -478,18 +473,18 @@ stop_wiremock_container() {
 }
 
 configure_wiremock() {
-  assert_local_fixture_environment
+  assert_local_fixture_environment || return $?
   require_command curl
   curl -fsS -X POST "$WIREMOCK_URL/__admin/settings" \
     -H "Content-Type: application/json" \
-    -d "{\"fixedDelay\":$MOCK_GEMINI_DELAY_MS}" >/dev/null
-  curl -fsS -X DELETE "$WIREMOCK_URL/__admin/requests" >/dev/null
+    -d "{\"fixedDelay\":$MOCK_GEMINI_DELAY_MS}" >/dev/null || return $?
+  curl -fsS -X DELETE "$WIREMOCK_URL/__admin/requests" >/dev/null || return $?
   curl -fsS -X POST "$WIREMOCK_URL/__admin/scenarios/reset" >/dev/null
 }
 
 seed_fixture() {
-  assert_local_fixture_environment
-  validate_number_config
+  assert_local_fixture_environment || return $?
+  validate_number_config || return $?
   if command -v mongosh >/dev/null 2>&1; then
     seed_fixture_with_mongosh
     return
@@ -654,8 +649,8 @@ environment_manifest_path() {
 }
 
 write_environment_manifest() {
-  assert_local_fixture_environment
-  validate_number_config
+  assert_local_fixture_environment || return $?
+  validate_number_config || return $?
   require_command python3
   local output
   output="$(environment_manifest_path)"
@@ -667,8 +662,8 @@ ensure_environment_manifest() {
 }
 
 start_application() {
-  assert_local_fixture_environment
-  validate_number_config
+  assert_local_fixture_environment || return $?
+  validate_number_config || return $?
   if [[ "$APP_RUNTIME_MODE" != "gradle-toolchain" ]]; then
     echo "start-app requires APP_RUNTIME_MODE=gradle-toolchain." >&2
     return 2
@@ -697,7 +692,7 @@ start_application() {
     return 2
   fi
 
-  write_environment_manifest
+  write_environment_manifest || return $?
   local didimlog_gradle_home="/tmp/didimlog-performance/gradle-user-home"
   mkdir -p "$didimlog_gradle_home"
   local -a didimlog_application_env=(
@@ -755,11 +750,11 @@ start_application() {
 run_k6() {
   local name="$1"
   local script="$2"
-  assert_safe_environment
-  validate_number_config
-  check_k6_version
+  assert_safe_environment || return $?
+  validate_number_config || return $?
+  check_k6_version || return $?
   mkdir -p "$RESULTS_DIR"
-  ensure_environment_manifest
+  ensure_environment_manifest || return $?
   SUMMARY_EXPORT="$RESULTS_DIR/$name-$K6_RUN_ID.json" k6 run "$K6_DIR/$script"
 }
 
@@ -788,7 +783,7 @@ ai_review_once() {
   export AI_RUN_ID="${K6_RUN_ID}-ai-${iteration}"
   export PERF_BOJ_ID
   PERF_BOJ_ID="$(ai_boj_id_for "$AI_RUN_ID")"
-  configure_wiremock
+  configure_wiremock || return $?
   local verify_json="$RESULTS_DIR/ai-review-concurrency-$iteration-$AI_RUN_ID-verify.json"
   run_k6 "ai-review-concurrency-$iteration" "ai-review-concurrency.js" || k6_status=$?
   "$VERIFY_AI" \
@@ -850,6 +845,7 @@ PY
 }
 
 wait_gemini_rate_window() {
+  assert_safe_environment || return $?
   if ! command -v redis-cli >/dev/null 2>&1; then
     echo "redis-cli is required to respect GeminiRateLimiter retry interval" >&2
     return 127
@@ -857,7 +853,7 @@ wait_gemini_rate_window() {
   local deadline=$(( $(date +%s) + AI_FAILED_POLL_TIMEOUT_SECONDS ))
   while true; do
     local last
-    last="$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" get "gemini:rate:last:" 2>/dev/null || true)"
+    last="$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DATABASE" get "gemini:rate:last:" 2>/dev/null || true)"
     local now
     now="$(date +%s)"
     if [[ -z "$last" || "$last" == "(nil)" || $(( now - last )) -ge 4 ]]; then
@@ -879,7 +875,7 @@ ai_review_failed_retry() {
   local log_id
   export PERF_BOJ_ID
   PERF_BOJ_ID="$(ai_boj_id_for "$AI_RUN_ID")"
-  configure_wiremock
+  configure_wiremock || return $?
 
   export AI_EXPERIMENT="failed-first"
   run_k6 "ai-review-failed-retry-first" "ai-review-concurrency.js" || k6_status=$?
@@ -928,29 +924,31 @@ ai_review_failed_retry() {
 }
 
 auth_rate_limit() {
-  local before_cleanup=0
   local k6_status=0
   local after_cleanup=0
-  cleanup_rate_limit_keys || before_cleanup=$?
+  if ! cleanup_rate_limit_keys; then
+    echo "Rate Limit Redis key cleanup failed before execution" >&2
+    return 1
+  fi
   run_k6 "auth-rate-limit" "auth-rate-limit.js" || k6_status=$?
   cleanup_rate_limit_keys || after_cleanup=$?
-  if [[ "$before_cleanup" -ne 0 || "$after_cleanup" -ne 0 ]]; then
-    echo "Rate Limit Redis key cleanup failed: before=$before_cleanup after=$after_cleanup" >&2
+  if [[ "$after_cleanup" -ne 0 ]]; then
+    echo "Rate Limit Redis key cleanup failed after execution: status=$after_cleanup" >&2
     return 1
   fi
   return "$k6_status"
 }
 
 cleanup_rate_limit_keys() {
-  assert_safe_environment
+  assert_safe_environment || return $?
   if ! command -v redis-cli >/dev/null 2>&1; then
     echo "redis-cli not found; cannot cleanup Redis test keys" >&2
     return 127
   fi
-  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" del \
-    "rate_limit:signup:$RATE_LIMIT_SIGNUP_IP" \
-    "rate_limit:login:$RATE_LIMIT_LOGIN_IP" \
-    "rate_limit:password_reset:$RATE_LIMIT_PASSWORD_RESET_IP" >/dev/null
+  redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DATABASE" del \
+    "rate_limit:signup:$RATE_LIMIT_CLIENT_IP" \
+    "rate_limit:login:$RATE_LIMIT_CLIENT_IP" \
+    "rate_limit:password_reset:$RATE_LIMIT_CLIENT_IP" >/dev/null
 }
 
 create_jwt() {
@@ -977,8 +975,8 @@ PY
 }
 
 preflight() {
-  assert_local_fixture_environment
-  validate_number_config
+  assert_local_fixture_environment || return $?
+  validate_number_config || return $?
   require_command curl
   require_command python3
 
@@ -1023,7 +1021,7 @@ stop_node_mock() {
 }
 
 cleanup() {
-  assert_local_fixture_environment
+  assert_local_fixture_environment || return $?
   local status=0
   cleanup_rate_limit_keys || status=1
   stop_node_mock || status=1

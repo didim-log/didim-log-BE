@@ -83,7 +83,7 @@ flowchart LR
 - Access Token은 JWT로 발급하고 Refresh Token은 Redis에 저장
 - 보호 API는 `type=access`와 USER / ADMIN role을 가진 Access Token만 인증
 - 기존 연결 계정의 OAuth2 로그인과 USER / ADMIN 권한 분리
-- 인증 API별 Redis Rate Limit과 TTL 기반 차단
+- 인증 API별 Redis 고정 구간 Rate Limit과 동시 요청 원자 처리
 - AI 리뷰 잠금, 실패 상태 전환, 재시도 흐름
 
 ## 5. 핵심 데이터 흐름
@@ -274,7 +274,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | 검증 범위 | 조건 | 확인 결과 |
 | --- | --- | --- |
 | AI 리뷰 중복 생성 | 동일 로그 50건 동시 요청·10회 반복 | 각 회차 Gemini 호출 1회·저장 1건, 최종 `COMPLETED`, 잠금 잔존 0건 |
-| 인증 요청 제한 | 회원가입 5건/시간, 로그인 10건/시간, 비밀번호 재설정 3건/시간 | 허용 횟수 이후 요청 차단 |
+| 인증 요청 제한 | 실제 Redis 동일 키 20건 동시 요청·한도 1건 | 허용 1건·차단 19건, 최종 카운터 1 |
 | 가입·회고 DB 정합성 | 실제 MongoDB, 같은 학생·문제 회고 2건 동시 insert | 학생 식별자 중복 거부, 회고 1건 저장, 기존 중복 데이터 자동 삭제 0건 |
 | Refresh Token 회전 | 실제 Redis 7.2.5, 같은 기존 토큰으로 20건 동시 교체 | 성공 1건, 기존 토큰 0건, 새 토큰 1건 |
 | OAuth 로그인 코드 교환 | 실제 Redis, 같은 일회용 코드를 동시에 소비 | 성공 1건, 이후 요청은 같은 만료·재사용 오류 |
@@ -283,13 +283,14 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | 로그인 프로필 동기화 | 실제 MongoDB, solved.ac 조회 대기 중 비밀번호 재설정 | 새 비밀번호 유지, rating·tier 필드만 갱신 |
 
 이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
-AI 리뷰와 인증 요청 제한의 실행 조건은 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
+AI 리뷰 반복 실행과 인증 API 경계값 검사는 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
 가입·회고 인덱스와 테스트 범위는 [가입·회고 데이터 정합성](./DOCS/refactoring/be-refactor/PHASE_2A_DATA_CONSISTENCY.md)에 정리했습니다.
 Refresh Token의 Lua 교체 순서와 경합 검증은 [Refresh Token 원자적 회전](./DOCS/refactoring/be-refactor/PHASE_2B_REFRESH_TOKEN_ATOMIC_ROTATION.md)에 정리했습니다.
 OAuth 리다이렉트의 장기 토큰·개인정보 제거와 일회용 코드 소비 순서는 [OAuth 일회용 코드 교환](./DOCS/refactoring/be-refactor/PHASE_2C_4_OAUTH_CODE_EXCHANGE.md)에 정리했습니다.
 Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토큰 용도 분리](./DOCS/refactoring/be-refactor/PHASE_2C_1_JWT_TOKEN_PURPOSE.md)에 정리했습니다.
 재설정 코드의 발급·소비 순서와 실패 경계는 [비밀번호 재설정 코드 발급 정합성](./DOCS/refactoring/be-refactor/PHASE_2B_3_PASSWORD_RESET_ISSUANCE_CONSISTENCY.md)과 [비밀번호 재설정 코드 원자적 소비](./DOCS/refactoring/be-refactor/PHASE_2B_2_PASSWORD_RESET_ATOMIC_CONSUME.md)에 정리했습니다.
 로그인 중 solved.ac 프로필 동기화의 부분 갱신과 비밀번호 변경 경합은 [로그인 프로필 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_2C_2_LOGIN_PROFILE_PARTIAL_UPDATE.md)에 정리했습니다.
+인증 요청 제한의 Redis 원자 처리, 연결 주소 기준과 경로별 정책은 [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -307,8 +308,9 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 
 ### 인증 API 남용 방지
 
-- Redis 카운터와 TTL로 회원가입, 로그인, 비밀번호 재설정의 호출 횟수를 제한합니다.
-- 제한 초과 시 해제 예정 시각을 응답해 클라이언트가 재시도 시점을 안내할 수 있도록 했습니다.
+- Redis Lua 한 번으로 카운터와 최초 만료 시간을 처리해 동시 요청에서도 한도를 넘기지 않습니다.
+- Tomcat이 내부 프록시에서 받은 주소만 반영하고 BE 포트는 로컬에만 열며, 로그인 성공으로 제한 횟수를 초기화하지 않습니다.
+- 제한 초과 시 남은 횟수, 재시도 대기 시간과 해제 예정 시각을 반환합니다.
 
 ## 9. 실행 및 테스트
 
@@ -355,6 +357,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [API 명세](./DOCS/API_SPECIFICATION.md)
 - [로컬 동시성·요청 제한 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)
 - [관리자 회원 조회 최적화](./DOCS/refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md)
+- [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

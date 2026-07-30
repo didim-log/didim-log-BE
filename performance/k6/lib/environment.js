@@ -96,7 +96,7 @@ export function stripTrailingSlash(value) {
   return `${value}`.replace(/\/+$/, "");
 }
 
-export const BASE_URL = stripTrailingSlash(env("BASE_URL", "http://localhost:8080"));
+export const BASE_URL = stripTrailingSlash(env("BASE_URL", "http://127.0.0.1:8080"));
 export const WIREMOCK_URL = stripTrailingSlash(env("WIREMOCK_URL", "http://localhost:8090"));
 export const MONGO_URI = env("MONGO_URI", "mongodb://localhost:27017/didimlog-performance");
 export const REDIS_HOST = env("REDIS_HOST", "localhost");
@@ -281,17 +281,4 @@ export function validateConfiguredEnv() {
   positiveIntegerEnv("READ_PAGE_SIZE", 10, 1, 100);
   durationEnv("READ_DURATION", "1m");
   durationEnv("AI_MAX_DURATION", "45s");
-}
-
-export function uniqueRateLimitIp(name) {
-  const prefix = env("RATE_LIMIT_IP_PREFIX", "10.67");
-  const runId = env("K6_RUN_ID", `${Date.now()}`);
-  const seed = `${name}:${runId}:${__VU}:${__ITER}`;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  const third = 1 + (hash % 200);
-  const fourth = 1 + ((hash >>> 8) % 200);
-  return `${prefix}.${third}.${fourth}`;
 }

@@ -2,6 +2,9 @@ package com.didimlog.application.auth.boj
 
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.global.ratelimit.RateLimitDecision
+import com.didimlog.global.ratelimit.RateLimitException
+import com.didimlog.global.ratelimit.RateLimitService
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -18,13 +21,20 @@ class BojOwnershipVerificationServiceTest {
 
     private val codeStore: BojVerificationCodeStore = mockk()
     private val profileStatusMessageClient: BojProfileStatusMessageClient = mockk()
-    private val service = BojOwnershipVerificationService(codeStore, profileStatusMessageClient)
+    private val rateLimitService: RateLimitService = mockk()
+    private val service = BojOwnershipVerificationService(
+        codeStore,
+        profileStatusMessageClient,
+        rateLimitService
+    )
 
     @Test
     @DisplayName("인증 코드를 발급하면 sessionId와 함께 저장한다")
     fun `issue code saves into store`() {
         val identifier = "127.0.0.1"
-        every { codeStore.incrementRateLimitCount(any(), any()) } returns 1L
+        every {
+            rateLimitService.checkAndRecord("boj_code:$identifier", 5, 1)
+        } returns allowedDecision()
         every { codeStore.save(any(), any(), any()) } just runs
 
         val issued = service.issueVerificationCode(identifier)
@@ -32,7 +42,9 @@ class BojOwnershipVerificationServiceTest {
         assertThat(issued.sessionId).isNotBlank()
         assertThat(issued.code).startsWith("DIDIM-LOG-")
         assertThat(issued.code.length).isGreaterThan("DIDIM-LOG-".length) // 코드 길이 확인
-        verify(exactly = 1) { codeStore.incrementRateLimitCount(any(), any()) }
+        verify(exactly = 1) {
+            rateLimitService.checkAndRecord("boj_code:$identifier", 5, 1)
+        }
         verify(exactly = 1) { codeStore.save(issued.sessionId, issued.code, issued.expiresInSeconds) }
     }
 
@@ -45,10 +57,13 @@ class BojOwnershipVerificationServiceTest {
         val fixtureService = BojOwnershipVerificationService(
             codeStore,
             profileStatusMessageClient,
+            rateLimitService,
             fixtureCode = "DIDIM-LOG-DEMO42",
             environment = environment
         )
-        every { codeStore.incrementRateLimitCount(any(), any()) } returns 1L
+        every {
+            rateLimitService.checkAndRecord("boj_code:127.0.0.1", 5, 1)
+        } returns allowedDecision()
         every { codeStore.save(any(), any(), any()) } just runs
 
         val issued = fixtureService.issueVerificationCode("127.0.0.1")
@@ -65,10 +80,13 @@ class BojOwnershipVerificationServiceTest {
         val productionService = BojOwnershipVerificationService(
             codeStore,
             profileStatusMessageClient,
+            rateLimitService,
             fixtureCode = "DIDIM-LOG-DEMO42",
             environment = environment
         )
-        every { codeStore.incrementRateLimitCount(any(), any()) } returns 1L
+        every {
+            rateLimitService.checkAndRecord("boj_code:127.0.0.1", 5, 1)
+        } returns allowedDecision()
         every { codeStore.save(any(), any(), any()) } just runs
 
         val issued = productionService.issueVerificationCode("127.0.0.1")
@@ -81,11 +99,22 @@ class BojOwnershipVerificationServiceTest {
     @DisplayName("Rate Limit 초과 시 예외를 던진다")
     fun `rate limit exceeded throws exception`() {
         val identifier = "127.0.0.1"
-        every { codeStore.incrementRateLimitCount(any(), any()) } returns 6L
+        every {
+            rateLimitService.checkAndRecord("boj_code:$identifier", 5, 1)
+        } returns RateLimitDecision(
+            allowed = false,
+            limit = 5,
+            remainingRequests = 0,
+            retryAfterSeconds = 42L
+        )
 
         assertThatThrownBy { service.issueVerificationCode(identifier) }
-            .isInstanceOf(BusinessException::class.java)
+            .isInstanceOf(RateLimitException::class.java)
             .hasMessageContaining("요청이 너무 많습니다")
+            .hasFieldOrPropertyWithValue("retryAfterSeconds", 42L)
+            .hasFieldOrPropertyWithValue("limit", 5)
+
+        verify(exactly = 0) { codeStore.save(any(), any(), any()) }
     }
 
     @Test
@@ -253,4 +282,12 @@ class BojOwnershipVerificationServiceTest {
             .hasMessageContaining("만료되었거나 이미 사용")
     }
 
+    private fun allowedDecision(): RateLimitDecision {
+        return RateLimitDecision(
+            allowed = true,
+            limit = 5,
+            remainingRequests = 4,
+            retryAfterSeconds = null
+        )
+    }
 }

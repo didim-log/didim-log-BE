@@ -10,19 +10,32 @@ import org.springframework.mock.web.MockHttpServletRequest
 class HttpRequestUtilTest {
 
     @Test
-    @DisplayName("전달 헤더 래퍼를 벗겨 실제 연결 주소를 반환한다")
-    fun `getConnectionRemoteAddress unwraps forwarded request`() {
+    @DisplayName("서버가 신뢰 프록시를 거쳐 정규화한 주소를 반환한다")
+    fun `getClientIpAddress uses the server processed remote address`() {
         val request = MockHttpServletRequest().apply {
             remoteAddr = "198.51.100.20"
             addHeader("X-Forwarded-For", "203.0.113.10")
+            addHeader("X-Real-IP", "203.0.113.11")
         }
-        val forwardedWrapper = object : HttpServletRequestWrapper(request) {
+        val serverProcessedRequest = object : HttpServletRequestWrapper(request) {
             override fun getRemoteAddr(): String = "203.0.113.10"
         }
-        val nestedWrapper = HttpServletRequestWrapper(forwardedWrapper)
 
-        val result = HttpRequestUtil.getConnectionRemoteAddress(nestedWrapper)
+        val result = HttpRequestUtil.getClientIpAddress(serverProcessedRequest)
 
-        assertThat(result).isEqualTo("198.51.100.20")
+        assertThat(result).isEqualTo("203.0.113.10")
+    }
+
+    @Test
+    @DisplayName("전달 헤더를 직접 해석하지 않는다")
+    fun `getClientIpAddress does not parse forwarding headers`() {
+        val request = MockHttpServletRequest().apply {
+            remoteAddr = "198.51.100.20"
+            addHeader("X-Forwarded-For", "203.0.113.10")
+            addHeader("X-Real-IP", "203.0.113.11")
+        }
+
+        assertThat(HttpRequestUtil.getClientIpAddress(request))
+            .isEqualTo("198.51.100.20")
     }
 }

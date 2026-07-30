@@ -58,8 +58,9 @@ data class ErrorResponse(
             404 to "Not Found",
             409 to "Conflict",
             429 to "Too Many Requests",
-            504 to "Gateway Timeout",
-            500 to "Internal Server Error"
+            500 to "Internal Server Error",
+            503 to "Service Unavailable",
+            504 to "Gateway Timeout"
         )
     }
 }

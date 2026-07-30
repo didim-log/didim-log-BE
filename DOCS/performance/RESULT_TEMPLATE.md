@@ -36,7 +36,7 @@
 | Detail workload | `GET /api/v1/retrospectives/{id}` | Controller/Test |
 | Signup RL | `POST /api/v1/auth/signup` | RateLimitInterceptor |
 | Login RL | `POST /api/v1/auth/login` | RateLimitInterceptor |
-| Reset password RL | `POST /api/v1/auth/reset-password` | RateLimitInterceptor |
+| Account recovery RL | `POST /api/v1/auth/find-password` | RateLimitInterceptor |
 
 ## External API Mock
 
@@ -99,11 +99,15 @@ NOT_EXECUTED
 
 ## Rate Limit
 
-| Endpoint | Allowed | Rejected 429 | Unexpected | Unlock Time | Result |
-| --- | ---: | ---: | ---: | --- | --- |
-| Signup | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED |
-| Login | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED |
-| Reset Password | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED |
+| Endpoint | Allowed | Rejected 429 | Unexpected | Unlock Time | Request Start Lag Max | Result |
+| --- | ---: | ---: | ---: | --- | ---: | --- |
+| Signup | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED |
+| Login | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED |
+| Account Recovery | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED | NOT_EXECUTED |
+
+- VUs Max: NOT_EXECUTED
+- Threshold Failures: NOT_EXECUTED
+- Run ID: NOT_EXECUTED
 
 ## Resume-Ready Evidence
 

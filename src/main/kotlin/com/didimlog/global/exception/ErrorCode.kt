@@ -28,6 +28,7 @@ enum class ErrorCode(
 
     // 503 Service Unavailable
     MAINTENANCE_MODE(503, "MAINTENANCE_MODE", "서비스가 일시적으로 점검 중입니다. 잠시 후 다시 시도해주세요."),
+    RATE_LIMIT_SERVICE_UNAVAILABLE(503, "RATE_LIMIT_SERVICE_UNAVAILABLE", "요청 제한 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해주세요.", retryable = true),
     AI_GENERATION_FAILED(503, "AI_GENERATION_FAILED", "AI 리뷰 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
     AI_GENERATION_TIMEOUT(503, "AI_GENERATION_TIMEOUT", "AI 리뷰 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.", retryable = true),
     TEMPLATE_RENDER_TIMEOUT(504, "TEMPLATE_RENDER_TIMEOUT", "템플릿 렌더링 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.", retryable = true),
