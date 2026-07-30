@@ -72,7 +72,7 @@ class StudentController(
 
     @Operation(
         summary = "회원 탈퇴(본인)",
-        description = "로그인한 사용자의 계정 및 연관 데이터를 완전히 삭제합니다. (Hard Delete, 복구 불가)",
+        description = "로그인한 사용자의 세션, 재설정 코드와 학생 ID로 소유권이 확인되는 데이터를 삭제합니다. (Hard Delete, 복구 불가)",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -86,6 +86,16 @@ class StudentController(
             ApiResponse(
                 responseCode = "404",
                 description = "학생을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 상태 변경 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]

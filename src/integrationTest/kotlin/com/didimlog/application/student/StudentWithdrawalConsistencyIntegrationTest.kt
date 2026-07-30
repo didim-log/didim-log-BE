@@ -3,20 +3,31 @@ package com.didimlog.application.student
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Feedback
+import com.didimlog.domain.Log
+import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.FeedbackType
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.FeedbackRepository
+import com.didimlog.domain.repository.LogRepository
+import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.repository.TemplateRepository
+import com.didimlog.domain.template.Template
 import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.LogCode
+import com.didimlog.domain.valueobject.LogContent
+import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.infra.solvedac.SolvedAcClient
 import io.mockk.mockk
 import io.mockk.verify
+import java.time.LocalDateTime
 import java.util.UUID
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
@@ -56,6 +67,15 @@ class StudentWithdrawalConsistencyIntegrationTest {
     @Autowired
     private lateinit var feedbackRepository: FeedbackRepository
 
+    @Autowired
+    private lateinit var logRepository: LogRepository
+
+    @Autowired
+    private lateinit var templateRepository: TemplateRepository
+
+    @Autowired
+    private lateinit var passwordResetCodeRepository: PasswordResetCodeRepository
+
     @BeforeEach
     fun setUp() {
         mongoTemplate.db.drop()
@@ -67,8 +87,8 @@ class StudentWithdrawalConsistencyIntegrationTest {
     }
 
     @Test
-    @DisplayName("잠금 진입 시 문서 버전이 바뀌어도 ID 삭제로 학생과 연관 데이터를 제거한다")
-    fun `hard delete uses stable student id`() {
+    @DisplayName("본인 탈퇴는 학생과 모든 사용자 소유 데이터를 제거하고 공용 데이터는 보존한다")
+    fun `self withdrawal removes all account data`() {
         val student = studentRepository.save(
             Student(
                 id = "withdraw-student",
@@ -96,6 +116,54 @@ class StudentWithdrawalConsistencyIntegrationTest {
                 type = FeedbackType.SUGGESTION
             )
         )
+        val ownedLog = logRepository.save(
+            Log(
+                title = LogTitle("사용자 로그"),
+                content = LogContent("탈퇴 시 삭제할 로그"),
+                code = LogCode("println(1)"),
+                studentId = studentId,
+                bojId = BojId("withdrawboj")
+            )
+        )
+        val legacyLog = logRepository.save(
+            Log(
+                title = LogTitle("레거시 로그"),
+                content = LogContent("학생 ID 도입 전 로그"),
+                code = LogCode("println(2)"),
+                bojId = BojId("withdrawboj")
+            )
+        )
+        val unrelatedLog = logRepository.save(
+            Log(
+                title = LogTitle("다른 사용자 로그"),
+                content = LogContent("탈퇴 대상이 아닌 로그"),
+                code = LogCode("println(3)"),
+                studentId = "other-student",
+                bojId = BojId("otherboj")
+            )
+        )
+        val customTemplate = templateRepository.save(
+            Template(
+                studentId = studentId,
+                title = "사용자 템플릿",
+                content = "사용자 템플릿 본문",
+                type = TemplateOwnershipType.CUSTOM
+            )
+        )
+        val systemTemplate = templateRepository.save(
+            Template(
+                title = "시스템 템플릿",
+                content = "시스템 템플릿 본문",
+                type = TemplateOwnershipType.SYSTEM
+            )
+        )
+        val resetCode = passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = "withdraw-reset-code",
+                studentId = studentId,
+                expiresAt = LocalDateTime.now().plusMinutes(10)
+            )
+        )
         val refreshTokenService = mockk<RefreshTokenService>(relaxed = true)
         val coordinator = object : CredentialSessionCoordinator {
             override fun <T> execute(studentId: String, action: () -> T): T {
@@ -111,14 +179,23 @@ class StudentWithdrawalConsistencyIntegrationTest {
                 return execute(studentId, action)
             }
         }
-        val studentService = StudentService(
+        val accountDeletionService = AccountDeletionService(
             studentRepository = studentRepository,
             retrospectiveRepository = retrospectiveRepository,
             feedbackRepository = feedbackRepository,
+            logRepository = logRepository,
+            templateRepository = templateRepository,
+            passwordResetCodeRepository = passwordResetCodeRepository,
+            refreshTokenService = refreshTokenService,
+            credentialSessionCoordinator = coordinator
+        )
+        val studentService = StudentService(
+            studentRepository = studentRepository,
             passwordEncoder = mockk<PasswordEncoder>(relaxed = true),
             solvedAcClient = mockk<SolvedAcClient>(relaxed = true),
             refreshTokenService = refreshTokenService,
-            credentialSessionCoordinator = coordinator
+            credentialSessionCoordinator = coordinator,
+            accountDeletionService = accountDeletionService
         )
 
         studentService.withdraw(studentId)
@@ -126,6 +203,12 @@ class StudentWithdrawalConsistencyIntegrationTest {
         assertThat(studentRepository.existsById(studentId)).isFalse()
         assertThat(retrospectiveRepository.findAllByStudentId(studentId)).isEmpty()
         assertThat(feedbackRepository.findAll()).isEmpty()
+        assertThat(logRepository.existsById(requireNotNull(ownedLog.id))).isFalse()
+        assertThat(logRepository.existsById(requireNotNull(legacyLog.id))).isTrue()
+        assertThat(logRepository.existsById(requireNotNull(unrelatedLog.id))).isTrue()
+        assertThat(templateRepository.existsById(requireNotNull(customTemplate.id))).isFalse()
+        assertThat(templateRepository.existsById(requireNotNull(systemTemplate.id))).isTrue()
+        assertThat(passwordResetCodeRepository.existsById(requireNotNull(resetCode.id))).isFalse()
         verify(exactly = 1) { refreshTokenService.revokeAllForStudent(studentId) }
     }
 

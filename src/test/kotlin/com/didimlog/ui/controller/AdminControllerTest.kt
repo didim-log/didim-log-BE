@@ -39,10 +39,14 @@ import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.core.task.TaskRejectedException
+import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.util.AopTestUtils
 import org.springframework.validation.beanvalidation.MethodValidationPostProcessor
 
 @DisplayName("AdminController 테스트")
@@ -73,6 +77,9 @@ class AdminControllerTest {
 
     @Autowired
     private lateinit var noticeService: NoticeService
+
+    @Autowired
+    private lateinit var adminAuditService: AdminAuditService
 
     @Autowired
     private lateinit var objectMapper: ObjectMapper
@@ -188,11 +195,57 @@ class AdminControllerTest {
         // when & then
         mockMvc.perform(
             org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/admin/users/$studentId")
+                .principal(UsernamePasswordAuthenticationToken("admin-id", null))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
 
         verify(exactly = 1) { adminService.deleteUser(studentId) }
+        val auditServiceMock = AopTestUtils.getTargetObject<AdminAuditService>(adminAuditService)
+        verify(exactly = 1) {
+            auditServiceMock.logAction(
+                adminId = "admin-id",
+                action = com.didimlog.domain.enums.AdminActionType.USER_DELETE,
+                details = "사용자 강제 탈퇴: studentId='$studentId'",
+                ipAddress = any()
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("감사 로그 제출이 거부돼도 완료된 회원 강제 탈퇴는 성공으로 응답한다")
+    fun `감사 로그 제출 실패가 삭제 성공 응답을 뒤집지 않음`() {
+        val studentId = "student1"
+        val localAdminService = mockk<AdminService>()
+        val auditService = mockk<AdminAuditService>()
+        val controller = AdminController(
+            adminService = localAdminService,
+            feedbackService = mockk(relaxed = true),
+            adminAuditService = auditService,
+            studentRepository = mockk(relaxed = true),
+            noticeService = mockk(relaxed = true)
+        )
+        every { localAdminService.deleteUser(studentId) } returns Unit
+        every {
+            auditService.logAction(any(), any(), any(), any())
+        } throws TaskRejectedException("audit queue is full")
+
+        val response = controller.deleteUser(
+            studentId = studentId,
+            authentication = UsernamePasswordAuthenticationToken("admin-id", null),
+            httpServletRequest = MockHttpServletRequest()
+        )
+
+        assertThat(response.statusCode.value()).isEqualTo(200)
+        verify(exactly = 1) { localAdminService.deleteUser(studentId) }
+        verify(exactly = 1) {
+            auditService.logAction(
+                adminId = "admin-id",
+                action = com.didimlog.domain.enums.AdminActionType.USER_DELETE,
+                details = "사용자 강제 탈퇴: studentId='$studentId'",
+                ipAddress = any()
+            )
+        }
     }
 
     @Test
@@ -208,11 +261,16 @@ class AdminControllerTest {
         // when & then
         mockMvc.perform(
             org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/admin/users/$studentId")
+                .principal(UsernamePasswordAuthenticationToken("admin-id", null))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isNotFound)
 
         verify(exactly = 1) { adminService.deleteUser(studentId) }
+        val auditServiceMock = AopTestUtils.getTargetObject<AdminAuditService>(adminAuditService)
+        verify(exactly = 0) {
+            auditServiceMock.logAction(any(), any(), any(), any())
+        }
     }
 
     @Test

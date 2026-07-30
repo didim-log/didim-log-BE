@@ -286,6 +286,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | 로그인 프로필 동기화 | 실제 MongoDB, solved.ac 조회 대기 중 비밀번호 재설정 | 새 비밀번호 유지, rating·tier 필드만 갱신 |
 | 풀이 결과 동시 저장 | 실제 MongoDB 7.0.16, 같은 문서 버전의 다른 문제 2건·같은 문제 2건·비밀번호 변경 경합 | 다른 문제 2건 모두 보존, 같은 문제 당일 1건, 새 자격 증명 유지 |
 | 회고 동시 갱신·삭제 | 실제 MongoDB 7.0.16, 북마크 2건 동시 토글·최초 작성 2건·수정 중 선행 삭제 | 토글 2회 모두 반영, 회고 1건 저장, 삭제 뒤 기존 ID 미복원 |
+| 계정 삭제 경로 통합 | 실제 MongoDB 7.0.16, 본인 탈퇴·관리자 삭제와 사용자 소유 5개 컬렉션 | 두 경로 모두 같은 범위를 삭제하고 시스템·다른 사용자 데이터 보존 |
 
 이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
 AI 리뷰 반복 실행과 인증 API 경계값 검사는 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
@@ -299,6 +300,7 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 인증 요청 제한의 Redis 원자 처리, 연결 주소 기준과 경로별 정책은 [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
 풀이 결과의 문서 버전 조건부 갱신과 충돌 재시도는 [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)에 정리했습니다.
 회고의 부분 갱신, 북마크 토글과 풀이 기록 삭제 경합은 [회고 원자 갱신과 풀이 기록 삭제 정합성](./DOCS/refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md)에 정리했습니다.
+본인 탈퇴와 관리자 강제 탈퇴의 공통 삭제 순서와 보존 범위는 [계정 삭제 경로 통합과 연관 데이터 정리](./DOCS/refactoring/be-refactor/PHASE_3C_ACCOUNT_DELETION_CONSISTENCY.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -372,6 +374,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)
 - [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)
 - [회고 원자 갱신과 풀이 기록 삭제 정합성](./DOCS/refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md)
+- [계정 삭제 경로 통합과 연관 데이터 정리](./DOCS/refactoring/be-refactor/PHASE_3C_ACCOUNT_DELETION_CONSISTENCY.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

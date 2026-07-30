@@ -3,6 +3,7 @@ package com.didimlog.application.admin
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.application.student.AccountDeletionService
 import com.didimlog.domain.Quote
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
@@ -43,13 +44,15 @@ class AdminServiceTest {
     private val retrospectiveRepository: RetrospectiveRepository = mockk()
     private val passwordEncoder: PasswordEncoder = mockk()
     private val refreshTokenService: RefreshTokenService = mockk(relaxed = true)
+    private val accountDeletionService: AccountDeletionService = mockk(relaxed = true)
     private val adminService = AdminService(
         studentRepository,
         quoteRepository,
         retrospectiveRepository,
         passwordEncoder,
         refreshTokenService,
-        ImmediateCredentialSessionCoordinator()
+        ImmediateCredentialSessionCoordinator(),
+        accountDeletionService
     )
 
     @Test
@@ -266,68 +269,13 @@ class AdminServiceTest {
     }
 
     @Test
-    @DisplayName("회원을 강제 탈퇴시킬 수 있다")
-    fun `회원 강제 탈퇴 성공`() {
-        // given
+    @DisplayName("회원 강제 탈퇴를 공통 계정 삭제 흐름에 위임한다")
+    fun `회원 강제 탈퇴 공통 흐름 위임`() {
         val studentId = "student1"
-        val student = Student(
-            id = studentId,
-            nickname = Nickname("user1"),
-            provider = Provider.BOJ,
-            providerId = "user1",
-            bojId = BojId("user1"),
-            password = "encoded",
-            currentTier = Tier.BRONZE,
-            role = Role.USER
-        )
 
-        every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { studentRepository.deleteById(studentId) } returns Unit
-
-        // when
         adminService.deleteUser(studentId)
 
-        // then
-        verify(exactly = 1) { studentRepository.findById(studentId) }
-        verifyOrder {
-            refreshTokenService.revokeAllForStudent(studentId)
-            studentRepository.deleteById(studentId)
-        }
-        verify(exactly = 0) { studentRepository.delete(any<Student>()) }
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 회원 탈퇴 시 예외가 발생한다")
-    fun `존재하지 않는 회원 탈퇴 시 예외 발생`() {
-        // given
-        val studentId = "non-existent"
-        every { studentRepository.findById(studentId) } returns Optional.empty()
-
-        // when & then
-        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
-            adminService.deleteUser(studentId)
-        }
-        assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
-        assertThat(exception.message).contains("학생을 찾을 수 없습니다")
-        verify(exactly = 0) { refreshTokenService.revokeAllForStudent(any()) }
-        verify(exactly = 0) { studentRepository.deleteById(any()) }
-    }
-
-    @Test
-    @DisplayName("강제 탈퇴 세션 정리에 실패하면 학생 삭제를 시작하지 않는다")
-    fun `회원 강제 탈퇴 세션 정리 실패 시 삭제하지 않음`() {
-        val studentId = "student1"
-        val student = student(studentId)
-        every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every {
-            refreshTokenService.revokeAllForStudent(studentId)
-        } throws IllegalStateException("Redis unavailable")
-
-        org.junit.jupiter.api.assertThrows<IllegalStateException> {
-            adminService.deleteUser(studentId)
-        }
-
-        verify(exactly = 0) { studentRepository.deleteById(any()) }
+        verify(exactly = 1) { accountDeletionService.deleteAccount(studentId) }
     }
 
     @Test
@@ -380,7 +328,8 @@ class AdminServiceTest {
             retrospectiveRepository,
             passwordEncoder,
             refreshTokenService,
-            coordinator
+            coordinator,
+            accountDeletionService
         )
         every { studentRepository.findById(studentId) } returns Optional.of(student)
         every { studentRepository.save(any<Student>()) } answers { firstArg() }
@@ -471,7 +420,8 @@ class AdminServiceTest {
             retrospectiveRepository,
             passwordEncoder,
             refreshTokenService,
-            coordinator
+            coordinator,
+            accountDeletionService
         )
         val updateReachedSave = CountDownLatch(1)
         val allowUpdateToFinish = CountDownLatch(1)

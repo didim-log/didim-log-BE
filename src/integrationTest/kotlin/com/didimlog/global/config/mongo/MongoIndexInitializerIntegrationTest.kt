@@ -1,9 +1,11 @@
 package com.didimlog.global.config.mongo
 
+import com.didimlog.domain.Feedback
 import com.didimlog.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
+import com.didimlog.domain.template.Template
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
@@ -120,6 +122,16 @@ class MongoIndexInitializerIntegrationTest {
             name = MongoIndexInitializer.LOG_STUDENT_CREATED_INDEX_NAME,
             "studentId" to Sort.Direction.ASC,
             "createdAt" to Sort.Direction.DESC
+        )
+        assertPlainIndex(
+            entityType = Feedback::class.java,
+            name = MongoIndexInitializer.FEEDBACK_WRITER_ID_INDEX_NAME,
+            "writerId" to Sort.Direction.ASC
+        )
+        assertPlainIndex(
+            entityType = Template::class.java,
+            name = MongoIndexInitializer.TEMPLATE_STUDENT_ID_INDEX_NAME,
+            "studentId" to Sort.Direction.ASC
         )
 
         val ttlIndex = requireIndex(

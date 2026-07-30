@@ -2,6 +2,7 @@ package com.didimlog.application.admin
 
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.application.student.AccountDeletionService
 import com.didimlog.domain.Quote
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Role
@@ -35,7 +36,8 @@ class AdminService(
     private val retrospectiveRepository: RetrospectiveRepository,
     private val passwordEncoder: PasswordEncoder,
     private val refreshTokenService: RefreshTokenService,
-    private val credentialSessionCoordinator: CredentialSessionCoordinator
+    private val credentialSessionCoordinator: CredentialSessionCoordinator,
+    private val accountDeletionService: AccountDeletionService
 ) {
 
     private val log = LoggerFactory.getLogger(AdminService::class.java)
@@ -106,17 +108,8 @@ class AdminService(
      * @param studentId 학생 ID
      * @throws BusinessException 학생을 찾을 수 없는 경우
      */
-    @Transactional
     fun deleteUser(studentId: String) {
-        credentialSessionCoordinator.execute(studentId) {
-            studentRepository.findById(studentId)
-                .orElseThrow {
-                    BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
-                }
-
-            refreshTokenService.revokeAllForStudent(studentId)
-            studentRepository.deleteById(studentId)
-        }
+        accountDeletionService.deleteAccount(studentId)
     }
 
     /**

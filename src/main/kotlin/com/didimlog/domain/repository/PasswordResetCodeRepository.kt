@@ -12,8 +12,9 @@ interface PasswordResetCodeRepository :
     PasswordResetCodeRepositoryCustom {
 
     fun findByResetCode(resetCode: String): Optional<PasswordResetCode>
-}
 
+    fun deleteAllByStudentId(studentId: String)
+}
 
 
 

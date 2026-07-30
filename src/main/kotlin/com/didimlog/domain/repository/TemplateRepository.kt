@@ -7,6 +7,8 @@ import org.springframework.data.mongodb.repository.Query
 
 interface TemplateRepository : MongoRepository<Template, String> {
 
+    fun deleteAllByStudentId(studentId: String)
+
     /**
      * 특정 학생의 템플릿과 시스템 템플릿을 모두 조회한다.
      *

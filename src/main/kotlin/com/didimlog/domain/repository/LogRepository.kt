@@ -10,6 +10,9 @@ import org.springframework.data.mongodb.repository.Query
 import java.time.LocalDateTime
 
 interface LogRepository : MongoRepository<Log, String> {
+
+    fun deleteAllByStudentId(studentId: String)
+
     /**
      * BOJ ID로 로그를 페이징하여 조회한다.
      * BojId writing converter가 문자열로 저장하므로 MongoDB 필드명을 직접 사용한다.

@@ -7,8 +7,6 @@ import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.repository.RetrospectiveRepository
-import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
@@ -31,20 +29,18 @@ import java.util.Optional
 class StudentServiceTest {
 
     private val studentRepository: StudentRepository = mockk()
-    private val retrospectiveRepository: RetrospectiveRepository = mockk(relaxed = true)
-    private val feedbackRepository: FeedbackRepository = mockk(relaxed = true)
     private val passwordEncoder: PasswordEncoder = mockk()
     private val solvedAcClient: com.didimlog.infra.solvedac.SolvedAcClient = mockk(relaxed = true)
     private val refreshTokenService: RefreshTokenService = mockk(relaxed = true)
+    private val accountDeletionService: AccountDeletionService = mockk(relaxed = true)
 
     private val studentService = StudentService(
         studentRepository,
-        retrospectiveRepository,
-        feedbackRepository,
         passwordEncoder,
         solvedAcClient,
         refreshTokenService,
-        ImmediateCredentialSessionCoordinator()
+        ImmediateCredentialSessionCoordinator(),
+        accountDeletionService
     )
 
     @Test
@@ -462,94 +458,13 @@ class StudentServiceTest {
     }
 
     @Test
-    @DisplayName("회원 탈퇴 시 학생과 연관 데이터(회고/피드백)를 Hard Delete 한다")
-    fun `회원 탈퇴 Hard Delete 성공`() {
-        // given
-        val bojId = "testuser"
+    @DisplayName("회원 탈퇴를 공통 계정 삭제 흐름에 위임한다")
+    fun `회원 탈퇴 공통 흐름 위임`() {
         val studentId = "student-id"
-        val student = Student(
-            id = studentId,
-            nickname = Nickname("testuser"),
-            provider = Provider.BOJ,
-            providerId = bojId,
-            bojId = BojId(bojId),
-            password = "encoded-password",
-            currentTier = Tier.BRONZE,
-            role = Role.USER
-        )
-
-        every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { studentRepository.deleteById(studentId) } returns Unit
-        every { retrospectiveRepository.deleteAllByStudentId(studentId) } returns Unit
-        every { feedbackRepository.deleteAllByWriterId(studentId) } returns Unit
-
-        // when
-        studentService.withdraw(studentId)
-
-        // then
-        verifyOrder {
-            refreshTokenService.revokeAllForStudent(studentId)
-            retrospectiveRepository.deleteAllByStudentId(studentId)
-            feedbackRepository.deleteAllByWriterId(studentId)
-            studentRepository.deleteById(studentId)
-        }
-        verify(exactly = 0) { studentRepository.delete(any<Student>()) }
-    }
-
-    @Test
-    @DisplayName("회원 탈퇴 세션 정리에 실패하면 DB 삭제를 시작하지 않는다")
-    fun `회원 탈퇴 세션 정리 실패 시 DB 보존`() {
-        val bojId = "testuser"
-        val studentId = "student-id"
-        val student = Student(
-            id = studentId,
-            nickname = Nickname("testuser"),
-            provider = Provider.BOJ,
-            providerId = bojId,
-            bojId = BojId(bojId),
-            password = "encoded-password",
-            currentTier = Tier.BRONZE,
-            role = Role.USER
-        )
-        every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every {
-            refreshTokenService.revokeAllForStudent(studentId)
-        } throws IllegalStateException("Redis unavailable")
-
-        assertThrows<IllegalStateException> {
-            studentService.withdraw(studentId)
-        }
-
-        verify(exactly = 0) { retrospectiveRepository.deleteAllByStudentId(any()) }
-        verify(exactly = 0) { feedbackRepository.deleteAllByWriterId(any()) }
-        verify(exactly = 0) { studentRepository.deleteById(any()) }
-    }
-
-    @Test
-    @DisplayName("잠금 대기 중 BOJ ID가 바뀌어도 같은 학생 ID를 탈퇴시킨다")
-    fun `BOJ ID 변경 뒤 학생 ID로 회원 탈퇴`() {
-        val oldBojId = "testuser"
-        val studentId = "student-id"
-        val student = Student(
-            id = studentId,
-            nickname = Nickname("testuser"),
-            provider = Provider.BOJ,
-            providerId = oldBojId,
-            bojId = BojId(oldBojId),
-            password = "encoded-password",
-            currentTier = Tier.BRONZE,
-            role = Role.USER
-        )
-        val renamedStudent = student.copy(bojId = BojId("renamed_user"))
-        every { studentRepository.findById(studentId) } returns Optional.of(renamedStudent)
-        every { studentRepository.deleteById(studentId) } returns Unit
 
         studentService.withdraw(studentId)
 
-        verify(exactly = 1) { refreshTokenService.revokeAllForStudent(studentId) }
-        verify(exactly = 1) { retrospectiveRepository.deleteAllByStudentId(studentId) }
-        verify(exactly = 1) { feedbackRepository.deleteAllByWriterId(studentId) }
-        verify(exactly = 1) { studentRepository.deleteById(studentId) }
+        verify(exactly = 1) { accountDeletionService.deleteAccount(studentId) }
     }
 
     @Test

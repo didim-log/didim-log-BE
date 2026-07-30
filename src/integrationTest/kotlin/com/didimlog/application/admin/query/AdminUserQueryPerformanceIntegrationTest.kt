@@ -6,6 +6,7 @@ import com.didimlog.application.admin.AdminService
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.application.student.AccountDeletionService
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
@@ -601,6 +602,9 @@ class AdminQueryMongoCommandConfiguration {
     fun credentialSessionCoordinator(): CredentialSessionCoordinator {
         return ImmediateCredentialSessionCoordinator()
     }
+
+    @Bean
+    fun accountDeletionService(): AccountDeletionService = mockk(relaxed = true)
 
     @Bean
     fun mongoCommandCounter(): MongoCommandCounter = MongoCommandCounter()
