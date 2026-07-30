@@ -1,6 +1,7 @@
 package com.didimlog.global.security
 
 import com.didimlog.DidimLogApplication
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
@@ -9,6 +10,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -22,7 +24,6 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import org.assertj.core.api.Assertions.assertThat
 
 @SpringBootTest(classes = [DidimLogApplication::class])
 @AutoConfigureMockMvc
@@ -37,6 +38,9 @@ class SecurityIntegrationTest {
 
     @Autowired
     private lateinit var studentRepository: StudentRepository
+
+    @Autowired
+    private lateinit var refreshTokenService: RefreshTokenService
 
     private lateinit var userToken: String
     private lateinit var adminToken: String
@@ -90,16 +94,11 @@ class SecurityIntegrationTest {
     @DisplayName("관리자가 관리자 API에 접근하면 정상적으로 응답한다")
     fun `관리자가 관리자 API 접근 시 정상 응답`() {
         // when & then
-        val result = mockMvc.perform(
+        mockMvc.perform(
             get("/api/v1/admin/users")
                 .header("Authorization", "Bearer $adminToken")
         )
-        
-        // 상태 코드 확인 (200 또는 다른 성공 코드)
-        val status = result.andReturn().response.status
-        // 403 Forbidden이 아니면 통과 (관리자 권한이 있으면 200, 없으면 403)
-        assertThat(status).isNotEqualTo(403)
-        assertThat(status).isNotEqualTo(401)
+            .andExpect(status().isOk)
     }
 
     @Test
@@ -148,5 +147,45 @@ class SecurityIntegrationTest {
         )
             .andExpect(status().isCreated)
     }
-}
 
+    @Test
+    @DisplayName("Refresh Token으로 인증이 필요한 API에 접근하면 401 Unauthorized가 발생한다")
+    fun `Refresh Token으로 보호 API 접근 시 401 Unauthorized`() {
+        val refreshToken = jwtTokenProvider.createRefreshToken("testuser")
+
+        mockMvc.perform(
+            post("/api/v1/feedback")
+                .header("Authorization", "Bearer $refreshToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                        "content": "Refresh Token은 인증에 사용할 수 없습니다.",
+                        "type": "BUG"
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(content().contentType("application/json;charset=UTF-8"))
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+    }
+
+    @Test
+    @DisplayName("Refresh Token을 Authorization 헤더로 전달해 토큰을 갱신할 수 있다")
+    fun `Refresh Token 헤더 갱신 성공`() {
+        val refreshToken = refreshTokenService.generateAndSave("testuser")
+
+        try {
+            mockMvc.perform(
+                post("/api/v1/auth/refresh")
+                    .header("Authorization", "Bearer $refreshToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.token").isNotEmpty)
+                .andExpect(jsonPath("$.refreshToken").isNotEmpty)
+        } finally {
+            refreshTokenService.revokeAll("testuser")
+        }
+    }
+}

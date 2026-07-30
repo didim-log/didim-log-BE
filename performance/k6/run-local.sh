@@ -969,7 +969,7 @@ def b64url(value):
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
 
 header = {"alg": "HS256", "typ": "JWT"}
-payload = {"sub": subject, "role": "USER", "iat": now, "exp": now + 3600}
+payload = {"sub": subject, "role": "USER", "type": "access", "iat": now, "exp": now + 3600}
 unsigned = f"{b64url(json.dumps(header, separators=(',', ':')).encode())}.{b64url(json.dumps(payload, separators=(',', ':')).encode())}"
 signature = b64url(hmac.new(secret.encode(), unsigned.encode(), hashlib.sha256).digest())
 print(f"{unsigned}.{signature}")

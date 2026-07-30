@@ -1710,13 +1710,15 @@ JWT 토큰 기반 인증을 지원합니다.
 
 **토큰 구조:**
 - JWT 토큰의 `subject` (sub) 클레임에는 사용자 ID (BOJ ID 또는 Student ID)가 저장됩니다.
-- `role` 클레임에는 사용자 권한 (USER, ADMIN 등)이 저장됩니다.
+- Access Token은 `type=access`와 `role=USER|ADMIN`을 포함하며 보호 API 인증에 사용됩니다.
+- Refresh Token은 `type=refresh`와 고유한 `jti`를 포함하며 `/api/v1/auth/refresh`에서만 사용됩니다.
+- type이 없거나 role이 없거나 허용되지 않은 role을 가진 토큰은 보호 API 인증에 사용할 수 없습니다.
 - 토큰은 HMAC SHA-256 알고리즘으로 서명됩니다.
 
 **권한 기반 접근 제어:**
 - 일반 사용자 (USER): 대부분의 API 접근 가능
 - 관리자 (ADMIN): 모든 API 접근 가능 + `/api/v1/admin/**` 전용 API 접근 가능
-- 게스트 (GUEST): 제한된 API만 접근 가능 (소셜 로그인만 완료한 상태)
+- 게스트 (GUEST): 인증용 Access Token을 발급하지 않음
 
 ### 유지보수 모드 (Maintenance Mode)
 서버 점검 중에도 관리자가 로그인하여 유지보수 모드를 해제할 수 있도록 설계되었습니다.

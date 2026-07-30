@@ -20,6 +20,7 @@ export function createJwt(subject = PERF_BOJ_ID, role = "USER") {
   const payload = {
     sub: subject,
     role,
+    type: "access",
     iat: nowSeconds,
     exp: nowSeconds + ttlSeconds,
   };
