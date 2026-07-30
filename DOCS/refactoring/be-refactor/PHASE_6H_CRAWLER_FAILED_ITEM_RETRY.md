@@ -164,8 +164,9 @@ SPRING_DATA_REDIS_PORT=6398 \
   manifest는 별도 단계다.
 - 같은 원본 작업의 재시도 요청을 동시에 보내면 여러 자식 작업이 만들어질 수
   있다. 원본별 retry claim은 별도 단계다.
-- 서버 재시작 뒤 `PENDING`·`RUNNING` 작업을 이어받는 worker lease와 복구 절차는
-  없다.
+- 서버 재시작 뒤 `PENDING`·`RUNNING` 작업을 자동으로 이어받는 worker lease는
+  없다. 후속 [Phase 6K](./PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)는 단일
+  BE 시작 시 진행 작업을 `FAILED`로 정리한다.
 - 취소는 항목 사이에서 확인하므로 이미 시작한 외부 HTTP 호출은 끝날 수 있다.
 - 상태와 실패 원장의 TTL은 24시간이다. 주·월 메트릭을 장기간 보존하는 정책은
   별도 단계다.

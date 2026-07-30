@@ -1258,6 +1258,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **상태 전이**
 - 실행: `PENDING -> RUNNING -> COMPLETED|FAILED`
 - 실행기 제출 실패: `PENDING -> FAILED`
+- 단일 인스턴스 시작 복구: 이전 `PENDING|RUNNING -> FAILED`
+  (`errorCode=WORKER_UNAVAILABLE`)
 - 취소: `PENDING|RUNNING -> CANCELLED`
 - `COMPLETED|FAILED|CANCELLED`는 종료 상태이며 이후 변경되지 않습니다.
 
@@ -1265,6 +1267,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `COMPLETED`: 실패 원장에 기록된 문제 ID만 재시도합니다.
 - `FAILED|CANCELLED`: 실패 문제 ID와 `lastCheckpointId` 이후 미처리 대상을 합쳐
   중복 제거 후 숫자 문제 ID 순서로 처리합니다.
+- 시작 복구로 `FAILED`가 된 원본 작업도 같은 재시도 API를 사용합니다. 원본
+  상태를 다시 `RUNNING`으로 바꾸거나 자동으로 이어서 실행하지 않고 새 작업을
+  만듭니다.
 - 실패 원장이 도입되기 전에 생성된 `failCount > 0` 작업과 중단된 비메타데이터
   작업은 원본 범위 또는 현재 조회 가능한 대상을 다시 처리합니다.
 - 비메타데이터 실패 문제가 재시도 전에 삭제됐다면 해당 문제는 제외합니다.
@@ -1280,6 +1285,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `JOB_NOT_FOUND`
 - `QUEUE_TIMEOUT`
 - `WORKER_UNAVAILABLE`
+  - 시작 복구가 끝나기 전 작업 생성 요청은 HTTP 503과 `retryable=true`로
+    반환합니다.
+  - 시작 복구로 종료된 작업 상태에도 같은 코드가 `errorCode`로 저장됩니다.
 - `JOB_ALREADY_TERMINAL`
 - `RESOURCE_STATE_CONFLICT`
 
@@ -1831,6 +1839,8 @@ JWT 토큰 기반 인증을 지원합니다.
 - `TEMPLATE_RENDER_TIMEOUT` (504): 템플릿 렌더링 시간 초과 (`retryable=true`)
 - `TEMPLATE_CANNOT_DELETE_SYSTEM` (403): 시스템 템플릿은 삭제할 수 없음
 - `MAINTENANCE_MODE` (503): 서비스가 일시적으로 점검 중
+- `WORKER_UNAVAILABLE` (503): 문제 수집 시작 복구 중이거나 작업 실행기를 사용할
+  수 없음 (`retryable=true`)
 - `RATE_LIMIT_SERVICE_UNAVAILABLE` (503): 요청 제한 저장소에 연결할 수 없어 제한 대상 요청을 처리할 수 없음 (`retryable=true`)
 - `SESSION_STATE_UNAVAILABLE` (503): 세션 상태 저장소에 연결할 수 없어 계정 관련 요청을 처리할 수 없음 (`retryable=true`)
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
