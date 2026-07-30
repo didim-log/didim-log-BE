@@ -1,6 +1,7 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.Problem
+import org.springframework.data.mongodb.core.FindAndModifyOptions
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
@@ -29,6 +30,32 @@ class ProblemRepositoryImpl(
             .unset("difficultyLevel")
 
         mongoTemplate.upsert(query, update, Problem::class.java)
+    }
+
+    override fun updateDetails(problemId: String, details: ProblemDetailsUpdate): Problem? {
+        val query = Query.query(Criteria.where("_id").`is`(problemId))
+        val update = Update()
+            .set("descriptionHtml", details.descriptionHtml)
+            .set("inputDescriptionHtml", details.inputDescriptionHtml)
+            .set("outputDescriptionHtml", details.outputDescriptionHtml)
+            .set("sampleInputs", details.sampleInputs)
+            .set("sampleOutputs", details.sampleOutputs)
+        details.language?.let { language ->
+            update.set("language", language)
+        }
+
+        return mongoTemplate.findAndModify(
+            query,
+            update,
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Problem::class.java
+        )
+    }
+
+    override fun updateLanguage(problemId: String, language: String): Boolean {
+        val query = Query.query(Criteria.where("_id").`is`(problemId))
+        val update = Update().set("language", language)
+        return mongoTemplate.updateFirst(query, update, Problem::class.java).matchedCount > 0L
     }
 
     override fun findByLevelBetweenFlexible(min: Int, max: Int): List<Problem> {

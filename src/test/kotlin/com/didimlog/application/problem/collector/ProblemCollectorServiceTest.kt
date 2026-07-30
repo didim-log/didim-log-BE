@@ -2,11 +2,15 @@ package com.didimlog.application.problem.collector
 
 import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.domain.Problem
+import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.ProblemDetailsUpdate
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.crawler.BojCrawler
+import com.didimlog.infra.crawler.ProblemDetails
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -15,6 +19,7 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import io.mockk.slot
 import io.mockk.verify
 import java.time.Duration
 import java.util.Collections
@@ -268,6 +273,137 @@ class ProblemCollectorServiceTest {
         assertThat(outcomes.count { it == ErrorCode.JOB_ALREADY_TERMINAL.code }).isEqualTo(1)
     }
 
+    @Test
+    @DisplayName("동기 상세 수집은 현재 상세 필드만 부분 갱신한다")
+    fun `collect details updates only detail fields`() {
+        val problem = sampleProblem("1000")
+        val details = sampleDetails()
+        val detailsSlot = slot<ProblemDetailsUpdate>()
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every {
+            problemRepository.updateDetails(problem.id.value, capture(detailsSlot))
+        } returns problem.copy(descriptionHtml = details.descriptionHtml)
+
+        service.collectDetailsBatch()
+
+        assertThat(detailsSlot.captured.descriptionHtml).isEqualTo(details.descriptionHtml)
+        assertThat(detailsSlot.captured.sampleInputs).isEqualTo(details.sampleInputs)
+        assertThat(detailsSlot.captured.language).isNull()
+        verify(exactly = 1) { problemRepository.updateDetails(problem.id.value, any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("동기 상세 수집 중 문제가 삭제돼도 외부 요청 간격을 유지한다")
+    fun `collect details preserves pacing when the target was deleted`() {
+        val problem = sampleProblem("1006")
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns sampleDetails()
+        every { problemRepository.updateDetails(problem.id.value, any()) } returns null
+
+        service.collectDetailsBatch()
+
+        verify(exactly = 1) { pacer.pauseDetails() }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("비동기 상세 수집은 부분 갱신 결과가 있을 때 성공 처리한다")
+    fun `async detail collection uses partial update`() {
+        val problem = sampleProblem("1001")
+        val details = sampleDetails()
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every {
+            problemRepository.updateDetails(problem.id.value, any())
+        } returns problem.copy(descriptionHtml = details.descriptionHtml)
+
+        val jobId = service.collectDetailsBatchAsync("admin", "127.0.0.1")
+        val status = service.getDetailsCollectJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isEqualTo(1)
+        assertThat(status?.failCount).isZero()
+        verify(exactly = 1) { problemRepository.updateDetails(problem.id.value, any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("비동기 상세 수집 중 문제가 삭제되면 실패 건수로 기록한다")
+    fun `async detail collection counts a deleted target as failure`() {
+        val problem = sampleProblem("1004")
+        val details = sampleDetails()
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every { problemRepository.updateDetails(problem.id.value, any()) } returns null
+
+        val jobId = service.collectDetailsBatchAsync("admin", "127.0.0.1")
+        val status = service.getDetailsCollectJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isZero()
+        assertThat(status?.failCount).isEqualTo(1)
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("상세 새로고침은 감지한 언어와 상세 필드만 함께 갱신한다")
+    fun `detail refresh updates details and detected language`() {
+        val problem = sampleProblem("1002", title = "English problem title").copy(language = "ko")
+        val details = sampleDetails(descriptionHtml = "<p>English problem description</p>")
+        val detailsSlot = slot<ProblemDetailsUpdate>()
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every {
+            problemRepository.updateDetails(problem.id.value, capture(detailsSlot))
+        } returns problem.copy(
+            descriptionHtml = details.descriptionHtml,
+            language = "en"
+        )
+
+        val jobId = service.refreshDetailsBatchAsync(createdBy = "admin", ipAddress = "127.0.0.1")
+        val status = service.getDetailsRefreshJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isEqualTo(1)
+        assertThat(detailsSlot.captured.language).isEqualTo("en")
+        assertThat(detailsSlot.captured.descriptionHtml).isEqualTo(details.descriptionHtml)
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("언어 수집은 언어 필드만 부분 갱신한다")
+    fun `language collection updates only language`() {
+        val problem = sampleProblem("1003", title = "English problem title").copy(language = "ko")
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { problemRepository.updateLanguage(problem.id.value, "en") } returns true
+
+        val jobId = service.updateLanguageBatchAsync("admin", "127.0.0.1")
+        val status = service.getLanguageUpdateJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isEqualTo(1)
+        verify(exactly = 1) { problemRepository.updateLanguage(problem.id.value, "en") }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("언어 수집 중 문제가 삭제되면 실패 건수로 기록한다")
+    fun `language collection counts a deleted target as failure`() {
+        val problem = sampleProblem("1005", title = "English problem title").copy(language = "ko")
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { problemRepository.updateLanguage(problem.id.value, "en") } returns false
+
+        val jobId = service.updateLanguageBatchAsync("admin", "127.0.0.1")
+        val status = service.getLanguageUpdateJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isZero()
+        assertThat(status?.failCount).isEqualTo(1)
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
     private fun createService(taskExecutor: Executor? = null): ProblemCollectorService {
         return ProblemCollectorService(
             solvedAcClient = solvedAcClient,
@@ -278,6 +414,29 @@ class ProblemCollectorServiceTest {
             adminAuditService = adminAuditService,
             taskExecutor = taskExecutor,
             pacer = pacer
+        )
+    }
+
+    private fun sampleProblem(id: String, title: String = "기존 문제"): Problem {
+        return Problem(
+            id = ProblemId(id),
+            title = title,
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/$id"
+        )
+    }
+
+    private fun sampleDetails(
+        descriptionHtml: String = "<p>상세 설명</p>"
+    ): ProblemDetails {
+        return ProblemDetails(
+            descriptionHtml = descriptionHtml,
+            inputDescriptionHtml = "<p>입력 설명</p>",
+            outputDescriptionHtml = "<p>출력 설명</p>",
+            sampleInputs = listOf("1"),
+            sampleOutputs = listOf("2")
         )
     }
 

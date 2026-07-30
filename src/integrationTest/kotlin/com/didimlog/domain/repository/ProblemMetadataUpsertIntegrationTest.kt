@@ -1,13 +1,21 @@
 package com.didimlog.domain.repository
 
+import com.didimlog.application.admin.AdminAuditService
+import com.didimlog.application.problem.collector.ProblemCollectorPacer
+import com.didimlog.application.problem.collector.ProblemCollectorService
 import com.didimlog.domain.Example
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.config.MongoConfig
+import com.didimlog.infra.crawler.BojCrawler
+import com.didimlog.infra.crawler.ProblemDetails
+import com.didimlog.infra.solvedac.SolvedAcClient
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Updates
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -16,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.data.mongo.DataMongoTest
 import org.springframework.context.annotation.Import
 import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.data.redis.core.StringRedisTemplate
 
 @DisplayName("Problem 메타데이터 부분 갱신 통합 테스트")
 @DataMongoTest
@@ -124,6 +133,214 @@ class ProblemMetadataUpsertIntegrationTest {
 
         val raw = rawProblem(existing.id.value)
         assertThat(raw.containsKey(LEGACY_LEVEL_FIELD)).isFalse()
+    }
+
+    @Test
+    @DisplayName("상세 부분 갱신은 먼저 읽은 객체가 오래돼도 최신 메타데이터와 언어를 보존한다")
+    fun detailUpdatePreservesNewerMetadataAndLanguage() {
+        val existing = problemMetadata(
+            id = "1002",
+            title = "이전 제목",
+            category = ProblemCategory.UNKNOWN,
+            difficulty = Tier.BRONZE,
+            level = 1,
+            tags = listOf("Unknown")
+        ).copy(
+            description = "레거시 설명",
+            examples = listOf(Example("레거시 입력", "레거시 출력"))
+        )
+        problemRepository.save(existing)
+        val stale = problemRepository.findById(existing.id.value).orElseThrow()
+
+        problemRepository.upsertMetadata(
+            problemMetadata(
+                id = existing.id.value,
+                title = "최신 제목",
+                category = ProblemCategory.GRAPH_THEORY,
+                difficulty = Tier.GOLD,
+                level = 14,
+                tags = listOf("Graphs")
+            )
+        )
+        mongoTemplate.getCollection(PROBLEM_COLLECTION).updateOne(
+            Filters.eq("_id", existing.id.value),
+            Updates.set("language", "en")
+        )
+
+        val updated = problemRepository.updateDetails(
+            stale.id.value,
+            ProblemDetailsUpdate(
+                descriptionHtml = "<p>새 상세</p>",
+                inputDescriptionHtml = "<p>새 입력</p>",
+                outputDescriptionHtml = "<p>새 출력</p>",
+                sampleInputs = listOf("1"),
+                sampleOutputs = listOf("2")
+            )
+        )
+
+        assertThat(updated).isNotNull
+        val stored = problemRepository.findById(existing.id.value).orElseThrow()
+        assertThat(stored.title).isEqualTo("최신 제목")
+        assertThat(stored.category).isEqualTo(ProblemCategory.GRAPH_THEORY)
+        assertThat(stored.difficulty).isEqualTo(Tier.GOLD)
+        assertThat(stored.level).isEqualTo(14)
+        assertThat(stored.tags).containsExactly("Graphs")
+        assertThat(stored.language).isEqualTo("en")
+        assertThat(stored.description).isEqualTo("레거시 설명")
+        assertThat(stored.examples).containsExactly(Example("레거시 입력", "레거시 출력"))
+        assertThat(stored.descriptionHtml).isEqualTo("<p>새 상세</p>")
+        assertThat(updated).isEqualTo(stored)
+    }
+
+    @Test
+    @DisplayName("상세 수집 중 갱신된 메타데이터는 늦게 끝난 크롤링 결과에 덮어쓰이지 않는다")
+    fun detailCollectionPreservesMetadataUpdatedAfterTargetRead() {
+        val existing = problemMetadata(
+            id = "1006",
+            title = "수집 시작 전 제목",
+            category = ProblemCategory.UNKNOWN,
+            difficulty = Tier.BRONZE,
+            level = 1,
+            tags = listOf("Unknown")
+        )
+        problemRepository.save(existing)
+
+        val details = ProblemDetails(
+            descriptionHtml = "<p>수집한 상세</p>",
+            inputDescriptionHtml = "<p>수집한 입력</p>",
+            outputDescriptionHtml = "<p>수집한 출력</p>",
+            sampleInputs = listOf("1"),
+            sampleOutputs = listOf("2")
+        )
+        val crawler = object : BojCrawler() {
+            override fun crawlProblemDetails(problemId: String): ProblemDetails {
+                problemRepository.upsertMetadata(
+                    problemMetadata(
+                        id = problemId,
+                        title = "수집 중 갱신된 제목",
+                        category = ProblemCategory.GRAPH_THEORY,
+                        difficulty = Tier.GOLD,
+                        level = 14,
+                        tags = listOf("Graphs")
+                    )
+                )
+                mongoTemplate.getCollection(PROBLEM_COLLECTION).updateOne(
+                    Filters.eq("_id", problemId),
+                    Updates.set("language", "en")
+                )
+                return details
+            }
+        }
+        val collector = ProblemCollectorService(
+            solvedAcClient = mockk<SolvedAcClient>(),
+            problemRepository = problemRepository,
+            bojCrawler = crawler,
+            redisTemplate = mockk<StringRedisTemplate>(),
+            objectMapper = ObjectMapper(),
+            adminAuditService = mockk<AdminAuditService>(),
+            pacer = mockk<ProblemCollectorPacer>(relaxed = true),
+            taskExecutor = null
+        )
+
+        collector.collectDetailsBatch()
+
+        val stored = problemRepository.findById(existing.id.value).orElseThrow()
+        assertThat(stored.title).isEqualTo("수집 중 갱신된 제목")
+        assertThat(stored.category).isEqualTo(ProblemCategory.GRAPH_THEORY)
+        assertThat(stored.difficulty).isEqualTo(Tier.GOLD)
+        assertThat(stored.level).isEqualTo(14)
+        assertThat(stored.tags).containsExactly("Graphs")
+        assertThat(stored.language).isEqualTo("en")
+        assertThat(stored.descriptionHtml).isEqualTo(details.descriptionHtml)
+        assertThat(stored.sampleInputs).isEqualTo(details.sampleInputs)
+        assertThat(problemRepository.count()).isEqualTo(1)
+    }
+
+    @Test
+    @DisplayName("상세 새로고침은 상세와 언어만 함께 갱신한다")
+    fun detailRefreshUpdatesOnlyDetailsAndLanguage() {
+        val existing = problemMetadata(
+            id = "1003",
+            title = "메타데이터",
+            category = ProblemCategory.DP,
+            difficulty = Tier.SILVER,
+            level = 8,
+            tags = listOf("Dynamic Programming")
+        ).copy(language = "ko")
+        problemRepository.save(existing)
+
+        val updated = problemRepository.updateDetails(
+            existing.id.value,
+            ProblemDetailsUpdate(
+                descriptionHtml = "<p>English description</p>",
+                inputDescriptionHtml = null,
+                outputDescriptionHtml = null,
+                sampleInputs = emptyList(),
+                sampleOutputs = emptyList(),
+                language = "en"
+            )
+        )
+
+        assertThat(updated).isNotNull
+        assertThat(updated!!.title).isEqualTo(existing.title)
+        assertThat(updated.category).isEqualTo(existing.category)
+        assertThat(updated.difficulty).isEqualTo(existing.difficulty)
+        assertThat(updated.level).isEqualTo(existing.level)
+        assertThat(updated.tags).isEqualTo(existing.tags)
+        assertThat(updated.url).isEqualTo(existing.url)
+        assertThat(updated.language).isEqualTo("en")
+        assertThat(updated.descriptionHtml).isEqualTo("<p>English description</p>")
+        assertThat(updated.inputDescriptionHtml).isNull()
+        assertThat(updated.outputDescriptionHtml).isNull()
+        assertThat(updated.sampleInputs).isEmpty()
+        assertThat(updated.sampleOutputs).isEmpty()
+    }
+
+    @Test
+    @DisplayName("언어 부분 갱신은 메타데이터와 상세를 보존한다")
+    fun languageUpdatePreservesMetadataAndDetails() {
+        val existing = problemMetadata(
+            id = "1004",
+            title = "언어 갱신 문제",
+            category = ProblemCategory.STRING,
+            difficulty = Tier.GOLD,
+            level = 12,
+            tags = listOf("String")
+        ).copy(
+            descriptionHtml = "<p>English description</p>",
+            sampleInputs = listOf("input"),
+            sampleOutputs = listOf("output"),
+            language = "ko"
+        )
+        problemRepository.save(existing)
+
+        val updated = problemRepository.updateLanguage(existing.id.value, "en")
+
+        assertThat(updated).isTrue()
+        assertThat(problemRepository.findById(existing.id.value).orElseThrow())
+            .isEqualTo(existing.copy(language = "en"))
+    }
+
+    @Test
+    @DisplayName("상세와 언어 부분 갱신은 삭제된 문제를 다시 만들지 않는다")
+    fun partialUpdatesDoNotRecreateDeletedProblem() {
+        val problemId = "1005"
+
+        val detailsResult = problemRepository.updateDetails(
+            problemId,
+            ProblemDetailsUpdate(
+                descriptionHtml = "<p>상세</p>",
+                inputDescriptionHtml = null,
+                outputDescriptionHtml = null,
+                sampleInputs = null,
+                sampleOutputs = null
+            )
+        )
+        val languageResult = problemRepository.updateLanguage(problemId, "en")
+
+        assertThat(detailsResult).isNull()
+        assertThat(languageResult).isFalse()
+        assertThat(problemRepository.existsById(problemId)).isFalse()
     }
 
     private fun problemMetadata(

@@ -4,11 +4,13 @@ import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.utils.ProblemLanguageDetector
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.domain.repository.ProblemDetailsUpdate
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.crawler.BojCrawler
+import com.didimlog.infra.crawler.ProblemDetails
 import com.didimlog.infra.solvedac.ProblemCategoryMapper
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcTierMapper
@@ -99,14 +101,9 @@ class ProblemCollectorService(
         for (problem in problemsWithoutDetails) {
             try {
                 val details = bojCrawler.crawlProblemDetails(problem.id.value) ?: continue
-                val updatedProblem = problem.copy(
-                    descriptionHtml = details.descriptionHtml,
-                    inputDescriptionHtml = details.inputDescriptionHtml,
-                    outputDescriptionHtml = details.outputDescriptionHtml,
-                    sampleInputs = details.sampleInputs,
-                    sampleOutputs = details.sampleOutputs
-                )
-                problemRepository.save(updatedProblem)
+                if (updateProblemDetails(problem.id.value, details) == null) {
+                    log.warn("문제 상세 정보 저장 대상 없음: problemId=${problem.id.value}")
+                }
                 pacer.pauseDetails()
             } catch (e: Exception) {
                 log.error("문제 상세 정보 수집 실패: problemId=${problem.id.value}, error=${e.message}", e)
@@ -524,6 +521,24 @@ class ProblemCollectorService(
         problemRepository.upsertMetadata(problem)
     }
 
+    private fun updateProblemDetails(
+        problemId: String,
+        details: ProblemDetails,
+        language: String? = null
+    ): Problem? {
+        return problemRepository.updateDetails(
+            problemId,
+            ProblemDetailsUpdate(
+                descriptionHtml = details.descriptionHtml,
+                inputDescriptionHtml = details.inputDescriptionHtml,
+                outputDescriptionHtml = details.outputDescriptionHtml,
+                sampleInputs = details.sampleInputs,
+                sampleOutputs = details.sampleOutputs,
+                language = language
+            )
+        )
+    }
+
     private fun collectDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) {
             var processed = 0
@@ -540,15 +555,11 @@ class ProblemCollectorService(
                     if (details == null) {
                         fail++
                     } else {
-                        val updated = problem.copy(
-                            descriptionHtml = details.descriptionHtml,
-                            inputDescriptionHtml = details.inputDescriptionHtml,
-                            outputDescriptionHtml = details.outputDescriptionHtml,
-                            sampleInputs = details.sampleInputs,
-                            sampleOutputs = details.sampleOutputs
-                        )
-                        problemRepository.save(updated)
-                        success++
+                        if (updateProblemDetails(problem.id.value, details) == null) {
+                            fail++
+                        } else {
+                            success++
+                        }
                     }
                 } catch (e: Exception) {
                     fail++
@@ -588,18 +599,17 @@ class ProblemCollectorService(
                                 details.sampleOutputs.joinToString("\n")
                             )
                         )
-                        val nextLanguage = detectedLanguage ?: problem.language
-
-                        val updated = problem.copy(
-                            descriptionHtml = details.descriptionHtml,
-                            inputDescriptionHtml = details.inputDescriptionHtml,
-                            outputDescriptionHtml = details.outputDescriptionHtml,
-                            sampleInputs = details.sampleInputs,
-                            sampleOutputs = details.sampleOutputs,
-                            language = nextLanguage
-                        )
-                        problemRepository.save(updated)
-                        success++
+                        if (
+                            updateProblemDetails(
+                                problemId = problem.id.value,
+                                details = details,
+                                language = detectedLanguage
+                            ) == null
+                        ) {
+                            fail++
+                        } else {
+                            success++
+                        }
                     }
                 } catch (e: Exception) {
                     fail++
@@ -626,11 +636,13 @@ class ProblemCollectorService(
 
                 try {
                     val detectedLanguage = ProblemLanguageDetector.detect(problem)
-                    val nextLanguage = detectedLanguage ?: problem.language
-                    if (!problem.language.equals(nextLanguage, ignoreCase = true)) {
-                        problemRepository.save(problem.copy(language = nextLanguage))
+                    if (detectedLanguage == null || problem.language.equals(detectedLanguage, ignoreCase = true)) {
+                        success++
+                    } else if (problemRepository.updateLanguage(problem.id.value, detectedLanguage)) {
+                        success++
+                    } else {
+                        fail++
                     }
-                    success++
                 } catch (e: Exception) {
                     fail++
                     log.error("language job item failed: jobId=$jobId, problemId=${problem.id.value}, error=${e.message}", e)
