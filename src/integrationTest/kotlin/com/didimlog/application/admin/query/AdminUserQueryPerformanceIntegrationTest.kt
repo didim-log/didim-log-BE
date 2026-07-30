@@ -647,6 +647,9 @@ class MongoCommandCounter : CommandListener {
                     ?.let { Document.parse(it.toJson()) },
                 filterJson = (event.command["filter"] as? BsonDocument)?.toJson()
                     ?: (event.command["query"] as? BsonDocument)?.toJson(),
+                projection = (event.command["projection"] as? BsonDocument)
+                    ?.let { Document.parse(it.toJson()) },
+                projectionJson = (event.command["projection"] as? BsonDocument)?.toJson(),
                 sort = (event.command["sort"] as? BsonDocument)
                     ?.let { Document.parse(it.toJson()) },
                 sortJson = (event.command["sort"] as? BsonDocument)?.toJson(),
@@ -709,6 +712,8 @@ data class ObservedMongoReadCommand(
     val collection: String,
     val filter: Document?,
     val filterJson: String?,
+    val projection: Document?,
+    val projectionJson: String?,
     val sort: Document?,
     val sortJson: String?,
     val skip: Long?,

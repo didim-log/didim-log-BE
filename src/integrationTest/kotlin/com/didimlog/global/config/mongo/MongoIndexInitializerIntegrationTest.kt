@@ -73,6 +73,7 @@ class MongoIndexInitializerIntegrationTest {
     @Test
     fun `필요한 유일 인덱스와 TTL 인덱스를 명시적으로 생성한다`() {
         mongoIndexInitializer.ensureIndexes()
+        mongoIndexInitializer.ensureIndexes()
 
         assertPlainUniqueIndex(
             entityType = Retrospective::class.java,
@@ -80,6 +81,16 @@ class MongoIndexInitializerIntegrationTest {
             "studentId" to Sort.Direction.ASC,
             "problemId" to Sort.Direction.ASC
         )
+        assertPlainIndex(
+            entityType = Retrospective::class.java,
+            name = MongoIndexInitializer.RETROSPECTIVE_STUDENT_CREATED_INDEX_NAME,
+            "studentId" to Sort.Direction.ASC,
+            "createdAt" to Sort.Direction.DESC
+        )
+        assertThat(
+            mongoTemplate.indexOps(Retrospective::class.java).indexInfo
+                .count { index -> index.name == MongoIndexInitializer.RETROSPECTIVE_STUDENT_CREATED_INDEX_NAME }
+        ).isEqualTo(1)
         assertPlainUniqueIndex(
             entityType = Student::class.java,
             name = MongoIndexInitializer.STUDENT_PROVIDER_IDENTITY_UNIQUE_INDEX_NAME,

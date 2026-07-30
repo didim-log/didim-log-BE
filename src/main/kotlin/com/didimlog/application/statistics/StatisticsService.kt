@@ -3,6 +3,7 @@ package com.didimlog.application.statistics
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.domain.repository.RetrospectiveStatisticsView
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -32,7 +33,7 @@ class StatisticsService(
     @Transactional(readOnly = true)
     fun getStatistics(studentId: String): StatisticsInfo {
         val student = findStudentByIdOrThrow(studentId)
-        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
+        val retrospectives = retrospectiveRepository.findStatisticsByStudentId(studentId)
         val monthlyHeatmap = getMonthlyHeatmap(retrospectives)
         val totalSolvedCount = getTotalSolvedCount(student)
         val totalRetrospectives = getTotalRetrospectives(retrospectives)
@@ -71,7 +72,7 @@ class StatisticsService(
      * 프론트엔드의 GitHub 스타일 히트맵과 일치하도록 정확히 365일 전부터 오늘까지의 데이터를 반환한다.
      * 연도별 히트맵도 함께 생성한다.
      */
-    private fun getMonthlyHeatmap(retrospectives: List<com.didimlog.domain.Retrospective>): List<HeatmapData> {
+    private fun getMonthlyHeatmap(retrospectives: List<RetrospectiveStatisticsView>): List<HeatmapData> {
         val today = LocalDate.now()
         val startDate = today.minusDays(364) // 정확히 365일 전 (오늘 포함하여 365일)
 
@@ -102,10 +103,10 @@ class StatisticsService(
      * 회고의 solvedCategory를 기준으로 집계하며, 쉼표로 구분된 태그는 개별 카테고리로 분리하여 집계한다.
      * 예: "BFS, DP"가 있으면 BFS 1회, DP 1회로 카운트
      *
-     * @param studentId 학생 ID
+     * @param retrospectives 통계 집계용 회고 목록
      * @return 카테고리별 통계 리스트 (count 기준 내림차순 정렬)
      */
-    private fun getCategoryStats(retrospectives: List<com.didimlog.domain.Retrospective>): List<CategoryStat> {
+    private fun getCategoryStats(retrospectives: List<RetrospectiveStatisticsView>): List<CategoryStat> {
         val successRetrospectives = retrospectives.filter { retrospective ->
             retrospective.solutionResult == ProblemResult.SUCCESS
         }
@@ -143,13 +144,12 @@ class StatisticsService(
 
 
     /**
-     * 학생의 총 회고 수를 반환한다.
-     * DB 쿼리에서 직접 COUNT를 수행하여 성능을 최적화한다.
+     * 조회한 통계 집계용 회고 수를 반환한다.
      *
-     * @param studentId 학생 ID
+     * @param retrospectives 통계 집계용 회고 목록
      * @return 총 회고 수
      */
-    private fun getTotalRetrospectives(retrospectives: List<com.didimlog.domain.Retrospective>): Long {
+    private fun getTotalRetrospectives(retrospectives: List<RetrospectiveStatisticsView>): Long {
         return retrospectives.size.toLong()
     }
 
@@ -158,10 +158,10 @@ class StatisticsService(
      * FAIL 또는 TIME_OVER 상태인 Retrospective 문서의 개수를 반환한다.
      * 태그의 합계가 아닌 실제 문서 개수를 반환한다.
      *
-     * @param studentId 학생 ID
+     * @param retrospectives 통계 집계용 회고 목록
      * @return 총 실패 회고 수
      */
-    private fun getTotalFailures(retrospectives: List<com.didimlog.domain.Retrospective>): Long {
+    private fun getTotalFailures(retrospectives: List<RetrospectiveStatisticsView>): Long {
         return retrospectives.count { retrospective ->
             retrospective.solutionResult == ProblemResult.FAIL || retrospective.solutionResult == ProblemResult.TIME_OVER
         }.toLong()
@@ -208,10 +208,10 @@ class StatisticsService(
      * FAIL 또는 TIME_OVER인 회고의 solvedCategory를 기준으로 집계하며, 쉼표로 구분된 태그는 개별 카테고리로 분리하여 집계한다.
      * 예: "BFS, DP"가 있으면 BFS 1회, DP 1회로 카운트
      *
-     * @param studentId 학생 ID
+     * @param retrospectives 통계 집계용 회고 목록
      * @return 카테고리별 통계 리스트 (count 기준 내림차순 정렬)
      */
-    private fun getWeaknessStats(retrospectives: List<com.didimlog.domain.Retrospective>): List<CategoryStat> {
+    private fun getWeaknessStats(retrospectives: List<RetrospectiveStatisticsView>): List<CategoryStat> {
         val failedRetrospectives = retrospectives.filter { retrospective ->
             retrospective.solutionResult == ProblemResult.FAIL || retrospective.solutionResult == ProblemResult.TIME_OVER
         }
@@ -278,19 +278,24 @@ class StatisticsService(
     @Transactional(readOnly = true)
     fun getHeatmapByYear(studentId: String, year: Int): List<HeatmapData> {
         findStudentByIdOrThrow(studentId)
-        
-        val targetYear = if (year == 0) LocalDate.now().year else year
-        val yearStart = LocalDate.of(targetYear, 1, 1)
-        val yearEnd = LocalDate.of(targetYear, 12, 31)
-        val today = LocalDate.now()
-        val endDate = if (yearEnd.isAfter(today)) today else yearEnd
 
-        // 해당 연도의 회고 데이터 조회
-        val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
-        val yearRetrospectives = retrospectives.filter { retrospective ->
-            val retrospectiveDate = retrospective.createdAt.toLocalDate()
-            !retrospectiveDate.isBefore(yearStart) && !retrospectiveDate.isAfter(endDate)
+        val today = LocalDate.now()
+        val targetYear = if (year == 0) today.year else year
+        val yearStart = LocalDate.of(targetYear, 1, 1)
+        if (yearStart.isAfter(today)) {
+            return emptyList()
         }
+        val endExclusive = if (targetYear == today.year) {
+            today.plusDays(1)
+        } else {
+            yearStart.plusYears(1)
+        }
+
+        val yearRetrospectives = retrospectiveRepository.findHeatmapByStudentIdAndCreatedAtRange(
+            studentId = studentId,
+            startInclusive = yearStart.atStartOfDay(),
+            endExclusive = endExclusive.atStartOfDay()
+        )
 
         // 날짜별로 그룹화하여 집계
         val heatmapMap = mutableMapOf<LocalDate, MutableList<String>>()

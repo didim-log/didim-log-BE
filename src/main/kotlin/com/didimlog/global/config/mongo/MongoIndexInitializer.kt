@@ -36,6 +36,7 @@ class MongoIndexInitializer(
     fun ensureIndexes() {
         backfillStudentDocumentVersion()
         ensureRetrospectiveStudentProblemUniqueIndex()
+        ensureRetrospectiveStudentCreatedIndex()
         ensureRetrospectiveStudentIdIndex()
         ensureStudentProviderIdentityUniqueIndex()
         ensureStudentNicknameUniqueIndex()
@@ -100,6 +101,22 @@ class MongoIndexInitializer(
                     .on("studentId", Sort.Direction.ASC)
                     .named(RETROSPECTIVE_STUDENT_ID_INDEX_NAME)
             )
+    }
+
+    private fun ensureRetrospectiveStudentCreatedIndex() {
+        ensureIndex(
+            indexOperations = mongoTemplate.indexOps(Retrospective::class.java),
+            description = "학생별 회고 생성일 조회",
+            definition = Index()
+                .on("studentId", Sort.Direction.ASC)
+                .on("createdAt", Sort.Direction.DESC)
+                .named(RETROSPECTIVE_STUDENT_CREATED_INDEX_NAME)
+        ) { index ->
+            index.hasFields(
+                "studentId" to Sort.Direction.ASC,
+                "createdAt" to Sort.Direction.DESC
+            ) && index.isPlainIndex(unique = false)
+        }
     }
 
     private fun ensureStudentProviderIdentityUniqueIndex() {
@@ -366,6 +383,7 @@ class MongoIndexInitializer(
     companion object {
         const val RETROSPECTIVE_STUDENT_PROBLEM_UNIQUE_INDEX_NAME = "uniq_student_problem"
         const val RETROSPECTIVE_STUDENT_ID_INDEX_NAME = "studentId"
+        const val RETROSPECTIVE_STUDENT_CREATED_INDEX_NAME = "idx_retro_student_created"
         const val STUDENT_PROVIDER_IDENTITY_UNIQUE_INDEX_NAME = "uniq_student_provider_identity"
         const val STUDENT_NICKNAME_UNIQUE_INDEX_NAME = "uniq_student_nickname"
         const val STUDENT_BOJ_ID_UNIQUE_INDEX_NAME = "uniq_student_boj_id"

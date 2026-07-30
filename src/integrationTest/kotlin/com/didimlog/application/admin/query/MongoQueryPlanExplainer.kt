@@ -31,6 +31,7 @@ class MongoQueryPlanExplainer(
     ): MongoQueryExecutionBaseline {
         val findCommand = Document("find", command.collection)
             .append("filter", command.filter ?: Document())
+        command.projection?.let { findCommand.append("projection", it) }
         command.sort?.let { findCommand.append("sort", it) }
         command.skip?.let { findCommand.append("skip", it) }
         command.limit?.let { findCommand.append("limit", it) }
