@@ -171,9 +171,12 @@ flowchart LR
 
 - 풀이 제출 시 인증 principal의 BOJ ID로 사용자를 찾고, 문제 존재 여부를 확인한 뒤 성공 여부와 소요 시간을 사용자 문서에 저장합니다. 웹 클라이언트에서는 JWT subject가 principal 이름입니다.
 - 코딩 로그는 제목, 내용, 코드, 성공 여부를 별도 문서로 저장합니다.
+- AI 리뷰 피드백은 인증 principal의 BOJ ID와 로그의 BOJ ID가 일치할 때만 변경합니다.
 - 회고는 사용자·문제를 검증한 뒤 문제별로 생성하거나 기존 문서를 갱신합니다.
 
 [풀이 결과·로그·회고 상세 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md)
+
+로그 피드백의 소유권 검증과 거부 조건은 [로그 피드백 소유권 검증](./DOCS/refactoring/be-refactor/PHASE_2C_3_LOG_FEEDBACK_OWNERSHIP.md)에 정리했습니다.
 
 ### 5-4. 카테고리 계층 확장 검색
 

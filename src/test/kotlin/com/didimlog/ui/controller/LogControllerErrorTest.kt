@@ -1,10 +1,13 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.log.AiReviewService
+import com.didimlog.application.log.LogService
+import com.didimlog.domain.enums.AiFeedbackStatus
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -13,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -35,6 +39,9 @@ class LogControllerErrorTest {
 
     @Autowired
     private lateinit var aiReviewService: AiReviewService
+
+    @Autowired
+    private lateinit var logService: LogService
 
     @TestConfiguration
     class TestConfig {
@@ -69,5 +76,21 @@ class LogControllerErrorTest {
         )
             .andExpect(status().isServiceUnavailable)
             .andExpect(jsonPath("$.code").value("AI_GENERATION_FAILED"))
+    }
+
+    @Test
+    @DisplayName("AI 리뷰 피드백 제출은 인증 정보가 없으면 401을 반환한다")
+    fun `피드백 제출 인증 없음`() {
+        mockMvc.perform(
+            post("/api/v1/logs/log-1/feedback")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"status":"LIKE"}""")
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+
+        verify(exactly = 0) {
+            logService.updateFeedback("log-1", any(), AiFeedbackStatus.LIKE, null)
+        }
     }
 }

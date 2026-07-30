@@ -1853,7 +1853,7 @@ JWT 토큰 기반 인증을 지원합니다.
 | POST | `/api/v1/logs` | 코딩 로그를 생성합니다. | **Request Body:** `LogCreateRequest`<br>- `title` (String, required)<br>- `content` (String, required, max 5000)<br>- `code` (String, required, max 5000)<br>- `isSuccess` (Boolean, optional) | `LogResponse`<br>- `id` (String) | JWT(Optional) |
 | GET | `/api/v1/logs/{logId}/template` | 로그 본문 템플릿을 조회합니다. 본인이 작성한 로그만 조회할 수 있습니다. | **Path Variable:** `logId` (String, required) | `LogTemplateResponse`<br>- `template` (String) | JWT |
 | POST | `/api/v1/logs/{logId}/ai-review` | AI 한 줄 리뷰를 요청합니다. 캐시가 있으면 즉시 `200`, 캐시가 없으면 비동기 작업을 등록하고 `202`를 반환합니다. 동일 API를 다시 호출하면 완료 후 캐시 결과를 받을 수 있습니다. | **Path Variable:** `logId` (String, required) | `AiReviewResponse`<br>- `review` (String)<br>- `cached` (Boolean)<br>- `inProgress` (Boolean) | JWT |
-| POST | `/api/v1/logs/{logId}/feedback` | AI 리뷰 피드백(LIKE/DISLIKE)을 저장합니다. | **Path Variable:** `logId` (String, required)<br>**Request Body:** `LogFeedbackRequest`<br>- `status` (LIKE/DISLIKE, required)<br>- `reason` (String, optional) | `{ \"message\": \"피드백이 제출되었습니다.\" }` | JWT |
+| POST | `/api/v1/logs/{logId}/feedback` | 본인이 작성한 로그의 AI 리뷰 피드백(LIKE/DISLIKE)을 저장합니다. | **Path Variable:** `logId` (String, required)<br>**Request Body:** `LogFeedbackRequest`<br>- `status` (LIKE/DISLIKE, required)<br>- `reason` (String, optional) | `{ \"message\": \"피드백이 제출되었습니다.\" }` | JWT |
 | GET | `/api/v1/logs/ai-usage/me` | 내 AI 일일 사용량/잔여량/서비스 활성화 여부를 조회합니다. | 없음 | `AiUsageResponse`<br>- `limit` (Int)<br>- `usage` (Int)<br>- `remaining` (Int)<br>- `isServiceEnabled` (Boolean) | JWT |
 
 ### AI 리뷰 응답 규칙

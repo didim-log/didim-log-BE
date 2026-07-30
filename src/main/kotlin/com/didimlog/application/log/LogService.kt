@@ -58,22 +58,32 @@ class LogService(
      * AI 리뷰 피드백을 업데이트합니다.
      *
      * @param logId 로그 ID
+     * @param requesterBojId 요청자 BOJ ID
      * @param status 피드백 상태 (LIKE/DISLIKE)
      * @param reason 부정적 피드백의 이유 (선택)
      * @return 업데이트된 Log 엔티티
-     * @throws BusinessException 로그를 찾을 수 없는 경우
+     * @throws BusinessException 인증 정보가 없거나 로그를 찾을 수 없거나 소유자가 아닌 경우
      */
     @Transactional
     fun updateFeedback(
         logId: String,
+        requesterBojId: String,
         status: AiFeedbackStatus,
         reason: String? = null
     ): Log {
+        if (requesterBojId.isBlank()) {
+            throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        }
+
         val log = logRepository.findById(logId)
             .orElseThrow {
                 BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "로그를 찾을 수 없습니다. logId=$logId")
             }
-        
+
+        if (log.bojId?.value != requesterBojId) {
+            throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 피드백을 제출할 수 있습니다.")
+        }
+
         val updatedLog = log.updateFeedback(status, reason)
         return logRepository.save(updatedLog)
     }
