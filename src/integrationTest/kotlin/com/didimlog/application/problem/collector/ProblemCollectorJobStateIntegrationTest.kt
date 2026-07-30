@@ -202,8 +202,7 @@ class ProblemCollectorJobStateIntegrationTest {
             taskExecutor = Executor { task -> submittedTask = task }
         )
         val cancellationService = createService(objectMapper)
-        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
-        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        every { solvedAcClient.fetchProblem(1) } throws IllegalStateException("temporary failure")
 
         val jobId = workerService.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
         assertThat(readJob(jobId).status).isEqualTo(JobStatus.PENDING)
@@ -226,6 +225,10 @@ class ProblemCollectorJobStateIntegrationTest {
             val stored = readJob(jobId)
             assertThat(stored.status).isEqualTo(JobStatus.CANCELLED)
             assertThat(stored.completedAt).isEqualTo(cancelled.completedAt)
+            assertThat(stored.processedCount).isZero()
+            assertThat(stored.failCount).isZero()
+            assertThat(stored.lastCheckpointId).isNull()
+            assertThat(redisTemplate.opsForSet().members(failureKey(jobId))).isEmpty()
             assertThat(redisTemplate.opsForValue().get(jobKey(jobId))).isEqualTo(cancelledJson)
             assertStatusStorage(jobId)
 
@@ -237,6 +240,179 @@ class ProblemCollectorJobStateIntegrationTest {
         } finally {
             releaseProgressWrite.countDown()
             workerExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    @DisplayName("완료 작업의 실패 원장은 TTL과 함께 저장되고 실패 문제만 재시도한다")
+    fun `completed job retries only recorded failed metadata item`() {
+        var problemTwoAttempts = 0
+        every { solvedAcClient.fetchProblem(any()) } answers {
+            val problemId = firstArg<Int>()
+            if (problemId == 2 && problemTwoAttempts++ == 0) {
+                throw IllegalStateException("temporary failure")
+            }
+            SolvedAcProblemResponse(problemId, "P$problemId", 1, emptyList())
+        }
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        val service = createService(objectMapper)
+
+        val sourceJobId = service.collectMetadataAsync(1, 5, "admin", "127.0.0.1")
+        val sourceJob = readJob(sourceJobId)
+
+        assertThat(sourceJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(sourceJob.processedCount).isEqualTo(5)
+        assertThat(sourceJob.successCount).isEqualTo(4)
+        assertThat(sourceJob.failCount).isEqualTo(1)
+        assertThat(sourceJob.lastCheckpointId).isEqualTo("5")
+        assertThat(redisTemplate.opsForSet().members(failureKey(sourceJobId)))
+            .containsExactly("2")
+        val statusTtl = redisTemplate.getExpire(jobKey(sourceJobId), TimeUnit.SECONDS)
+        val failureTtl = redisTemplate.getExpire(failureKey(sourceJobId), TimeUnit.SECONDS)
+        assertThat(statusTtl).isBetween(1L, JOB_TTL_SECONDS)
+        assertThat(failureTtl).isBetween(1L, JOB_TTL_SECONDS)
+        assertThat(statusTtl - failureTtl).isBetween(-1L, 1L)
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(1)
+        assertThat(retryJob.range).isEqualTo(JobRange(2, 2))
+        assertThat(retryJob.successCount).isEqualTo(1)
+        assertThat(retryJob.failCount).isZero()
+        assertThat(redisTemplate.opsForSet().members(failureKey(retryJob.jobId))).isEmpty()
+        verify(exactly = 2) { solvedAcClient.fetchProblem(2) }
+        listOf(1, 3, 4, 5).forEach { problemId ->
+            verify(exactly = 1) { solvedAcClient.fetchProblem(problemId) }
+        }
+    }
+
+    @Test
+    @DisplayName("구버전 부분 실패 작업은 실패 원장이 없으면 원본 범위를 다시 실행한다")
+    fun `legacy job without failure ledger retries original range`() {
+        val job = sampleRunningJob("job-legacy-failure-ledger").copy(
+            status = JobStatus.COMPLETED,
+            completedAt = 1_700_000_003,
+            totalCount = 3,
+            processedCount = 3,
+            successCount = 2,
+            failCount = 1,
+            progressPercentage = 100,
+            range = JobRange(1, 3),
+            lastCheckpointId = "3"
+        )
+        persist(job)
+        every { solvedAcClient.fetchProblem(any()) } answers {
+            val problemId = firstArg<Int>()
+            SolvedAcProblemResponse(problemId, "P$problemId", 1, emptyList())
+        }
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        val service = createService(objectMapper)
+
+        val retryJob = service.retryJob(job.jobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(3)
+        assertThat(retryJob.range).isEqualTo(JobRange(1, 3))
+        listOf(1, 2, 3).forEach { problemId ->
+            verify(exactly = 1) { solvedAcClient.fetchProblem(problemId) }
+        }
+    }
+
+    @Test
+    @DisplayName("존재하는 실패 원장의 크기가 실패 수와 다르면 재시도를 거부한다")
+    fun `retry rejects mismatched existing failure ledger`() {
+        val job = sampleRunningJob("job-failure-ledger-mismatch").copy(
+            status = JobStatus.COMPLETED,
+            completedAt = 1_700_000_003,
+            totalCount = 2,
+            processedCount = 2,
+            failCount = 2,
+            progressPercentage = 100,
+            range = JobRange(1, 2),
+            lastCheckpointId = "2"
+        )
+        persist(job)
+        redisTemplate.opsForSet().add(failureKey(job.jobId), "1")
+        redisTemplate.expire(failureKey(job.jobId), Duration.ofDays(1))
+        val service = createService(objectMapper)
+        val indexSizeBeforeRetry = redisTemplate.opsForZSet().zCard(JOB_INDEX_KEY)
+
+        val exception = assertThrows<BusinessException> {
+            service.retryJob(job.jobId, "admin", "127.0.0.1")
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(redisTemplate.opsForZSet().zCard(JOB_INDEX_KEY)).isEqualTo(indexSizeBeforeRetry)
+        verify(exactly = 0) { solvedAcClient.fetchProblem(any()) }
+    }
+
+    @Test
+    @DisplayName("실패 원장 키 타입이 잘못돼도 실패 진행 상태만 부분 저장하지 않는다")
+    fun `invalid failure ledger type does not partially update failed progress`() {
+        var submittedTask: Runnable? = null
+        val service = createService(
+            mapper = objectMapper,
+            taskExecutor = Executor { task -> submittedTask = task }
+        )
+        every { solvedAcClient.fetchProblem(1) } throws IllegalStateException("temporary failure")
+
+        val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
+        redisTemplate.opsForValue().set(failureKey(jobId), "invalid", Duration.ofDays(1))
+
+        requireNotNull(submittedTask).run()
+
+        val stored = readJob(jobId)
+        assertThat(stored.status).isEqualTo(JobStatus.FAILED)
+        assertThat(stored.processedCount).isZero()
+        assertThat(stored.failCount).isZero()
+        assertThat(stored.lastCheckpointId).isNull()
+        assertThat(redisTemplate.opsForValue().get(failureKey(jobId))).isEqualTo("invalid")
+        val indexSizeBeforeRetry = redisTemplate.opsForZSet().zCard(JOB_INDEX_KEY)
+        val retryException = assertThrows<BusinessException> {
+            service.retryJob(jobId, "admin", "127.0.0.1")
+        }
+        assertThat(retryException.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(redisTemplate.opsForZSet().zCard(JOB_INDEX_KEY)).isEqualTo(indexSizeBeforeRetry)
+        verify(exactly = 1) { adminAuditService.logAction(any(), any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("취소 작업은 실패 원장과 체크포인트 이후 문제를 합쳐 재시도한다")
+    fun `cancelled job retries failed item and checkpoint tail`() {
+        val job = sampleRunningJob("job-cancelled-retry").copy(
+            status = JobStatus.CANCELLED,
+            completedAt = 1_700_000_003,
+            totalCount = 5,
+            processedCount = 3,
+            successCount = 2,
+            failCount = 1,
+            progressPercentage = 60,
+            range = JobRange(1, 5),
+            lastCheckpointId = "3"
+        )
+        persist(job)
+        redisTemplate.opsForSet().add(failureKey(job.jobId), "2")
+        redisTemplate.expire(failureKey(job.jobId), Duration.ofDays(1))
+        every { solvedAcClient.fetchProblem(any()) } answers {
+            val problemId = firstArg<Int>()
+            SolvedAcProblemResponse(problemId, "P$problemId", 1, emptyList())
+        }
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        val service = createService(objectMapper)
+
+        val retryJob = service.retryJob(job.jobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(3)
+        assertThat(retryJob.range).isEqualTo(JobRange(2, 5))
+        assertThat(retryJob.successCount).isEqualTo(3)
+        assertThat(retryJob.lastCheckpointId).isEqualTo("5")
+        listOf(2, 4, 5).forEach { problemId ->
+            verify(exactly = 1) { solvedAcClient.fetchProblem(problemId) }
+        }
+        listOf(1, 3).forEach { problemId ->
+            verify(exactly = 0) { solvedAcClient.fetchProblem(problemId) }
         }
     }
 
@@ -324,17 +500,22 @@ class ProblemCollectorJobStateIntegrationTest {
     }
 
     private fun deleteJobKeys() {
-        val keys = redisTemplate.keys("$JOB_KEY_PREFIX*")
-        if (keys.isNotEmpty()) {
-            redisTemplate.delete(keys)
+        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX).forEach { prefix ->
+            val keys = redisTemplate.keys("$prefix*")
+            if (keys.isNotEmpty()) {
+                redisTemplate.delete(keys)
+            }
         }
         redisTemplate.delete(JOB_INDEX_KEY)
     }
 
     private fun jobKey(jobId: String): String = "$JOB_KEY_PREFIX$jobId"
 
+    private fun failureKey(jobId: String): String = "$JOB_FAILURE_KEY_PREFIX$jobId"
+
     companion object {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
+        private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
         private const val JOB_INDEX_KEY = "problem:job:index"
         private const val JOB_TTL_SECONDS = 86_400L
         private const val SUCCESS = "OK"
