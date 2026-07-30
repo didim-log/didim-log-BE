@@ -223,6 +223,11 @@ jobs:
           }
           assert manifest["application"]["launchMode"] == "isolated-env-allowlist"
           assert manifest["application"]["geminiClient"]["maxRetries"] == 0
+          assert manifest["application"]["geminiClient"]["rateLimit"] == {
+              "minIntervalSeconds": 4,
+              "maxRpm": 15,
+              "maxRpd": 1500,
+          }
           assert manifest["application"]["aiReviewExecutor"] == {
               "corePoolSize": 8,
               "maxPoolSize": 16,
@@ -300,6 +305,16 @@ jobs:
             performance/verify/write_environment_manifest.sh \
             --output /tmp/didimlog-invalid-protocol-drift.json; then
             echo "Paired protocol drift was not rejected" >&2
+            exit 1
+          fi
+          if ENV_FILE=/dev/null \
+            JAVA_TOOL_OPTIONS='-Xms512m -Xmx512m -XX:+UseG1GC' \
+            PERFORMANCE_PROTOCOL_ID="ci-rate-limit-timeout-${{ github.sha }}" \
+            GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS=21 \
+            AI_FAILED_POLL_TIMEOUT_SECONDS=20 \
+            performance/verify/write_environment_manifest.sh \
+            --output /tmp/didimlog-invalid-rate-limit-timeout.json; then
+            echo "Gemini rate limit wait mismatch was not rejected" >&2
             exit 1
           fi
           git diff --check

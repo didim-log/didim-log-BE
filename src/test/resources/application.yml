@@ -69,4 +69,4 @@ cors:
 ai:
   gemini:
     rate-limit:
-      min-interval-seconds: 1  # 테스트에서는 1초 간격 허용 (운영에서는 2초)
+      min-interval-seconds: 1  # 테스트에서는 1초 간격 허용 (운영에서는 4초)

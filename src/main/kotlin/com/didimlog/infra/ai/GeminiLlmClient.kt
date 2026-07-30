@@ -42,7 +42,6 @@ class GeminiLlmClient(
 
     private fun requestText(systemPrompt: String, userPrompt: String): String {
         validateConfiguration()
-        rateLimiter.checkAndIncrement()
 
         return try {
             val response = requestRaw(systemPrompt, userPrompt)
@@ -60,13 +59,16 @@ class GeminiLlmClient(
 
     private fun requestRaw(systemPrompt: String, userPrompt: String): String {
         val requestBody = buildRequestBody(systemPrompt, userPrompt)
-        var responseMono = geminiWebClient.post()
-            .uri(buildRequestUrl())
-            .contentType(MediaType.APPLICATION_JSON)
-            .accept(MediaType.APPLICATION_JSON)
-            .bodyValue(requestBody)
-            .retrieve()
-            .bodyToMono(String::class.java)
+        var responseMono = Mono.defer {
+            rateLimiter.checkAndIncrement()
+            geminiWebClient.post()
+                .uri(buildRequestUrl())
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(String::class.java)
+        }
 
         if (properties.maxRetries > 0) {
             responseMono = responseMono.retryWhen(buildRetrySpec())
@@ -81,9 +83,19 @@ class GeminiLlmClient(
     }
 
     private fun buildRetrySpec(): Retry {
-        return Retry.backoff(properties.maxRetries, Duration.ofMillis(properties.retryBackoffMillis))
-            .maxBackoff(Duration.ofSeconds(5))
-            .jitter(0.3)
+        val minimumIntervalMillis =
+            properties.rateLimit.minIntervalSeconds * 1_000L
+        val retryBackoffMillis = maxOf(
+            properties.retryBackoffMillis,
+            minimumIntervalMillis,
+            1L
+        )
+        return Retry.backoff(
+            properties.maxRetries,
+            Duration.ofMillis(retryBackoffMillis)
+        )
+            .maxBackoff(Duration.ofMillis(maxOf(5_000L, retryBackoffMillis)))
+            .jitter(0.0)
             .filter { throwable ->
                 throwable is WebClientResponseException.TooManyRequests
             }
@@ -104,11 +116,18 @@ class GeminiLlmClient(
     }
 
     private fun mapToDomainException(throwable: Throwable): Throwable {
+        if (throwable is BusinessException) {
+            return throwable
+        }
+
         if (Exceptions.isRetryExhausted(throwable)) {
             val cause = throwable.cause
             if (cause is WebClientResponseException.TooManyRequests) {
                 log.error("Gemini API 429 에러: 재시도 한도 초과", cause)
-                return throwable
+                return BusinessException(
+                    ErrorCode.AI_SERVICE_BUSY,
+                    "서버 사용량이 많아 잠시 후 다시 시도해주세요."
+                )
             }
 
             log.error("재시도 한도 초과: 원인={}", cause?.javaClass?.simpleName, throwable)
