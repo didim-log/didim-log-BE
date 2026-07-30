@@ -10,12 +10,15 @@ import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.InvalidPasswordException
 import com.didimlog.infra.email.EmailService
 import com.didimlog.infra.solvedac.SolvedAcClient
+import com.didimlog.infra.solvedac.SolvedAcProblemResponse
+import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.mockk
 import java.time.LocalDateTime
 import java.util.UUID
@@ -69,9 +72,12 @@ class PasswordResetConsistencyIntegrationTest {
         authService = createAuthService(passwordEncoder)
     }
 
-    private fun createAuthService(encoder: PasswordEncoder): AuthService {
+    private fun createAuthService(
+        encoder: PasswordEncoder,
+        solvedAcClient: SolvedAcClient = mockk(relaxed = true)
+    ): AuthService {
         return AuthService(
-            solvedAcClient = mockk<SolvedAcClient>(relaxed = true),
+            solvedAcClient = solvedAcClient,
             studentRepository = studentRepository,
             jwtTokenProvider = mockk<JwtTokenProvider>(relaxed = true),
             passwordEncoder = encoder,
@@ -245,6 +251,69 @@ class PasswordResetConsistencyIntegrationTest {
     }
 
     @Test
+    fun `로그인 프로필 동기화는 동시에 재설정된 비밀번호를 덮어쓰지 않는다`() {
+        val student = saveStudent(password = encoded(OLD_LOGIN_PASSWORD))
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(student.id),
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val blockingSolvedAcClient = BlockingSolvedAcClient(
+            SolvedAcUserResponse(
+                handle = requireNotNull(student.bojId).value,
+                rating = SYNCED_RATING,
+                tier = SolvedAcTierLevel.fromRating(SYNCED_RATING).value
+            )
+        )
+        val concurrentAuthService = createAuthService(passwordEncoder, blockingSolvedAcClient)
+        val executor = Executors.newSingleThreadExecutor()
+
+        val loginResult = try {
+            val loginFuture = executor.submit<AuthService.AuthResult> {
+                concurrentAuthService.login(requireNotNull(student.bojId).value, OLD_LOGIN_PASSWORD)
+            }
+
+            assertThat(blockingSolvedAcClient.entered.await(10, TimeUnit.SECONDS)).isTrue()
+            concurrentAuthService.resetPassword(RESET_CODE, NEW_PASSWORD)
+            blockingSolvedAcClient.release.countDown()
+            loginFuture.get(10, TimeUnit.SECONDS)
+        } finally {
+            blockingSolvedAcClient.release.countDown()
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue()
+        }
+
+        val updatedStudent = studentRepository.findById(requireNotNull(student.id)).orElseThrow()
+        val expectedTierLevel = SolvedAcTierLevel.fromRating(SYNCED_RATING)
+        assertThat(updatedStudent.password).isEqualTo(encoded(NEW_PASSWORD))
+        assertThat(updatedStudent.rating).isEqualTo(SYNCED_RATING)
+        assertThat(updatedStudent.solvedAcTierLevel).isEqualTo(expectedTierLevel)
+        assertThat(updatedStudent.currentTier).isEqualTo(Tier.fromRating(SYNCED_RATING))
+        assertThat(updatedStudent.nickname).isEqualTo(student.nickname)
+        assertThat(studentRepository.count()).isEqualTo(1)
+        assertThat(loginResult.rating).isEqualTo(SYNCED_RATING)
+        assertThat(loginResult.tierLevel).isEqualTo(expectedTierLevel.value)
+        assertThat(loginResult.tier).isEqualTo(Tier.fromRating(SYNCED_RATING))
+    }
+
+    @Test
+    fun `없는 학생의 프로필 부분 갱신은 문서를 생성하지 않는다`() {
+        val expectedTierLevel = SolvedAcTierLevel.fromRating(SYNCED_RATING)
+
+        val updatedStudent = studentRepository.updateSolvedAcProfileById(
+            studentId = "missing-student",
+            rating = SYNCED_RATING,
+            solvedAcTierLevel = expectedTierLevel,
+            currentTier = Tier.fromRating(SYNCED_RATING)
+        )
+
+        assertThat(updatedStudent).isNull()
+        assertThat(studentRepository.count()).isZero()
+    }
+
+    @Test
     fun `인코딩 실패 뒤에도 소비한 코드를 복원하지 않는다`() {
         val student = saveStudent()
         passwordResetCodeRepository.save(
@@ -273,7 +342,7 @@ class PasswordResetConsistencyIntegrationTest {
             .isEqualTo(OLD_PASSWORD)
     }
 
-    private fun saveStudent(): Student {
+    private fun saveStudent(password: String = OLD_PASSWORD): Student {
         return studentRepository.save(
             Student(
                 id = "student-${UUID.randomUUID()}",
@@ -282,7 +351,7 @@ class PasswordResetConsistencyIntegrationTest {
                 providerId = "reset-user",
                 email = "reset@example.com",
                 bojId = BojId("reset_user"),
-                password = OLD_PASSWORD,
+                password = password,
                 rating = 1234,
                 currentTier = Tier.SILVER,
                 role = Role.USER
@@ -321,11 +390,30 @@ class PasswordResetConsistencyIntegrationTest {
         }
     }
 
+    private class BlockingSolvedAcClient(
+        private val response: SolvedAcUserResponse
+    ) : SolvedAcClient {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        override fun fetchProblem(problemId: Int): SolvedAcProblemResponse {
+            error("이 테스트에서는 문제 조회를 사용하지 않는다.")
+        }
+
+        override fun fetchUser(bojId: BojId): SolvedAcUserResponse {
+            entered.countDown()
+            check(release.await(10, TimeUnit.SECONDS))
+            return response
+        }
+    }
+
     companion object {
         private const val RESET_CODE = "RESET001"
         private const val NEW_PASSWORD = "NewPassword123!"
+        private const val OLD_LOGIN_PASSWORD = "OldPassword123!"
         private const val OLD_PASSWORD = "old-encoded-password"
         private const val UPDATED_RATING = 2345
+        private const val SYNCED_RATING = 2450
         private const val CONCURRENCY = 20
         private val testDatabaseName =
             "didimlog-password-reset-${UUID.randomUUID().toString().replace("-", "")}"

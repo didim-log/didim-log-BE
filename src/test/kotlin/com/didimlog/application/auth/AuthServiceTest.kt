@@ -331,7 +331,6 @@ class AuthServiceTest {
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
         every { student.matchPassword(password, passwordEncoder) } returns true
         every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(handle = "testuser", rating = 100, tier = 3)
-        every { studentRepository.save(any()) } answers { firstArg() }
         every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns token
 
         // when
@@ -342,5 +341,14 @@ class AuthServiceTest {
         assertThat(result.rating).isEqualTo(100)
         assertThat(result.tier).isEqualTo(Tier.BRONZE)
         assertThat(result.tierLevel).isEqualTo(3)
+        verify(exactly = 0) {
+            studentRepository.updateSolvedAcProfileById(
+                "student1",
+                100,
+                student.solvedAcTierLevel,
+                Tier.BRONZE
+            )
+        }
+        verify(exactly = 0) { studentRepository.save(any()) }
     }
 }

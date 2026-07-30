@@ -171,8 +171,13 @@ class StudentService(
             val userResponse = solvedAcClient.fetchUser(bojIdVo)
             val newRating = userResponse.rating
             val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
+            val updatedStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
 
-            if (student.rating == newRating && student.solvedAcTierLevel == newTierLevel) {
+            if (
+                student.rating == updatedStudent.rating &&
+                student.solvedAcTierLevel == updatedStudent.solvedAcTierLevel &&
+                student.currentTier == updatedStudent.currentTier
+            ) {
                 log.debug(
                     "BOJ 프로필 동기화 완료 (변경 없음): bojId={}, rating={}, tierLevel={}",
                     bojIdVo.value,
@@ -182,8 +187,16 @@ class StudentService(
                 return student
             }
 
-            val updatedStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
-            val savedStudent = studentRepository.save(updatedStudent)
+            val savedStudent = studentRepository.updateSolvedAcProfileById(
+                studentId = student.id
+                    ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다."),
+                rating = updatedStudent.rating,
+                solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
+                currentTier = updatedStudent.currentTier
+            ) ?: throw BusinessException(
+                ErrorCode.STUDENT_NOT_FOUND,
+                "프로필을 갱신할 학생을 찾을 수 없습니다. bojId=${bojIdVo.value}"
+            )
 
             log.info(
                 "BOJ 프로필 동기화 완료: bojId={}, oldRating={}, newRating={}, oldTierLevel={}, newTierLevel={}",

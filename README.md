@@ -276,6 +276,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | Refresh Token 회전 | 실제 Redis 7.2.5, 같은 기존 토큰으로 20건 동시 교체 | 성공 1건, 기존 토큰 0건, 새 토큰 1건 |
 | JWT 토큰 용도 분리 | 실제 Security Filter Chain에 Access·Refresh Token 전달 | Access Token 인증 성공, Refresh Token의 보호 API 접근 401 |
 | 비밀번호 재설정 코드 발급·소비 | 실제 MongoDB 7.0.16, 같은 회원 20건 동시 발급·같은 코드 20건 동시 재설정 | 발급 오류 0건·활성 코드 1건, 재설정 성공 1건·실패 19건 |
+| 로그인 프로필 동기화 | 실제 MongoDB, solved.ac 조회 대기 중 비밀번호 재설정 | 새 비밀번호 유지, rating·tier 필드만 갱신 |
 
 이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
 AI 리뷰와 인증 요청 제한의 실행 조건은 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
@@ -283,6 +284,7 @@ AI 리뷰와 인증 요청 제한의 실행 조건은 [로컬 검증 기록](./D
 Refresh Token의 Lua 교체 순서와 경합 검증은 [Refresh Token 원자적 회전](./DOCS/refactoring/be-refactor/PHASE_2B_REFRESH_TOKEN_ATOMIC_ROTATION.md)에 정리했습니다.
 Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토큰 용도 분리](./DOCS/refactoring/be-refactor/PHASE_2C_1_JWT_TOKEN_PURPOSE.md)에 정리했습니다.
 재설정 코드의 발급·소비 순서와 실패 경계는 [비밀번호 재설정 코드 발급 정합성](./DOCS/refactoring/be-refactor/PHASE_2B_3_PASSWORD_RESET_ISSUANCE_CONSISTENCY.md)과 [비밀번호 재설정 코드 원자적 소비](./DOCS/refactoring/be-refactor/PHASE_2B_2_PASSWORD_RESET_ATOMIC_CONSUME.md)에 정리했습니다.
+로그인 중 solved.ac 프로필 동기화의 부분 갱신과 비밀번호 변경 경합은 [로그인 프로필 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_2C_2_LOGIN_PROFILE_PARTIAL_UPDATE.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 

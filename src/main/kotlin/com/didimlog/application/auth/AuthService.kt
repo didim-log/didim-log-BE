@@ -104,9 +104,21 @@ class AuthService(
             val userResponse = solvedAcClient.fetchUser(bojIdVo)
             val newRating = userResponse.rating
             val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
-            if (student.rating != newRating || student.solvedAcTierLevel != newTierLevel) {
-                currentStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
-                studentRepository.save(currentStudent)
+            val updatedStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
+            if (
+                student.rating != updatedStudent.rating ||
+                student.solvedAcTierLevel != updatedStudent.solvedAcTierLevel ||
+                student.currentTier != updatedStudent.currentTier
+            ) {
+                currentStudent = studentRepository.updateSolvedAcProfileById(
+                    studentId = requireNotNull(student.id) { "저장된 학생 ID가 없습니다." },
+                    rating = updatedStudent.rating,
+                    solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
+                    currentTier = updatedStudent.currentTier
+                ) ?: throw BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "프로필을 갱신할 학생을 찾을 수 없습니다. bojId=$bojId"
+                )
                 log.info(
                     "Rating 및 티어 정보 동기화 완료: bojId={}, oldRating={}, newRating={}, oldTierLevel={}, newTierLevel={}",
                     bojId,
@@ -116,6 +128,8 @@ class AuthService(
                     newTierLevel.value
                 )
             }
+        } catch (e: BusinessException) {
+            throw e
         } catch (e: IllegalStateException) {
             log.warn("Solved.ac API 호출 실패로 Rating 동기화 건너뜀: bojId=$bojId, message=${e.message}")
             // Solved.ac API 호출 실패 시에도 로그인은 진행 (기존 정보 유지)

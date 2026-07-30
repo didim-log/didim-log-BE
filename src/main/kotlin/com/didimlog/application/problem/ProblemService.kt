@@ -52,12 +52,22 @@ class ProblemService(
         val newRating = userResponse.rating
 
         val student = studentOptional.get()
-        if (student.rating == newRating) {
+        val updatedStudent = student.updateInfo(newRating)
+        if (
+            student.rating == updatedStudent.rating &&
+            student.solvedAcTierLevel == updatedStudent.solvedAcTierLevel &&
+            student.currentTier == updatedStudent.currentTier
+        ) {
             return
         }
 
-        val updatedStudent = student.updateInfo(newRating)
-        studentRepository.save(updatedStudent)
+        val studentId = student.id ?: return
+        studentRepository.updateSolvedAcProfileById(
+            studentId = studentId,
+            rating = updatedStudent.rating,
+            solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
+            currentTier = updatedStudent.currentTier
+        )
     }
 
     /**
