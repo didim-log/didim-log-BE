@@ -1,12 +1,15 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import java.time.LocalDateTime
 import java.util.regex.Pattern
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
+import org.springframework.data.mongodb.core.FindAndModifyOptions
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
@@ -22,6 +25,25 @@ class StudentRepositoryImpl(
         val query = Query.query(Criteria.where("_id").`is`(studentId))
         val update = Update.update("password", encodedPassword)
         return mongoTemplate.updateFirst(query, update, Student::class.java).matchedCount == 1L
+    }
+
+    override fun updateSolvedAcProfileById(
+        studentId: String,
+        rating: Int,
+        solvedAcTierLevel: SolvedAcTierLevel,
+        currentTier: Tier
+    ): Student? {
+        val query = Query.query(Criteria.where("_id").`is`(studentId))
+        val update = Update()
+            .set("rating", rating)
+            .set("solvedAcTierLevel", solvedAcTierLevel.value)
+            .set("currentTier", currentTier.name)
+        return mongoTemplate.findAndModify(
+            query,
+            update,
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Student::class.java
+        )
     }
 
     override fun searchAdminUsers(

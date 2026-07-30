@@ -20,6 +20,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.util.Optional
 
@@ -306,6 +307,14 @@ class StudentServiceTest {
         // then
         assertThat(result).isEqualTo(student)
         verify(exactly = 0) { studentRepository.save(any<Student>()) }
+        verify(exactly = 0) {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                500,
+                SolvedAcTierLevel.fromRating(500),
+                Tier.SILVER
+            )
+        }
     }
 
     @Test
@@ -331,7 +340,18 @@ class StudentServiceTest {
             rating = 1200,
             tier = 13
         )
-        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+        val expectedStudent = student.updateSolvedAcProfile(
+            newRating = 1200,
+            newTierLevel = SolvedAcTierLevel.fromRating(1200)
+        )
+        every {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                SolvedAcTierLevel.fromRating(1200),
+                Tier.GOLD
+            )
+        } returns expectedStudent
 
         // when
         val updated = studentService.syncBojProfile(bojId)
@@ -339,6 +359,79 @@ class StudentServiceTest {
         // then
         assertThat(updated.rating).isEqualTo(1200)
         assertThat(updated.solvedAcTierLevel).isEqualTo(SolvedAcTierLevel.fromRating(1200))
-        verify(exactly = 1) { studentRepository.save(any<Student>()) }
+        verify(exactly = 1) {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                SolvedAcTierLevel.fromRating(1200),
+                Tier.GOLD
+            )
+        }
+        verify(exactly = 0) { studentRepository.save(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("BOJ 프로필 갱신 중 학생이 삭제되면 찾을 수 없음 예외를 발생시킨다")
+    fun `syncBojProfile 갱신 대상 삭제`() {
+        val bojId = "testuser"
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            rating = 500,
+            currentTier = Tier.SILVER,
+            role = Role.USER
+        )
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 1200,
+            tier = 13
+        )
+        every {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                SolvedAcTierLevel.fromRating(1200),
+                Tier.GOLD
+            )
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            studentService.syncBojProfile(bojId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
+    }
+
+    @Test
+    @DisplayName("BOJ 프로필 갱신 대상의 ID가 없으면 내부 오류를 발생시킨다")
+    fun `syncBojProfile 학생 ID 누락`() {
+        val bojId = "testuser"
+        val student = Student(
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            rating = 500,
+            currentTier = Tier.SILVER,
+            role = Role.USER
+        )
+        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 1200,
+            tier = 13
+        )
+
+        val exception = assertThrows<BusinessException> {
+            studentService.syncBojProfile(bojId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INTERNAL_ERROR)
     }
 }

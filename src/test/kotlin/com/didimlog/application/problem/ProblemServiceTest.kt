@@ -110,6 +110,7 @@ class ProblemServiceTest {
         // given
         val bojId = BojId("tester123")
         val student = Student(
+            id = "student-id",
             nickname = Nickname("tester"),
             provider = Provider.BOJ,
             providerId = bojId.value,
@@ -127,18 +128,29 @@ class ProblemServiceTest {
             tier = 13
         )
         every { solvedAcClient.fetchUser(bojId) } returns userResponse
-        
-        val savedStudentSlot: CapturingSlot<Student> = slot()
-        every { studentRepository.save(capture(savedStudentSlot)) } answers { savedStudentSlot.captured }
+        val expectedStudent = student.updateInfo(userResponse.rating)
+        every {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                expectedStudent.solvedAcTierLevel,
+                Tier.GOLD
+            )
+        } returns expectedStudent
 
         // when
         problemService.syncUserTier(bojId.value)
 
         // then
-        val savedStudent = savedStudentSlot.captured
-        assertThat(savedStudent.tier()).isEqualTo(Tier.GOLD) // Rating 1200점은 GOLD
-        assertThat(savedStudent.rating).isEqualTo(1200)
-        verify(exactly = 1) { studentRepository.save(any<Student>()) }
+        verify(exactly = 1) {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                expectedStudent.solvedAcTierLevel,
+                Tier.GOLD
+            )
+        }
+        verify(exactly = 0) { studentRepository.save(any<Student>()) }
     }
 
     @Test
@@ -164,6 +176,7 @@ class ProblemServiceTest {
         val bojIdString = "sametier123" // 유효한 BOJ ID 형식
         val bojId = BojId(bojIdString)
         val student = Student(
+            id = "student-id",
             nickname = Nickname("tester"),
             provider = Provider.BOJ,
             providerId = bojId.value,
@@ -187,6 +200,134 @@ class ProblemServiceTest {
 
         // then
         verify(exactly = 0) { studentRepository.save(any<Student>()) }
+        verify(exactly = 0) {
+            studentRepository.updateSolvedAcProfileById(
+                student.id!!,
+                student.rating,
+                student.solvedAcTierLevel,
+                student.currentTier
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("syncUserTier는 rating이 같아도 파생 티어가 다르면 바로잡는다")
+    fun `rating이 같고 파생 티어가 다르면 갱신`() {
+        val bojId = BojId("inconsistent123")
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = bojId.value,
+            bojId = bojId,
+            password = "test-password",
+            rating = 500,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val expectedStudent = student.updateInfo(500)
+        every { studentRepository.findByBojId(bojId) } returns Optional.of(student)
+        every { solvedAcClient.fetchUser(bojId) } returns SolvedAcUserResponse(
+            handle = bojId.value,
+            rating = 500,
+            tier = expectedStudent.solvedAcTierLevel.value
+        )
+        every {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                500,
+                expectedStudent.solvedAcTierLevel,
+                Tier.SILVER
+            )
+        } returns expectedStudent
+
+        problemService.syncUserTier(bojId.value)
+
+        verify(exactly = 1) {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                500,
+                expectedStudent.solvedAcTierLevel,
+                Tier.SILVER
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("syncUserTier는 학생 ID가 없으면 프로필을 저장하지 않는다")
+    fun `학생 ID가 없으면 조용히 종료`() {
+        val bojId = BojId("missingid123")
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = bojId.value,
+            bojId = bojId,
+            password = "test-password",
+            rating = 100,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val expectedStudent = student.updateInfo(1200)
+        every { studentRepository.findByBojId(bojId) } returns Optional.of(student)
+        every { solvedAcClient.fetchUser(bojId) } returns SolvedAcUserResponse(
+            handle = bojId.value,
+            rating = 1200,
+            tier = expectedStudent.solvedAcTierLevel.value
+        )
+
+        problemService.syncUserTier(bojId.value)
+
+        verify(exactly = 0) {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                expectedStudent.solvedAcTierLevel,
+                Tier.GOLD
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("syncUserTier는 프로필 갱신 중 학생이 삭제돼도 조용히 종료한다")
+    fun `프로필 갱신 대상 삭제 시 조용히 종료`() {
+        val bojId = BojId("deleted123")
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = bojId.value,
+            bojId = bojId,
+            password = "test-password",
+            rating = 100,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val expectedStudent = student.updateInfo(1200)
+        every { studentRepository.findByBojId(bojId) } returns Optional.of(student)
+        every { solvedAcClient.fetchUser(bojId) } returns SolvedAcUserResponse(
+            handle = bojId.value,
+            rating = 1200,
+            tier = expectedStudent.solvedAcTierLevel.value
+        )
+        every {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                expectedStudent.solvedAcTierLevel,
+                Tier.GOLD
+            )
+        } returns null
+
+        problemService.syncUserTier(bojId.value)
+
+        verify(exactly = 1) {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                expectedStudent.solvedAcTierLevel,
+                Tier.GOLD
+            )
+        }
     }
 
     @Test
@@ -292,5 +433,3 @@ class ProblemServiceTest {
         verify(exactly = 1) { problemRepository.save(any<Problem>()) }
     }
 }
-
-

@@ -8,11 +8,13 @@ import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.email.EmailService
 import com.didimlog.infra.solvedac.SolvedAcClient
+import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -107,6 +109,11 @@ class AuthServiceLoginSecurityTest {
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = student.rating,
+            tier = student.solvedAcTierLevel.value
+        )
         every { jwtTokenProvider.createToken(bojId, student.role.value) } returns expectedToken
 
         // when
@@ -130,6 +137,11 @@ class AuthServiceLoginSecurityTest {
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = student.rating,
+            tier = student.solvedAcTierLevel.value
+        )
         every { jwtTokenProvider.createToken(bojId, Role.ADMIN.value) } returns expectedToken
 
         // when
@@ -152,6 +164,11 @@ class AuthServiceLoginSecurityTest {
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = student.rating,
+            tier = student.solvedAcTierLevel.value
+        )
         every { jwtTokenProvider.createToken(any(), any()) } returns "token"
 
         // when
@@ -162,6 +179,86 @@ class AuthServiceLoginSecurityTest {
         // 실제로는 로그 파일을 확인해야 하지만, 여기서는 코드 검토로 대체
         // AuthService.login() 메서드에서 password를 로그에 기록하지 않음을 확인
         verify(exactly = 1) { jwtTokenProvider.createToken(bojId, student.role.value) }
+    }
+
+    @Test
+    @DisplayName("login은 Solved.ac 프로필 필드만 부분 갱신한다")
+    fun `SolvedAc 프로필 변경 시 부분 갱신`() {
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val password = "ValidPassword123!"
+        val student = createStudent(bojId = bojId, password = "encoded-password", rating = 500)
+        val expectedStudent = student.updateSolvedAcProfile(
+            newRating = 1200,
+            newTierLevel = SolvedAcTierLevel.fromRating(1200)
+        )
+
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { passwordEncoder.matches(password, "encoded-password") } returns true
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 1200,
+            tier = expectedStudent.solvedAcTierLevel.value
+        )
+        every {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                expectedStudent.solvedAcTierLevel,
+                Tier.GOLD
+            )
+        } returns expectedStudent
+        every { jwtTokenProvider.createToken(bojId, student.role.value) } returns "token"
+
+        val result = authService.login(bojId, password)
+
+        assertThat(result.rating).isEqualTo(1200)
+        assertThat(result.tier).isEqualTo(Tier.GOLD)
+        assertThat(result.tierLevel).isEqualTo(expectedStudent.solvedAcTierLevel.value)
+        verify(exactly = 1) {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                expectedStudent.solvedAcTierLevel,
+                Tier.GOLD
+            )
+        }
+        verify(exactly = 0) { studentRepository.save(any()) }
+    }
+
+    @Test
+    @DisplayName("login은 프로필 갱신 대상이 사라지면 토큰을 발급하지 않는다")
+    fun `프로필 갱신 대상 삭제 시 로그인 중단`() {
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val password = "ValidPassword123!"
+        val student = createStudent(bojId = bojId, password = "encoded-password", rating = 500)
+        val newTierLevel = SolvedAcTierLevel.fromRating(1200)
+
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { passwordEncoder.matches(password, "encoded-password") } returns true
+        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
+            handle = bojId,
+            rating = 1200,
+            tier = newTierLevel.value
+        )
+        every {
+            studentRepository.updateSolvedAcProfileById(
+                "student-id",
+                1200,
+                newTierLevel,
+                Tier.GOLD
+            )
+        } returns null
+        every { jwtTokenProvider.createToken(bojId, student.role.value) } returns "token"
+
+        val exception = assertThrows<BusinessException> {
+            authService.login(bojId, password)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any()) }
     }
 
     @Test
@@ -179,7 +276,6 @@ class AuthServiceLoginSecurityTest {
         // syncUserTier 내부에서 발생하는 예외는 catch되어 로그만 남음
         // value class인 BojId는 any() 매처가 제대로 작동하지 않으므로 구체적인 객체 사용
         every { solvedAcClient.fetchUser(bojIdVo) } throws IllegalStateException("API 호출 실패")
-        every { studentRepository.save(any()) } answers { firstArg() }
         every { jwtTokenProvider.createToken(bojId, student.role.value) } returns "token"
 
         // when
@@ -197,6 +293,7 @@ class AuthServiceLoginSecurityTest {
         rating: Int = 1000
     ): Student {
         return Student(
+            id = "student-id",
             nickname = Nickname("test-user"),
             provider = Provider.BOJ,
             providerId = bojId,
