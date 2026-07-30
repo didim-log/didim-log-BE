@@ -260,6 +260,24 @@ class ProblemCollectorControllerTest {
     }
 
     @Test
+    @DisplayName("작업 취소 CAS 충돌이 계속되면 재시도 가능한 409")
+    fun `작업 취소 상태 변경 충돌`() {
+        val jobId = "job-state-conflict"
+        every { problemCollectorService.cancelJob(jobId, any(), any()) } throws BusinessException(
+            ErrorCode.RESOURCE_STATE_CONFLICT,
+            "작업 상태가 계속 변경되어 취소하지 못했습니다."
+        )
+
+        mockMvc.perform(
+            post("/api/v1/admin/problems/jobs/$jobId/cancel")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("RESOURCE_STATE_CONFLICT"))
+            .andExpect(jsonPath("$.retryable").value(true))
+    }
+
+    @Test
     @DisplayName("작업 재시도 성공")
     fun `작업 재시도 성공`() {
         val jobId = "job-retry"

@@ -24,13 +24,13 @@
 ```mermaid
 flowchart TD
     A["관리자: 메타데이터 수집 요청"] --> B["ProblemCollectorController"]
-    B --> C["Redis에 PENDING 작업 저장"]
+    B --> C["Redis에 PENDING 상태·작업 index 원자 저장"]
     C --> D["taskExecutor worker"]
     D --> E["SolvedAcClient.fetchProblem"]
     E --> F["ProblemCategoryMapper로 태그 정규화"]
     F --> G["MongoDB problems upsert"]
     H["관리자: 상세 수집 요청"] --> H2["ProblemCollectorController"]
-    H2 --> H3["Redis에 PENDING 작업 저장"]
+    H2 --> H3["Redis에 PENDING 상태·작업 index 원자 저장"]
     H3 --> H4["taskExecutor worker"]
     H4 --> I["BojCrawler.crawlProblemDetails"]
     I --> G
@@ -50,12 +50,16 @@ flowchart TD
 ### 1. 메타데이터 수집과 정규화
 
 1. `ProblemCollectorController.collectMetadata`가 범위와 관리자 정보를 `ProblemCollectorService.collectMetadataAsync`에 전달한다.
-2. 서비스는 Redis에 `PENDING` 작업을 만들고 `taskExecutor.execute`로 worker를 등록한 뒤 `jobId`를 즉시 반환한다.
+2. 서비스는 Redis Lua로 `PENDING` 상태와 sorted index를 함께 만든 뒤 `taskExecutor.execute`로 worker를 등록하고 `jobId`를 즉시 반환한다.
 3. `collectMetadataAsyncInternal`은 번호별로 `SolvedAcClient.fetchProblem`을 호출한다.
 4. `ProblemCategoryMapper.extractTagsToEnglish`는 한국어 표시명을 `ProblemCategory`로 변환하고 영문 정식명 목록으로 중복 제거한다.
 5. `determineCategory`는 첫 번째 정규 태그를 대표 `category`로 사용한다. 태그가 없으면 `IMPLEMENTATION`이다.
-6. 기존 문제는 메타 필드만 복사해 갱신하고, 신규 문제는 BOJ URL을 포함해 `ProblemRepository.save`로 저장한다.
+6. 신규·기존 문제 모두 메타데이터 소유 필드만 MongoDB modifier upsert로 갱신하며, 기존 상세·URL·언어는 보존한다.
 7. 처리 수, 성공·실패 수, 체크포인트는 항목마다 Redis 작업 상태에 반영한다.
+
+상태 변경은 읽은 Redis JSON 원문을 기대값으로 비교하는 Lua CAS로 처리한다. 오래된
+worker의 갱신은 반영하지 않으며 `COMPLETED`, `FAILED`, `CANCELLED` 상태는 다시
+변경하지 않는다. sorted index는 작업을 만들 때 한 번만 기록한다.
 
 ### 2. 상세 보강
 
@@ -97,7 +101,9 @@ flowchart TD
 - 항목 하나의 수집 실패는 `failCount`로 기록되지만 전체 작업은 `COMPLETED`가 될 수 있다.
 - 취소는 항목 사이에서 상태를 확인하는 방식이라 진행 중 HTTP 호출이나 대기 시간을 즉시 중단하지 않는다.
 - 작업 상태는 24시간 TTL이며 서버 재시작 뒤 진행 중 작업을 복구하는 worker는 없다.
-- 상태 변경 락은 한 JVM 안에서만 동작해 다중 인스턴스의 동시 갱신을 조정하지 못한다.
+- 상태 전이는 같은 Redis를 공유하는 여러 인스턴스에서 CAS로 조정한다. 구·신 worker의 혼합 실행은 지원하지 않으므로 전체 교체가 필요하다.
+- 작업 생성 시 상태 키와 sorted index를 함께 다루는 Lua는 standalone Redis 구성을 기준으로 한다.
+- 작업 목록은 sorted index에서 ID를 조회한 뒤 상태를 ID별로 읽는 1+N 구조가 남아 있다.
 - 상세 대상은 worker 실행 전에 목록으로 고정되며, 예제는 최대 5쌍만 수집한다.
 - 한국어 표시명이 없는 solved.ac 태그 key도 `fromKorean`에 전달되므로 일부 태그가 `Unknown`으로 합쳐질 수 있다.
 - 계층은 코드에 하드코딩된 직접 부모·자식 관계다. `RELATED`는 유사도 검색이 아니라 부모·형제 확장이다.

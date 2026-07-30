@@ -1250,7 +1250,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `createdBy` (String)
 
 **상태 전이**
-- `PENDING -> RUNNING -> COMPLETED|FAILED|CANCELLED`
+- 실행: `PENDING -> RUNNING -> COMPLETED|FAILED`
+- 실행기 제출 실패: `PENDING -> FAILED`
+- 취소: `PENDING|RUNNING -> CANCELLED`
+- `COMPLETED|FAILED|CANCELLED`는 종료 상태이며 이후 변경되지 않습니다.
 
 **표준 에러 코드**
 - `INVALID_RANGE`
@@ -1258,6 +1261,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `QUEUE_TIMEOUT`
 - `WORKER_UNAVAILABLE`
 - `JOB_ALREADY_TERMINAL`
+- `RESOURCE_STATE_CONFLICT`
 
 ---
 

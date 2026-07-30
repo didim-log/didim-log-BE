@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -48,16 +49,59 @@ class ProblemCollectorService(
 ) {
 
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
-    private val jobStateLock = Any()
 
     companion object {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
         private const val JOB_INDEX_KEY = "problem:job:index"
         private const val JOB_TTL_SECONDS = 86400L
+        private const val MAX_JOB_STATE_RETRIES = 3
+        private const val JOB_STATE_MISSING = -1L
+        private const val JOB_STATE_CONFLICT = 0L
+        private const val JOB_STATE_UPDATED = 1L
         private const val METADATA_AVG_SECONDS = 1L
         private const val DETAILS_AVG_SECONDS = 3L
         private const val LANGUAGE_AVG_SECONDS = 1L
+        private val CREATE_JOB_SCRIPT = DefaultRedisScript(
+            """
+            if redis.call('EXISTS', KEYS[1]) == 1 then
+                return 0
+            end
+
+            local indexType = redis.call('TYPE', KEYS[2])
+            if type(indexType) == 'table' then
+                indexType = indexType['ok']
+            end
+            if indexType ~= 'none' and indexType ~= 'zset' then
+                return -1
+            end
+
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+            redis.call('ZADD', KEYS[2], ARGV[3], ARGV[4])
+            return 1
+            """.trimIndent(),
+            Long::class.java
+        )
+        private val COMPARE_AND_SET_JOB_SCRIPT = DefaultRedisScript(
+            """
+            local current = redis.call('GET', KEYS[1])
+            if not current then
+                return -1
+            end
+            if current ~= ARGV[1] then
+                return 0
+            end
+
+            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+            return 1
+            """.trimIndent(),
+            Long::class.java
+        )
     }
+
+    private data class JobSnapshot(
+        val rawJson: String,
+        val job: JobStatusUnifiedResponse
+    )
 
     /**
      * Solved.ac API를 통해 문제 메타데이터를 수집하여 DB에 저장한다 (Upsert).
@@ -226,9 +270,10 @@ class ProblemCollectorService(
     }
 
     fun cancelJob(jobId: String, cancelledBy: String, ipAddress: String = "unknown"): JobStatusUnifiedResponse {
-        val cancelled = synchronized(jobStateLock) {
-            val current = readJob(jobId)
+        repeat(MAX_JOB_STATE_RETRIES + 1) {
+            val snapshot = readJobSnapshot(jobId)
                 ?: throw BusinessException(ErrorCode.JOB_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
+            val current = snapshot.job
             if (isTerminal(current.status)) {
                 throw BusinessException(ErrorCode.JOB_ALREADY_TERMINAL, "이미 종료된 작업입니다. jobId=$jobId, status=${current.status}")
             }
@@ -241,11 +286,17 @@ class ProblemCollectorService(
                 errorCode = null,
                 errorMessage = null
             )
-            persistJob(updated)
+            val cancelled = compareAndSetJob(snapshot, updated)
+            if (cancelled != null) {
+                logJobAction(cancelledBy, AdminActionType.PROBLEM_JOB_CANCEL, ipAddress, cancelled)
+                return withQueuePosition(cancelled)
+            }
         }
 
-        logJobAction(cancelledBy, AdminActionType.PROBLEM_JOB_CANCEL, ipAddress, cancelled)
-        return withQueuePosition(cancelled)
+        throw BusinessException(
+            ErrorCode.RESOURCE_STATE_CONFLICT,
+            "작업 상태가 계속 변경되어 취소하지 못했습니다. jobId=$jobId"
+        )
     }
 
     fun retryJob(jobId: String, requestedBy: String, ipAddress: String = "unknown"): JobStatusUnifiedResponse {
@@ -461,17 +512,11 @@ class ProblemCollectorService(
         checkpointId: String?
     ): JobStatusUnifiedResponse {
         val created = createJob(type, 0, range, createdBy, checkpointId)
-        val now = nowEpochSeconds()
-        val completed = created.copy(
-            status = JobStatus.COMPLETED,
-            startedAt = now,
-            lastHeartbeatAt = now,
-            completedAt = now,
-            progressPercentage = 100,
-            estimatedRemainingSeconds = 0
-        )
-        persistJob(completed)
-        return completed
+        if (markRunning(created.jobId)) {
+            markCompleted(created.jobId)
+        }
+        return readJob(created.jobId)
+            ?: throw IllegalStateException("생성한 작업 상태를 찾을 수 없습니다. jobId=${created.jobId}")
     }
 
     private fun collectMetadataAsyncInternal(jobId: String, start: Int, end: Int) {
@@ -676,7 +721,6 @@ class ProblemCollectorService(
     ) {
         val marked = markRunning(jobId)
         if (!marked) {
-            markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업 실행을 시작할 수 없습니다.")
             return
         }
 
@@ -724,8 +768,7 @@ class ProblemCollectorService(
             createdBy = createdBy
         )
 
-        persistJob(created)
-        return created
+        return persistNewJob(created)
     }
 
     private fun getTypedJob(jobId: String, type: ProblemJobType): JobStatusUnifiedResponse? {
@@ -734,59 +777,62 @@ class ProblemCollectorService(
     }
 
     private fun markRunning(jobId: String): Boolean {
-        val updated = synchronized(jobStateLock) {
-            val current = readJob(jobId) ?: return@synchronized null
-            if (current.status != JobStatus.PENDING) {
-                return@synchronized current
-            }
-            val now = nowEpochSeconds()
-            val running = current.copy(
-                status = JobStatus.RUNNING,
-                startedAt = now,
-                lastHeartbeatAt = now,
-                errorCode = null,
-                errorMessage = null
-            )
-            persistJob(running)
+        val snapshot = readJobSnapshot(jobId) ?: return false
+        if (snapshot.job.status != JobStatus.PENDING) {
+            return false
         }
 
-        return updated != null
+        val now = nowEpochSeconds()
+        val running = snapshot.job.copy(
+            status = JobStatus.RUNNING,
+            startedAt = now,
+            lastHeartbeatAt = now,
+            errorCode = null,
+            errorMessage = null
+        )
+        return compareAndSetJob(snapshot, running) != null
     }
 
     private fun markCompleted(jobId: String) {
-        synchronized(jobStateLock) {
-            val current = readJob(jobId) ?: return
-            if (current.status == JobStatus.CANCELLED) {
+        repeat(MAX_JOB_STATE_RETRIES + 1) {
+            val snapshot = readJobSnapshot(jobId) ?: return
+            if (snapshot.job.status != JobStatus.RUNNING) {
                 return
             }
 
             val now = nowEpochSeconds()
-            val completed = current.copy(
+            val completed = snapshot.job.copy(
                 status = JobStatus.COMPLETED,
                 completedAt = now,
                 lastHeartbeatAt = now
             )
-            persistJob(completed)
+            if (compareAndSetJob(snapshot, completed) != null) {
+                return
+            }
         }
+        log.warn("job completion CAS retries exhausted: jobId=$jobId")
     }
 
     private fun markFailed(jobId: String, errorCode: String, message: String) {
-        synchronized(jobStateLock) {
-            val current = readJob(jobId) ?: return
-            if (current.status == JobStatus.CANCELLED) {
+        repeat(MAX_JOB_STATE_RETRIES + 1) {
+            val snapshot = readJobSnapshot(jobId) ?: return
+            if (snapshot.job.status != JobStatus.PENDING && snapshot.job.status != JobStatus.RUNNING) {
                 return
             }
 
             val now = nowEpochSeconds()
-            val failed = current.copy(
+            val failed = snapshot.job.copy(
                 status = JobStatus.FAILED,
                 completedAt = now,
                 lastHeartbeatAt = now,
                 errorCode = errorCode,
                 errorMessage = message
             )
-            persistJob(failed)
+            if (compareAndSetJob(snapshot, failed) != null) {
+                return
+            }
         }
+        log.warn("job failure CAS retries exhausted: jobId=$jobId")
     }
 
     private fun updateProgress(
@@ -796,40 +842,74 @@ class ProblemCollectorService(
         failCount: Int,
         checkpointId: String?
     ) {
-        synchronized(jobStateLock) {
-            val current = readJob(jobId) ?: return
-            if (current.status == JobStatus.CANCELLED) {
-                return
-            }
-
-            val now = nowEpochSeconds()
-            val updated = current.copy(
-                processedCount = processedCount,
-                successCount = successCount,
-                failCount = failCount,
-                lastCheckpointId = checkpointId ?: current.lastCheckpointId,
-                lastHeartbeatAt = now
-            )
-            persistJob(updated)
+        val snapshot = readJobSnapshot(jobId) ?: return
+        if (snapshot.job.status != JobStatus.RUNNING) {
+            return
         }
+
+        val now = nowEpochSeconds()
+        val updated = snapshot.job.copy(
+            processedCount = processedCount,
+            successCount = successCount,
+            failCount = failCount,
+            lastCheckpointId = checkpointId ?: snapshot.job.lastCheckpointId,
+            lastHeartbeatAt = now
+        )
+        compareAndSetJob(snapshot, updated)
     }
 
     private fun readJob(jobId: String): JobStatusUnifiedResponse? {
+        return readJobSnapshot(jobId)?.job
+    }
+
+    private fun readJobSnapshot(jobId: String): JobSnapshot? {
         val json = redisTemplate.opsForValue().get(jobKey(jobId)) ?: return null
         return runCatching { objectMapper.readValue(json, JobStatusUnifiedResponse::class.java) }
             .onFailure { e ->
                 log.warn("Failed to deserialize job status: jobId=$jobId, error=${e.message}")
             }
             .getOrNull()
+            ?.let { JobSnapshot(json, it) }
     }
 
-    private fun persistJob(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
+    private fun persistNewJob(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
         val normalized = normalize(job)
         val key = jobKey(normalized.jobId)
         val json = objectMapper.writeValueAsString(normalized)
-        redisTemplate.opsForValue().set(key, json, Duration.ofSeconds(JOB_TTL_SECONDS))
-        redisTemplate.opsForZSet().add(JOB_INDEX_KEY, normalized.jobId, normalized.queuedAt.toDouble())
+        val result = redisTemplate.execute(
+            CREATE_JOB_SCRIPT,
+            listOf(key, JOB_INDEX_KEY),
+            json,
+            JOB_TTL_SECONDS.toString(),
+            normalized.queuedAt.toString(),
+            normalized.jobId
+        )
+        check(result == JOB_STATE_UPDATED) {
+            "작업 상태 생성에 실패했습니다. jobId=${normalized.jobId}, result=$result"
+        }
         return normalized
+    }
+
+    private fun compareAndSetJob(
+        snapshot: JobSnapshot,
+        updated: JobStatusUnifiedResponse
+    ): JobStatusUnifiedResponse? {
+        val normalized = normalize(updated)
+        val result = redisTemplate.execute(
+            COMPARE_AND_SET_JOB_SCRIPT,
+            listOf(jobKey(normalized.jobId)),
+            snapshot.rawJson,
+            objectMapper.writeValueAsString(normalized),
+            JOB_TTL_SECONDS.toString()
+        )
+        return when (result) {
+            JOB_STATE_UPDATED -> normalized
+            JOB_STATE_MISSING,
+            JOB_STATE_CONFLICT -> null
+            else -> throw IllegalStateException(
+                "알 수 없는 작업 상태 갱신 결과입니다. jobId=${normalized.jobId}, result=$result"
+            )
+        }
     }
 
     private fun loadAllJobs(): List<JobStatusUnifiedResponse> {
