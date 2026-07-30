@@ -1,12 +1,20 @@
 package com.didimlog.application.log
 
+import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
 import com.didimlog.domain.Log
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.AiFeedbackStatus
+import com.didimlog.domain.enums.AiReviewStatus
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.LogRepository
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.AiReview
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import java.util.UUID
@@ -21,6 +29,7 @@ import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.data.mongo.DataMongoTest
+import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -35,17 +44,36 @@ class LogOwnershipConsistencyIntegrationTest {
     @Autowired
     private lateinit var logRepository: LogRepository
 
+    @Autowired
+    private lateinit var studentRepository: StudentRepository
+
+    @Autowired
+    private lateinit var mongoTemplate: MongoTemplate
+
     private lateinit var logService: LogService
 
     @BeforeEach
     fun setUp() {
         logRepository.deleteAll()
-        logService = LogService(logRepository)
+        studentRepository.deleteAll()
+        studentRepository.saveAll(
+            listOf(
+                student("original-student-id", "original", "original-provider"),
+                student("replacement-student-id", "replacement", "replacement-provider")
+            )
+        )
+        logService = LogService(
+            logRepository = logRepository,
+            logFeedbackRepository = MongoLogFeedbackRepository(mongoTemplate),
+            studentRepository = studentRepository,
+            studentLifecycleCoordinator = ImmediateCredentialSessionCoordinator()
+        )
     }
 
     @AfterAll
     fun tearDown() {
         logRepository.deleteAll()
+        studentRepository.deleteAll()
     }
 
     @Test
@@ -97,6 +125,48 @@ class LogOwnershipConsistencyIntegrationTest {
         }
             .isInstanceOf(BusinessException::class.java)
             .matches { (it as BusinessException).errorCode == ErrorCode.ACCESS_DENIED }
+    }
+
+    @Test
+    @DisplayName("피드백 부분 갱신은 기존 AI 리뷰 필드를 보존한다")
+    fun `feedback partial update preserves ai review fields`() {
+        val saved = logRepository.save(
+            Log(
+                title = LogTitle("AI 리뷰 로그"),
+                content = LogContent("부분 갱신으로 보존할 로그"),
+                code = LogCode("fun main() = Unit"),
+                studentId = "original-student-id",
+                bojId = BojId("original"),
+                aiReview = AiReview("기존 AI 리뷰"),
+                aiReviewStatus = AiReviewStatus.COMPLETED,
+                aiReviewDurationMillis = 321L,
+                promptVersion = "v2.0"
+            )
+        )
+
+        val updated = logService.updateFeedback(
+            logId = requireNotNull(saved.id),
+            requesterStudentId = "original-student-id",
+            status = AiFeedbackStatus.DISLIKE,
+            reason = "설명이 부족합니다."
+        )
+
+        assertThat(updated.aiFeedbackStatus).isEqualTo(AiFeedbackStatus.DISLIKE)
+        assertThat(updated.aiFeedbackReason).isEqualTo("설명이 부족합니다.")
+        assertThat(updated.aiReview).isEqualTo(saved.aiReview)
+        assertThat(updated.aiReviewStatus).isEqualTo(saved.aiReviewStatus)
+        assertThat(updated.aiReviewDurationMillis).isEqualTo(saved.aiReviewDurationMillis)
+        assertThat(updated.promptVersion).isEqualTo(saved.promptVersion)
+    }
+
+    private fun student(id: String, nickname: String, providerId: String): Student {
+        return Student(
+            id = id,
+            nickname = Nickname(nickname),
+            provider = Provider.BOJ,
+            providerId = providerId,
+            currentTier = Tier.BRONZE
+        )
     }
 
     companion object {

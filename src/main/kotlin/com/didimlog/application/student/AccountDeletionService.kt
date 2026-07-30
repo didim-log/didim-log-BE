@@ -1,6 +1,5 @@
 package com.didimlog.application.student
 
-import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.LogRepository
@@ -29,13 +28,13 @@ class AccountDeletionService(
     private val templateRepository: TemplateRepository,
     private val passwordResetCodeRepository: PasswordResetCodeRepository,
     private val refreshTokenService: RefreshTokenService,
-    private val credentialSessionCoordinator: CredentialSessionCoordinator
+    private val studentLifecycleCoordinator: StudentLifecycleCoordinator
 ) {
 
     private val log = LoggerFactory.getLogger(AccountDeletionService::class.java)
 
     fun deleteAccount(studentId: String) {
-        credentialSessionCoordinator.execute(studentId) {
+        studentLifecycleCoordinator.execute(studentId) {
             studentRepository.findById(studentId)
                 .orElseThrow {
                     BusinessException(

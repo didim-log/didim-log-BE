@@ -204,7 +204,7 @@ class AdminDeletionConsistencyIntegrationTest {
             templateRepository = templateRepository,
             passwordResetCodeRepository = passwordResetCodeRepository,
             refreshTokenService = refreshTokenService,
-            credentialSessionCoordinator = coordinator
+            studentLifecycleCoordinator = coordinator
         )
         val adminService = AdminService(
             studentRepository = studentRepository,

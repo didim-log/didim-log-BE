@@ -25,11 +25,13 @@ class RefreshTokenServiceTest {
     private val jwtTokenProvider: JwtTokenProvider = mockk()
     private val refreshTokenStore: RefreshTokenStore = mockk()
     private val studentRepository: StudentRepository = mockk()
+    private val credentialSessionCoordinator = RecordingCredentialSessionCoordinator()
 
     private val refreshTokenService = RefreshTokenService(
         jwtTokenProvider = jwtTokenProvider,
         refreshTokenStore = refreshTokenStore,
         studentRepository = studentRepository,
+        credentialSessionCoordinator = credentialSessionCoordinator,
         refreshTokenExpiration = 604800000L
     )
 
@@ -45,6 +47,7 @@ class RefreshTokenServiceTest {
 
         assertThat(refreshTokenService.generateAndSave(student)).isEqualTo(refreshToken)
 
+        assertThat(credentialSessionCoordinator.strictStudentIds).isEmpty()
         verify(exactly = 0) { studentRepository.findByBojId(BojId("test123")) }
     }
 
@@ -86,8 +89,35 @@ class RefreshTokenServiceTest {
         assertThat(result.rating).isEqualTo(student.rating)
         assertThat(result.tier).isEqualTo(student.tier())
         assertThat(result.tierLevel).isEqualTo(student.solvedAcTierLevel.value)
+        assertThat(credentialSessionCoordinator.strictStudentIds).containsExactly(STUDENT_ID)
         verify(exactly = 1) { studentRepository.findById(STUDENT_ID) }
         verify(exactly = 0) { studentRepository.findByBojId(BojId(bojId)) }
+    }
+
+    @Test
+    @DisplayName("학생 잠금에 실패하면 Refresh Token 저장소를 조회하거나 교체하지 않는다")
+    fun `학생 잠금 실패 시 토큰 회전 중단`() {
+        val refreshToken = "lock-conflict-token"
+        every { jwtTokenProvider.validateToken(refreshToken) } returns true
+        every { jwtTokenProvider.isRefreshToken(refreshToken) } returns true
+        every { jwtTokenProvider.getSubject(refreshToken) } returns "test123"
+        every { jwtTokenProvider.getStudentId(refreshToken) } returns STUDENT_ID
+        val rejectingService = RefreshTokenService(
+            jwtTokenProvider = jwtTokenProvider,
+            refreshTokenStore = refreshTokenStore,
+            studentRepository = studentRepository,
+            credentialSessionCoordinator = RejectingCredentialSessionCoordinator(),
+            refreshTokenExpiration = 604800000L
+        )
+
+        val exception = assertThrows<BusinessException> {
+            rejectingService.refresh(refreshToken)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.SESSION_STATE_CONFLICT)
+        verify(exactly = 0) { refreshTokenStore.matches(any(), any()) }
+        verify(exactly = 0) { studentRepository.findById(any()) }
+        verify(exactly = 0) { refreshTokenStore.rotate(any(), any(), any(), any()) }
     }
 
     @Test
@@ -286,6 +316,7 @@ class RefreshTokenServiceTest {
 
         refreshTokenService.revokeAllForStudent(STUDENT_ID)
 
+        assertThat(credentialSessionCoordinator.strictStudentIds).isEmpty()
         verify(exactly = 1) { refreshTokenStore.deleteByStudentId(STUDENT_ID) }
     }
 
@@ -300,6 +331,25 @@ class RefreshTokenServiceTest {
             currentTier = Tier.BRONZE,
             role = Role.USER
         )
+    }
+
+    private class RecordingCredentialSessionCoordinator : CredentialSessionCoordinator {
+        val strictStudentIds = mutableListOf<String>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T = action()
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            strictStudentIds += studentId
+            return action()
+        }
+    }
+
+    private class RejectingCredentialSessionCoordinator : CredentialSessionCoordinator {
+        override fun <T> execute(studentId: String, action: () -> T): T = action()
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            throw BusinessException(ErrorCode.SESSION_STATE_CONFLICT)
+        }
     }
 
     companion object {

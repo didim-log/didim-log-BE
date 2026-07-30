@@ -18,6 +18,7 @@ class RefreshTokenService(
     private val jwtTokenProvider: JwtTokenProvider,
     private val refreshTokenStore: RefreshTokenStore,
     private val studentRepository: StudentRepository,
+    private val credentialSessionCoordinator: CredentialSessionCoordinator,
     @Value("\${app.jwt.refresh-token-expiration}")
     private val refreshTokenExpiration: Long
 ) {
@@ -75,60 +76,62 @@ class RefreshTokenService(
                 ErrorCode.COMMON_INVALID_INPUT,
                 "학생 ID가 없는 기존 Refresh Token은 사용할 수 없습니다."
             )
-        if (!refreshTokenStore.matches(refreshToken, studentId)) {
-            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 존재하지 않습니다.")
-        }
-
-        // 사용자 존재 확인
-        val student = studentRepository.findById(studentId)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. studentId=$studentId")
+        return credentialSessionCoordinator.executeWithCompletionCheck(studentId) {
+            if (!refreshTokenStore.matches(refreshToken, studentId)) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 존재하지 않습니다.")
             }
-        val currentBojId = student.bojId?.value
-        if (currentBojId != signedBojId) {
-            throw BusinessException(
-                ErrorCode.COMMON_INVALID_INPUT,
-                "계정 정보가 변경되어 만료된 Refresh Token입니다."
+
+            // 사용자 존재 확인
+            val student = studentRepository.findById(studentId)
+                .orElseThrow {
+                    BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. studentId=$studentId")
+                }
+            val currentBojId = student.bojId?.value
+            if (currentBojId != signedBojId) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "계정 정보가 변경되어 만료된 Refresh Token입니다."
+                )
+            }
+            if (jwtTokenProvider.getCredentialVersion(refreshToken) != student.credentialVersion) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "비밀번호 변경으로 만료된 Refresh Token입니다."
+                )
+            }
+
+            val newAccessToken = jwtTokenProvider.createToken(
+                subject = currentBojId,
+                studentId = studentId,
+                credentialVersion = student.credentialVersion,
+                role = student.role.value
+            )
+            val newRefreshToken = jwtTokenProvider.createRefreshToken(
+                subject = currentBojId,
+                studentId = studentId,
+                credentialVersion = student.credentialVersion
+            )
+            val ttlSeconds = refreshTokenExpiration / 1000
+
+            val rotated = refreshTokenStore.rotate(
+                oldToken = refreshToken,
+                newToken = newRefreshToken,
+                studentId = studentId,
+                ttlSeconds = ttlSeconds
+            )
+            if (!rotated) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 존재하지 않습니다.")
+            }
+
+            log.info("토큰 갱신 완료: studentId=$studentId")
+            RefreshResult(
+                accessToken = newAccessToken,
+                refreshToken = newRefreshToken,
+                rating = student.rating,
+                tier = student.tier(),
+                tierLevel = student.solvedAcTierLevel.value
             )
         }
-        if (jwtTokenProvider.getCredentialVersion(refreshToken) != student.credentialVersion) {
-            throw BusinessException(
-                ErrorCode.COMMON_INVALID_INPUT,
-                "비밀번호 변경으로 만료된 Refresh Token입니다."
-            )
-        }
-
-        val newAccessToken = jwtTokenProvider.createToken(
-            subject = currentBojId,
-            studentId = studentId,
-            credentialVersion = student.credentialVersion,
-            role = student.role.value
-        )
-        val newRefreshToken = jwtTokenProvider.createRefreshToken(
-            subject = currentBojId,
-            studentId = studentId,
-            credentialVersion = student.credentialVersion
-        )
-        val ttlSeconds = refreshTokenExpiration / 1000
-
-        val rotated = refreshTokenStore.rotate(
-            oldToken = refreshToken,
-            newToken = newRefreshToken,
-            studentId = studentId,
-            ttlSeconds = ttlSeconds
-        )
-        if (!rotated) {
-            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 존재하지 않습니다.")
-        }
-
-        log.info("토큰 갱신 완료: studentId=$studentId")
-        return RefreshResult(
-            accessToken = newAccessToken,
-            refreshToken = newRefreshToken,
-            rating = student.rating,
-            tier = student.tier(),
-            tierLevel = student.solvedAcTierLevel.value
-        )
     }
 
     /**

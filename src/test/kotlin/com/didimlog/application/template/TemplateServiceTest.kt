@@ -1,5 +1,6 @@
 package com.didimlog.application.template
 
+import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
 import com.didimlog.application.problem.ProblemService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
@@ -35,10 +36,26 @@ class TemplateServiceTest {
     private val templateRepository: TemplateRepository = mockk()
     private val problemService: ProblemService = mockk()
     private val studentRepository: StudentRepository = mockk()
-    private val service = TemplateService(templateRepository, problemService, studentRepository)
+    private val service = TemplateService(
+        templateRepository,
+        problemService,
+        studentRepository,
+        ImmediateCredentialSessionCoordinator()
+    )
 
     private val studentId = "student1"
     private val templateId = "template1"
+    private val existingStudent = Student(
+        id = studentId,
+        nickname = Nickname("testuser"),
+        provider = Provider.BOJ,
+        providerId = "testuser",
+        currentTier = Tier.BRONZE
+    )
+
+    init {
+        every { studentRepository.findById(any()) } returns Optional.of(existingStudent)
+    }
 
     @Test
     @DisplayName("템플릿 목록을 조회한다")
@@ -142,6 +159,20 @@ class TemplateServiceTest {
         assertThat(result.isDefaultSuccess).isFalse()
         assertThat(result.isDefaultFail).isFalse()
         verify { templateRepository.save(any<Template>()) }
+    }
+
+    @Test
+    @DisplayName("삭제된 학생은 커스텀 템플릿을 생성할 수 없다")
+    fun `템플릿 생성 실패 - 학생 없음`() {
+        every { studentRepository.findById(studentId) } returns Optional.empty()
+
+        assertThatThrownBy {
+            service.createTemplate(studentId, "나만의 템플릿", "템플릿 내용")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.STUDENT_NOT_FOUND)
+
+        verify(exactly = 0) { templateRepository.save(any<Template>()) }
     }
 
     @Test
@@ -295,7 +326,9 @@ class TemplateServiceTest {
         
         every { templateRepository.findById(templateId) } returns Optional.of(template)
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+        every {
+            studentRepository.updateDefaultTemplateById(studentId, TemplateCategory.SUCCESS, templateId)
+        } returns student.copy(defaultSuccessTemplateId = templateId)
 
         // when
         val result = service.setDefaultTemplate(templateId, TemplateCategory.SUCCESS, studentId)
@@ -304,10 +337,8 @@ class TemplateServiceTest {
         assertThat(result).isEqualTo(template)
         verify { templateRepository.findById(templateId) }
         verify { studentRepository.findById(studentId) }
-        verify { 
-            studentRepository.save(match { 
-                it.id == studentId && it.defaultSuccessTemplateId == templateId 
-            }) 
+        verify {
+            studentRepository.updateDefaultTemplateById(studentId, TemplateCategory.SUCCESS, templateId)
         }
     }
 
@@ -334,7 +365,9 @@ class TemplateServiceTest {
         
         every { templateRepository.findById(templateId) } returns Optional.of(template)
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+        every {
+            studentRepository.updateDefaultTemplateById(studentId, TemplateCategory.FAIL, templateId)
+        } returns student.copy(defaultFailTemplateId = templateId)
 
         // when
         val result = service.setDefaultTemplate(templateId, TemplateCategory.FAIL, studentId)
@@ -343,10 +376,8 @@ class TemplateServiceTest {
         assertThat(result).isEqualTo(template)
         verify { templateRepository.findById(templateId) }
         verify { studentRepository.findById(studentId) }
-        verify { 
-            studentRepository.save(match { 
-                it.id == studentId && it.defaultFailTemplateId == templateId 
-            }) 
+        verify {
+            studentRepository.updateDefaultTemplateById(studentId, TemplateCategory.FAIL, templateId)
         }
     }
 
@@ -373,7 +404,9 @@ class TemplateServiceTest {
         
         every { templateRepository.findById(templateId) } returns Optional.of(systemTemplate)
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+        every {
+            studentRepository.updateDefaultTemplateById(studentId, TemplateCategory.SUCCESS, templateId)
+        } returns student.copy(defaultSuccessTemplateId = templateId)
 
         // when
         val result = service.setDefaultTemplate(templateId, TemplateCategory.SUCCESS, studentId)
@@ -382,10 +415,8 @@ class TemplateServiceTest {
         assertThat(result).isEqualTo(systemTemplate)
         verify { templateRepository.findById(templateId) }
         verify { studentRepository.findById(studentId) }
-        verify { 
-            studentRepository.save(match { 
-                it.id == studentId && it.defaultSuccessTemplateId == templateId 
-            }) 
+        verify {
+            studentRepository.updateDefaultTemplateById(studentId, TemplateCategory.SUCCESS, templateId)
         }
     }
 

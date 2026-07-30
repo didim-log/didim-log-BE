@@ -1,6 +1,7 @@
 package com.didimlog.application.template
 
 import com.didimlog.application.problem.ProblemService
+import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
@@ -29,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional
 class TemplateService(
     private val templateRepository: TemplateRepository,
     private val problemService: ProblemService,
-    private val studentRepository: StudentRepository
+    private val studentRepository: StudentRepository,
+    private val studentLifecycleCoordinator: StudentLifecycleCoordinator
 ) {
     private val log = LoggerFactory.getLogger(TemplateService::class.java)
 
@@ -89,15 +91,18 @@ class TemplateService(
      */
     @Transactional
     fun createTemplate(studentId: String, title: String, content: String): Template {
-        val template = Template(
-            studentId = studentId,
-            title = title,
-            content = content,
-            type = TemplateOwnershipType.CUSTOM,
-            isDefaultSuccess = false, // Deprecated field, kept for DB compatibility
-            isDefaultFail = false // Deprecated field, kept for DB compatibility
-        )
-        return templateRepository.save(template)
+        return studentLifecycleCoordinator.execute(studentId) {
+            getStudent(studentId)
+            val template = Template(
+                studentId = studentId,
+                title = title,
+                content = content,
+                type = TemplateOwnershipType.CUSTOM,
+                isDefaultSuccess = false, // Deprecated field, kept for DB compatibility
+                isDefaultFail = false // Deprecated field, kept for DB compatibility
+            )
+            templateRepository.save(template)
+        }
     }
 
     /**
@@ -113,14 +118,16 @@ class TemplateService(
      */
     @Transactional
     fun updateTemplate(templateId: String, studentId: String, title: String, content: String): Template {
-        val template = getTemplate(templateId)
-        if (template.type == TemplateOwnershipType.SYSTEM) {
-            throw IllegalArgumentException("시스템 템플릿은 수정할 수 없습니다.")
+        return studentLifecycleCoordinator.execute(studentId) {
+            getStudent(studentId)
+            val template = getTemplate(templateId)
+            if (template.type == TemplateOwnershipType.SYSTEM) {
+                throw IllegalArgumentException("시스템 템플릿은 수정할 수 없습니다.")
+            }
+            template.validateOwner(studentId)
+
+            templateRepository.save(template.update(title, content))
         }
-        template.validateOwner(studentId)
-        
-        val updatedTemplate = template.update(title, content)
-        return templateRepository.save(updatedTemplate)
     }
 
     /**
@@ -133,13 +140,19 @@ class TemplateService(
      */
     @Transactional
     fun deleteTemplate(templateId: String, studentId: String) {
-        val template = getTemplate(templateId)
-        if (template.type == TemplateOwnershipType.SYSTEM) {
-            throw BusinessException(ErrorCode.TEMPLATE_CANNOT_DELETE_SYSTEM, "시스템 템플릿은 삭제할 수 없습니다.")
+        studentLifecycleCoordinator.execute(studentId) {
+            getStudent(studentId)
+            val template = getTemplate(templateId)
+            if (template.type == TemplateOwnershipType.SYSTEM) {
+                throw BusinessException(
+                    ErrorCode.TEMPLATE_CANNOT_DELETE_SYSTEM,
+                    "시스템 템플릿은 삭제할 수 없습니다."
+                )
+            }
+            template.validateOwner(studentId)
+
+            templateRepository.delete(template)
         }
-        template.validateOwner(studentId)
-        
-        templateRepository.delete(template)
     }
 
     /**
@@ -155,20 +168,19 @@ class TemplateService(
      */
     @Transactional
     fun setDefaultTemplate(templateId: String, category: TemplateCategory, studentId: String): Template {
-        val template = getTemplate(templateId)
-        if (template.type == TemplateOwnershipType.CUSTOM) {
-            template.validateOwner(studentId)
+        return studentLifecycleCoordinator.execute(studentId) {
+            getStudent(studentId)
+            val template = getTemplate(templateId)
+            if (template.type == TemplateOwnershipType.CUSTOM) {
+                template.validateOwner(studentId)
+            }
+            studentRepository.updateDefaultTemplateById(studentId, category, templateId)
+                ?: throw BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "학생을 찾을 수 없습니다. id=$studentId"
+                )
+            template
         }
-        val student = getStudent(studentId)
-        
-        val updatedStudent = if (category == TemplateCategory.SUCCESS) {
-            student.copy(defaultSuccessTemplateId = templateId)
-        } else {
-            student.copy(defaultFailTemplateId = templateId)
-        }
-        
-        studentRepository.save(updatedStudent)
-        return template
     }
 
     /**

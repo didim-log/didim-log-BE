@@ -1,9 +1,11 @@
 package com.didimlog.application.feedback
 
+import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.domain.Feedback
 import com.didimlog.domain.enums.FeedbackStatus
 import com.didimlog.domain.enums.FeedbackType
 import com.didimlog.domain.repository.FeedbackRepository
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.data.domain.Page
@@ -17,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional
  */
 @Service
 class FeedbackService(
-    private val feedbackRepository: FeedbackRepository
+    private val feedbackRepository: FeedbackRepository,
+    private val studentRepository: StudentRepository,
+    private val studentLifecycleCoordinator: StudentLifecycleCoordinator
 ) {
 
     /**
@@ -30,12 +34,15 @@ class FeedbackService(
      */
     @Transactional
     fun createFeedback(writerId: String, content: String, type: FeedbackType): Feedback {
-        val feedback = Feedback(
-            writerId = writerId,
-            content = content,
-            type = type
-        )
-        return feedbackRepository.save(feedback)
+        return studentLifecycleCoordinator.execute(writerId) {
+            requireActiveStudent(writerId)
+            val feedback = Feedback(
+                writerId = writerId,
+                content = content,
+                type = type
+            )
+            feedbackRepository.save(feedback)
+        }
     }
 
     /**
@@ -59,13 +66,17 @@ class FeedbackService(
      */
     @Transactional
     fun updateFeedbackStatus(feedbackId: String, newStatus: FeedbackStatus): Feedback {
-        val feedback = feedbackRepository.findById(feedbackId)
-            .orElseThrow {
-                BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "피드백을 찾을 수 없습니다. feedbackId=$feedbackId")
+        val writerId = findFeedback(feedbackId).writerId
+        return studentLifecycleCoordinator.execute(writerId) {
+            requireActiveStudent(writerId)
+            val feedback = findFeedback(feedbackId)
+            if (feedback.writerId != writerId) {
+                throw BusinessException(ErrorCode.SESSION_STATE_CONFLICT)
             }
-        
-        val updatedFeedback = feedback.updateStatus(newStatus)
-        return feedbackRepository.save(updatedFeedback)
+
+            val updatedFeedback = feedback.updateStatus(newStatus)
+            feedbackRepository.save(updatedFeedback)
+        }
     }
 
     /**
@@ -76,18 +87,42 @@ class FeedbackService(
      */
     @Transactional
     fun deleteFeedback(feedbackId: String) {
-        val feedback = feedbackRepository.findById(feedbackId)
-            .orElseThrow {
-                BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "피드백을 찾을 수 없습니다. feedbackId=$feedbackId")
+        val writerId = findFeedback(feedbackId).writerId
+        studentLifecycleCoordinator.execute(writerId) {
+            requireActiveStudent(writerId)
+            val feedback = findFeedback(feedbackId)
+            if (feedback.writerId != writerId) {
+                throw BusinessException(ErrorCode.SESSION_STATE_CONFLICT)
             }
 
-        if (feedback.status != FeedbackStatus.COMPLETED) {
-            throw BusinessException(
-                ErrorCode.COMMON_INVALID_INPUT,
-                "완료된 피드백만 삭제할 수 있습니다. 현재 상태: ${feedback.status.value}"
-            )
-        }
+            if (feedback.status != FeedbackStatus.COMPLETED) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "완료된 피드백만 삭제할 수 있습니다. 현재 상태: ${feedback.status.value}"
+                )
+            }
 
-        feedbackRepository.delete(feedback)
+            feedbackRepository.delete(feedback)
+        }
+    }
+
+    private fun requireActiveStudent(studentId: String) {
+        studentRepository.findById(studentId)
+            .orElseThrow {
+                BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "학생을 찾을 수 없습니다. studentId=$studentId"
+                )
+            }
+    }
+
+    private fun findFeedback(feedbackId: String): Feedback {
+        return feedbackRepository.findById(feedbackId)
+            .orElseThrow {
+                BusinessException(
+                    ErrorCode.COMMON_RESOURCE_NOT_FOUND,
+                    "피드백을 찾을 수 없습니다. feedbackId=$feedbackId"
+                )
+            }
     }
 }

@@ -47,10 +47,4 @@ data class Log(
 
     fun saveAiReview(review: String): Log = copy(aiReview = AiReview(review))
 
-    fun updateFeedback(status: AiFeedbackStatus, reason: String? = null): Log {
-        return copy(
-            aiFeedbackStatus = status,
-            aiFeedbackReason = reason
-        )
-    }
 }

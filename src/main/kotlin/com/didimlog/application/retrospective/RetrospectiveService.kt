@@ -1,5 +1,6 @@
 package com.didimlog.application.retrospective
 
+import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
@@ -23,7 +24,8 @@ import org.springframework.transaction.annotation.Transactional
 class RetrospectiveService(
     private val retrospectiveRepository: RetrospectiveRepository,
     private val studentRepository: StudentRepository,
-    private val problemRepository: ProblemRepository
+    private val problemRepository: ProblemRepository,
+    private val studentLifecycleCoordinator: StudentLifecycleCoordinator
 ) {
 
     /**
@@ -49,26 +51,29 @@ class RetrospectiveService(
         solvedCategory: String? = null,
         solveTime: String? = null
     ): Retrospective {
-        val student = getStudent(studentId)
-        val problem = findProblemOrThrow(problemId)
+        return studentLifecycleCoordinator.execute(studentId) {
+            val student = getStudent(studentId)
+            val problem = findProblemOrThrow(problemId)
 
-        val existingRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
-        existingRetrospective?.let { validateOwnerOrThrow(it, student) }
-        val candidate = (existingRetrospective ?: Retrospective(
-            studentId = studentId,
-            problemId = problemId,
-            content = content,
-            mainCategory = problem.category
-        ))
-            .updateContent(content, summary)
-            .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
-            .copy(mainCategory = problem.category)
+            val existingRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
+            existingRetrospective?.let { validateOwnerOrThrow(it, student) }
+            val candidate = (existingRetrospective ?: Retrospective(
+                studentId = studentId,
+                problemId = problemId,
+                content = content,
+                mainCategory = problem.category
+            ))
+                .updateContent(content, summary)
+                .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
+                .copy(mainCategory = problem.category)
 
-        if (existingRetrospective != null) {
-            return retrospectiveRepository.updateEditableFieldsByIdAndStudent(candidate)
-                ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
+            if (existingRetrospective != null) {
+                retrospectiveRepository.updateEditableFieldsByIdAndStudent(candidate)
+                    ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
+            } else {
+                upsertRetrospective(candidate)
+            }
         }
-        return upsertRetrospective(candidate)
     }
 
     /**
@@ -110,19 +115,21 @@ class RetrospectiveService(
         solvedCategory: String? = null,
         solveTime: String? = null
     ): Retrospective {
-        val retrospective = getRetrospective(retrospectiveId, studentId)
-        val mainCategory = retrospective.mainCategory
-            ?: problemRepository.findById(retrospective.problemId)
-                .map { it.category }
-                .orElse(null)
+        return studentLifecycleCoordinator.execute(studentId) {
+            val retrospective = getRetrospective(retrospectiveId, studentId)
+            val mainCategory = retrospective.mainCategory
+                ?: problemRepository.findById(retrospective.problemId)
+                    .map { it.category }
+                    .orElse(null)
 
-        val updatedRetrospective = retrospective
-            .updateContent(content, summary)
-            .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
-            .copy(mainCategory = mainCategory)
+            val updatedRetrospective = retrospective
+                .updateContent(content, summary)
+                .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
+                .copy(mainCategory = mainCategory)
 
-        return retrospectiveRepository.updateEditableFieldsByIdAndStudent(updatedRetrospective)
-            ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(updatedRetrospective)
+                ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
+        }
     }
 
     /**
@@ -135,17 +142,19 @@ class RetrospectiveService(
      */
     @Transactional
     fun deleteRetrospective(retrospectiveId: String, studentId: String): Retrospective {
-        val retrospective = findRetrospectiveOrThrow(retrospectiveId)
-        val student = getStudent(studentId)
-        validateOwnerOrThrow(retrospective, student)
+        return studentLifecycleCoordinator.execute(studentId) {
+            val retrospective = findRetrospectiveOrThrow(retrospectiveId)
+            val student = getStudent(studentId)
+            validateOwnerOrThrow(retrospective, student)
 
-        // 회고 삭제 시 해당 문제의 풀이 기록(Solution)도 함께 삭제
-        val problemId = ProblemId(retrospective.problemId)
-        removeSolutionsWithRetry(student, problemId)
+            // 회고 삭제 시 해당 문제의 풀이 기록(Solution)도 함께 삭제
+            val problemId = ProblemId(retrospective.problemId)
+            removeSolutionsWithRetry(student, problemId)
 
-        // 회고 삭제
-        return retrospectiveRepository.findAndRemoveByIdAndStudentId(retrospectiveId, studentId)
-            ?: retrospective
+            // 회고 삭제
+            retrospectiveRepository.findAndRemoveByIdAndStudentId(retrospectiveId, studentId)
+                ?: retrospective
+        }
     }
 
     private fun validateOwnerOrThrow(retrospective: Retrospective, student: Student) {
@@ -182,11 +191,13 @@ class RetrospectiveService(
 
     @Transactional
     fun toggleBookmark(retrospectiveId: String, studentId: String): Boolean {
-        getRetrospective(retrospectiveId, studentId)
-        val updatedRetrospective =
-            retrospectiveRepository.toggleBookmarkByIdAndStudentId(retrospectiveId, studentId)
-                ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
-        return updatedRetrospective.isBookmarked
+        return studentLifecycleCoordinator.execute(studentId) {
+            getRetrospective(retrospectiveId, studentId)
+            val updatedRetrospective =
+                retrospectiveRepository.toggleBookmarkByIdAndStudentId(retrospectiveId, studentId)
+                    ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
+            updatedRetrospective.isBookmarked
+        }
     }
 
     private fun upsertRetrospective(retrospective: Retrospective): Retrospective {

@@ -1,5 +1,6 @@
 package com.didimlog.application.retrospective
 
+import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
 import com.didimlog.application.study.StudyService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Retrospective
@@ -122,7 +123,8 @@ class RetrospectiveAtomicityIntegrationTest {
         val service = RetrospectiveService(
             barrierRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         )
         val executor = Executors.newFixedThreadPool(2)
 
@@ -156,7 +158,8 @@ class RetrospectiveAtomicityIntegrationTest {
         val service = RetrospectiveService(
             barrierRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         )
         val executor = Executors.newFixedThreadPool(2)
 
@@ -202,7 +205,8 @@ class RetrospectiveAtomicityIntegrationTest {
         val actualService = RetrospectiveService(
             retrospectiveRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         )
         assertThat(
             actualService.toggleBookmark(requireNotNull(created.id), studentId)
@@ -245,7 +249,8 @@ class RetrospectiveAtomicityIntegrationTest {
         val service = RetrospectiveService(
             barrierRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         )
         val executor = Executors.newFixedThreadPool(2)
 
@@ -305,12 +310,14 @@ class RetrospectiveAtomicityIntegrationTest {
         val delayedUpdateService = RetrospectiveService(
             pausingRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         )
         val deleteService = RetrospectiveService(
             retrospectiveRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         )
         val executor = Executors.newSingleThreadExecutor()
 
@@ -395,7 +402,8 @@ class RetrospectiveAtomicityIntegrationTest {
         RetrospectiveService(
             retrospectiveRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         ).deleteRetrospective(requireNotNull(retrospective.id), studentId)
 
         val persisted = studentRepository.findById(studentId).orElseThrow()
@@ -439,7 +447,8 @@ class RetrospectiveAtomicityIntegrationTest {
         RetrospectiveService(
             retrospectiveRepository,
             studentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         ).deleteRetrospective(requireNotNull(retrospective.id), studentId)
 
         val persisted = studentRepository.findById(studentId).orElseThrow()
@@ -491,7 +500,8 @@ class RetrospectiveAtomicityIntegrationTest {
         val deleteService = RetrospectiveService(
             retrospectiveRepository,
             pausingStudentRepository,
-            problemRepository
+            problemRepository,
+            ImmediateCredentialSessionCoordinator()
         )
         val executor = Executors.newSingleThreadExecutor()
         val deleteFuture = executor.submit<Throwable?> {

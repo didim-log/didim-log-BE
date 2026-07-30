@@ -1,5 +1,6 @@
 package com.didimlog.application.auth.oauth
 
+import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
@@ -19,6 +20,7 @@ class OAuthExchangeService(
     private val studentRepository: StudentRepository,
     private val jwtTokenProvider: JwtTokenProvider,
     private val refreshTokenService: RefreshTokenService,
+    private val credentialSessionCoordinator: CredentialSessionCoordinator,
     @Value("\${app.oauth.exchange-code-ttl-seconds:120}")
     private val exchangeCodeTtlSeconds: Long
 ) {
@@ -71,40 +73,42 @@ class OAuthExchangeService(
 
         val identity = exchangeCodeStore.consume(code)
             ?: throw invalidExchangeCode()
-        val student = studentRepository.findById(identity.studentId)
-            .orElseThrow(::invalidExchangeCode)
-        val bojId = student.bojId?.value
-            ?: throw invalidExchangeCode()
-        if (
-            student.role != Role.USER &&
-            student.role != Role.ADMIN
-        ) {
-            throw invalidExchangeCode()
-        }
-        if (
-            bojId != identity.bojId ||
-            student.credentialVersion != identity.credentialVersion ||
-            student.role != identity.role
-        ) {
-            throw invalidExchangeCode()
-        }
+        return credentialSessionCoordinator.executeWithCompletionCheck(identity.studentId) {
+            val student = studentRepository.findById(identity.studentId)
+                .orElseThrow(::invalidExchangeCode)
+            val bojId = student.bojId?.value
+                ?: throw invalidExchangeCode()
+            if (
+                student.role != Role.USER &&
+                student.role != Role.ADMIN
+            ) {
+                throw invalidExchangeCode()
+            }
+            if (
+                bojId != identity.bojId ||
+                student.credentialVersion != identity.credentialVersion ||
+                student.role != identity.role
+            ) {
+                throw invalidExchangeCode()
+            }
 
-        val accessToken = jwtTokenProvider.createToken(
-            subject = bojId,
-            studentId = identity.studentId,
-            credentialVersion = student.credentialVersion,
-            role = student.role.value
-        )
-        val refreshToken = refreshTokenService.generateAndSave(student)
+            val accessToken = jwtTokenProvider.createToken(
+                subject = bojId,
+                studentId = identity.studentId,
+                credentialVersion = student.credentialVersion,
+                role = student.role.value
+            )
+            val refreshToken = refreshTokenService.generateAndSave(student)
 
-        return ExchangeResult(
-            accessToken = accessToken,
-            refreshToken = refreshToken,
-            rating = student.rating,
-            tier = student.tier(),
-            tierLevel = student.solvedAcTierLevel.value,
-            provider = student.provider
-        )
+            ExchangeResult(
+                accessToken = accessToken,
+                refreshToken = refreshToken,
+                rating = student.rating,
+                tier = student.tier(),
+                tierLevel = student.solvedAcTierLevel.value,
+                provider = student.provider
+            )
+        }
     }
 
     private fun generateCode(): String {
