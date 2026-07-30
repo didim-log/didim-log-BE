@@ -187,6 +187,57 @@ class StudentTest {
     }
 
     @Test
+    fun `문제 풀이를 제거하면 남은 기록으로 마지막 풀이일과 연속 일수를 다시 계산한다`() {
+        val targetProblem = Problem(
+            id = ProblemId("remove-target"),
+            title = "Remove Target",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/remove-target"
+        )
+        val oldProblem = targetProblem.copy(id = ProblemId("old-record"))
+        val firstRemainingProblem = targetProblem.copy(id = ProblemId("remaining-1"))
+        val secondRemainingProblem = targetProblem.copy(id = ProblemId("remaining-2"))
+        val thirdRemainingProblem = targetProblem.copy(id = ProblemId("remaining-3"))
+        val latestSolvedAt = LocalDateTime.of(2026, 7, 30, 10, 0)
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            bojId = BojId("tester123"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+            .solveProblem(oldProblem, TimeTakenSeconds(100), true, latestSolvedAt.minusDays(6))
+            .solveProblem(targetProblem, TimeTakenSeconds(100), true, latestSolvedAt.minusDays(4))
+            .solveProblem(firstRemainingProblem, TimeTakenSeconds(100), true, latestSolvedAt.minusDays(3))
+            .solveProblem(secondRemainingProblem, TimeTakenSeconds(100), true, latestSolvedAt.minusDays(2))
+            .solveProblem(thirdRemainingProblem, TimeTakenSeconds(100), true, latestSolvedAt.minusDays(1))
+            .solveProblem(targetProblem, TimeTakenSeconds(100), true, latestSolvedAt)
+
+        val targetRemoved = student.removeSolutionsByProblemId(targetProblem.id)
+        val allRemoved = targetRemoved
+            .removeSolutionsByProblemId(oldProblem.id)
+            .removeSolutionsByProblemId(firstRemainingProblem.id)
+            .removeSolutionsByProblemId(secondRemainingProblem.id)
+            .removeSolutionsByProblemId(thirdRemainingProblem.id)
+
+        assertThat(targetRemoved.getSolvedProblemIds()).containsExactly(
+            oldProblem.id,
+            firstRemainingProblem.id,
+            secondRemainingProblem.id,
+            thirdRemainingProblem.id
+        )
+        assertThat(targetRemoved.lastSolvedAt).isEqualTo(latestSolvedAt.toLocalDate().minusDays(1))
+        assertThat(targetRemoved.consecutiveSolveDays).isEqualTo(3)
+        assertThat(allRemoved.solutions.getAll()).isEmpty()
+        assertThat(allRemoved.lastSolvedAt).isNull()
+        assertThat(allRemoved.consecutiveSolveDays).isZero()
+    }
+
+    @Test
     @DisplayName("updateInfo는 외부에서 가져온 Rating 점수로 티어를 업데이트한다")
     fun `updateInfo로 티어 업데이트`() {
         // given

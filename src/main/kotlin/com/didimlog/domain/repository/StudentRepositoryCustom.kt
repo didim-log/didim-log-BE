@@ -42,7 +42,7 @@ interface StudentRepositoryCustom {
         expectedDocumentVersion: Long,
         solutions: Solutions,
         consecutiveSolveDays: Int,
-        lastSolvedAt: LocalDate
+        lastSolvedAt: LocalDate?
     ): Student?
 
     fun searchAdminUsers(

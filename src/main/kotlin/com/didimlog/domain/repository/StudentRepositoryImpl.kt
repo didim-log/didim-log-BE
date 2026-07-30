@@ -118,7 +118,7 @@ class StudentRepositoryImpl(
         expectedDocumentVersion: Long,
         solutions: Solutions,
         consecutiveSolveDays: Int,
-        lastSolvedAt: LocalDate
+        lastSolvedAt: LocalDate?
     ): Student? {
         require(expectedDocumentVersion >= 0) { "문서 버전은 0 이상이어야 합니다." }
 

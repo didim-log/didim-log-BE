@@ -68,8 +68,8 @@ class RetrospectiveController(
     @Operation(
         summary = "회고 작성",
         description = "학생이 문제 풀이 후 회고를 작성합니다. 이미 작성한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. " +
-                "요청 본문에 content(필수, 10자 이상), summary(선택, 200자 이하), " +
-                "resultType(선택, SUCCESS/FAIL), solvedCategory(선택, 50자 이하)를 포함할 수 있습니다.",
+                "요청 본문에 content(필수, 10자 이상), summary(필수, 200자 이하), " +
+                "resultType(선택, SUCCESS/FAIL/TIME_OVER), solvedCategory(선택, 50자 이하)를 포함할 수 있습니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -88,6 +88,11 @@ class RetrospectiveController(
             ApiResponse(
                 responseCode = "404",
                 description = "학생 또는 문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "동시 요청으로 회고 상태가 변경됨",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
@@ -217,6 +222,11 @@ class RetrospectiveController(
         value = [
             ApiResponse(responseCode = "200", description = "조회 성공"),
             ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
                 responseCode = "404",
                 description = "회고를 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
@@ -308,8 +318,18 @@ class RetrospectiveController(
         value = [
             ApiResponse(responseCode = "200", description = "토글 성공"),
             ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
                 responseCode = "404",
                 description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "동시 요청으로 회고 상태가 변경됨",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -457,8 +477,18 @@ class RetrospectiveController(
         value = [
             ApiResponse(responseCode = "204", description = "삭제 성공 (응답 본문 없음)"),
             ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
                 responseCode = "404",
                 description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "동시 요청으로 회고 상태가 변경됨",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -504,6 +534,11 @@ class RetrospectiveController(
             ApiResponse(
                 responseCode = "404",
                 description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "동시 요청으로 회고 상태가 변경됨",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]

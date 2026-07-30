@@ -50,38 +50,25 @@ class RetrospectiveService(
         solveTime: String? = null
     ): Retrospective {
         val student = getStudent(studentId)
-        validateProblemExists(problemId)
+        val problem = findProblemOrThrow(problemId)
 
         val existingRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
-
-        if (existingRetrospective != null) {
-            validateOwnerOrThrow(existingRetrospective, student)
-            val updatedRetrospective = existingRetrospective
-                .updateContent(content, summary)
-                .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
-            return retrospectiveRepository.save(updatedRetrospective)
-        }
-
-        val newRetrospective = Retrospective(
+        existingRetrospective?.let { validateOwnerOrThrow(it, student) }
+        val candidate = (existingRetrospective ?: Retrospective(
             studentId = studentId,
             problemId = problemId,
             content = content,
-            summary = summary,
-            solutionResult = solutionResult,
-            solvedCategory = solvedCategory,
-            solveTime = solveTime
-        )
-        return try {
-            retrospectiveRepository.save(newRetrospective)
-        } catch (_: DuplicateKeyException) {
-            // 동시 요청으로 유니크 인덱스 충돌이 난 경우 기존 문서를 다시 조회해 update 경로로 수렴시킨다.
-            val concurrentRetrospective = retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
-                ?: throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "중복 회고 생성이 감지되었습니다.")
-            val updatedRetrospective = concurrentRetrospective
-                .updateContent(content, summary)
-                .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
-            retrospectiveRepository.save(updatedRetrospective)
+            mainCategory = problem.category
+        ))
+            .updateContent(content, summary)
+            .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
+            .copy(mainCategory = problem.category)
+
+        if (existingRetrospective != null) {
+            return retrospectiveRepository.updateEditableFieldsByIdAndStudent(candidate)
+                ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
         }
+        return upsertRetrospective(candidate)
     }
 
     /**
@@ -124,12 +111,18 @@ class RetrospectiveService(
         solveTime: String? = null
     ): Retrospective {
         val retrospective = getRetrospective(retrospectiveId, studentId)
+        val mainCategory = retrospective.mainCategory
+            ?: problemRepository.findById(retrospective.problemId)
+                .map { it.category }
+                .orElse(null)
 
         val updatedRetrospective = retrospective
             .updateContent(content, summary)
             .updateSolutionInfo(solutionResult, solvedCategory, solveTime)
+            .copy(mainCategory = mainCategory)
 
-        return retrospectiveRepository.save(updatedRetrospective)
+        return retrospectiveRepository.updateEditableFieldsByIdAndStudent(updatedRetrospective)
+            ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
     }
 
     /**
@@ -142,17 +135,17 @@ class RetrospectiveService(
      */
     @Transactional
     fun deleteRetrospective(retrospectiveId: String, studentId: String): Retrospective {
+        val retrospective = findRetrospectiveOrThrow(retrospectiveId)
         val student = getStudent(studentId)
-        val retrospective = getRetrospective(retrospectiveId, studentId)
+        validateOwnerOrThrow(retrospective, student)
 
         // 회고 삭제 시 해당 문제의 풀이 기록(Solution)도 함께 삭제
         val problemId = ProblemId(retrospective.problemId)
-        val updatedStudent = student.removeSolutionByProblemId(problemId)
-        studentRepository.save(updatedStudent)
+        removeSolutionsWithRetry(student, problemId)
 
         // 회고 삭제
-        retrospectiveRepository.delete(retrospective)
-        return retrospective
+        return retrospectiveRepository.findAndRemoveByIdAndStudentId(retrospectiveId, studentId)
+            ?: retrospective
     }
 
     private fun validateOwnerOrThrow(retrospective: Retrospective, student: Student) {
@@ -189,16 +182,52 @@ class RetrospectiveService(
 
     @Transactional
     fun toggleBookmark(retrospectiveId: String, studentId: String): Boolean {
-        val retrospective = getRetrospective(retrospectiveId, studentId)
-        
-        val updatedRetrospective = retrospective.toggleBookmark()
-        retrospectiveRepository.save(updatedRetrospective)
-        
+        getRetrospective(retrospectiveId, studentId)
+        val updatedRetrospective =
+            retrospectiveRepository.toggleBookmarkByIdAndStudentId(retrospectiveId, studentId)
+                ?: throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
         return updatedRetrospective.isBookmarked
     }
 
-    private fun validateProblemExists(problemId: String) {
-        findProblemOrThrow(problemId)
+    private fun upsertRetrospective(retrospective: Retrospective): Retrospective {
+        return try {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(retrospective)
+        } catch (_: DuplicateKeyException) {
+            try {
+                retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(retrospective)
+            } catch (_: DuplicateKeyException) {
+                throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
+            }
+        }
+    }
+
+    private fun removeSolutionsWithRetry(
+        initialStudent: Student,
+        problemId: ProblemId
+    ) {
+        var student = initialStudent
+        val studentId = requireNotNull(student.id)
+
+        repeat(MAX_CAS_RETRIES + 1) { attempt ->
+            val documentVersion = requireNotNull(student.documentVersion) {
+                "학생 문서 버전이 초기화되지 않았습니다. studentId=$studentId"
+            }
+            val updatedStudent = student.removeSolutionsByProblemId(problemId)
+            studentRepository.updateStudyProgressById(
+                studentId = studentId,
+                expectedDocumentVersion = documentVersion,
+                solutions = updatedStudent.solutions,
+                consecutiveSolveDays = updatedStudent.consecutiveSolveDays,
+                lastSolvedAt = updatedStudent.lastSolvedAt
+            )?.let { return }
+
+            if (attempt < MAX_CAS_RETRIES) {
+                student = studentRepository.findById(studentId)
+                    .orElseThrow { BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT) }
+            }
+        }
+
+        throw BusinessException(ErrorCode.RESOURCE_STATE_CONFLICT)
     }
 
     private fun findRetrospectiveOrThrow(retrospectiveId: String): Retrospective {
@@ -209,5 +238,9 @@ class RetrospectiveService(
     private fun findProblemOrThrow(problemId: String): Problem {
         return problemRepository.findById(problemId)
             .orElseThrow { BusinessException(ErrorCode.PROBLEM_NOT_FOUND, "문제를 찾을 수 없습니다. id=$problemId") }
+    }
+
+    private companion object {
+        const val MAX_CAS_RETRIES = 3
     }
 }

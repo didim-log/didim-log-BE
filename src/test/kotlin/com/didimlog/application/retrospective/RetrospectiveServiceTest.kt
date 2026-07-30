@@ -2,8 +2,11 @@ package com.didimlog.application.retrospective
 
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Retrospective
+import com.didimlog.domain.Solution
+import com.didimlog.domain.Solutions
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
@@ -13,6 +16,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.domain.valueobject.TimeTakenSeconds
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
@@ -23,6 +27,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.dao.DuplicateKeyException
+import java.time.LocalDateTime
 import java.util.Optional
 
 @DisplayName("RetrospectiveService 테스트")
@@ -60,17 +65,11 @@ class RetrospectiveServiceTest {
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) } returns null
 
-        val savedRetrospective = Retrospective(
-            id = "retrospective-id",
-            studentId = studentId,
-            problemId = problemId,
-            content = content,
-            summary = "한 줄 요약 테스트",
-            solutionResult = com.didimlog.domain.enums.ProblemResult.SUCCESS,
-            solvedCategory = "DFS",
-            solveTime = "15m 30s"
-        )
-        every { retrospectiveRepository.save(any<Retrospective>()) } returns savedRetrospective
+        every {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(any())
+        } answers {
+            firstArg<Retrospective>().copy(id = "retrospective-id")
+        }
 
         // when
         val result = retrospectiveService.writeRetrospective(
@@ -92,7 +91,15 @@ class RetrospectiveServiceTest {
         assertThat(result.solutionResult).isEqualTo(com.didimlog.domain.enums.ProblemResult.SUCCESS)
         assertThat(result.solvedCategory).isEqualTo("DFS")
         assertThat(result.solveTime).isEqualTo("15m 30s")
-        verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
+        assertThat(result.mainCategory).isEqualTo(ProblemCategory.IMPLEMENTATION)
+        verify(exactly = 1) {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(
+                match { retrospective ->
+                    retrospective.mainCategory == ProblemCategory.IMPLEMENTATION &&
+                        retrospective.summary == "한 줄 요약 테스트"
+                }
+            )
+        }
     }
 
     @Test
@@ -126,10 +133,9 @@ class RetrospectiveServiceTest {
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) } returns existingRetrospective
 
-        val updatedRetrospective = existingRetrospective
-            .updateContent(newContent, "수정된 한 줄 요약")
-            .updateSolutionInfo(com.didimlog.domain.enums.ProblemResult.FAIL, "Greedy", "20m 15s")
-        every { retrospectiveRepository.save(any<Retrospective>()) } returns updatedRetrospective
+        every {
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(any())
+        } answers { firstArg() }
 
         // when
         val result = retrospectiveService.writeRetrospective(
@@ -148,7 +154,10 @@ class RetrospectiveServiceTest {
         assertThat(result.solutionResult).isEqualTo(com.didimlog.domain.enums.ProblemResult.FAIL)
         assertThat(result.solvedCategory).isEqualTo("Greedy")
         assertThat(result.solveTime).isEqualTo("20m 15s")
-        verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
+        assertThat(result.mainCategory).isEqualTo(ProblemCategory.IMPLEMENTATION)
+        verify(exactly = 1) {
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(any())
+        }
     }
 
     @Test
@@ -169,22 +178,16 @@ class RetrospectiveServiceTest {
             level = 3,
             url = "https://www.acmicpc.net/problem/$problemId"
         )
-        val existingRetrospective = Retrospective(
-            id = "retrospective-id",
-            studentId = studentId,
-            problemId = problemId,
-            content = "기존 회고 내용입니다.",
-            summary = "기존 요약"
-        )
-
         every { studentRepository.findById(studentId) } returns Optional.of(student)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
-        every { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) } returnsMany listOf(
-            null,
-            existingRetrospective
-        )
-        every { retrospectiveRepository.save(any<Retrospective>()) } throws DuplicateKeyException("duplicate key") andThen
-            existingRetrospective.updateContent(content, summary)
+        every {
+            retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
+        } returns null
+        every {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(any())
+        } throws DuplicateKeyException("duplicate key") andThenAnswer {
+            firstArg<Retrospective>().copy(id = "retrospective-id")
+        }
 
         // when
         val result = retrospectiveService.writeRetrospective(
@@ -200,8 +203,51 @@ class RetrospectiveServiceTest {
         // then
         assertThat(result.content).isEqualTo(content)
         assertThat(result.summary).isEqualTo(summary)
-        verify(exactly = 2) { retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId) }
-        verify(exactly = 2) { retrospectiveRepository.save(any<Retrospective>()) }
+        verify(exactly = 1) {
+            retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
+        }
+        verify(exactly = 2) {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(any())
+        }
+    }
+
+    @Test
+    fun `신규 회고 upsert 충돌이 반복되면 409를 반환한다`() {
+        val studentId = "student-id"
+        val problemId = "1000"
+        every { studentRepository.findById(studentId) } returns Optional.of(createStudent(studentId))
+        every {
+            problemRepository.findById(problemId)
+        } returns Optional.of(
+            Problem(
+                id = ProblemId(problemId),
+                title = "A+B",
+                category = ProblemCategory.IMPLEMENTATION,
+                difficulty = Tier.BRONZE,
+                level = 3,
+                url = "https://www.acmicpc.net/problem/$problemId"
+            )
+        )
+        every {
+            retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
+        } returns null
+        every {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(any())
+        } throws DuplicateKeyException("first") andThenThrows DuplicateKeyException("second")
+
+        val exception = assertThrows<BusinessException> {
+            retrospectiveService.writeRetrospective(
+                studentId,
+                problemId,
+                "중복 충돌을 두 번 발생시키는 회고 내용입니다.",
+                "중복 충돌"
+            )
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        verify(exactly = 2) {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(any())
+        }
     }
 
     @Test
@@ -252,11 +298,22 @@ class RetrospectiveServiceTest {
 
         every { retrospectiveRepository.findById(retrospectiveId) } returns Optional.of(existingRetrospective)
         every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every {
+            problemRepository.findById(existingRetrospective.problemId)
+        } returns Optional.of(
+            Problem(
+                id = ProblemId(existingRetrospective.problemId),
+                title = "A+B",
+                category = ProblemCategory.IMPLEMENTATION,
+                difficulty = Tier.BRONZE,
+                level = 3,
+                url = "https://www.acmicpc.net/problem/${existingRetrospective.problemId}"
+            )
+        )
 
-        val updatedRetrospective = existingRetrospective
-            .updateContent(newContent, newSummary)
-            .updateSolutionInfo(com.didimlog.domain.enums.ProblemResult.SUCCESS, "DFS", newSolveTime)
-        every { retrospectiveRepository.save(any<Retrospective>()) } returns updatedRetrospective
+        every {
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(any())
+        } answers { firstArg() }
 
         // when
         val result = retrospectiveService.updateRetrospective(
@@ -273,7 +330,12 @@ class RetrospectiveServiceTest {
         assertThat(result.content).isEqualTo(newContent)
         assertThat(result.summary).isEqualTo(newSummary)
         assertThat(result.solveTime).isEqualTo(newSolveTime)
-        verify(exactly = 1) { retrospectiveRepository.save(any<Retrospective>()) }
+        assertThat(result.mainCategory).isEqualTo(ProblemCategory.IMPLEMENTATION)
+        verify(exactly = 1) {
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(
+                match { it.mainCategory == ProblemCategory.IMPLEMENTATION }
+            )
+        }
     }
 
     @Test
@@ -335,7 +397,9 @@ class RetrospectiveServiceTest {
         every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
         every { problemRepository.findById(problemId) } returns Optional.of(problem)
         every { retrospectiveRepository.findByStudentIdAndProblemId(ownerId, problemId) } returns existingRetrospective
-        every { retrospectiveRepository.save(any<Retrospective>()) } returns existingRetrospective.updateContent("수정된 내용입니다.", "수정된 요약")
+        every {
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(any())
+        } answers { firstArg() }
 
         val result = retrospectiveService.writeRetrospective(
             studentId = ownerId,
@@ -390,15 +454,378 @@ class RetrospectiveServiceTest {
 
         every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
         every { studentRepository.findById(ownerId) } returns Optional.of(ownerStudent)
-        every { studentRepository.save(any<Student>()) } answers { firstArg() }
-        every { retrospectiveRepository.delete(any<Retrospective>()) } returns Unit
+        every {
+            studentRepository.updateStudyProgressById(
+                studentId = ownerId,
+                expectedDocumentVersion = 0,
+                solutions = any(),
+                consecutiveSolveDays = 0,
+                lastSolvedAt = null
+            )
+        } returns ownerStudent.copy(documentVersion = 1)
+        every {
+            retrospectiveRepository.findAndRemoveByIdAndStudentId("retro-1", ownerId)
+        } returns retrospective
 
         // when
         val result = retrospectiveService.deleteRetrospective("retro-1", ownerId)
 
         // then
         assertThat(result.id).isEqualTo("retro-1")
-        verify(exactly = 1) { retrospectiveRepository.delete(retrospective) }
+        verify(exactly = 1) {
+            studentRepository.updateStudyProgressById(
+                studentId = ownerId,
+                expectedDocumentVersion = 0,
+                solutions = any(),
+                consecutiveSolveDays = 0,
+                lastSolvedAt = null
+            )
+        }
+        verify(exactly = 1) {
+            retrospectiveRepository.findAndRemoveByIdAndStudentId("retro-1", ownerId)
+        }
+    }
+
+    @Test
+    fun `수정 대상이 선행 삭제되면 재시도 가능한 409를 반환한다`() {
+        val studentId = "student-id"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = "1000",
+            content = "기존 회고 내용입니다.",
+            mainCategory = ProblemCategory.IMPLEMENTATION
+        )
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returns Optional.of(createStudent(studentId))
+        every {
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(any())
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            retrospectiveService.updateRetrospective(
+                retrospectiveId = "retro-1",
+                studentId = studentId,
+                content = "삭제 경합 뒤 수정할 회고 내용입니다.",
+                summary = "삭제 경합",
+                solutionResult = null,
+                solvedCategory = null,
+                solveTime = null
+            )
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(exception.errorCode.retryable).isTrue()
+    }
+
+    @Test
+    fun `기존 회고 재작성 대상이 선행 삭제되면 신규 upsert 없이 409를 반환한다`() {
+        val studentId = "student-id"
+        val problemId = "1000"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = problemId,
+            content = "기존 회고 내용입니다."
+        )
+        every { studentRepository.findById(studentId) } returns Optional.of(createStudent(studentId))
+        every {
+            problemRepository.findById(problemId)
+        } returns Optional.of(
+            Problem(
+                id = ProblemId(problemId),
+                title = "A+B",
+                category = ProblemCategory.DP,
+                difficulty = Tier.BRONZE,
+                level = 3,
+                url = "https://www.acmicpc.net/problem/$problemId"
+            )
+        )
+        every {
+            retrospectiveRepository.findByStudentIdAndProblemId(studentId, problemId)
+        } returns retrospective
+        every {
+            retrospectiveRepository.updateEditableFieldsByIdAndStudent(any())
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            retrospectiveService.writeRetrospective(
+                studentId,
+                problemId,
+                "삭제 경합 뒤 재작성하면 안 되는 회고 내용입니다.",
+                "재작성 충돌"
+            )
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        verify(exactly = 0) {
+            retrospectiveRepository.upsertEditableFieldsByStudentAndProblem(any())
+        }
+    }
+
+    @Test
+    fun `북마크는 저장소 원자 반전 결과를 반환한다`() {
+        val studentId = "student-id"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = "1000",
+            content = "북마크를 원자적으로 반전하는 회고입니다.",
+            isBookmarked = false
+        )
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returns Optional.of(createStudent(studentId))
+        every {
+            retrospectiveRepository.toggleBookmarkByIdAndStudentId("retro-1", studentId)
+        } returns retrospective.copy(isBookmarked = true)
+
+        val result = retrospectiveService.toggleBookmark("retro-1", studentId)
+
+        assertThat(result).isTrue()
+        verify(exactly = 1) {
+            retrospectiveRepository.toggleBookmarkByIdAndStudentId("retro-1", studentId)
+        }
+        verify(exactly = 0) { retrospectiveRepository.save(any<Retrospective>()) }
+    }
+
+    @Test
+    fun `북마크 대상이 선행 삭제되면 409를 반환한다`() {
+        val studentId = "student-id"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = "1000",
+            content = "삭제된 북마크 대상을 확인하는 회고입니다."
+        )
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returns Optional.of(createStudent(studentId))
+        every {
+            retrospectiveRepository.toggleBookmarkByIdAndStudentId("retro-1", studentId)
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            retrospectiveService.toggleBookmark("retro-1", studentId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+    }
+
+    @Test
+    fun `동시 삭제로 회고가 먼저 사라져도 삭제 성공으로 처리한다`() {
+        val studentId = "student-id"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = "1000",
+            content = "삭제 경합을 확인하는 회고 내용입니다."
+        )
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returns Optional.of(createStudent(studentId))
+        every {
+            studentRepository.updateStudyProgressById(
+                studentId = studentId,
+                expectedDocumentVersion = 0,
+                solutions = any(),
+                consecutiveSolveDays = 0,
+                lastSolvedAt = null
+            )
+        } returns createStudent(studentId).copy(documentVersion = 1)
+        every {
+            retrospectiveRepository.findAndRemoveByIdAndStudentId("retro-1", studentId)
+        } returns null
+
+        val result = retrospectiveService.deleteRetrospective("retro-1", studentId)
+
+        assertThat(result).isEqualTo(retrospective)
+        verify(exactly = 1) {
+            studentRepository.updateStudyProgressById(
+                studentId = studentId,
+                expectedDocumentVersion = 0,
+                solutions = any(),
+                consecutiveSolveDays = 0,
+                lastSolvedAt = null
+            )
+        }
+    }
+
+    @Test
+    fun `학생이 삭제 경합으로 사라지면 회고를 삭제하지 않고 409를 반환한다`() {
+        val studentId = "student-id"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = "1000",
+            content = "학생 삭제 경합을 확인하는 회고입니다."
+        )
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returnsMany listOf(
+            Optional.of(createStudent(studentId)),
+            Optional.empty()
+        )
+        every {
+            studentRepository.updateStudyProgressById(
+                studentId = studentId,
+                expectedDocumentVersion = 0,
+                solutions = any(),
+                consecutiveSolveDays = 0,
+                lastSolvedAt = null
+            )
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            retrospectiveService.deleteRetrospective("retro-1", studentId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        verify(exactly = 0) {
+            retrospectiveRepository.findAndRemoveByIdAndStudentId(any(), any())
+        }
+    }
+
+    @Test
+    fun `풀이 삭제 CAS 충돌 뒤 최신 Student에서 다시 계산한다`() {
+        val studentId = "student-id"
+        val targetProblemId = ProblemId("1000")
+        val remainingProblemId = ProblemId("2000")
+        val solvedAt = LocalDateTime.now()
+        val initialStudent = createStudent(studentId).copy(
+            solutions = solutionsOf(
+                Solution(
+                    problemId = targetProblemId,
+                    timeTaken = TimeTakenSeconds(100),
+                    result = ProblemResult.SUCCESS,
+                    solvedAt = solvedAt.minusDays(1)
+                )
+            ),
+            consecutiveSolveDays = 1,
+            lastSolvedAt = solvedAt.toLocalDate().minusDays(1),
+            documentVersion = 0
+        )
+        val latestStudent = initialStudent.copy(
+            solutions = solutionsOf(
+                *initialStudent.solutions.getAll().toTypedArray(),
+                Solution(
+                    problemId = remainingProblemId,
+                    timeTaken = TimeTakenSeconds(80),
+                    result = ProblemResult.SUCCESS,
+                    solvedAt = solvedAt
+                )
+            ),
+            consecutiveSolveDays = 2,
+            lastSolvedAt = solvedAt.toLocalDate(),
+            documentVersion = 1
+        )
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = targetProblemId.value,
+            content = "삭제 CAS 재시도를 확인하는 회고입니다."
+        )
+        val capturedSolutions = mutableListOf<Solutions>()
+
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returnsMany listOf(
+            Optional.of(initialStudent),
+            Optional.of(latestStudent)
+        )
+        every {
+            studentRepository.updateStudyProgressById(
+                studentId = studentId,
+                expectedDocumentVersion = any(),
+                solutions = capture(capturedSolutions),
+                consecutiveSolveDays = any(),
+                lastSolvedAt = any()
+            )
+        } returnsMany listOf(
+            null,
+            latestStudent.removeSolutionsByProblemId(targetProblemId).copy(documentVersion = 2)
+        )
+        every {
+            retrospectiveRepository.findAndRemoveByIdAndStudentId("retro-1", studentId)
+        } returns retrospective
+
+        retrospectiveService.deleteRetrospective("retro-1", studentId)
+
+        assertThat(capturedSolutions).hasSize(2)
+        assertThat(capturedSolutions[1].getAll().map { it.problemId })
+            .containsExactly(remainingProblemId)
+        verify(exactly = 2) {
+            studentRepository.updateStudyProgressById(any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `풀이 삭제 CAS를 모두 소진하면 회고를 삭제하지 않고 409를 반환한다`() {
+        val studentId = "student-id"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = "1000",
+            content = "삭제 CAS 소진을 확인하는 회고입니다."
+        )
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returnsMany (0L..3L).map { version ->
+            Optional.of(createStudent(studentId).copy(documentVersion = version))
+        }
+        every {
+            studentRepository.updateStudyProgressById(
+                studentId = studentId,
+                expectedDocumentVersion = any(),
+                solutions = any(),
+                consecutiveSolveDays = 0,
+                lastSolvedAt = null
+            )
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            retrospectiveService.deleteRetrospective("retro-1", studentId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(exception.errorCode.retryable).isTrue()
+        verify(exactly = 4) { studentRepository.findById(studentId) }
+        verify(exactly = 4) {
+            studentRepository.updateStudyProgressById(any(), any(), any(), any(), null)
+        }
+        verify(exactly = 0) {
+            retrospectiveRepository.findAndRemoveByIdAndStudentId(any(), any())
+        }
+    }
+
+    @Test
+    fun `풀이 삭제 저장소 오류는 재시도하지 않는다`() {
+        val studentId = "student-id"
+        val retrospective = Retrospective(
+            id = "retro-1",
+            studentId = studentId,
+            problemId = "1000",
+            content = "삭제 저장소 오류를 확인하는 회고입니다."
+        )
+        val databaseFailure = IllegalStateException("mongo unavailable")
+        every { retrospectiveRepository.findById("retro-1") } returns Optional.of(retrospective)
+        every { studentRepository.findById(studentId) } returns Optional.of(createStudent(studentId))
+        every {
+            studentRepository.updateStudyProgressById(
+                studentId = studentId,
+                expectedDocumentVersion = 0,
+                solutions = any(),
+                consecutiveSolveDays = 0,
+                lastSolvedAt = null
+            )
+        } throws databaseFailure
+
+        val thrown = assertThrows<IllegalStateException> {
+            retrospectiveService.deleteRetrospective("retro-1", studentId)
+        }
+
+        assertThat(thrown).isSameAs(databaseFailure)
+        verify(exactly = 1) { studentRepository.findById(studentId) }
+        verify(exactly = 1) {
+            studentRepository.updateStudyProgressById(any(), any(), any(), any(), null)
+        }
+        verify(exactly = 0) {
+            retrospectiveRepository.findAndRemoveByIdAndStudentId(any(), any())
+        }
     }
 
     private fun createStudent(id: String): Student {
@@ -411,8 +838,15 @@ class RetrospectiveServiceTest {
             password = "test-password",
             currentTier = Tier.BRONZE,
             role = Role.USER,
-            primaryLanguage = null
+            primaryLanguage = null,
+            documentVersion = 0
         )
+    }
+
+    private fun solutionsOf(vararg solution: Solution): Solutions {
+        return Solutions().apply {
+            solution.forEach(::add)
+        }
     }
 
     @Test
