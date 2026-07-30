@@ -7,6 +7,7 @@ import com.didimlog.domain.valueobject.AiReview
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.ai.AiApiClient
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.core.task.TaskExecutor
 import java.util.Optional
+import java.util.concurrent.RejectedExecutionException
 
 @DisplayName("AiReviewService 테스트")
 class AiReviewServiceTest {
@@ -30,6 +32,7 @@ class AiReviewServiceTest {
     private val aiApiClient: AiApiClient = mockk()
     private val lockRepository: LogAiReviewLockRepository = mockk()
     private val aiUsageService: AiUsageService = mockk(relaxed = true)
+    private val usageReservation: AiUsageService.UsageReservation = mockk()
     private val aiReviewCodeCacheService: AiReviewCodeCacheService = mockk(relaxed = true)
     private val aiReviewTaskExecutor: TaskExecutor = TaskExecutor { task -> task.run() }
     private val aiReviewService = AiReviewService(
@@ -45,6 +48,8 @@ class AiReviewServiceTest {
     fun setUp() {
         every { aiReviewCodeCacheService.getCachedReview(any(), any()) } returns null
         every { aiReviewCodeCacheService.cacheReview(any(), any(), any()) } returns Unit
+        every { aiUsageService.reserveUsage(any()) } returns usageReservation
+        every { aiUsageService.releaseUsage(any()) } returns true
     }
 
     @Test
@@ -107,14 +112,6 @@ class AiReviewServiceTest {
         every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
         every { lockRepository.markCompleted(any(), any(), any()) } returns true
         every { lockRepository.markFailed(any()) } returns true
-        every { aiUsageService.checkAvailability(any()) } returns com.didimlog.application.ai.AiUsageService.AiStatus(
-            isEnabled = true,
-            todayGlobalUsage = 0,
-            globalLimit = 1000,
-            userLimit = 5,
-            todayUserUsage = 0
-        )
-        every { aiUsageService.incrementUsage(any()) } returns Unit
         every { aiApiClient.requestOneLineReview(any(), any()) } answers {
             val prompt = firstArg<String>()
             assertThat(prompt).contains("a".repeat(2_000))
@@ -162,8 +159,9 @@ class AiReviewServiceTest {
             title = LogTitle("제목"),
             content = LogContent("내용"),
             code = LogCode("0123456789"),
+            studentId = "user123",
             aiReview = null,
-            bojId = null // bojId가 없으면 사용량 체크를 하지 않음
+            bojId = null
         )
         every { logRepository.findById(logId) } returns Optional.of(log)
         every { lockRepository.tryAcquireLock(any(), any(), any()) } returns false
@@ -176,6 +174,7 @@ class AiReviewServiceTest {
         verify { aiApiClient wasNot Called }
         verify(exactly = 0) { lockRepository.markCompleted(any(), any(), any()) }
         verify(exactly = 0) { lockRepository.markFailed(any()) }
+        verify(exactly = 0) { aiUsageService.reserveUsage(any()) }
     }
 
     @Test
@@ -204,6 +203,131 @@ class AiReviewServiceTest {
         assertThat(result.cached).isFalse()
         verify(exactly = 1) { aiApiClient.requestOneLineReview(any(), any()) }
         verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
+        verify(exactly = 1) { aiUsageService.reserveUsage("user123") }
+        verify(exactly = 0) { aiUsageService.releaseUsage(any()) }
+    }
+
+    @Test
+    @DisplayName("AI 공급자 성공 뒤 저장이 실패해도 사용량 예약은 유지한다")
+    fun `save failure after provider success keeps usage reservation`() {
+        val logId = "log-save-failure"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("public class Main { public static void main(String[] args) { } }"),
+            studentId = "user123"
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
+        every { lockRepository.markCompleted(any(), any(), any()) } throws
+            IllegalStateException("save failed")
+        every { aiApiClient.requestOneLineReview(any(), any()) } returns AiApiResponse(
+            rawJson = """{"review":"ok"}""",
+            review = "ok"
+        )
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview(logId) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("save failed")
+
+        verify(exactly = 1) { aiUsageService.reserveUsage("user123") }
+        verify(exactly = 0) { aiUsageService.releaseUsage(any()) }
+        verify(exactly = 1) { lockRepository.markCompleted(logId, "ok", any()) }
+    }
+
+    @Test
+    @DisplayName("AI 공급자 호출이 실패하면 사용량 예약을 반환한다")
+    fun `provider failure releases usage reservation`() {
+        val logId = "log-provider-failure"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("public class Main { public static void main(String[] args) { } }"),
+            studentId = "user123"
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
+        every { lockRepository.markFailed(logId) } returns true
+        every { aiApiClient.requestOneLineReview(any(), any()) } throws
+            IllegalStateException("provider unavailable")
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview(logId) }
+            .isInstanceOf(AiGenerationFailedException::class.java)
+
+        verify(exactly = 1) { aiUsageService.reserveUsage("user123") }
+        verify(exactly = 1) { aiUsageService.releaseUsage(usageReservation) }
+        verify(exactly = 1) { lockRepository.markFailed(logId) }
+        verify(exactly = 0) { lockRepository.markCompleted(any(), any(), any()) }
+        verify(exactly = 0) { aiReviewCodeCacheService.cacheReview(any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("비동기 작업 등록이 거절되면 사용량 예약을 반환한다")
+    fun `executor rejection releases usage reservation`() {
+        val logId = "log-executor-rejection"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("public class Main { public static void main(String[] args) { } }"),
+            studentId = "user123"
+        )
+        val rejectingExecutor = TaskExecutor {
+            throw RejectedExecutionException("queue full")
+        }
+        val service = AiReviewService(
+            logRepository,
+            aiApiClient,
+            lockRepository,
+            aiUsageService,
+            aiReviewCodeCacheService,
+            rejectingExecutor
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
+        every { lockRepository.markFailed(logId) } returns true
+
+        assertThatThrownBy {
+            service.requestOneLineReviewAsync(logId, "user123")
+        }
+            .isInstanceOf(AiGenerationFailedException::class.java)
+            .hasMessageContaining("작업 등록")
+
+        verify(exactly = 1) { aiUsageService.reserveUsage("user123") }
+        verify(exactly = 1) { aiUsageService.releaseUsage(usageReservation) }
+        verify(exactly = 1) { lockRepository.markFailed(logId) }
+        verify { aiApiClient wasNot Called }
+    }
+
+    @Test
+    @DisplayName("사용량 예약이 거절되면 획득한 로그 락을 실패 처리한다")
+    fun `quota rejection marks acquired lock as failed`() {
+        val logId = "log-quota-rejection"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("public class Main { public static void main(String[] args) { } }"),
+            studentId = "user123"
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns true
+        every { lockRepository.markFailed(logId) } returns true
+        every { aiUsageService.reserveUsage("user123") } throws BusinessException(
+            ErrorCode.AI_USER_LIMIT_EXCEEDED
+        )
+
+        assertThatThrownBy {
+            aiReviewService.requestOneLineReviewAsync(logId, "user123")
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .matches { (it as BusinessException).errorCode == ErrorCode.AI_USER_LIMIT_EXCEEDED }
+
+        verify(exactly = 1) { lockRepository.markFailed(logId) }
+        verify(exactly = 0) { aiUsageService.releaseUsage(any()) }
+        verify { aiApiClient wasNot Called }
     }
 
     @Test
