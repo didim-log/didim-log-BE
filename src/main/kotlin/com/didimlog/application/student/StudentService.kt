@@ -3,8 +3,6 @@ package com.didimlog.application.student
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Student
-import com.didimlog.domain.repository.FeedbackRepository
-import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
@@ -24,12 +22,11 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class StudentService(
     private val studentRepository: StudentRepository,
-    private val retrospectiveRepository: RetrospectiveRepository,
-    private val feedbackRepository: FeedbackRepository,
     private val passwordEncoder: PasswordEncoder,
     private val solvedAcClient: SolvedAcClient,
     private val refreshTokenService: RefreshTokenService,
-    private val credentialSessionCoordinator: CredentialSessionCoordinator
+    private val credentialSessionCoordinator: CredentialSessionCoordinator,
+    private val accountDeletionService: AccountDeletionService
 ) {
 
     private val log = LoggerFactory.getLogger(StudentService::class.java)
@@ -147,34 +144,10 @@ class StudentService(
     }
 
     /**
-     * 회원 탈퇴(본인)를 처리한다. (Hard Delete)
-     * - Student 및 연관 데이터(Retrospective, Feedback)를 DB에서 완전히 삭제한다.
-     *
-     * ⚠️ 이 작업은 복구할 수 없다.
+     * 회원 탈퇴(본인)를 공통 계정 삭제 흐름으로 처리한다.
      */
-    @Transactional
     fun withdraw(studentId: String) {
-        credentialSessionCoordinator.execute(studentId) {
-            val latestStudent = studentRepository.findById(studentId)
-                .orElseThrow {
-                    BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
-                }
-            val currentBojId = latestStudent.bojId?.value
-
-            log.warn(
-                "회원 탈퇴 처리 시작(Hard Delete). 복구 불가. bojId={}, studentId={}",
-                currentBojId,
-                studentId
-            )
-
-            // 세션 정리에 실패하면 DB 삭제를 시작하지 않는다.
-            refreshTokenService.revokeAllForStudent(studentId)
-
-            // 연관 데이터 삭제 후, 문서 버전과 무관한 ID 삭제로 학생을 제거한다.
-            retrospectiveRepository.deleteAllByStudentId(studentId)
-            feedbackRepository.deleteAllByWriterId(studentId)
-            studentRepository.deleteById(studentId)
-        }
+        accountDeletionService.deleteAccount(studentId)
     }
 
     /**

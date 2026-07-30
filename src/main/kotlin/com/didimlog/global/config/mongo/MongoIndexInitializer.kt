@@ -1,9 +1,11 @@
 package com.didimlog.global.config.mongo
 
+import com.didimlog.domain.Feedback
 import com.didimlog.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
+import com.didimlog.domain.template.Template
 import java.time.Duration
 import org.bson.Document
 import org.springframework.boot.ApplicationArguments
@@ -42,6 +44,8 @@ class MongoIndexInitializer(
         ensureStudentAdminRatingIndex()
         ensureLogBojSnapshotCreatedIndex()
         ensureLogStudentCreatedIndex()
+        ensureFeedbackWriterIdIndex()
+        ensureTemplateStudentIdIndex()
         ensurePasswordResetCodeUniqueIndex()
         ensurePasswordResetStudentIdUniqueIndex()
         ensurePasswordResetCodeTtlIndex()
@@ -230,6 +234,32 @@ class MongoIndexInitializer(
         }
     }
 
+    private fun ensureFeedbackWriterIdIndex() {
+        ensureIndex(
+            indexOperations = mongoTemplate.indexOps(Feedback::class.java),
+            description = "피드백 작성자 조회",
+            definition = Index()
+                .on("writerId", Sort.Direction.ASC)
+                .named(FEEDBACK_WRITER_ID_INDEX_NAME)
+        ) { index ->
+            index.hasFields("writerId" to Sort.Direction.ASC) &&
+                index.isPlainIndex(unique = false)
+        }
+    }
+
+    private fun ensureTemplateStudentIdIndex() {
+        ensureIndex(
+            indexOperations = mongoTemplate.indexOps(Template::class.java),
+            description = "사용자 템플릿 조회",
+            definition = Index()
+                .on("studentId", Sort.Direction.ASC)
+                .named(TEMPLATE_STUDENT_ID_INDEX_NAME)
+        ) { index ->
+            index.hasFields("studentId" to Sort.Direction.ASC) &&
+                index.isPlainIndex(unique = false)
+        }
+    }
+
     private fun ensurePasswordResetCodeUniqueIndex() {
         ensureIndex(
             indexOperations = mongoTemplate.indexOps(PasswordResetCode::class.java),
@@ -343,6 +373,8 @@ class MongoIndexInitializer(
         const val STUDENT_ADMIN_RATING_INDEX_NAME = "admin_rating_desc_id_asc"
         const val LOG_BOJ_SNAPSHOT_CREATED_INDEX_NAME = "log_boj_snapshot_created"
         const val LOG_STUDENT_CREATED_INDEX_NAME = "log_student_created"
+        const val FEEDBACK_WRITER_ID_INDEX_NAME = "feedback_writer_id"
+        const val TEMPLATE_STUDENT_ID_INDEX_NAME = "template_student_id"
         const val PASSWORD_RESET_CODE_UNIQUE_INDEX_NAME = "uniq_password_reset_code"
         const val PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME = "uniq_password_reset_student_id"
         const val PASSWORD_RESET_CODE_TTL_INDEX_NAME = "ttl_password_reset_expires_at"

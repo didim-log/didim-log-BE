@@ -35,6 +35,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.data.domain.PageImpl
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -180,6 +181,7 @@ class AdminControllerSecurityTest {
         // when & then
         mockMvc.perform(
             delete("/api/v1/admin/users/$studentId")
+                .principal(UsernamePasswordAuthenticationToken("admin-id", null))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
@@ -484,5 +486,4 @@ class AdminControllerSecurityTest {
         )
     }
 }
-
 

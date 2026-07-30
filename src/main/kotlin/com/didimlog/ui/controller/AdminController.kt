@@ -27,6 +27,8 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.Positive
+import org.slf4j.LoggerFactory
+import org.springframework.core.task.TaskRejectedException
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -55,6 +57,8 @@ class AdminController(
     private val studentRepository: com.didimlog.domain.repository.StudentRepository,
     private val noticeService: NoticeService
 ) {
+
+    private val log = LoggerFactory.getLogger(AdminController::class.java)
 
     @Operation(
         summary = "전체 회원 목록 조회",
@@ -108,7 +112,7 @@ class AdminController(
 
     @Operation(
         summary = "회원 강제 탈퇴",
-        description = "특정 회원을 강제로 탈퇴시킵니다. ADMIN 권한이 필요합니다.",
+        description = "본인 탈퇴와 같은 범위로 특정 회원의 세션, 재설정 코드와 학생 ID로 소유권이 확인되는 데이터를 삭제합니다. ADMIN 권한이 필요합니다.",
         security = [SecurityRequirement(name = "Authorization")]
     )
     @ApiResponses(
@@ -128,6 +132,16 @@ class AdminController(
                 responseCode = "404",
                 description = "학생을 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 회원의 계정 상태 변경 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
     )
@@ -135,9 +149,26 @@ class AdminController(
     fun deleteUser(
         @Parameter(description = "학생 ID")
         @PathVariable
-        studentId: String
+        studentId: String,
+        authentication: org.springframework.security.core.Authentication,
+        httpServletRequest: jakarta.servlet.http.HttpServletRequest
     ): ResponseEntity<Map<String, String>> {
         adminService.deleteUser(studentId)
+        try {
+            adminAuditService.logAction(
+                adminId = authentication.name,
+                action = AdminActionType.USER_DELETE,
+                details = "사용자 강제 탈퇴: studentId='$studentId'",
+                ipAddress = HttpRequestUtil.getClientIpAddress(httpServletRequest)
+            )
+        } catch (exception: TaskRejectedException) {
+            log.error(
+                "관리자 강제 탈퇴 감사 로그 제출 실패: adminId={}, studentId={}",
+                authentication.name,
+                studentId,
+                exception
+            )
+        }
         return ResponseEntity.ok(mapOf("message" to "회원이 성공적으로 탈퇴되었습니다."))
     }
 
