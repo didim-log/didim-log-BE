@@ -271,6 +271,21 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 수치별 SHA, 반복 조건과 남은 비용은 [관리자 회원 조회 최적화 근거](./DOCS/refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md)에 정리했습니다.
 테스트 수와 JaCoCo 변화는 성능 수치와 섞지 않고 같은 문서의 역사적 검증 표에 분리했습니다.
 
+### 통계 조회 데이터 축소
+
+| 시나리오 | 직접 비교 항목 | Before | After | 변화 |
+| --- | --- | ---: | ---: | ---: |
+| 전체 통계·회고 1,200건 | 반환 회고 BSON | 5,230,680 B | 107,790 B | 97.94% 감소 |
+| 2024년 히트맵·대상 366건 | 반환 회고 BSON | 5,230,680 B | 18,396 B | 99.65% 감소 |
+| 2024년 히트맵·대상 366건 | 검사 문서 | 1,200 | 366 | 69.50% 감소 |
+
+전체 통계는 필요한 필드만 조회하고, 연도별 히트맵은 날짜 범위와
+`idx_retro_student_created` 인덱스를 사용합니다. 같은 MongoDB 7.0.16 fixture를
+Before·After 각각 5회 실행했으며 기능 결과 hash는 같았습니다.
+표의 BSON은 query가 선택한 회고 문서 크기의 합이며 endpoint 응답 시간이나
+운영 처리량의 개선율이 아닙니다.
+비교 조건과 수치의 범위는 [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)에 정리했습니다.
+
 ### 동시성·요청 제한 검증
 
 | 검증 범위 | 조건 | 확인 결과 |
@@ -305,6 +320,7 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 본인 탈퇴와 관리자 강제 탈퇴의 공통 삭제 순서와 보존 범위는 [계정 삭제 경로 통합과 연관 데이터 정리](./DOCS/refactoring/be-refactor/PHASE_3C_ACCOUNT_DELETION_CONSISTENCY.md)에 정리했습니다.
 계정 삭제와 사용자 데이터 쓰기의 잠금 경계, 부분 갱신과 실제 경합 결과는 [계정 삭제와 사용자 데이터 쓰기 경합 차단](./DOCS/refactoring/be-refactor/PHASE_3D_ACCOUNT_WRITE_BARRIER.md)에 정리했습니다.
 기본 템플릿 삭제 순서, 계정 삭제 중간 실패와 목록 fallback 판정은 [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md)에 정리했습니다.
+통계 projection, 연도 범위 query와 복합 인덱스의 전후 측정은 [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -381,6 +397,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [계정 삭제 경로 통합과 연관 데이터 정리](./DOCS/refactoring/be-refactor/PHASE_3C_ACCOUNT_DELETION_CONSISTENCY.md)
 - [계정 삭제와 사용자 데이터 쓰기 경합 차단](./DOCS/refactoring/be-refactor/PHASE_3D_ACCOUNT_WRITE_BARRIER.md)
 - [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md)
+- [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
