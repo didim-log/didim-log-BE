@@ -92,6 +92,7 @@ Token을 발급하지 않는다.
 
 ## 남은 범위
 
-- 다른 `Student` 전체 저장 경로의 경합 여부 점검
+- 완료: [Study 풀이 결과 부분 갱신](./PHASE_3A_STUDY_SOLUTION_CAS.md)
+- Member·Template·회고 삭제 등 남은 `Student` 전체 저장 경로의 경합 여부 점검
 - 동시에 도착한 여러 solved.ac 응답의 저장 순서 정책
 - 완료: [Phase 2E — 비밀번호 변경과 토큰 소유자 고정](./PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md)

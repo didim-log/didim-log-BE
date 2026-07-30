@@ -1,11 +1,13 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.Student
+import com.didimlog.domain.Solutions
 import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.regex.Pattern
 import org.springframework.data.domain.Page
@@ -102,6 +104,32 @@ class StudentRepositoryImpl(
             .set("rating", rating)
             .set("solvedAcTierLevel", solvedAcTierLevel.value)
             .set("currentTier", currentTier.name)
+            .inc("documentVersion", 1)
+        return mongoTemplate.findAndModify(
+            query,
+            update,
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Student::class.java
+        )
+    }
+
+    override fun updateStudyProgressById(
+        studentId: String,
+        expectedDocumentVersion: Long,
+        solutions: Solutions,
+        consecutiveSolveDays: Int,
+        lastSolvedAt: LocalDate
+    ): Student? {
+        require(expectedDocumentVersion >= 0) { "문서 버전은 0 이상이어야 합니다." }
+
+        val query = Query.query(
+            Criteria.where("_id").`is`(studentId)
+                .and("documentVersion").`is`(expectedDocumentVersion)
+        )
+        val update = Update()
+            .set("solutions", solutions)
+            .set("consecutiveSolveDays", consecutiveSolveDays)
+            .set("lastSolvedAt", lastSolvedAt)
             .inc("documentVersion", 1)
         return mongoTemplate.findAndModify(
             query,

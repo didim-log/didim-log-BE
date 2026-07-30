@@ -171,6 +171,7 @@ flowchart LR
 ```
 
 - 풀이 제출 시 인증 principal의 불변 `studentId`로 사용자를 찾고, 문제 존재 여부를 확인한 뒤 성공 여부와 소요 시간을 사용자 문서에 저장합니다.
+- 같은 학생의 동시 제출은 `documentVersion` 조건부 갱신과 최대 3회 재시도로 최신 풀이 기록에 합칩니다.
 - 코딩 로그는 불변 `studentId`를 소유자로 두고 제목, 내용, 코드, 생성 시점 BOJ ID, 성공 여부를 별도 문서로 저장합니다.
 - AI 리뷰 조회·피드백은 캐시 반환 전에도 인증 principal의 `studentId`와 로그 소유자가 일치하는지 확인합니다.
 - 회고는 사용자·문제를 검증한 뒤 문제별로 생성하거나 기존 문서를 갱신합니다.
@@ -283,6 +284,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | 비밀번호 재설정 코드 발급·소비 | 실제 MongoDB 7.0.16, 같은 회원 20건 동시 발급·같은 코드 20건 동시 재설정 | 발급 오류 0건·활성 코드 1건, 재설정 성공 1건·실패 19건 |
 | 비밀번호 변경과 토큰 소유자 고정 | 실제 MongoDB 7.0.16·Redis 7.2.5, 기존 Access/Refresh Token·지연 로그인·BOJ ID 재사용·과거 Student 저장 | 구 버전·다른 학생 토큰 거절, stale CAS·전체 저장 무변경 |
 | 로그인 프로필 동기화 | 실제 MongoDB, solved.ac 조회 대기 중 비밀번호 재설정 | 새 비밀번호 유지, rating·tier 필드만 갱신 |
+| 풀이 결과 동시 저장 | 실제 MongoDB 7.0.16, 같은 문서 버전의 다른 문제 2건·같은 문제 2건·비밀번호 변경 경합 | 다른 문제 2건 모두 보존, 같은 문제 당일 1건, 새 자격 증명 유지 |
 
 이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
 AI 리뷰 반복 실행과 인증 API 경계값 검사는 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
@@ -294,6 +296,7 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 비밀번호 변경 뒤 기존 세션을 정리하고 토큰 소유자를 고정하는 순서는 [비밀번호 변경과 토큰 소유자 고정](./DOCS/refactoring/be-refactor/PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md)에 정리했습니다.
 로그인 중 solved.ac 프로필 동기화의 부분 갱신과 비밀번호 변경 경합은 [로그인 프로필 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_2C_2_LOGIN_PROFILE_PARTIAL_UPDATE.md)에 정리했습니다.
 인증 요청 제한의 Redis 원자 처리, 연결 주소 기준과 경로별 정책은 [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
+풀이 결과의 문서 버전 조건부 갱신과 충돌 재시도는 [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -365,6 +368,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [로컬 동시성·요청 제한 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)
 - [관리자 회원 조회 최적화](./DOCS/refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md)
 - [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)
+- [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

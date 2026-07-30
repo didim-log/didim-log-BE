@@ -18,6 +18,7 @@ import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 /**
  * 알고리즘 학습자의 상태와 풀이 기록을 관리하는 Aggregate Root
@@ -146,15 +147,18 @@ data class Student(
      * @param problem 풀이한 문제
      * @param timeTakenSeconds 풀이에 소요된 시간 (초)
      * @param isSuccess 풀이 성공 여부
+     * @param solvedAt 풀이 제출 시각
      * @return 풀이 기록이 업데이트된 새로운 Student 인스턴스
      */
     fun solveProblem(
         problem: Problem,
         timeTakenSeconds: TimeTakenSeconds,
-        isSuccess: Boolean
+        isSuccess: Boolean,
+        solvedAt: LocalDateTime = LocalDateTime.now()
     ): Student {
         val result = toProblemResult(isSuccess)
-        val today = LocalDate.now()
+        val recordedAt = solvedAt.truncatedTo(ChronoUnit.MILLIS)
+        val today = recordedAt.toLocalDate()
         
         // 오늘 날짜에 같은 문제에 대한 풀이 기록이 있는지 확인
         val existingSolutions = solutions.getAll()
@@ -164,12 +168,16 @@ data class Student(
         }
         
         val updatedSolutions = when {
-            todaySolutionIndex >= 0 -> updateExistingSolution(existingSolutions, todaySolutionIndex, problem, timeTakenSeconds, result)
-            else -> addNewSolution(existingSolutions, problem, timeTakenSeconds, result)
+            todaySolutionIndex >= 0 ->
+                updateExistingSolution(existingSolutions, todaySolutionIndex, problem, timeTakenSeconds, result, recordedAt)
+            else -> addNewSolution(existingSolutions, problem, timeTakenSeconds, result, recordedAt)
         }
         
-        val updatedConsecutiveDays = calculateConsecutiveSolveDays(today)
-        val updatedLastSolvedAt = today
+        val updatedConsecutiveDays = calculateConsecutiveSolveDays(today, updatedSolutions)
+        val updatedLastSolvedAt = when {
+            lastSolvedAt == null || !lastSolvedAt.isAfter(today) -> today
+            else -> lastSolvedAt
+        }
         
         return copy(
             solutions = updatedSolutions,
@@ -202,13 +210,19 @@ data class Student(
      * @param today 오늘 날짜
      * @return 업데이트된 연속 풀이 일수
      */
-    private fun calculateConsecutiveSolveDays(today: LocalDate): Int {
+    private fun calculateConsecutiveSolveDays(today: LocalDate, updatedSolutions: Solutions): Int {
         if (lastSolvedAt == null) {
             return 1
         }
         
         val daysBetween = java.time.temporal.ChronoUnit.DAYS.between(lastSolvedAt, today)
         
+        if (daysBetween < 0L) {
+            return maxOf(
+                consecutiveSolveDays,
+                calculateRecordedConsecutiveDays(lastSolvedAt, updatedSolutions)
+            )
+        }
         if (daysBetween == 0L) {
             return consecutiveSolveDays
         }
@@ -216,6 +230,21 @@ data class Student(
             return consecutiveSolveDays + 1
         }
         return 1
+    }
+
+    private fun calculateRecordedConsecutiveDays(
+        latestSolvedAt: LocalDate,
+        updatedSolutions: Solutions
+    ): Int {
+        val solvedDates = updatedSolutions.getAll()
+            .mapTo(mutableSetOf()) { solution -> solution.solvedAt.toLocalDate() }
+        var date = latestSolvedAt
+        var consecutiveDays = 0
+        while (solvedDates.contains(date)) {
+            consecutiveDays++
+            date = date.minusDays(1)
+        }
+        return consecutiveDays
     }
 
     /**
@@ -387,38 +416,44 @@ data class Student(
         todaySolutionIndex: Int,
         problem: Problem,
         timeTakenSeconds: TimeTakenSeconds,
-        result: ProblemResult
+        result: ProblemResult,
+        solvedAt: LocalDateTime
     ): Solutions {
-        return Solutions().apply {
-            existingSolutions.forEachIndexed { index, solution ->
-                if (index == todaySolutionIndex) {
-                    val updatedSolution = Solution(
+        val updatedSolutions = existingSolutions.mapIndexed { index, solution ->
+            when {
+                index != todaySolutionIndex -> solution
+                !solution.solvedAt.isBefore(solvedAt) -> solution
+                else ->
+                    Solution(
                         problemId = problem.id,
                         timeTaken = timeTakenSeconds,
-                        result = result
+                        result = result,
+                        solvedAt = solvedAt
                     )
-                    add(updatedSolution)
-                    return@forEachIndexed
-                }
-                add(solution)
             }
         }
+        return toSolutionsInSolvedOrder(updatedSolutions)
     }
 
     private fun addNewSolution(
         existingSolutions: List<Solution>,
         problem: Problem,
         timeTakenSeconds: TimeTakenSeconds,
-        result: ProblemResult
+        result: ProblemResult,
+        solvedAt: LocalDateTime
     ): Solutions {
+        val newSolution = Solution(
+            problemId = problem.id,
+            timeTaken = timeTakenSeconds,
+            result = result,
+            solvedAt = solvedAt
+        )
+        return toSolutionsInSolvedOrder(existingSolutions + newSolution)
+    }
+
+    private fun toSolutionsInSolvedOrder(solutions: List<Solution>): Solutions {
         return Solutions().apply {
-            existingSolutions.forEach { add(it) }
-            val newSolution = Solution(
-                problemId = problem.id,
-                timeTaken = timeTakenSeconds,
-                result = result
-            )
-            add(newSolution)
+            solutions.sortedBy { it.solvedAt }.forEach(::add)
         }
     }
 
