@@ -1,5 +1,8 @@
 package com.didimlog.application.auth.boj
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.ratelimit.RateLimitDecision
@@ -14,6 +17,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.mock.env.MockEnvironment
 
 @DisplayName("BOJ 소유권 인증 서비스 테스트")
@@ -191,6 +195,42 @@ class BojOwnershipVerificationServiceTest {
                 300L
             )
         }
+    }
+
+    @Test
+    @DisplayName("인증 성공 로그에 가입 권한과 인증 정보를 남기지 않는다")
+    fun `verifyOwnership does not log signup capability or verification data`() {
+        val sessionId = "sensitive-verification-session"
+        val bojId = "sensitiveboj123"
+        val storedCode = "DIDIM-LOG-ABC123"
+        every { codeStore.find(sessionId) } returns storedCode
+        every {
+            profileStatusMessageClient.fetchStatusMessage(bojId)
+        } returns BojProfileStatusMessageFetchResult.Found(
+            BojProfileStatusMessage(storedCode)
+        )
+        every { codeStore.consume(sessionId) } returns storedCode
+        every { codeStore.save(any(), any(), any()) } just runs
+        val logger = LoggerFactory.getLogger(
+            BojOwnershipVerificationService::class.java
+        ) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+
+        try {
+            service.verifyOwnership(sessionId = sessionId, bojId = bojId)
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
+
+        val messages = appender.list.joinToString("\n") {
+            it.formattedMessage
+        }
+        assertThat(messages)
+            .doesNotContain(sessionId)
+            .doesNotContain(bojId)
+            .doesNotContain(storedCode)
     }
 
     @Test

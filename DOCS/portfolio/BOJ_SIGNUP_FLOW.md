@@ -56,6 +56,9 @@ sequenceDiagram
 5. `AuthService.signup`은 `registerBojAccount`로 이어진다. 비밀번호 정책과 BOJ ID·이메일 중복을 확인하고, `SolvedAcClient.fetchUser` 결과로 rating과 tier를 계산한다.
 6. BCrypt 비밀번호를 포함한 `Student`를 `StudentRepository.save`로 저장한 뒤 JWT와 refresh token을 발급한다.
 
+프로필 확인을 마친 `sessionId`는 5분 동안 가입에 사용할 수 있는 값이다. 인증 성공
+로그에는 이 값, 인증 코드와 원문 BOJ ID를 기록하지 않는다.
+
 주요 구현 파일:
 
 - `ui/controller/AuthController.kt`
