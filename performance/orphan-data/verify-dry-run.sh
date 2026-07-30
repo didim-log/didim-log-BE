@@ -191,6 +191,23 @@ main() {
   wait_for_mongo "$root_uri"
   copy_assets
 
+  local wrong_database_status
+  for fixture_script in seed-fixture.js seed-collision.js; do
+    set +e
+    docker exec "$MONGO_CONTAINER" mongosh \
+      "$root_uri" \
+      --quiet \
+      --norc \
+      --file "/tmp/$fixture_script" \
+      >"$TEMP_DIR/wrong-database-$fixture_script.log" 2>&1
+    wrong_database_status=$?
+    set -e
+    if (( wrong_database_status == 0 )); then
+      echo "Fixture script accepted a database outside its scope" >&2
+      exit 2
+    fi
+  done
+
   local fixture_root_uri
   fixture_root_uri="mongodb://$ROOT_USER:$ROOT_PASSWORD@127.0.0.1:27017/$FIXTURE_DATABASE?authSource=admin&directConnection=true"
   docker exec "$MONGO_CONTAINER" mongosh \

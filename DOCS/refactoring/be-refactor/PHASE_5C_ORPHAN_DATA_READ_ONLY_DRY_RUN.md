@@ -2,9 +2,10 @@
 
 ## 문제
 
-계정 삭제와 사용자 데이터 쓰기의 경합은 새 고아 데이터가 생기지 않도록 막았지만,
-기존 데이터에 남아 있을 수 있는 참조까지 자동으로 삭제하지는 않는다. 과거 데이터를
-정리하려면 먼저 대상과 보존 범위를 분리해 읽기 전용으로 확인해야 한다.
+정상 Redis 잠금 아래 검증한 계정 삭제·사용자 쓰기 경합에서는 새 고아 데이터 생성을
+막도록 변경했지만, 기존 데이터에 남아 있을 수 있는 참조까지 자동으로 삭제하지는
+않는다. 과거 데이터를 정리하려면 먼저 대상과 보존 범위를 분리해 읽기 전용으로
+확인해야 한다.
 
 이번 단계는 삭제 작업이 아니다. 점검 결과에도 `cleanupAuthorized: false`를 기록하며,
 결과가 있거나 없다는 이유만으로 삭제를 승인하지 않는다.
@@ -48,8 +49,9 @@ TLS를 끄는 옵션을 허용하지 않는다.
 - 대소문자를 정규화했을 때 겹치는 String/ObjectId ID
 - 실행 전후 컬렉션 문서 수 또는 점검 필드 fingerprint 변화
 
-각 읽기는 primary와 majority read concern으로 실행한다. 실행 전후에는 아래 필드만
-EJSON 형태로 순서대로 SHA-256 처리한다.
+점검 데이터의 count·aggregate는 primary read preference와 majority read concern으로
+실행한다. 실행 전후에는 아래 필드만 EJSON 형태로 순서대로 SHA-256 처리한다.
+`BLOCKED` 보고서도 결과 경로에 보존하지만 wrapper는 0이 아닌 종료 코드를 반환한다.
 
 | 컬렉션 | fingerprint 입력 필드 |
 | --- | --- |
@@ -117,7 +119,8 @@ performance/orphan-data/run-dry-run.sh
 
 - `candidateLogicalBsonBytes`는 MongoDB `$bsonSize`를 더한 논리 크기다. 실제로
   회수되는 디스크 용량이나 저장 공간 절감량이 아니다.
-- `maxTimeMs`는 전체 실행 시간이 아니라 각 MongoDB 명령의 제한이다.
+- `maxTimeMs`는 전체 실행 시간이 아니라 각 count·aggregate 명령에 개별 적용되는
+  제한이다.
 - 문서 수와 점검 필드 fingerprint를 전후에 비교하지만 여러 명령이 하나의 DB
   snapshot을 공유하지 않는다. 보고서에도 `snapshotGuaranteed: false`를 기록한다.
 - `NO_FINDINGS_OBSERVED`는 실행 중 관측한 범위에서 발견하지 못했다는 뜻이며 전체

@@ -1,6 +1,18 @@
+if (db.getName() !== "didimlog-orphan-fixture") {
+  throw new Error("Fixture seed requires didimlog-orphan-fixture");
+}
+
 const objectStudentId = ObjectId("64b64b64b64b64b64b64b001");
 const objectTemplateId = ObjectId("64b64b64b64b64b64b64b101");
 const objectStudentIdString = objectStudentId.toString();
+const uppercaseStudentId = "ABCDEFABCDEFABCDEFABCDEF";
+const uppercaseStudentObjectId = ObjectId(
+  uppercaseStudentId.toLowerCase()
+);
+const uppercaseTemplateId = "FEDCBAFEDCBAFEDCBAFEDCBA";
+const uppercaseTemplateObjectId = ObjectId(
+  uppercaseTemplateId.toLowerCase()
+);
 
 db.students.insertMany([
   {
@@ -22,6 +34,10 @@ db.students.insertMany([
     _id: "student-invalid-ref",
     defaultSuccessTemplateId: " ",
     defaultFailTemplateId: 42,
+  },
+  {
+    _id: uppercaseStudentId,
+    defaultSuccessTemplateId: uppercaseTemplateObjectId,
   },
 ]);
 
@@ -71,6 +87,12 @@ db.templates.insertMany([
     type: "PARTNER",
     title: "Unknown type",
   },
+  {
+    _id: uppercaseTemplateId,
+    type: "CUSTOM",
+    studentId: uppercaseStudentObjectId,
+    title: "Uppercase String ID",
+  },
 ]);
 
 db.retrospectives.insertMany([
@@ -79,6 +101,10 @@ db.retrospectives.insertMany([
   { _id: "retrospective-orphan", studentId: "missing-owner-retrospective" },
   { _id: "retrospective-invalid", studentId: 42 },
   { _id: "retrospective-missing" },
+  {
+    _id: "retrospective-uppercase-parent",
+    studentId: uppercaseStudentObjectId,
+  },
 ]);
 
 db.feedbacks.insertMany([
@@ -87,6 +113,10 @@ db.feedbacks.insertMany([
   { _id: "feedback-orphan", writerId: "missing-owner-feedback" },
   { _id: "feedback-invalid", writerId: "" },
   { _id: "feedback-missing" },
+  {
+    _id: "feedback-uppercase-parent",
+    writerId: uppercaseStudentObjectId,
+  },
 ]);
 
 db.logs.insertMany([
@@ -97,6 +127,10 @@ db.logs.insertMany([
   { _id: "log-missing" },
   { _id: "log-blank", studentId: " " },
   { _id: "log-invalid", studentId: 42 },
+  {
+    _id: "log-uppercase-parent",
+    studentId: uppercaseStudentObjectId,
+  },
 ]);
 
 db.password_reset_codes.insertMany([
@@ -127,6 +161,11 @@ db.password_reset_codes.insertMany([
   },
   {
     _id: "password-missing",
+    expiresAt: ISODate("2099-01-01T00:00:00Z"),
+  },
+  {
+    _id: "password-uppercase-parent",
+    studentId: uppercaseStudentObjectId,
     expiresAt: ISODate("2099-01-01T00:00:00Z"),
   },
 ]);

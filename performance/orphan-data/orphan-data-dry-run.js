@@ -206,17 +206,9 @@ function idCandidates(path) {
     $cond: [
       supportedReference(path),
       {
-        $setDifference: [
-          [
-            {
-              $convert: {
-                input: path,
-                to: "string",
-                onError: null,
-                onNull: null,
-              },
-            },
-            {
+        $let: {
+          vars: {
+            objectId: {
               $convert: {
                 input: path,
                 to: "objectId",
@@ -224,12 +216,81 @@ function idCandidates(path) {
                 onNull: null,
               },
             },
-          ],
-          [null],
-        ],
+          },
+          in: {
+            $setDifference: [
+              [
+                {
+                  $convert: {
+                    input: path,
+                    to: "string",
+                    onError: null,
+                    onNull: null,
+                  },
+                },
+                "$$objectId",
+                {
+                  $cond: [
+                    { $ne: ["$$objectId", null] },
+                    {
+                      $toUpper: {
+                        $convert: {
+                          input: "$$objectId",
+                          to: "string",
+                          onError: null,
+                          onNull: null,
+                        },
+                      },
+                    },
+                    null,
+                  ],
+                },
+              ],
+              [null],
+            ],
+          },
+        },
       },
       [],
     ],
+  };
+}
+
+function canonicalId(path) {
+  return {
+    $let: {
+      vars: {
+        objectId: {
+          $convert: {
+            input: path,
+            to: "objectId",
+            onError: null,
+            onNull: null,
+          },
+        },
+      },
+      in: {
+        $cond: [
+          { $ne: ["$$objectId", null] },
+          {
+            $convert: {
+              input: "$$objectId",
+              to: "string",
+              onError: null,
+              onNull: null,
+            },
+          },
+          {
+            $convert: {
+              input: path,
+              to: "string",
+              onError: null,
+              onNull: null,
+            },
+          },
+        ],
+      },
+    },
   };
 }
 
@@ -319,41 +380,7 @@ function parentIdProfile(auditDb, collectionName) {
         },
         {
           $project: {
-            canonicalId: {
-              $let: {
-                vars: {
-                  objectId: {
-                    $convert: {
-                      input: "$_id",
-                      to: "objectId",
-                      onError: null,
-                      onNull: null,
-                    },
-                  },
-                },
-                in: {
-                  $cond: [
-                    { $ne: ["$$objectId", null] },
-                    {
-                      $convert: {
-                        input: "$$objectId",
-                        to: "string",
-                        onError: null,
-                        onNull: null,
-                      },
-                    },
-                    {
-                      $convert: {
-                        input: "$_id",
-                        to: "string",
-                        onError: null,
-                        onNull: null,
-                      },
-                    },
-                  ],
-                },
-              },
-            },
+            canonicalId: canonicalId("$_id"),
             idType: { $type: "$_id" },
           },
         },
@@ -597,14 +624,7 @@ function analyzeOwnership(auditDb, specification) {
           { $match: { __status: "ORPHAN" } },
           {
             $group: {
-              _id: {
-                $convert: {
-                  input: referencePath,
-                  to: "string",
-                  onError: null,
-                  onNull: null,
-                },
-              },
+              _id: canonicalId(referencePath),
             },
           },
           { $count: "documents" },
@@ -1244,9 +1264,15 @@ function abortedReport(error) {
   };
 }
 
+let report;
 try {
-  print(JSON.stringify(executeAudit()));
+  report = executeAudit();
 } catch (error) {
   print(JSON.stringify(abortedReport(error)));
   quit(2);
+}
+
+print(JSON.stringify(report));
+if (report.decision === "BLOCKED") {
+  quit(3);
 }

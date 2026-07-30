@@ -114,10 +114,10 @@ function verifyCompleteReport(
   );
 
   assertRelation(report, "retrospectives", {
-    scannedDocuments: 5,
+    scannedDocuments: 6,
     distinctMissingOwners: 1,
     counts: {
-      valid: 2,
+      valid: 3,
       orphan: 1,
       missingRequired: 1,
       absentAllowed: 0,
@@ -126,10 +126,10 @@ function verifyCompleteReport(
     },
   });
   assertRelation(report, "feedbacks", {
-    scannedDocuments: 5,
+    scannedDocuments: 6,
     distinctMissingOwners: 1,
     counts: {
-      valid: 2,
+      valid: 3,
       orphan: 1,
       missingRequired: 1,
       absentAllowed: 0,
@@ -138,10 +138,10 @@ function verifyCompleteReport(
     },
   });
   assertRelation(report, "templates", {
-    scannedDocuments: 5,
+    scannedDocuments: 6,
     distinctMissingOwners: 1,
     counts: {
-      valid: 3,
+      valid: 4,
       orphan: 1,
       missingRequired: 1,
       absentAllowed: 0,
@@ -150,10 +150,10 @@ function verifyCompleteReport(
     },
   });
   assertRelation(report, "logs", {
-    scannedDocuments: 7,
+    scannedDocuments: 8,
     distinctMissingOwners: 1,
     counts: {
-      valid: 2,
+      valid: 3,
       orphan: 1,
       missingRequired: 0,
       absentAllowed: 2,
@@ -162,10 +162,10 @@ function verifyCompleteReport(
     },
   });
   assertRelation(report, "password_reset_codes", {
-    scannedDocuments: 6,
+    scannedDocuments: 7,
     distinctMissingOwners: 2,
     counts: {
-      valid: 2,
+      valid: 3,
       orphan: 2,
       missingRequired: 1,
       absentAllowed: 0,
@@ -195,17 +195,18 @@ function verifyCompleteReport(
     report,
     "defaultSuccessTemplateId"
   );
-  assert(success.scannedStudents === 4, "Success scan count mismatch");
+  assert(success.scannedStudents === 5, "Success scan count mismatch");
   assert(success.counts.validSystem === 1, "Success system mismatch");
   assert(
-    success.counts.validOwnedCustom === 1,
+    success.counts.validOwnedCustom === 2,
     "Success owned custom mismatch"
   );
   assert(success.counts.danglingTarget === 1, "Success dangling mismatch");
   assert(success.counts.invalidReference === 1, "Success invalid mismatch");
 
   const fail = referenceByField(report, "defaultFailTemplateId");
-  assert(fail.scannedStudents === 4, "Fail scan count mismatch");
+  assert(fail.scannedStudents === 5, "Fail scan count mismatch");
+  assert(fail.counts.absentAllowed === 1, "Fail absent mismatch");
   assert(fail.counts.validOwnedCustom === 1, "Fail owned custom mismatch");
   assert(
     fail.counts.foreignCustomTarget === 1,
@@ -359,6 +360,8 @@ const forbiddenIdentifiers = [
   "missing-owner",
   "64b64b64b64b64b64b64b001",
   "64b64b64b64b64b64b64b101",
+  "ABCDEFABCDEFABCDEFABCDEF",
+  "FEDCBAFEDCBAFEDCBAFEDCBA",
   "64B64B64B64B64B64B64B999",
 ];
 forbiddenIdentifiers.forEach((identifier) => {

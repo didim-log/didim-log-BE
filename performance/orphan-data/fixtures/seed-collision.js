@@ -1,3 +1,7 @@
+if (db.getName() !== "didimlog-orphan-fixture") {
+  throw new Error("Collision fixture requires didimlog-orphan-fixture");
+}
+
 const collisionId = "64b64b64b64b64b64b64b999";
 const collectionName =
   process.env.ORPHAN_COLLISION_COLLECTION || "students";
