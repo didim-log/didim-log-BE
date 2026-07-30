@@ -5,6 +5,8 @@ import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.TemplateCategory
+import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.LogRepository
@@ -153,6 +155,93 @@ class AccountDeletionServiceTest {
         verify(exactly = 1) {
             logRepository.deleteAllByStudentId(studentId)
             studentRepository.deleteById(studentId)
+        }
+    }
+
+    @Test
+    @DisplayName("템플릿 삭제 뒤 후속 단계가 실패해도 Student 기본값 참조는 먼저 해제한다")
+    fun `계정 삭제 중간 실패 전에 기본 템플릿 참조 해제`() {
+        val studentId = "student-id"
+        val templateId = "default-template"
+        val target = student(studentId).copy(
+            defaultSuccessTemplateId = templateId,
+            defaultFailTemplateId = templateId
+        )
+        val categories = setOf(TemplateCategory.SUCCESS, TemplateCategory.FAIL)
+        every { studentRepository.findById(studentId) } returns Optional.of(target)
+        every {
+            studentRepository.clearDefaultTemplateReferences(studentId, templateId, categories)
+        } returns target.copy(
+            defaultSuccessTemplateId = null,
+            defaultFailTemplateId = null
+        )
+        every { logRepository.deleteAllByStudentId(studentId) } throws
+            IllegalStateException("Log deletion failed")
+
+        assertThrows<IllegalStateException> {
+            accountDeletionService.deleteAccount(studentId)
+        }
+
+        verifyOrder {
+            studentRepository.clearDefaultTemplateReferences(studentId, templateId, categories)
+            templateRepository.deleteAllByStudentId(studentId)
+            logRepository.deleteAllByStudentId(studentId)
+        }
+        verify(exactly = 0) { studentRepository.deleteById(studentId) }
+    }
+
+    @Test
+    @DisplayName("기본 템플릿 참조가 달라지면 사용자 템플릿 삭제를 시작하지 않는다")
+    fun `계정 삭제 기본 템플릿 참조 변경 충돌`() {
+        val studentId = "student-id"
+        val templateId = "default-template"
+        val target = student(studentId).copy(defaultSuccessTemplateId = templateId)
+        val categories = setOf(TemplateCategory.SUCCESS)
+        every { studentRepository.findById(studentId) } returns Optional.of(target)
+        every {
+            studentRepository.clearDefaultTemplateReferences(studentId, templateId, categories)
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            accountDeletionService.deleteAccount(studentId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.SESSION_STATE_CONFLICT)
+        verify(exactly = 0) {
+            templateRepository.deleteAllByStudentId(any())
+            logRepository.deleteAllByStudentId(any())
+            studentRepository.deleteById(any())
+        }
+    }
+
+    @Test
+    @DisplayName("계정 삭제가 중간 실패해도 시스템 템플릿 기본값은 해제하지 않는다")
+    fun `계정 삭제 중 시스템 기본 템플릿 참조 보존`() {
+        val studentId = "student-id"
+        val systemTemplateId = "system-template"
+        val target = student(studentId).copy(defaultSuccessTemplateId = systemTemplateId)
+        every { studentRepository.findById(studentId) } returns Optional.of(target)
+        every {
+            templateRepository.existsByIdAndType(
+                systemTemplateId,
+                TemplateOwnershipType.SYSTEM
+            )
+        } returns true
+        every { logRepository.deleteAllByStudentId(studentId) } throws
+            IllegalStateException("Log deletion failed")
+
+        assertThrows<IllegalStateException> {
+            accountDeletionService.deleteAccount(studentId)
+        }
+
+        verify(exactly = 0) {
+            studentRepository.clearDefaultTemplateReferences(any(), any(), any())
+        }
+        verify(exactly = 1) {
+            templateRepository.existsByIdAndType(
+                systemTemplateId,
+                TemplateOwnershipType.SYSTEM
+            )
         }
     }
 

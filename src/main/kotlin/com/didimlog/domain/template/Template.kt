@@ -139,16 +139,4 @@ data class Template(
         return this.studentId == studentId
     }
 
-    /**
-     * 템플릿의 소유자인지 검증한다.
-     * 소유자가 아니면 예외를 발생시킨다.
-     *
-     * @param studentId 확인할 학생 ID
-     * @throws IllegalArgumentException 소유자가 아닌 경우
-     */
-    fun validateOwner(studentId: String) {
-        if (!isOwner(studentId)) {
-            throw IllegalArgumentException("템플릿 소유자가 아닙니다. studentId=$studentId")
-        }
-    }
 }

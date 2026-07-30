@@ -6,6 +6,8 @@ import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.TemplateCategory
+import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.LogRepository
@@ -216,17 +218,219 @@ class StudentLifecycleWriteBarrierIntegrationTest {
         }
     }
 
+    @Test
+    fun `기본 커스텀 템플릿 삭제는 Student 참조를 먼저 해제한다`() {
+        val studentId = saveStudent("default-template-owner")
+        trackLock(studentId)
+        val template = templateRepository.save(
+            Template(
+                studentId = studentId,
+                title = "공통 기본 템플릿",
+                content = "성공과 실패에 함께 사용하는 기본 템플릿",
+                type = TemplateOwnershipType.CUSTOM
+            )
+        )
+        val templateId = requireNotNull(template.id)
+        studentRepository.updateDefaultTemplateById(
+            studentId,
+            TemplateCategory.SUCCESS,
+            templateId
+        )
+        studentRepository.updateDefaultTemplateById(
+            studentId,
+            TemplateCategory.FAIL,
+            templateId
+        )
+        val templateService = templateService()
+
+        templateService.deleteTemplate(templateId, studentId)
+
+        val persisted = studentRepository.findById(studentId).orElseThrow()
+        assertThat(persisted.defaultSuccessTemplateId).isNull()
+        assertThat(persisted.defaultFailTemplateId).isNull()
+        assertThat(templateRepository.existsById(templateId)).isFalse()
+    }
+
+    @Test
+    fun `템플릿 삭제 저장소가 실패해도 Student에는 삭제 대상 기본값을 남기지 않는다`() {
+        val studentId = saveStudent("template-delete-failure")
+        trackLock(studentId)
+        val template = templateRepository.save(
+            Template(
+                studentId = studentId,
+                title = "삭제 실패 템플릿",
+                content = "삭제 실패 순서를 검증할 기본 템플릿",
+                type = TemplateOwnershipType.CUSTOM
+            )
+        )
+        val templateId = requireNotNull(template.id)
+        studentRepository.updateDefaultTemplateById(
+            studentId,
+            TemplateCategory.SUCCESS,
+            templateId
+        )
+        val failingTemplateRepository = object : TemplateRepository by templateRepository {
+            override fun delete(entity: Template) {
+                throw IllegalStateException("Template deletion failed")
+            }
+        }
+        val templateService = templateService(failingTemplateRepository)
+
+        assertThrows<IllegalStateException> {
+            templateService.deleteTemplate(templateId, studentId)
+        }
+
+        val persisted = studentRepository.findById(studentId).orElseThrow()
+        assertThat(persisted.defaultSuccessTemplateId).isNull()
+        assertThat(templateRepository.existsById(templateId)).isTrue()
+    }
+
+    @Test
+    fun `기본값 설정 중 같은 템플릿 삭제는 충돌하고 재시도하면 참조까지 정리한다`() {
+        val studentId = saveStudent("template-default-race")
+        trackLock(studentId)
+        val template = templateRepository.save(
+            Template(
+                studentId = studentId,
+                title = "기본값 경합 템플릿",
+                content = "기본값 설정과 삭제 경합을 검증할 템플릿",
+                type = TemplateOwnershipType.CUSTOM
+            )
+        )
+        val templateId = requireNotNull(template.id)
+        val updateEntered = CountDownLatch(1)
+        val releaseUpdate = CountDownLatch(1)
+        val blockingStudentRepository = object : StudentRepository by studentRepository {
+            override fun updateDefaultTemplateById(
+                studentId: String,
+                category: TemplateCategory,
+                templateId: String
+            ): Student? {
+                updateEntered.countDown()
+                check(releaseUpdate.await(10, TimeUnit.SECONDS)) {
+                    "기본 템플릿 갱신 해제 신호를 기다리지 못했습니다."
+                }
+                return studentRepository.updateDefaultTemplateById(
+                    studentId,
+                    category,
+                    templateId
+                )
+            }
+        }
+        val settingService = TemplateService(
+            templateRepository = templateRepository,
+            problemService = mockk<ProblemService>(),
+            studentRepository = blockingStudentRepository,
+            studentLifecycleCoordinator = studentLifecycleCoordinator
+        )
+        val deletingService = templateService()
+        val executor = Executors.newSingleThreadExecutor()
+
+        try {
+            val settingTask = executor.submit<Template> {
+                settingService.setDefaultTemplate(
+                    templateId,
+                    TemplateCategory.SUCCESS,
+                    studentId
+                )
+            }
+            assertThat(updateEntered.await(10, TimeUnit.SECONDS)).isTrue()
+
+            val conflict = assertThrows<BusinessException> {
+                deletingService.deleteTemplate(templateId, studentId)
+            }
+            assertThat(conflict.errorCode).isEqualTo(ErrorCode.SESSION_STATE_CONFLICT)
+            assertThat(templateRepository.existsById(templateId)).isTrue()
+
+            releaseUpdate.countDown()
+            settingTask.get(10, TimeUnit.SECONDS)
+            assertThat(
+                studentRepository.findById(studentId).orElseThrow().defaultSuccessTemplateId
+            ).isEqualTo(templateId)
+
+            deletingService.deleteTemplate(templateId, studentId)
+
+            assertThat(
+                studentRepository.findById(studentId).orElseThrow().defaultSuccessTemplateId
+            ).isNull()
+            assertThat(templateRepository.existsById(templateId)).isFalse()
+        } finally {
+            releaseUpdate.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `계정 삭제 후속 단계가 실패해도 삭제된 사용자 템플릿 참조는 남지 않는다`() {
+        val studentId = saveStudent("account-template-failure")
+        trackLock(studentId)
+        val systemTemplate = templateRepository.save(
+            Template(
+                title = "보존할 시스템 템플릿",
+                content = "계정 삭제 실패 뒤에도 참조할 시스템 템플릿",
+                type = TemplateOwnershipType.SYSTEM
+            )
+        )
+        val template = templateRepository.save(
+            Template(
+                studentId = studentId,
+                title = "탈퇴 기본 템플릿",
+                content = "탈퇴 중간 실패를 검증할 기본 템플릿",
+                type = TemplateOwnershipType.CUSTOM
+            )
+        )
+        val templateId = requireNotNull(template.id)
+        val systemTemplateId = requireNotNull(systemTemplate.id)
+        studentRepository.updateDefaultTemplateById(
+            studentId,
+            TemplateCategory.SUCCESS,
+            systemTemplateId
+        )
+        studentRepository.updateDefaultTemplateById(
+            studentId,
+            TemplateCategory.FAIL,
+            templateId
+        )
+        val failingLogRepository = object : LogRepository by logRepository {
+            override fun deleteAllByStudentId(studentId: String) {
+                throw IllegalStateException("Log deletion failed")
+            }
+        }
+
+        assertThrows<IllegalStateException> {
+            accountDeletionService(logs = failingLogRepository).deleteAccount(studentId)
+        }
+
+        val persisted = studentRepository.findById(studentId).orElseThrow()
+        assertThat(persisted.defaultSuccessTemplateId).isEqualTo(systemTemplateId)
+        assertThat(persisted.defaultFailTemplateId).isNull()
+        assertThat(templateRepository.existsById(templateId)).isFalse()
+        assertThat(templateRepository.existsById(systemTemplateId)).isTrue()
+    }
+
     private fun accountDeletionService(
-        retrospectives: RetrospectiveRepository = retrospectiveRepository
+        retrospectives: RetrospectiveRepository = retrospectiveRepository,
+        logs: LogRepository = logRepository
     ): AccountDeletionService {
         return AccountDeletionService(
             studentRepository = studentRepository,
             retrospectiveRepository = retrospectives,
             feedbackRepository = feedbackRepository,
-            logRepository = logRepository,
+            logRepository = logs,
             templateRepository = templateRepository,
             passwordResetCodeRepository = passwordResetCodeRepository,
             refreshTokenService = mockk<RefreshTokenService>(relaxed = true),
+            studentLifecycleCoordinator = studentLifecycleCoordinator
+        )
+    }
+
+    private fun templateService(
+        templates: TemplateRepository = templateRepository
+    ): TemplateService {
+        return TemplateService(
+            templateRepository = templates,
+            problemService = mockk<ProblemService>(),
+            studentRepository = studentRepository,
             studentLifecycleCoordinator = studentLifecycleCoordinator
         )
     }

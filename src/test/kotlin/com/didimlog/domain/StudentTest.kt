@@ -364,4 +364,21 @@ class StudentTest {
         assertThat(student.password).isEqualTo("old-password")
         assertThat(student.credentialVersion).isEqualTo(3)
     }
+
+    @Test
+    @DisplayName("기본 템플릿 ID가 사용되는 성공·실패 카테고리를 반환한다")
+    fun `기본 템플릿 카테고리 조회`() {
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            currentTier = Tier.BRONZE,
+            defaultSuccessTemplateId = "shared-template",
+            defaultFailTemplateId = "shared-template"
+        )
+
+        assertThat(student.defaultTemplateCategories("shared-template"))
+            .containsExactlyInAnyOrder(TemplateCategory.SUCCESS, TemplateCategory.FAIL)
+        assertThat(student.defaultTemplateCategories("other-template")).isEmpty()
+    }
 }

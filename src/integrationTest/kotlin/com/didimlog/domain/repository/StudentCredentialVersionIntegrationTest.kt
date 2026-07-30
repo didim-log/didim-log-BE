@@ -276,6 +276,53 @@ class StudentCredentialVersionIntegrationTest {
         assertThat(studentRepository.existsById(studentId)).isFalse()
     }
 
+    @Test
+    fun `기본 템플릿 참조 해제는 일치하는 카테고리만 비우고 삭제된 학생을 다시 만들지 않는다`() {
+        val student = saveStudent(id = "clear_template", credentialVersion = 3)
+        val withDefaults = studentRepository.save(
+            student.copy(
+                defaultSuccessTemplateId = "template-target",
+                defaultFailTemplateId = "template-keep"
+            )
+        )
+        val studentId = requireNotNull(withDefaults.id)
+
+        val updated = studentRepository.clearDefaultTemplateReferences(
+            studentId = studentId,
+            expectedTemplateId = "template-target",
+            categories = setOf(TemplateCategory.SUCCESS)
+        )
+
+        assertThat(updated?.defaultSuccessTemplateId).isNull()
+        assertThat(updated?.defaultFailTemplateId).isEqualTo("template-keep")
+        assertThat(updated?.nickname).isEqualTo(withDefaults.nickname)
+        assertThat(updated?.credentialVersion).isEqualTo(withDefaults.credentialVersion)
+        assertThat(updated?.documentVersion)
+            .isEqualTo(requireNotNull(withDefaults.documentVersion) + 1)
+        assertThatThrownBy {
+            studentRepository.save(withDefaults.copy(nickname = Nickname("staleuser")))
+        }.isInstanceOf(OptimisticLockingFailureException::class.java)
+
+        assertThat(
+            studentRepository.clearDefaultTemplateReferences(
+                studentId = studentId,
+                expectedTemplateId = "template-target",
+                categories = setOf(TemplateCategory.FAIL)
+            )
+        ).isNull()
+
+        studentRepository.deleteById(studentId)
+
+        assertThat(
+            studentRepository.clearDefaultTemplateReferences(
+                studentId = studentId,
+                expectedTemplateId = "template-keep",
+                categories = setOf(TemplateCategory.FAIL)
+            )
+        ).isNull()
+        assertThat(studentRepository.existsById(studentId)).isFalse()
+    }
+
     private fun saveStudent(id: String, credentialVersion: Long): Student {
         return studentRepository.save(
             Student(

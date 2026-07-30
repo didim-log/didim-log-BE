@@ -52,6 +52,12 @@ interface StudentRepositoryCustom {
         templateId: String
     ): Student?
 
+    fun clearDefaultTemplateReferences(
+        studentId: String,
+        expectedTemplateId: String,
+        categories: Set<TemplateCategory>
+    ): Student?
+
     fun searchAdminUsers(
         pageable: Pageable,
         search: String?,
