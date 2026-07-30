@@ -134,6 +134,9 @@ class ProblemCollectorServiceTest {
         every { valueOps.get(any()) } answers {
             valueStore[firstArg<String>()]
         }
+        every { valueOps.multiGet(any()) } answers {
+            firstArg<Collection<String>>().map(valueStore::get)
+        }
 
         every { zSetOps.add(any(), any(), any<Double>()) } answers {
             val key = firstArg<String>()
@@ -170,6 +173,73 @@ class ProblemCollectorServiceTest {
         every { adminAuditService.logAction(any(), any(), any(), any()) } just runs
 
         service = createService()
+    }
+
+    @Test
+    @DisplayName("작업 목록 상태를 index 순서의 키로 한 번에 조회한다")
+    fun `job list loads indexed statuses in one batch`() {
+        val oldestPending = sampleJob("job-oldest").copy(
+            queuedAt = 1_700_000_001
+        )
+        val newestRunning = sampleJob("job-newest").copy(
+            status = JobStatus.RUNNING,
+            queuedAt = 1_700_000_003,
+            startedAt = 1_700_000_004
+        )
+        val middlePending = sampleJob("job-middle").copy(
+            queuedAt = 1_700_000_002
+        )
+        listOf(oldestPending, newestRunning, middlePending).forEach(::seedJob)
+
+        val result = service.getJobs(
+            type = null,
+            status = null,
+            from = null,
+            to = null,
+            page = 1,
+            size = 2
+        )
+
+        assertThat(result.content.map(JobStatusUnifiedResponse::jobId))
+            .containsExactly("job-newest", "job-middle")
+        assertThat(result.content.map(JobStatusUnifiedResponse::queuePosition))
+            .containsExactly(null, 2)
+        assertThat(result.totalElements).isEqualTo(3)
+        assertThat(result.totalPages).isEqualTo(2)
+        assertThat(result.hasNext).isTrue()
+        assertThat(result.hasPrevious).isFalse()
+        verify(exactly = 1) {
+            valueOps.multiGet(
+                listOf(
+                    "$JOB_KEY_PREFIX${newestRunning.jobId}",
+                    "$JOB_KEY_PREFIX${middlePending.jobId}",
+                    "$JOB_KEY_PREFIX${oldestPending.jobId}"
+                )
+            )
+        }
+        verify(exactly = 0) { valueOps.get(any()) }
+    }
+
+    @Test
+    @DisplayName("일괄 조회 직후 생성된 String 상태는 단건 조회로 다시 확인한다")
+    fun `job list rechecks string status created after batch read`() {
+        val job = sampleJob("job-created-after-batch")
+        val key = "$JOB_KEY_PREFIX${job.jobId}"
+        seedJob(job)
+        every { valueOps.multiGet(listOf(key)) } returns listOf(null)
+        every { redisTemplate.type(key) } returns DataType.STRING
+
+        val result = service.getJobs(
+            type = null,
+            status = null,
+            from = null,
+            to = null,
+            page = 1,
+            size = 20
+        )
+
+        assertThat(result.content).containsExactly(job.copy(queuePosition = 1))
+        verify(exactly = 1) { valueOps.get(key) }
     }
 
     @Test

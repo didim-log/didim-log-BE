@@ -1048,12 +1048,16 @@ class ProblemCollectorService(
 
     private fun readJobSnapshot(jobId: String): JobSnapshot? {
         val json = redisTemplate.opsForValue().get(jobKey(jobId)) ?: return null
+        return deserializeJob(jobId, json)
+            ?.let { JobSnapshot(json, it) }
+    }
+
+    private fun deserializeJob(jobId: String, json: String): JobStatusUnifiedResponse? {
         return runCatching { objectMapper.readValue(json, JobStatusUnifiedResponse::class.java) }
             .onFailure { e ->
                 log.warn("Failed to deserialize job status: jobId=$jobId, error=${e.message}")
             }
             .getOrNull()
-            ?.let { JobSnapshot(json, it) }
     }
 
     private fun persistNewJob(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
@@ -1103,20 +1107,49 @@ class ProblemCollectorService(
     }
 
     private fun loadAllJobs(): List<JobStatusUnifiedResponse> {
-        val ids = redisTemplate.opsForZSet().reverseRange(JOB_INDEX_KEY, 0, -1) ?: emptySet()
-        val jobs = mutableListOf<JobStatusUnifiedResponse>()
+        val ids = redisTemplate.opsForZSet()
+            .reverseRange(JOB_INDEX_KEY, 0, -1)
+            .orEmpty()
+            .toList()
+        if (ids.isEmpty()) {
+            return emptyList()
+        }
 
-        for (jobId in ids) {
-            val job = readJob(jobId)
+        val statusKeys = ids.map(::jobKey)
+        val statusValues = redisTemplate.opsForValue().multiGet(statusKeys).orEmpty()
+        val jobs = mutableListOf<JobStatusUnifiedResponse>()
+        val staleIds = mutableListOf<String>()
+
+        ids.forEachIndexed { index, jobId ->
+            val job = readBatchJob(jobId, statusValues.getOrNull(index))
             if (job == null) {
-                redisTemplate.opsForZSet().remove(JOB_INDEX_KEY, jobId)
-                redisTemplate.delete(failureKey(jobId))
-                continue
+                staleIds.add(jobId)
+            } else {
+                jobs.add(job)
             }
-            jobs.add(job)
+        }
+
+        if (staleIds.isNotEmpty()) {
+            redisTemplate.opsForZSet().remove(JOB_INDEX_KEY, *staleIds.toTypedArray())
+            redisTemplate.delete(staleIds.map(::failureKey))
         }
 
         return jobs.sortedByDescending { it.queuedAt }
+    }
+
+    private fun readBatchJob(jobId: String, json: String?): JobStatusUnifiedResponse? {
+        if (json != null) {
+            return deserializeJob(jobId, json)
+        }
+
+        return when (redisTemplate.type(jobKey(jobId))) {
+            DataType.NONE -> null
+            DataType.STRING -> readJob(jobId)
+            else -> throw BusinessException(
+                ErrorCode.RESOURCE_STATE_CONFLICT,
+                "작업 상태 Redis 타입이 올바르지 않습니다. jobId=$jobId"
+            )
+        }
     }
 
     private fun normalize(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
