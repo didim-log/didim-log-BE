@@ -306,6 +306,7 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 | 검증 범위 | 조건 | 확인 결과 |
 | --- | --- | --- |
 | AI 리뷰 중복 생성 | 동일 로그 50건 동시 요청·10회 반복 | 각 회차 Gemini 호출 1회·저장 1건, 최종 `COMPLETED`, 잠금 잔존 0건 |
+| AI 리뷰 잠금 소유권 | 실제 MongoDB 7.0.16, A lease 만료·B 재획득·A 완료/실패 | 만료 직후와 B 재획득 뒤 A 갱신 0건, B 상태 보존·종료 성공 |
 | AI 일일 사용량 | 실제 Redis, 남은 사용자·전역 한도 각각 1회에서 20건 동시 예약·동일 예약 2회 반환 | 각 경계 성공 1건·거절 19건, 카운터 한도 유지, 동일 예약은 1회만 감소 |
 | 인증 요청 제한 | 실제 Redis 동일 키 20건 동시 요청·한도 1건 | 허용 1건·차단 19건, 최종 카운터 1 |
 | 가입·회고 DB 정합성 | 실제 MongoDB, 같은 학생·문제 회고 2건 동시 insert | 학생 식별자 중복 거부, 회고 1건 저장, 기존 중복 데이터 자동 삭제 0건 |
@@ -345,6 +346,7 @@ AI 사용량의 예약·실패 반환 순서와 실제 Redis 경계 검증은 [A
 문제 상세·언어의 부분 갱신 범위와 오래된 저장 경합은 [문제 상세·언어 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_5B_CRAWLER_DETAIL_PARTIAL_UPDATE.md)에 정리했습니다.
 과거 사용자 소유 데이터와 기본 템플릿 참조의 점검 범위와 안전 경계는 [고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md)에 정리했습니다.
 유지보수 설정의 단일 키 저장, 종료 시각 만료와 동시 갱신 검증은 [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md)에 정리했습니다.
+AI 리뷰 잠금 버전과 만료 뒤 완료·실패 차단은 [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -427,6 +429,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [문제 상세·언어 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_5B_CRAWLER_DETAIL_PARTIAL_UPDATE.md)
 - [고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md)
 - [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md)
+- [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

@@ -36,6 +36,7 @@ data class Log(
     val aiReview: AiReview? = null,
     val aiReviewStatus: AiReviewStatus? = null,
     val aiReviewLockExpiresAt: LocalDateTime? = null,
+    val aiReviewLockVersion: Long = 0,
     val aiReviewDurationMillis: Long? = null,
     val aiFeedbackStatus: AiFeedbackStatus = AiFeedbackStatus.NONE,
     val aiFeedbackReason: String? = null,

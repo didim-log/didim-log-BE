@@ -1,6 +1,7 @@
 package com.didimlog.application.log
 
 import com.didimlog.application.ai.AiUsageService
+import com.didimlog.domain.enums.AiReviewStatus
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.AiGenerationTimeoutException
@@ -50,13 +51,18 @@ class AiReviewService(
         val userId = logEntity.studentId
         val now = LocalDateTime.now()
         val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
-        
-        if (!tryAcquireLock(logId, now, expiresAt)) {
-            return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
-        }
+        val lock = tryAcquireLock(logId, now, expiresAt)
+            ?: return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
 
-        val reservation = reserveUsageAfterLock(logId, userId)
-        return generateAiReview(logId, code, logEntity.isSuccess, userId, reservation)
+        val reservation = reserveUsageAfterLock(logId, userId, lock)
+        return generateAiReview(
+            logId,
+            code,
+            logEntity.isSuccess,
+            userId,
+            reservation,
+            lock
+        )
     }
 
     @Transactional
@@ -80,12 +86,18 @@ class AiReviewService(
 
         val now = LocalDateTime.now()
         val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
-        if (!tryAcquireLock(logId, now, expiresAt)) {
-            return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
-        }
+        val lock = tryAcquireLock(logId, now, expiresAt)
+            ?: return handleLockNotAcquired(logId, now, code, logEntity.isSuccess)
 
-        val reservation = reserveUsageAfterLock(logId, usageUserId)
-        scheduleAiReviewGeneration(logId, code, logEntity.isSuccess, usageUserId, reservation)
+        val reservation = reserveUsageAfterLock(logId, usageUserId, lock)
+        scheduleAiReviewGeneration(
+            logId,
+            code,
+            logEntity.isSuccess,
+            usageUserId,
+            reservation,
+            lock
+        )
 
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
     }
@@ -110,7 +122,8 @@ class AiReviewService(
 
     private fun reserveUsageAfterLock(
         logId: String,
-        userId: String?
+        userId: String?,
+        lock: AiReviewLock
     ): AiUsageService.UsageReservation? {
         if (userId == null) {
             return null
@@ -121,7 +134,11 @@ class AiReviewService(
             aiUsageService.reserveUsage(userId)
         } catch (e: RuntimeException) {
             log.warn("AI usage reservation failed for user: $userId, reason: ${e.message}")
-            logAiReviewLockRepository.markFailed(logId)
+            logAiReviewLockRepository.markFailed(
+                logId,
+                lock,
+                LocalDateTime.now()
+            )
             throw e
         }
     }
@@ -131,21 +148,63 @@ class AiReviewService(
         code: String,
         isSuccess: Boolean?,
         userId: String?,
-        reservation: AiUsageService.UsageReservation?
+        reservation: AiUsageService.UsageReservation?,
+        lock: AiReviewLock
     ) {
         try {
             aiReviewTaskExecutor.execute {
+                if (!renewLockBeforeGeneration(logId, userId, reservation, lock)) {
+                    return@execute
+                }
                 try {
-                    generateAiReview(logId, code, isSuccess, userId, reservation)
+                    generateAiReview(
+                        logId,
+                        code,
+                        isSuccess,
+                        userId,
+                        reservation,
+                        lock
+                    )
                 } catch (e: Exception) {
                     log.error("비동기 AI 리뷰 생성 실패: logId=$logId, userId=$userId", e)
                 }
             }
         } catch (e: Exception) {
             releaseUsage(reservation, logId, userId)
-            logAiReviewLockRepository.markFailed(logId)
+            logAiReviewLockRepository.markFailed(
+                logId,
+                lock,
+                LocalDateTime.now()
+            )
             throw AiGenerationFailedException("AI 리뷰 작업 등록에 실패했습니다.", e)
         }
+    }
+
+    private fun renewLockBeforeGeneration(
+        logId: String,
+        userId: String?,
+        reservation: AiUsageService.UsageReservation?,
+        lock: AiReviewLock
+    ): Boolean {
+        val now = LocalDateTime.now()
+        val renewed = try {
+            logAiReviewLockRepository.renewLock(
+                logId,
+                lock,
+                now,
+                now.plusSeconds(LOCK_TTL_SECONDS)
+            )
+        } catch (e: RuntimeException) {
+            log.error(
+                "비동기 AI 리뷰 잠금 갱신 실패: logId=$logId, userId=$userId",
+                e
+            )
+            false
+        }
+        if (!renewed) {
+            releaseUsage(reservation, logId, userId)
+        }
+        return renewed
     }
 
     private fun findLogOrThrow(logId: String): com.didimlog.domain.Log {
@@ -153,7 +212,11 @@ class AiReviewService(
             .orElseThrow { IllegalArgumentException("로그를 찾을 수 없습니다. logId=$logId") }
     }
 
-    private fun tryAcquireLock(logId: String, now: LocalDateTime, expiresAt: LocalDateTime): Boolean {
+    private fun tryAcquireLock(
+        logId: String,
+        now: LocalDateTime,
+        expiresAt: LocalDateTime
+    ): AiReviewLock? {
         return logAiReviewLockRepository.tryAcquireLock(logId, now, expiresAt)
     }
 
@@ -181,7 +244,8 @@ class AiReviewService(
         code: String,
         isSuccess: Boolean?,
         userId: String?,
-        reservation: AiUsageService.UsageReservation?
+        reservation: AiUsageService.UsageReservation?,
+        lock: AiReviewLock
     ): AiReviewResult {
         val startTime = System.currentTimeMillis()
         val response = try {
@@ -190,15 +254,29 @@ class AiReviewService(
             requestAiApiWithErrorHandling(prompt, startTime, userId)
         } catch (e: Exception) {
             releaseUsage(reservation, logId, userId)
-            logAiReviewLockRepository.markFailed(logId)
+            logAiReviewLockRepository.markFailed(
+                logId,
+                lock,
+                LocalDateTime.now()
+            )
             log.error("AI API 호출 실패: logId=$logId, userId=$userId", e)
             throw e
         }
         val duration = System.currentTimeMillis() - startTime
 
-        val result = saveAiReviewResult(logId, response.review, duration)
-        aiReviewCodeCacheService.cacheReview(code, isSuccess, result.review)
-        return result
+        val completed = logAiReviewLockRepository.markCompleted(
+            logId,
+            lock,
+            LocalDateTime.now(),
+            response.review,
+            duration
+        )
+        if (!completed) {
+            return handleConcurrentSave(logId, lock)
+        }
+
+        aiReviewCodeCacheService.cacheReview(code, isSuccess, response.review)
+        return AiReviewResult(review = response.review, cached = false)
     }
 
     private fun releaseUsage(
@@ -259,23 +337,32 @@ class AiReviewService(
         }
     }
 
-    private fun saveAiReviewResult(logId: String, review: String, duration: Long): AiReviewResult {
-        val completed = logAiReviewLockRepository.markCompleted(logId, review, duration)
-        if (!completed) {
-            return handleConcurrentSave(logId, review)
+    private fun handleConcurrentSave(
+        logId: String,
+        lostLock: AiReviewLock
+    ): AiReviewResult {
+        val now = LocalDateTime.now()
+        val currentLog = logRepository.findById(logId).orElse(null)
+        val currentReview = currentLog?.aiReviewTextOrNull()
+        if (currentReview != null) {
+            return AiReviewResult(review = currentReview, cached = true)
         }
 
-        return AiReviewResult(review = review, cached = false)
-    }
-
-    private fun handleConcurrentSave(logId: String, generatedReview: String): AiReviewResult {
-        val afterLog = logRepository.findById(logId).orElse(null)
-        val afterCached = afterLog?.aiReviewTextOrNull()
-        if (afterCached != null) {
-            return AiReviewResult(review = afterCached, cached = true)
+        val hasActiveSuccessor =
+            currentLog?.aiReviewStatus == AiReviewStatus.IN_PROGRESS &&
+                currentLog.aiReviewLockVersion > lostLock.version &&
+                currentLog.aiReviewLockExpiresAt?.isAfter(now) == true
+        if (hasActiveSuccessor) {
+            return AiReviewResult(
+                review = IN_PROGRESS_MESSAGE,
+                cached = false,
+                inProgress = true
+            )
         }
 
-        return AiReviewResult(review = generatedReview, cached = false)
+        throw AiGenerationFailedException(
+            "AI 리뷰 결과를 저장할 수 없습니다. 다시 시도해주세요."
+        )
     }
 
     private fun truncateCode(code: String): String = code.take(MAX_CODE_LENGTH)
