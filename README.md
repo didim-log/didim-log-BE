@@ -322,6 +322,7 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 | 기본 템플릿 삭제 정합성 | 실제 MongoDB 7.0.16·Redis 7.2.5, 양쪽 기본값·삭제 실패·설정/삭제 경합 | 참조 선행 해제, SYSTEM 참조 보존, 충돌 409, 재시도 뒤 깨진 참조 0건 |
 | 문제 상세·메타데이터 저장 경합 | 실제 MongoDB 7.0.16, 상세 대상 조회 뒤 메타데이터·언어 갱신 후 상세 저장 | 최신 메타데이터·언어 보존, 오래된 전체 문서 덮어쓰기 1건 → 0건, 삭제 대상 재생성 0건 |
 | 고아 데이터 읽기 전용 점검 | 실제 MongoDB 7.0.16 합성 fixture, 사용자 소유 관계 5개·기본 참조 2개 | fixture 기대 고아 6건·깨진 기본 참조 2건 일치, 쓰기 단계 0건·점검 필드 전후 hash 동일 |
+| 유지보수 설정 원자화 | 실제 Redis 7.2.5, 종료 시각 만료·유한→무기한 변경·두 서비스 동시 설정 | 설정 키 전체 만료, 무기한 설정 TTL 없음, 서로 다른 설정 조합 0건 |
 
 이 표는 로컬 MongoDB·Redis와 Gemini Mock을 사용한 정확성 검증이며 운영 성능을 뜻하지 않습니다.
 AI 리뷰 반복 실행과 인증 API 경계값 검사는 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
@@ -343,6 +344,7 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 AI 사용량의 예약·실패 반환 순서와 실제 Redis 경계 검증은 [AI 사용량 원자적 예약](./DOCS/refactoring/be-refactor/PHASE_5A_AI_USAGE_ATOMIC_RESERVATION.md)에 정리했습니다.
 문제 상세·언어의 부분 갱신 범위와 오래된 저장 경합은 [문제 상세·언어 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_5B_CRAWLER_DETAIL_PARTIAL_UPDATE.md)에 정리했습니다.
 과거 사용자 소유 데이터와 기본 템플릿 참조의 점검 범위와 안전 경계는 [고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md)에 정리했습니다.
+유지보수 설정의 단일 키 저장, 종료 시각 만료와 동시 갱신 검증은 [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -424,6 +426,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [AI 사용량 원자적 예약](./DOCS/refactoring/be-refactor/PHASE_5A_AI_USAGE_ATOMIC_RESERVATION.md)
 - [문제 상세·언어 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_5B_CRAWLER_DETAIL_PARTIAL_UPDATE.md)
 - [고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md)
+- [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
