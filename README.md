@@ -304,6 +304,20 @@ Before·After 각각 5회 실행했으며 기능 결과 hash는 같았습니다.
 크기를 비교한 값입니다. 응답 시간이나 운영 처리량 개선율은 아닙니다.
 비교 조건과 정합성 수정은 [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)에 정리했습니다.
 
+### 추천 카테고리 조회 단일화
+
+| 시나리오 | 직접 비교 항목 | Before | After | 변화 |
+| --- | --- | ---: | ---: | ---: |
+| BFS·RELATED | `problems` find | 31 | 1 | 96.77% 감소 |
+| BFS·RELATED | `students` 포함 find | 32 | 2 | 93.75% 감소 |
+
+부모·형제 카테고리마다 나눠 실행하던 조회와 태그 조회를 하나의 MongoDB
+조건으로 합쳤습니다. 같은 fixture에서 문제 ID와 대표·태그 매칭 근거를 묶은 기능
+결과 hash는 전후가 같았습니다. 난이도 경계값과 `difficultyLevel`만 있는 이전
+문서의 읽기 오류도 실제 MongoDB 테스트로 고정했습니다. 표는 `find` 명령 수
+감소율이며 응답 시간이나 운영 처리량 개선율이 아닙니다.
+[추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)에 조건과 남은 비용을 정리했습니다.
+
 ### 문제 메타데이터 저장 명령 축소
 
 | 시나리오 | 직접 비교 항목 | Before | After | 변화 |
@@ -370,6 +384,7 @@ AI 리뷰 잠금 버전과 만료 뒤 완료·실패 차단은 [AI 리뷰 잠금
 Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md)에 정리했습니다.
 문제 수집 작업의 Redis CAS 전이와 중복 실행·취소 경합 검증은 [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md)에 정리했습니다.
 관리자 대시보드의 저장 경로, 고유 해결 문제 기준과 기간별 MongoDB 집계 결과는 [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)에 정리했습니다.
+추천 카테고리 확장 조회의 단일 쿼리와 레거시 난이도 읽기 기준은 [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -457,6 +472,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md)
 - [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md)
 - [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)
+- [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
