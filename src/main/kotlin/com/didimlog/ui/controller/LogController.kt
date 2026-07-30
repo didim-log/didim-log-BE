@@ -196,6 +196,11 @@ class LogController(
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
+                responseCode = "403",
+                description = "본인 로그가 아닌 경우 접근 거부",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
                 responseCode = "404",
                 description = "로그를 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
@@ -204,6 +209,8 @@ class LogController(
     )
     @PostMapping("/{logId}/feedback")
     fun submitFeedback(
+        @Parameter(hidden = true)
+        authentication: Authentication?,
         @Parameter(description = "로그 ID", required = true)
         @PathVariable
         @NotBlank(message = "로그 ID는 필수입니다.")
@@ -213,7 +220,9 @@ class LogController(
         @Valid
         request: com.didimlog.ui.dto.LogFeedbackRequest
     ): ResponseEntity<Map<String, String>> {
-        logService.updateFeedback(logId, request.status, request.reason)
+        val requesterBojId = authentication?.name?.takeIf { it.isNotBlank() }
+            ?: throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
+        logService.updateFeedback(logId, requesterBojId, request.status, request.reason)
         return ResponseEntity.ok(mapOf("message" to "피드백이 제출되었습니다."))
     }
 

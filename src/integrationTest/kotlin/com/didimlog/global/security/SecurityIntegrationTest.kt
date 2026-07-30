@@ -2,32 +2,45 @@ package com.didimlog.global.security
 
 import com.didimlog.DidimLogApplication
 import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.domain.Log
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.AiFeedbackStatus
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.LogCode
+import com.didimlog.domain.valueobject.LogContent
+import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.http.MediaType
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.util.UUID
 
 @SpringBootTest(classes = [DidimLogApplication::class])
 @AutoConfigureMockMvc
 @DisplayName("보안 통합 테스트")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SecurityIntegrationTest {
 
     @Autowired
@@ -42,12 +55,19 @@ class SecurityIntegrationTest {
     @Autowired
     private lateinit var refreshTokenService: RefreshTokenService
 
+    @Autowired
+    private lateinit var logRepository: LogRepository
+
+    @Autowired
+    private lateinit var mongoTemplate: MongoTemplate
+
     private lateinit var userToken: String
     private lateinit var adminToken: String
 
     @BeforeEach
     fun setUp() {
         studentRepository.deleteAll()
+        logRepository.deleteAll()
 
         // 일반 유저 생성
         val userStudent = Student(
@@ -74,6 +94,11 @@ class SecurityIntegrationTest {
         )
         studentRepository.save(adminStudent)
         adminToken = jwtTokenProvider.createToken("admin", Role.ADMIN.value)
+    }
+
+    @AfterAll
+    fun tearDownDatabase() {
+        mongoTemplate.db.drop()
     }
 
     @Test
@@ -186,6 +211,71 @@ class SecurityIntegrationTest {
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty)
         } finally {
             refreshTokenService.revokeAll("testuser")
+        }
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 로그에는 AI 리뷰 피드백을 제출할 수 없다")
+    fun `타인 로그 피드백 제출 시 403 Forbidden`() {
+        val log = logRepository.save(
+            Log(
+                title = LogTitle("소유권 검증"),
+                content = LogContent("testuser의 로그"),
+                code = LogCode("fun main() = Unit"),
+                bojId = BojId("testuser")
+            )
+        )
+
+        mockMvc.perform(
+            post("/api/v1/logs/${requireNotNull(log.id)}/feedback")
+                .header("Authorization", "Bearer $adminToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"status":"LIKE"}""")
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+
+        val persistedLog = logRepository.findById(requireNotNull(log.id)).orElseThrow()
+        assertThat(persistedLog.aiFeedbackStatus).isEqualTo(AiFeedbackStatus.NONE)
+    }
+
+    @Test
+    @DisplayName("로그 소유자는 AI 리뷰 피드백을 제출할 수 있다")
+    fun `본인 로그 피드백 제출 성공`() {
+        val log = logRepository.save(
+            Log(
+                title = LogTitle("소유권 검증"),
+                content = LogContent("testuser의 로그"),
+                code = LogCode("fun main() = Unit"),
+                bojId = BojId("testuser")
+            )
+        )
+
+        mockMvc.perform(
+            post("/api/v1/logs/${requireNotNull(log.id)}/feedback")
+                .header("Authorization", "Bearer $userToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"status":"DISLIKE","reason":"INACCURATE"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.message").value("피드백이 제출되었습니다."))
+
+        val persistedLog = logRepository.findById(requireNotNull(log.id)).orElseThrow()
+        assertThat(persistedLog.aiFeedbackStatus).isEqualTo(AiFeedbackStatus.DISLIKE)
+        assertThat(persistedLog.aiFeedbackReason).isEqualTo("INACCURATE")
+    }
+
+    companion object {
+        private val testDatabaseName =
+            "didimlog-security-${UUID.randomUUID().toString().replace("-", "")}"
+
+        @JvmStatic
+        @DynamicPropertySource
+        fun mongoProperties(registry: DynamicPropertyRegistry) {
+            registry.add("spring.data.mongodb.uri") {
+                val port = System.getenv("TEST_MONGO_PORT") ?: "27017"
+                "mongodb://localhost:$port/$testDatabaseName"
+            }
         }
     }
 }

@@ -2,6 +2,7 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.log.LogService
 import com.didimlog.domain.Log
+import com.didimlog.domain.enums.AiFeedbackStatus
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
@@ -192,5 +193,31 @@ class LogControllerTest {
             .andExpect(jsonPath("$.template").value("템플릿 본문"))
 
         verify(exactly = 1) { logService.getLogTemplate("log-1", "user123") }
+    }
+
+    @Test
+    @DisplayName("AI 리뷰 피드백 제출 시 인증 BOJ ID를 서비스에 전달한다")
+    fun `AI 리뷰 피드백 제출 성공`() {
+        every {
+            logService.updateFeedback("log-1", "owner1", AiFeedbackStatus.LIKE, null)
+        } returns mockk(relaxed = true)
+        val authentication = UsernamePasswordAuthenticationToken(
+            "owner1",
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_USER"))
+        )
+
+        mockMvc.perform(
+            post("/api/v1/logs/log-1/feedback")
+                .principal(authentication)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"status":"LIKE"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.message").value("피드백이 제출되었습니다."))
+
+        verify(exactly = 1) {
+            logService.updateFeedback("log-1", "owner1", AiFeedbackStatus.LIKE, null)
+        }
     }
 }
