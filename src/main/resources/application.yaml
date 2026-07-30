@@ -90,6 +90,8 @@ app:
     refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800000} # 7일 (밀리초)
     # 하위 호환성을 위해 expiration도 유지 (access-token-expiration과 동일)
     expiration: ${JWT_EXPIRATION:1800000} # 30분 (밀리초) - access-token-expiration과 동일
+  oauth:
+    exchange-code-ttl-seconds: ${OAUTH_EXCHANGE_CODE_TTL_SECONDS:120}
   cors:
     # (Legacy) 기존 설정 키. 하위 호환을 위해 남겨둔다.
     # 운영 환경에서는 환경 변수로 주입하여 사용한다.

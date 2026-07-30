@@ -277,6 +277,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 | 인증 요청 제한 | 회원가입 5건/시간, 로그인 10건/시간, 비밀번호 재설정 3건/시간 | 허용 횟수 이후 요청 차단 |
 | 가입·회고 DB 정합성 | 실제 MongoDB, 같은 학생·문제 회고 2건 동시 insert | 학생 식별자 중복 거부, 회고 1건 저장, 기존 중복 데이터 자동 삭제 0건 |
 | Refresh Token 회전 | 실제 Redis 7.2.5, 같은 기존 토큰으로 20건 동시 교체 | 성공 1건, 기존 토큰 0건, 새 토큰 1건 |
+| OAuth 로그인 코드 교환 | 실제 Redis, 같은 일회용 코드를 동시에 소비 | 성공 1건, 이후 요청은 같은 만료·재사용 오류 |
 | JWT 토큰 용도 분리 | 실제 Security Filter Chain에 Access·Refresh Token 전달 | Access Token 인증 성공, Refresh Token의 보호 API 접근 401 |
 | 비밀번호 재설정 코드 발급·소비 | 실제 MongoDB 7.0.16, 같은 회원 20건 동시 발급·같은 코드 20건 동시 재설정 | 발급 오류 0건·활성 코드 1건, 재설정 성공 1건·실패 19건 |
 | 로그인 프로필 동기화 | 실제 MongoDB, solved.ac 조회 대기 중 비밀번호 재설정 | 새 비밀번호 유지, rating·tier 필드만 갱신 |
@@ -285,6 +286,7 @@ solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색
 AI 리뷰와 인증 요청 제한의 실행 조건은 [로컬 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)에 남겼습니다.
 가입·회고 인덱스와 테스트 범위는 [가입·회고 데이터 정합성](./DOCS/refactoring/be-refactor/PHASE_2A_DATA_CONSISTENCY.md)에 정리했습니다.
 Refresh Token의 Lua 교체 순서와 경합 검증은 [Refresh Token 원자적 회전](./DOCS/refactoring/be-refactor/PHASE_2B_REFRESH_TOKEN_ATOMIC_ROTATION.md)에 정리했습니다.
+OAuth 리다이렉트의 장기 토큰·개인정보 제거와 일회용 코드 소비 순서는 [OAuth 일회용 코드 교환](./DOCS/refactoring/be-refactor/PHASE_2C_4_OAUTH_CODE_EXCHANGE.md)에 정리했습니다.
 Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토큰 용도 분리](./DOCS/refactoring/be-refactor/PHASE_2C_1_JWT_TOKEN_PURPOSE.md)에 정리했습니다.
 재설정 코드의 발급·소비 순서와 실패 경계는 [비밀번호 재설정 코드 발급 정합성](./DOCS/refactoring/be-refactor/PHASE_2B_3_PASSWORD_RESET_ISSUANCE_CONSISTENCY.md)과 [비밀번호 재설정 코드 원자적 소비](./DOCS/refactoring/be-refactor/PHASE_2B_2_PASSWORD_RESET_ATOMIC_CONSUME.md)에 정리했습니다.
 로그인 중 solved.ac 프로필 동기화의 부분 갱신과 비밀번호 변경 경합은 [로그인 프로필 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_2C_2_LOGIN_PROFILE_PARTIAL_UPDATE.md)에 정리했습니다.

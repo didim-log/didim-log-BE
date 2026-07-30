@@ -4,6 +4,7 @@ import com.didimlog.application.auth.AuthService
 import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
+import com.didimlog.application.auth.oauth.OAuthExchangeService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.ErrorResponse
@@ -20,6 +21,8 @@ import com.didimlog.ui.dto.FindIdRequest
 import com.didimlog.ui.dto.FindIdPasswordResponse
 import com.didimlog.ui.dto.FindPasswordRequest
 import com.didimlog.ui.dto.LoginRequest
+import com.didimlog.ui.dto.OAuthCodeExchangeRequest
+import com.didimlog.ui.dto.OAuthCodeExchangeResponse
 import com.didimlog.ui.dto.SignupRequest
 import com.didimlog.ui.dto.RefreshTokenRequest
 import com.didimlog.ui.dto.ResetPasswordRequest
@@ -55,10 +58,40 @@ class AuthController(
     private val findAccountService: FindAccountService,
     private val bojOwnershipVerificationService: BojOwnershipVerificationService,
     private val refreshTokenService: RefreshTokenService,
+    private val oAuthExchangeService: OAuthExchangeService,
     private val rateLimitService: RateLimitService,
     @Value("\${app.admin.secret-key:}")
     private val adminSecretKey: String
 ) {
+
+    @Operation(
+        summary = "OAuth 로그인 코드 교환",
+        description = "OAuth 콜백에서 받은 일회용 코드를 Access Token과 Refresh Token으로 교환합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "로그인 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "코드가 없거나 만료되었거나 이미 사용됨",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/oauth/exchange")
+    fun exchangeOAuthCode(
+        @RequestBody
+        @Valid
+        request: OAuthCodeExchangeRequest
+    ): ResponseEntity<OAuthCodeExchangeResponse> {
+        val response = OAuthCodeExchangeResponse.from(
+            oAuthExchangeService.exchange(request.code)
+        )
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CACHE_CONTROL, "no-store")
+            .header(HttpHeaders.PRAGMA, "no-cache")
+            .body(response)
+    }
 
     @Operation(
         summary = "회원가입",

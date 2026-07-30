@@ -4,6 +4,7 @@ import com.didimlog.application.auth.AuthService
 import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
+import com.didimlog.application.auth.oauth.OAuthExchangeService
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
@@ -76,6 +77,9 @@ class AuthControllerTest {
 
         @Bean
         fun refreshTokenService(): RefreshTokenService = mockk(relaxed = true)
+
+        @Bean
+        fun oAuthExchangeService(): OAuthExchangeService = mockk(relaxed = true)
 
         @Bean
         fun jwtTokenProvider(): JwtTokenProvider = mockk(relaxed = true)
