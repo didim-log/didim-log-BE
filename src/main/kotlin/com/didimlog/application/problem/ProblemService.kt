@@ -1,11 +1,13 @@
 package com.didimlog.application.problem
 
 import com.didimlog.domain.Problem
+import com.didimlog.domain.repository.ProblemDetailsUpdate
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.solvedac.ProblemCategoryMapper
 import com.didimlog.infra.solvedac.SolvedAcClient
@@ -131,7 +133,14 @@ class ProblemService(
             tags = tags
         )
 
-        val savedProblem = problemRepository.save(problem)
+        problemRepository.upsertMetadata(problem)
+        val savedProblem = problemRepository.findById(problem.id.value)
+            .orElseThrow {
+                BusinessException(
+                    ErrorCode.RESOURCE_STATE_CONFLICT,
+                    "문제 메타데이터 저장 중 대상 상태가 변경되었습니다. problemId=${problem.id.value}"
+                )
+            }
         if (!includeDetails) {
             return savedProblem
         }
@@ -142,14 +151,18 @@ class ProblemService(
         if (problem.descriptionHtml.isNullOrBlank()) {
             val crawledDetails = bojCrawler.crawlProblemDetails(problemId)
             if (crawledDetails != null) {
-                val updatedProblem = problem.copy(
+                val detailsUpdate = ProblemDetailsUpdate(
                     descriptionHtml = crawledDetails.descriptionHtml,
                     inputDescriptionHtml = crawledDetails.inputDescriptionHtml,
                     outputDescriptionHtml = crawledDetails.outputDescriptionHtml,
                     sampleInputs = crawledDetails.sampleInputs.takeIf { it.isNotEmpty() },
                     sampleOutputs = crawledDetails.sampleOutputs.takeIf { it.isNotEmpty() }
                 )
-                return problemRepository.save(updatedProblem)
+                return problemRepository.updateDetails(problem.id.value, detailsUpdate)
+                    ?: throw BusinessException(
+                        ErrorCode.RESOURCE_STATE_CONFLICT,
+                        "문제 상세 정보 저장 중 대상 상태가 변경되었습니다. problemId=${problem.id.value}"
+                    )
             }
         }
 

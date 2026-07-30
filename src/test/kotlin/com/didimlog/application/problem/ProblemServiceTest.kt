@@ -6,11 +6,14 @@ import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.ProblemDetailsUpdate
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.crawler.BojCrawler
 import com.didimlog.infra.crawler.ProblemDetails
 import com.didimlog.infra.solvedac.*
@@ -18,6 +21,7 @@ import io.mockk.*
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import java.util.*
 
 @DisplayName("ProblemService 테스트")
@@ -365,6 +369,8 @@ class ProblemServiceTest {
         verify(exactly = 0) { solvedAcClient.fetchProblem(any()) }
         verify(exactly = 0) { bojCrawler.crawlProblemDetails(any()) }
         verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+        verify(exactly = 0) { problemRepository.upsertMetadata(any()) }
+        verify(exactly = 0) { problemRepository.updateDetails(any(), any()) }
     }
 
     @Test
@@ -379,24 +385,37 @@ class ProblemServiceTest {
             tags = emptyList()
         )
 
-        every { problemRepository.findById(problemId.toString()) } returns Optional.empty()
+        val storedProblem = Problem(
+            id = ProblemId(problemId.toString()),
+            title = "새로운 문제",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 5,
+            url = "https://www.acmicpc.net/problem/$problemId"
+        )
+        every { problemRepository.findById(problemId.toString()) } returnsMany listOf(
+            Optional.empty(),
+            Optional.of(storedProblem)
+        )
         every { solvedAcClient.fetchProblem(problemId.toInt()) } returns solvedAcResponse
-
-        val savedProblemSlot: CapturingSlot<Problem> = slot()
-        every { problemRepository.save(capture(savedProblemSlot)) } answers { savedProblemSlot.captured }
-
         every { bojCrawler.crawlProblemDetails(problemId.toString()) } returns null
 
         // when
         val result = problemService.getProblemDetail(problemId)
 
         // then
-        val savedProblem = savedProblemSlot.captured
-        assertThat(savedProblem.id.value).isEqualTo(problemId.toString())
-        assertThat(savedProblem.title).isEqualTo("새로운 문제")
-        assertThat(result).isEqualTo(savedProblem)
+        assertThat(result).isEqualTo(storedProblem)
         verify(exactly = 1) { solvedAcClient.fetchProblem(problemId.toInt()) }
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(exactly = 1) {
+            problemRepository.upsertMetadata(
+                match { problem ->
+                    problem.id.value == problemId.toString() &&
+                        problem.title == "새로운 문제"
+                }
+            )
+        }
+        verify(exactly = 2) { problemRepository.findById(problemId.toString()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 
     @Test
@@ -425,21 +444,154 @@ class ProblemServiceTest {
         every { problemRepository.findById(problemId.toString()) } returns Optional.of(existingProblem)
         every { bojCrawler.crawlProblemDetails(problemId.toString()) } returns crawledDetails
 
-        val savedProblemSlot: CapturingSlot<Problem> = slot()
-        every { problemRepository.save(capture(savedProblemSlot)) } answers { savedProblemSlot.captured }
+        val updatedProblem = existingProblem.copy(
+            descriptionHtml = crawledDetails.descriptionHtml,
+            inputDescriptionHtml = crawledDetails.inputDescriptionHtml,
+            outputDescriptionHtml = crawledDetails.outputDescriptionHtml,
+            sampleInputs = crawledDetails.sampleInputs,
+            sampleOutputs = crawledDetails.sampleOutputs
+        )
+        val detailsSlot: CapturingSlot<ProblemDetailsUpdate> = slot()
+        every {
+            problemRepository.updateDetails(problemId.toString(), capture(detailsSlot))
+        } returns updatedProblem
 
         // when
         val result = problemService.getProblemDetail(problemId)
 
         // then
-        val savedProblem = savedProblemSlot.captured
-        assertThat(savedProblem.descriptionHtml).isEqualTo(crawledDetails.descriptionHtml)
-        assertThat(savedProblem.inputDescriptionHtml).isEqualTo(crawledDetails.inputDescriptionHtml)
-        assertThat(savedProblem.outputDescriptionHtml).isEqualTo(crawledDetails.outputDescriptionHtml)
-        assertThat(savedProblem.sampleInputs).isEqualTo(crawledDetails.sampleInputs)
-        assertThat(savedProblem.sampleOutputs).isEqualTo(crawledDetails.sampleOutputs)
-        assertThat(result).isEqualTo(savedProblem)
+        val details = detailsSlot.captured
+        assertThat(details.descriptionHtml).isEqualTo(crawledDetails.descriptionHtml)
+        assertThat(details.inputDescriptionHtml).isEqualTo(crawledDetails.inputDescriptionHtml)
+        assertThat(details.outputDescriptionHtml).isEqualTo(crawledDetails.outputDescriptionHtml)
+        assertThat(details.sampleInputs).isEqualTo(crawledDetails.sampleInputs)
+        assertThat(details.sampleOutputs).isEqualTo(crawledDetails.sampleOutputs)
+        assertThat(details.language).isNull()
+        assertThat(result).isEqualTo(updatedProblem)
         verify(exactly = 1) { bojCrawler.crawlProblemDetails(problemId.toString()) }
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(exactly = 1) { problemRepository.updateDetails(problemId.toString(), any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("상세 갱신 전에 문제가 삭제되면 다시 만들지 않고 실패한다")
+    fun `detail update fails when the problem was deleted`() {
+        val problemId = 1002L
+        val existingProblem = Problem(
+            id = ProblemId(problemId.toString()),
+            title = "삭제 경합 문제",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/$problemId"
+        )
+        val crawledDetails = ProblemDetails(
+            descriptionHtml = "<p>크롤링된 설명</p>",
+            inputDescriptionHtml = null,
+            outputDescriptionHtml = null,
+            sampleInputs = emptyList(),
+            sampleOutputs = emptyList()
+        )
+        every { problemRepository.findById(problemId.toString()) } returns Optional.of(existingProblem)
+        every { bojCrawler.crawlProblemDetails(problemId.toString()) } returns crawledDetails
+        every { problemRepository.updateDetails(problemId.toString(), any()) } returns null
+
+        val exception = assertThrows<BusinessException> {
+            problemService.getProblemDetail(problemId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(exception.message).contains("problemId=$problemId")
+        verify(exactly = 1) { problemRepository.updateDetails(problemId.toString(), any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("신규 문제 upsert 직후 대상이 사라지면 상태 충돌로 응답한다")
+    fun `new problem reload fails with a state conflict when the target disappeared`() {
+        val problemId = 1004L
+        every { problemRepository.findById(problemId.toString()) } returns Optional.empty()
+        every { solvedAcClient.fetchProblem(problemId.toInt()) } returns SolvedAcProblemResponse(
+            problemId = problemId.toInt(),
+            titleKo = "삭제 경합 문제",
+            level = 3,
+            tags = emptyList()
+        )
+
+        val exception = assertThrows<BusinessException> {
+            problemService.getProblemMeta(problemId)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(exception.message).contains("problemId=$problemId")
+        verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+        verify(exactly = 2) { problemRepository.findById(problemId.toString()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("신규 문제 upsert 중 상세가 생기면 재조회 결과를 사용하고 다시 크롤링하지 않는다")
+    fun `new problem reload skips duplicate detail crawl`() {
+        val problemId = 1003L
+        val solvedAcResponse = SolvedAcProblemResponse(
+            problemId = problemId.toInt(),
+            titleKo = "경합 중 생성된 문제",
+            level = 7,
+            tags = emptyList()
+        )
+        val storedProblem = Problem(
+            id = ProblemId(problemId.toString()),
+            title = solvedAcResponse.titleKo,
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.SILVER,
+            level = solvedAcResponse.level,
+            url = "https://www.acmicpc.net/problem/$problemId",
+            descriptionHtml = "<p>다른 작업이 저장한 상세</p>"
+        )
+        every { problemRepository.findById(problemId.toString()) } returnsMany listOf(
+            Optional.empty(),
+            Optional.of(storedProblem)
+        )
+        every { solvedAcClient.fetchProblem(problemId.toInt()) } returns solvedAcResponse
+
+        val result = problemService.getProblemDetail(problemId)
+
+        assertThat(result).isEqualTo(storedProblem)
+        verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+        verify(exactly = 0) { bojCrawler.crawlProblemDetails(any()) }
+        verify(exactly = 0) { problemRepository.updateDetails(any(), any()) }
+    }
+
+    @Test
+    @DisplayName("getProblemMeta는 DB에 문제가 없으면 메타데이터만 upsert하고 다시 조회한다")
+    fun `getProblemMeta upserts and reloads a missing problem`() {
+        val problemId = 1001L
+        val solvedAcResponse = SolvedAcProblemResponse(
+            problemId = problemId.toInt(),
+            titleKo = "메타데이터 문제",
+            level = 6,
+            tags = emptyList()
+        )
+        val storedProblem = Problem(
+            id = ProblemId(problemId.toString()),
+            title = solvedAcResponse.titleKo,
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.SILVER,
+            level = solvedAcResponse.level,
+            url = "https://www.acmicpc.net/problem/$problemId"
+        )
+        every { problemRepository.findById(problemId.toString()) } returnsMany listOf(
+            Optional.empty(),
+            Optional.of(storedProblem)
+        )
+        every { solvedAcClient.fetchProblem(problemId.toInt()) } returns solvedAcResponse
+
+        val result = problemService.getProblemMeta(problemId)
+
+        assertThat(result).isEqualTo(storedProblem)
+        verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+        verify(exactly = 2) { problemRepository.findById(problemId.toString()) }
+        verify(exactly = 0) { bojCrawler.crawlProblemDetails(any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 }
