@@ -18,7 +18,6 @@ import io.mockk.runs
 import io.mockk.verify
 import java.time.Duration
 import java.util.Collections
-import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -114,8 +113,7 @@ class ProblemCollectorServiceTest {
     fun `collect metadata status transition`() {
         every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
         every { solvedAcClient.fetchProblem(2) } returns SolvedAcProblemResponse(2, "B", 1, emptyList())
-        every { problemRepository.findById(any()) } returns Optional.empty()
-        every { problemRepository.save(any<Problem>()) } answers { firstArg() }
+        every { problemRepository.upsertMetadata(any()) } just runs
 
         val jobId = service.collectMetadataAsync(1, 2, "admin", "127.0.0.1")
         val status = service.getMetadataCollectJobStatus(jobId)
@@ -128,6 +126,26 @@ class ProblemCollectorServiceTest {
         assertThat(status.lastCheckpointId).isEqualTo("2")
         assertThat(status.startedAt).isNotNull
         assertThat(status.completedAt).isNotNull
+        verify(exactly = 1) {
+            problemRepository.upsertMetadata(
+                match<Problem> { problem ->
+                    problem.id.value == "1" &&
+                        problem.title == "A" &&
+                        problem.url == "https://www.acmicpc.net/problem/1"
+                }
+            )
+        }
+        verify(exactly = 1) {
+            problemRepository.upsertMetadata(
+                match<Problem> { problem ->
+                    problem.id.value == "2" &&
+                        problem.title == "B" &&
+                        problem.url == "https://www.acmicpc.net/problem/2"
+                }
+            )
+        }
+        verify(exactly = 0) { problemRepository.findById(any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 
     @Test
@@ -136,8 +154,7 @@ class ProblemCollectorServiceTest {
         var submittedTask: Runnable? = null
         service = createService(Executor { task -> submittedTask = task })
         every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
-        every { problemRepository.findById(any()) } returns Optional.empty()
-        every { problemRepository.save(any<Problem>()) } answers { firstArg() }
+        every { problemRepository.upsertMetadata(any()) } just runs
 
         val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
 
@@ -206,8 +223,7 @@ class ProblemCollectorServiceTest {
 
         every { solvedAcClient.fetchProblem(4) } returns SolvedAcProblemResponse(4, "P4", 1, emptyList())
         every { solvedAcClient.fetchProblem(5) } returns SolvedAcProblemResponse(5, "P5", 1, emptyList())
-        every { problemRepository.findById(any()) } returns Optional.empty()
-        every { problemRepository.save(any<Problem>()) } answers { firstArg() }
+        every { problemRepository.upsertMetadata(any()) } just runs
 
         val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
 

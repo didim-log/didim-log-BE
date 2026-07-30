@@ -68,34 +68,7 @@ class ProblemCollectorService(
 
         for (problemId in start..end) {
             try {
-                val response = solvedAcClient.fetchProblem(problemId)
-                val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
-                val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
-                val category = ProblemCategoryMapper.determineCategory(tags)
-
-                val existingProblem = problemRepository.findById(response.problemId.toString())
-                val problem = if (existingProblem.isPresent) {
-                    val existing = existingProblem.get()
-                    existing.copy(
-                        title = response.titleKo,
-                        difficulty = difficultyTier,
-                        level = response.level,
-                        category = category,
-                        tags = tags
-                    )
-                } else {
-                    Problem(
-                        id = ProblemId(response.problemId.toString()),
-                        title = response.titleKo,
-                        category = category,
-                        difficulty = difficultyTier,
-                        level = response.level,
-                        url = solvedAcProblemUrl(response.problemId),
-                        tags = tags
-                    )
-                }
-
-                problemRepository.save(problem)
+                upsertProblemMetadata(problemId)
                 successCount++
             } catch (e: IllegalStateException) {
                 failCount++
@@ -519,33 +492,7 @@ class ProblemCollectorService(
                 }
 
                 try {
-                    val response = solvedAcClient.fetchProblem(problemId)
-                    val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
-                    val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
-                    val category = ProblemCategoryMapper.determineCategory(tags)
-
-                    val existing = problemRepository.findById(response.problemId.toString())
-                    val problem = if (existing.isPresent) {
-                        existing.get().copy(
-                            title = response.titleKo,
-                            difficulty = difficultyTier,
-                            level = response.level,
-                            category = category,
-                            tags = tags
-                        )
-                    } else {
-                        Problem(
-                            id = ProblemId(response.problemId.toString()),
-                            title = response.titleKo,
-                            category = category,
-                            difficulty = difficultyTier,
-                            level = response.level,
-                            url = solvedAcProblemUrl(response.problemId),
-                            tags = tags
-                        )
-                    }
-
-                    problemRepository.save(problem)
+                    upsertProblemMetadata(problemId)
                     success++
                 } catch (e: Exception) {
                     fail++
@@ -557,6 +504,24 @@ class ProblemCollectorService(
                 pacer.pauseMetadata()
             }
         }
+    }
+
+    private fun upsertProblemMetadata(problemId: Int) {
+        val response = solvedAcClient.fetchProblem(problemId)
+        val difficultyTier = SolvedAcTierMapper.fromProblemLevel(response.level)
+        val tags = ProblemCategoryMapper.extractTagsToEnglish(response.tags)
+        val category = ProblemCategoryMapper.determineCategory(tags)
+        val problem = Problem(
+            id = ProblemId(response.problemId.toString()),
+            title = response.titleKo,
+            category = category,
+            difficulty = difficultyTier,
+            level = response.level,
+            url = solvedAcProblemUrl(response.problemId),
+            tags = tags
+        )
+
+        problemRepository.upsertMetadata(problem)
     }
 
     private fun collectDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {

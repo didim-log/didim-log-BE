@@ -6,6 +6,7 @@ RESULTS_ROOT="$ROOT_DIR/performance/results"
 RUN_ID="${CRAWLER_BASELINE_RUN_ID:-crawler-baseline-$(date +%Y%m%d%H%M%S)-$$}"
 OUTPUT_DIR="$RESULTS_ROOT/$RUN_ID"
 REPEATS="${CRAWLER_BASELINE_REPEATS:-5}"
+EXPECTED_FIND_COUNT="${CRAWLER_BASELINE_EXPECTED_FIND_COUNT:-6}"
 
 MONGO_IMAGE="mongo:7.0.16@sha256:c630c59342c1493d50345136df2af14a76b9e827dd5316bfabee07a0880a5f3a"
 REDIS_IMAGE="redis:7.2.5-alpine@sha256:6aaf3f5e6bc8a592fbfe2cccf19eb36d27c39d12dab4f4b01556b7449e7b1f44"
@@ -83,6 +84,10 @@ main() {
     echo "CRAWLER_BASELINE_REPEATS must be an integer between 1 and 20: $REPEATS" >&2
     exit 2
   fi
+  if [[ "$EXPECTED_FIND_COUNT" != "0" && "$EXPECTED_FIND_COUNT" != "6" ]]; then
+    echo "CRAWLER_BASELINE_EXPECTED_FIND_COUNT must be 0 or 6: $EXPECTED_FIND_COUNT" >&2
+    exit 2
+  fi
 
   if [[ "$MONGO_PORT" == "$REDIS_PORT" ]]; then
     echo "MongoDB and Redis ports must be different" >&2
@@ -97,6 +102,21 @@ main() {
     echo "Crawler baseline requires a clean worktree. Commit changes or set ALLOW_DIRTY_BASELINE_RUN=true for development-only verification." >&2
     exit 2
   fi
+  export CRAWLER_BASELINE_HARNESS_SHA256
+  CRAWLER_BASELINE_HARNESS_SHA256="$(
+    cd "$ROOT_DIR"
+    shasum -a 256 \
+      src/integrationTest/kotlin/com/didimlog/application/problem/collector/ProblemCollectorBaselineIntegrationTest.kt \
+      src/main/kotlin/com/didimlog/portfolio/PortfolioFixtureClients.kt \
+      src/main/resources/application-portfolio-fixture.yaml \
+      src/test/resources/application-test.yml \
+      performance/crawler/run-baseline.sh |
+        shasum -a 256 |
+        awk '{print $1}'
+  )"
+  export CRAWLER_BASELINE_MONGO_IMAGE="$MONGO_IMAGE"
+  export CRAWLER_BASELINE_REDIS_IMAGE="$REDIS_IMAGE"
+  export CRAWLER_BASELINE_EXPECTED_FIND_COUNT="$EXPECTED_FIND_COUNT"
 
   trap cleanup EXIT
   trap 'exit 130' INT

@@ -44,7 +44,7 @@ class ProblemServiceTest {
         every { solvedAcClient.fetchProblem(problemId) } returns response
 
         val savedProblemSlot: CapturingSlot<Problem> = slot()
-        every { problemRepository.save(capture(savedProblemSlot)) } answers { savedProblemSlot.captured }
+        every { problemRepository.upsertMetadata(capture(savedProblemSlot)) } just runs
 
         // when
         problemService.syncProblem(problemId)
@@ -59,7 +59,8 @@ class ProblemServiceTest {
         assertThat(savedProblem.category).isEqualTo(ProblemCategory.IMPLEMENTATION) // 태그가 없으면 기본값
         assertThat(savedProblem.tags).isEmpty()
 
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 
     @Test
@@ -90,7 +91,7 @@ class ProblemServiceTest {
         every { solvedAcClient.fetchProblem(problemId) } returns response
 
         val savedProblemSlot: CapturingSlot<Problem> = slot()
-        every { problemRepository.save(capture(savedProblemSlot)) } answers { savedProblemSlot.captured }
+        every { problemRepository.upsertMetadata(capture(savedProblemSlot)) } just runs
 
         // when
         problemService.syncProblem(problemId)
@@ -101,7 +102,8 @@ class ProblemServiceTest {
         assertThat(savedProblem.tags).containsExactly("Mathematics", "Implementation")
         assertThat(savedProblem.tags).doesNotContain("수학", "구현") // 한글이 아닌 영문으로 저장됨
 
-        verify(exactly = 1) { problemRepository.save(any<Problem>()) }
+        verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 
     @Test

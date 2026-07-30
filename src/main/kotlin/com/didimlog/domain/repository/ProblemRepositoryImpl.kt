@@ -4,6 +4,7 @@ import com.didimlog.domain.Problem
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Repository
 
 /**
@@ -14,6 +15,21 @@ import org.springframework.stereotype.Repository
 class ProblemRepositoryImpl(
     private val mongoTemplate: MongoTemplate
 ) : ProblemRepositoryCustom {
+
+    override fun upsertMetadata(problem: Problem) {
+        val query = Query.query(Criteria.where("_id").`is`(problem.id.value))
+        val update = Update()
+            .set("title", problem.title)
+            .set("category", problem.category.englishName)
+            .set("difficulty", problem.difficulty.name)
+            .set("level", problem.level)
+            .set("tags", problem.tags)
+            .setOnInsert("url", problem.url)
+            .setOnInsert("language", problem.language)
+            .unset("difficultyLevel")
+
+        mongoTemplate.upsert(query, update, Problem::class.java)
+    }
 
     override fun findByLevelBetweenFlexible(min: Int, max: Int): List<Problem> {
         val levelCriteria = Criteria.where("level").gte(min).lte(max)
@@ -37,4 +53,3 @@ class ProblemRepositoryImpl(
         return mongoTemplate.find(query, Problem::class.java)
     }
 }
-
