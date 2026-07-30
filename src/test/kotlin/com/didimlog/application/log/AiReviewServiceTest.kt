@@ -23,6 +23,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.core.task.TaskExecutor
 import java.time.LocalDateTime
@@ -600,6 +601,85 @@ class AiReviewServiceTest {
             lockRepository.markCompleted(any(), any(), any(), any(), any())
         }
         verify(exactly = 0) { aiReviewCodeCacheService.cacheReview(any(), any(), any()) }
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = ErrorCode::class,
+        names = [
+            "AI_CONTEXT_TOO_LARGE",
+            "AI_SERVICE_BUSY",
+            "RATE_LIMIT_SERVICE_UNAVAILABLE"
+        ]
+    )
+    @DisplayName("전달 대상으로 정한 AI 예외는 상태 코드를 유지하고 사용량을 반환한다")
+    fun `selected ai errors preserve business exception`(errorCode: ErrorCode) {
+        val logId = "log-provider-rate-limit"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("public class Main { public static void main(String[] args) { } }"),
+            studentId = "user123"
+        )
+        val failure = BusinessException(errorCode)
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every {
+            lockRepository.tryAcquireLock(any(), any(), any())
+        } returns acquiredLock
+        every {
+            lockRepository.markFailed(logId, acquiredLock, any())
+        } returns true
+        every {
+            aiApiClient.requestOneLineReview(any(), any())
+        } throws failure
+
+        assertThatThrownBy {
+            aiReviewService.requestOneLineReview(logId)
+        }
+            .isInstanceOf(BusinessException::class.java)
+            .matches { it === failure }
+
+        verify(exactly = 1) { aiUsageService.reserveUsage("user123") }
+        verify(exactly = 1) { aiUsageService.releaseUsage(usageReservation) }
+        verify(exactly = 1) {
+            lockRepository.markFailed(logId, acquiredLock, any())
+        }
+        verify(exactly = 0) {
+            lockRepository.markCompleted(any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    @DisplayName("AI 공급자의 내부 오류는 기존 생성 실패 응답으로 변환한다")
+    fun `provider internal business error maps to generation failure`() {
+        val logId = "log-provider-internal-error"
+        val log = Log(
+            id = logId,
+            title = LogTitle("제목"),
+            content = LogContent("내용"),
+            code = LogCode("public class Main { public static void main(String[] args) { } }"),
+            studentId = "user123"
+        )
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        every {
+            lockRepository.tryAcquireLock(any(), any(), any())
+        } returns acquiredLock
+        every {
+            lockRepository.markFailed(logId, acquiredLock, any())
+        } returns true
+        every {
+            aiApiClient.requestOneLineReview(any(), any())
+        } throws BusinessException(ErrorCode.COMMON_INTERNAL_ERROR)
+
+        assertThatThrownBy {
+            aiReviewService.requestOneLineReview(logId)
+        }.isInstanceOf(AiGenerationFailedException::class.java)
+
+        verify(exactly = 1) { aiUsageService.releaseUsage(usageReservation) }
+        verify(exactly = 1) {
+            lockRepository.markFailed(logId, acquiredLock, any())
+        }
     }
 
     @Test

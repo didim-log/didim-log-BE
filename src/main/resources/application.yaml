@@ -148,3 +148,7 @@ ai:
     write-timeout-seconds: ${GEMINI_WRITE_TIMEOUT_SECONDS:10}
     max-retries: ${GEMINI_MAX_RETRIES:1}
     retry-backoff-millis: ${GEMINI_RETRY_BACKOFF_MILLIS:700}
+    rate-limit:
+      min-interval-seconds: ${GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS:4}
+      max-rpm: ${GEMINI_RATE_LIMIT_MAX_RPM:15}
+      max-rpd: ${GEMINI_RATE_LIMIT_MAX_RPD:1500}

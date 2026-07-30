@@ -1804,7 +1804,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `TEMPLATE_RENDER_TIMEOUT` (504): 템플릿 렌더링 시간 초과 (`retryable=true`)
 - `TEMPLATE_CANNOT_DELETE_SYSTEM` (403): 시스템 템플릿은 삭제할 수 없음
 - `MAINTENANCE_MODE` (503): 서비스가 일시적으로 점검 중
-- `RATE_LIMIT_SERVICE_UNAVAILABLE` (503): 요청 제한 저장소에 연결할 수 없어 인증 요청을 처리할 수 없음 (`retryable=true`)
+- `RATE_LIMIT_SERVICE_UNAVAILABLE` (503): 요청 제한 저장소에 연결할 수 없어 제한 대상 요청을 처리할 수 없음 (`retryable=true`)
 - `SESSION_STATE_UNAVAILABLE` (503): 세션 상태 저장소에 연결할 수 없어 계정 관련 요청을 처리할 수 없음 (`retryable=true`)
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
 
@@ -1901,6 +1901,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - 동일 코드 재요청은 코드 해시 캐시를 통해 AI 재호출 없이 즉시 반환 (TTL 7일)
 - AI 호출 타임아웃: connect/read/response 10초 기본값
 - AI 비동기 워커: core 2, max 4, queue 200
+- Gemini 호출 제한: 최소 4초 간격, 분당 15회, 일일 1,500회 (`GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS`, `GEMINI_RATE_LIMIT_MAX_RPM`, `GEMINI_RATE_LIMIT_MAX_RPD`)
 
 ### 관리자 정책 제어 API
 

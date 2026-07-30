@@ -90,6 +90,9 @@ fi
 : "${GEMINI_WRITE_TIMEOUT_SECONDS:=5}"
 : "${GEMINI_MAX_RETRIES:=0}"
 : "${GEMINI_RETRY_BACKOFF_MILLIS:=700}"
+: "${GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS:=4}"
+: "${GEMINI_RATE_LIMIT_MAX_RPM:=15}"
+: "${GEMINI_RATE_LIMIT_MAX_RPD:=1500}"
 : "${AI_REVIEW_ASYNC_CORE_POOL_SIZE:=8}"
 : "${AI_REVIEW_ASYNC_MAX_POOL_SIZE:=16}"
 : "${AI_REVIEW_ASYNC_QUEUE_CAPACITY:=500}"
@@ -164,6 +167,7 @@ export ADMIN_SECRET_KEY SWAGGER_USERNAME SWAGGER_PASSWORD AI_ENABLED GEMINI_API_
 export GEMINI_API_URL GEMINI_CONNECT_TIMEOUT_MILLIS GEMINI_RESPONSE_TIMEOUT_SECONDS
 export GEMINI_READ_TIMEOUT_SECONDS GEMINI_WRITE_TIMEOUT_SECONDS GEMINI_MAX_RETRIES
 export GEMINI_RETRY_BACKOFF_MILLIS
+export GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS GEMINI_RATE_LIMIT_MAX_RPM GEMINI_RATE_LIMIT_MAX_RPD
 export AI_REVIEW_ASYNC_CORE_POOL_SIZE AI_REVIEW_ASYNC_MAX_POOL_SIZE AI_REVIEW_ASYNC_QUEUE_CAPACITY
 export RATE_LIMIT_CLIENT_IP P95_MS READ_RETROSPECTIVE_IDS
 export COMMIT_SHA JAVA_VERSION KOTLIN_VERSION K6_RUN_ID JVM_HEAP CPU_INFO MEMORY_INFO
@@ -328,7 +332,9 @@ validate_number_config() {
     "$FIXTURE_VERSION" \
     "$MEASUREMENT_REPETITION_INDEX" \
     "$MEASUREMENT_REPETITION_TOTAL" \
-    "$K6_RUN_ID" <<'PY'
+    "$K6_RUN_ID" \
+    "$GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS" \
+    "$AI_FAILED_POLL_TIMEOUT_SECONDS" <<'PY'
 from datetime import datetime
 import re
 import sys
@@ -352,6 +358,19 @@ for name, value, low, high in checks:
 
 if int(sys.argv[9]) > int(sys.argv[10]):
     raise SystemExit("MEASUREMENT_REPETITION_INDEX cannot exceed MEASUREMENT_REPETITION_TOTAL")
+
+for name, value, minimum in [
+    ("GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS", sys.argv[12], 0),
+    ("AI_FAILED_POLL_TIMEOUT_SECONDS", sys.argv[13], 1),
+]:
+    if not re.fullmatch(r"0|[1-9]\d*", value) or int(value) < minimum:
+        raise SystemExit(f"{name} must be an integer greater than or equal to {minimum}: {value}")
+
+if int(sys.argv[13]) < int(sys.argv[12]):
+    raise SystemExit(
+        "AI_FAILED_POLL_TIMEOUT_SECONDS must be greater than or equal to "
+        "GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS"
+    )
 
 try:
     epoch = datetime.fromisoformat(sys.argv[7].replace("Z", "+00:00"))
@@ -791,6 +810,9 @@ start_application() {
     "GEMINI_WRITE_TIMEOUT_SECONDS=$GEMINI_WRITE_TIMEOUT_SECONDS"
     "GEMINI_MAX_RETRIES=$GEMINI_MAX_RETRIES"
     "GEMINI_RETRY_BACKOFF_MILLIS=$GEMINI_RETRY_BACKOFF_MILLIS"
+    "GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS=$GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS"
+    "GEMINI_RATE_LIMIT_MAX_RPM=$GEMINI_RATE_LIMIT_MAX_RPM"
+    "GEMINI_RATE_LIMIT_MAX_RPD=$GEMINI_RATE_LIMIT_MAX_RPD"
     "AI_REVIEW_ASYNC_CORE_POOL_SIZE=$AI_REVIEW_ASYNC_CORE_POOL_SIZE"
     "AI_REVIEW_ASYNC_MAX_POOL_SIZE=$AI_REVIEW_ASYNC_MAX_POOL_SIZE"
     "AI_REVIEW_ASYNC_QUEUE_CAPACITY=$AI_REVIEW_ASYNC_QUEUE_CAPACITY"
@@ -921,14 +943,25 @@ wait_gemini_rate_window() {
     echo "redis-cli is required to respect GeminiRateLimiter retry interval" >&2
     return 127
   fi
-  local deadline=$(( $(date +%s) + AI_FAILED_POLL_TIMEOUT_SECONDS ))
+  # 초 단위 현재 시각의 절삭 오차를 포함해 설정한 대기 시간을 보장한다.
+  local deadline=$(( $(date +%s) + AI_FAILED_POLL_TIMEOUT_SECONDS + 1 ))
   while true; do
-    local last
-    last="$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DATABASE" get "gemini:rate:last:" 2>/dev/null || true)"
+    local ttl_millis
+    ttl_millis="$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DATABASE" pttl "gemini:rate:last:" 2>/dev/null || true)"
     local now
     now="$(date +%s)"
-    if [[ -z "$last" || "$last" == "(nil)" || $(( now - last )) -ge 4 ]]; then
+    if [[ "$ttl_millis" =~ ^-?[0-9]+$ ]] && [[ "$ttl_millis" -le 0 && "$ttl_millis" -ne -1 ]]; then
       return 0
+    fi
+    if [[ "$ttl_millis" == "-1" ]]; then
+      local last
+      last="$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DATABASE" get "gemini:rate:last:" 2>/dev/null || true)"
+      if [[ -z "$last" || "$last" == "(nil)" ]]; then
+        return 0
+      fi
+      if [[ "$last" =~ ^[0-9]+$ ]] && (( now - last >= GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS )); then
+        return 0
+      fi
     fi
     if [[ "$now" -ge "$deadline" ]]; then
       echo "Timed out waiting for GeminiRateLimiter minimum interval" >&2

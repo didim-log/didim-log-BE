@@ -308,6 +308,14 @@ class AiReviewService(
     ): com.didimlog.infra.ai.AiApiResponse {
         return try {
             aiApiClient.requestOneLineReview(prompt, timeoutSeconds = AI_TIMEOUT_SECONDS)
+        } catch (e: BusinessException) {
+            if (e.errorCode in PRESERVED_AI_ERROR_CODES) {
+                throw e
+            }
+            throw AiGenerationFailedException(
+                message = "AI 리뷰 생성 실패 (소요 시간: ${System.currentTimeMillis() - startTime}ms)",
+                cause = e
+            )
         } catch (e: java.util.concurrent.TimeoutException) {
             val duration = System.currentTimeMillis() - startTime
             throw AiGenerationTimeoutException(duration, cause = e)
@@ -423,6 +431,12 @@ class AiReviewService(
     }
 
     companion object {
+        private val PRESERVED_AI_ERROR_CODES = setOf(
+            ErrorCode.AI_CONTEXT_TOO_LARGE,
+            ErrorCode.AI_SERVICE_BUSY,
+            ErrorCode.RATE_LIMIT_SERVICE_UNAVAILABLE
+        )
+
         private const val MAX_CODE_LENGTH = 2_000
         private const val MIN_CODE_LENGTH = 10
         private const val CODE_TOO_SHORT_MESSAGE = "코드가 너무 짧아 분석할 수 없습니다"

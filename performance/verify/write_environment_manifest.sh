@@ -139,6 +139,9 @@ HARNESS_GIT_DIRTY="$([[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]] && echo
 : "${GEMINI_WRITE_TIMEOUT_SECONDS:=5}"
 : "${GEMINI_MAX_RETRIES:=0}"
 : "${GEMINI_RETRY_BACKOFF_MILLIS:=700}"
+: "${GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS:=4}"
+: "${GEMINI_RATE_LIMIT_MAX_RPM:=15}"
+: "${GEMINI_RATE_LIMIT_MAX_RPD:=1500}"
 : "${AI_REVIEW_ASYNC_CORE_POOL_SIZE:=8}"
 : "${AI_REVIEW_ASYNC_MAX_POOL_SIZE:=16}"
 : "${AI_REVIEW_ASYNC_QUEUE_CAPACITY:=500}"
@@ -231,6 +234,7 @@ export ADMIN_SECRET_KEY SWAGGER_USERNAME SWAGGER_PASSWORD AI_ENABLED GEMINI_API_
 export GEMINI_CONNECT_TIMEOUT_MILLIS GEMINI_RESPONSE_TIMEOUT_SECONDS
 export GEMINI_READ_TIMEOUT_SECONDS GEMINI_WRITE_TIMEOUT_SECONDS GEMINI_MAX_RETRIES
 export GEMINI_RETRY_BACKOFF_MILLIS
+export GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS GEMINI_RATE_LIMIT_MAX_RPM GEMINI_RATE_LIMIT_MAX_RPD
 export AI_REVIEW_ASYNC_CORE_POOL_SIZE AI_REVIEW_ASYNC_MAX_POOL_SIZE AI_REVIEW_ASYNC_QUEUE_CAPACITY
 export MONGO_ENVIRONMENT REDIS_ENVIRONMENT
 export FIXTURE_VERSION PERF_FIXTURE_EPOCH PERF_FIXTURE_RETROSPECTIVES FIXTURE_COUNT
@@ -606,6 +610,13 @@ read_duration = duration("READ_DURATION")
 ai_max_duration = duration("AI_MAX_DURATION")
 fail_fast_ai_repeat = boolean("FAIL_FAST_AI_REPEAT")
 p95_millis = optional_number("P95_MS")
+gemini_rate_limit_min_interval_seconds = integer("GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS")
+ai_failed_poll_timeout_seconds = integer("AI_FAILED_POLL_TIMEOUT_SECONDS", 1)
+if ai_failed_poll_timeout_seconds < gemini_rate_limit_min_interval_seconds:
+    raise SystemExit(
+        "AI_FAILED_POLL_TIMEOUT_SECONDS must be greater than or equal to "
+        "GEMINI_RATE_LIMIT_MIN_INTERVAL_SECONDS"
+    )
 async_core_pool_size = integer("AI_REVIEW_ASYNC_CORE_POOL_SIZE", 1)
 async_max_pool_size = integer("AI_REVIEW_ASYNC_MAX_POOL_SIZE", 1)
 if async_core_pool_size > async_max_pool_size:
@@ -689,6 +700,11 @@ manifest = {
             "writeTimeoutSeconds": integer("GEMINI_WRITE_TIMEOUT_SECONDS", 1),
             "maxRetries": integer("GEMINI_MAX_RETRIES"),
             "retryBackoffMillis": integer("GEMINI_RETRY_BACKOFF_MILLIS"),
+            "rateLimit": {
+                "minIntervalSeconds": gemini_rate_limit_min_interval_seconds,
+                "maxRpm": integer("GEMINI_RATE_LIMIT_MAX_RPM", 1),
+                "maxRpd": integer("GEMINI_RATE_LIMIT_MAX_RPD", 1),
+            },
         },
         "aiReviewExecutor": {
             "corePoolSize": async_core_pool_size,
@@ -767,7 +783,7 @@ manifest = {
             "maxDuration": ai_max_duration,
             "pollTimeoutSeconds": integer("AI_POLL_TIMEOUT_SECONDS", 1),
             "pollIntervalMillis": integer("AI_POLL_INTERVAL_MILLIS", 1),
-            "failedPollTimeoutSeconds": integer("AI_FAILED_POLL_TIMEOUT_SECONDS", 1),
+            "failedPollTimeoutSeconds": ai_failed_poll_timeout_seconds,
             "completedPollTimeoutSeconds": integer("AI_COMPLETED_POLL_TIMEOUT_SECONDS", 1),
             "expectedGeminiCalls": integer("EXPECTED_GEMINI_CALLS", 1),
             "failFastRepeat": fail_fast_ai_repeat,
