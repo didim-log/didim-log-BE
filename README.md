@@ -286,6 +286,21 @@ Before·After 각각 5회 실행했으며 기능 결과 hash는 같았습니다.
 운영 처리량의 개선율이 아닙니다.
 비교 조건과 수치의 범위는 [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)에 정리했습니다.
 
+### 문제 메타데이터 저장 명령 축소
+
+| 시나리오 | 직접 비교 항목 | Before | After | 변화 |
+| --- | --- | ---: | ---: | ---: |
+| 신규 문제 6건 | `problems` MongoDB 명령 | 12 | 6 | 50.00% 감소 |
+| 기존 상세가 있는 문제 6건 | `problems` MongoDB 명령 | 12 | 6 | 50.00% 감소 |
+
+메타데이터 수집 전에 문제별로 실행하던 `find`를 없애고 필요한 필드만
+upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었으며 기존 URL,
+언어와 상세 내용은 유지됐습니다. 같은 MongoDB·Redis 이미지에서 Before·After를
+각각 5회 실행했고 기능 결과 hash, Redis 명령과 solved.ac 호출 수는 같았습니다.
+50.00%는 `problems` collection의 메타데이터 저장 명령 수 감소율이며 크롤러 전체
+응답 시간이나 운영 처리량의 개선율이 아닙니다.
+비교 조건과 남은 비용은 [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)에 정리했습니다.
+
 ### 동시성·요청 제한 검증
 
 | 검증 범위 | 조건 | 확인 결과 |
@@ -321,6 +336,7 @@ Access/Refresh Token의 인증 경계와 구형 토큰 처리 기준은 [JWT 토
 계정 삭제와 사용자 데이터 쓰기의 잠금 경계, 부분 갱신과 실제 경합 결과는 [계정 삭제와 사용자 데이터 쓰기 경합 차단](./DOCS/refactoring/be-refactor/PHASE_3D_ACCOUNT_WRITE_BARRIER.md)에 정리했습니다.
 기본 템플릿 삭제 순서, 계정 삭제 중간 실패와 목록 fallback 판정은 [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md)에 정리했습니다.
 통계 projection, 연도 범위 query와 복합 인덱스의 전후 측정은 [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)에 정리했습니다.
+문제 메타데이터의 부분 upsert와 저장 명령 전후 측정은 [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -398,6 +414,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [계정 삭제와 사용자 데이터 쓰기 경합 차단](./DOCS/refactoring/be-refactor/PHASE_3D_ACCOUNT_WRITE_BARRIER.md)
 - [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md)
 - [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)
+- [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
