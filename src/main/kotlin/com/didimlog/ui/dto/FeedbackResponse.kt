@@ -19,10 +19,14 @@ data class FeedbackResponse(
 ) {
     companion object {
         fun from(feedback: Feedback): FeedbackResponse {
+            return from(feedback, bojId = null)
+        }
+
+        fun from(feedback: Feedback, bojId: String?): FeedbackResponse {
             return FeedbackResponse(
                 id = feedback.id ?: "",
                 writerId = feedback.writerId,
-                bojId = null,
+                bojId = bojId,
                 content = feedback.content,
                 type = feedback.type.value,
                 status = feedback.status.value,
@@ -32,16 +36,7 @@ data class FeedbackResponse(
         }
 
         fun from(feedback: Feedback, student: Student): FeedbackResponse {
-            return FeedbackResponse(
-                id = feedback.id ?: "",
-                writerId = feedback.writerId,
-                bojId = student.bojId?.value,
-                content = feedback.content,
-                type = feedback.type.value,
-                status = feedback.status.value,
-                createdAt = feedback.createdAt,
-                updatedAt = feedback.updatedAt
-            )
+            return from(feedback, student.bojId?.value)
         }
     }
 }

@@ -14,6 +14,7 @@ import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier.Companion.fromRating
 import com.didimlog.domain.repository.QuoteRepository
+import com.didimlog.domain.repository.StudentFeedbackWriterView
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -389,8 +390,17 @@ class AdminControllerSecurityTest {
         val page = PageImpl(feedbacks)
 
         every { feedbackService.getAllFeedbacks(any()) } returns page
-        // AdminController가 studentRepository.findById를 호출하여 bojId를 가져옴
-        every { studentRepository.findById("student1") } returns java.util.Optional.of(student)
+        // 목록 작성자의 BOJ ID만 projection으로 조회
+        every {
+            studentRepository.findFeedbackWritersByIdIn(match { ids ->
+                ids.toSet() == setOf("student1")
+            })
+        } returns listOf(
+            StudentFeedbackWriterView(
+                id = "student1",
+                bojId = requireNotNull(student.bojId).value
+            )
+        )
 
         // when & then
         mockMvc.perform(
@@ -403,6 +413,7 @@ class AdminControllerSecurityTest {
             .andExpect(jsonPath("$.content").isArray)
             .andExpect(jsonPath("$.content[0].id").value("feedback1"))
             .andExpect(jsonPath("$.content[0].writerId").value("student1"))
+            .andExpect(jsonPath("$.content[0].bojId").value(requireNotNull(student.bojId).value))
             .andExpect(jsonPath("$.content[0].content").value("버그 리포트입니다."))
             .andExpect(jsonPath("$.content[0].type").value("BUG"))
             .andExpect(jsonPath("$.content[0].status").value("PENDING"))
@@ -486,4 +497,3 @@ class AdminControllerSecurityTest {
         )
     }
 }
-

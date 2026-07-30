@@ -4,9 +4,10 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import java.time.LocalDateTime
 import java.util.Optional
 import org.springframework.data.mongodb.repository.MongoRepository
-import java.time.LocalDateTime
+import org.springframework.data.mongodb.repository.Query
 
 interface StudentRepository : MongoRepository<Student, String>, StudentRepositoryCustom {
 
@@ -23,6 +24,12 @@ interface StudentRepository : MongoRepository<Student, String>, StudentRepositor
     fun existsByNickname(nickname: Nickname): Boolean
 
     fun findByNickname(nickname: Nickname): Optional<Student>
+
+    @Query(
+        value = "{ '_id': { '\$in': ?0 } }",
+        fields = "{ '_id': 1, 'bojId': 1 }"
+    )
+    fun findFeedbackWritersByIdIn(studentIds: Collection<String>): List<StudentFeedbackWriterView>
 
     /**
      * 소셜 로그인 제공자와 제공자 ID로 사용자를 조회한다.
