@@ -2,11 +2,29 @@ package com.didimlog.domain.repository
 
 import com.didimlog.domain.Retrospective
 import org.springframework.data.mongodb.repository.MongoRepository
+import org.springframework.data.mongodb.repository.Query
 import java.time.LocalDateTime
 
 interface RetrospectiveRepository : MongoRepository<Retrospective, String>, RetrospectiveRepositoryCustom {
 
     fun findAllByStudentId(studentId: String): List<Retrospective>
+
+    @Query(
+        value = "{ 'studentId': ?0 }",
+        fields = "{ '_id': 0, 'problemId': 1, 'createdAt': 1, " +
+            "'solutionResult': 1, 'solvedCategory': 1 }"
+    )
+    fun findStatisticsByStudentId(studentId: String): List<RetrospectiveStatisticsView>
+
+    @Query(
+        value = "{ 'studentId': ?0, 'createdAt': { '\$gte': ?1, '\$lt': ?2 } }",
+        fields = "{ '_id': 0, 'problemId': 1, 'createdAt': 1 }"
+    )
+    fun findHeatmapByStudentIdAndCreatedAtRange(
+        studentId: String,
+        startInclusive: LocalDateTime,
+        endExclusive: LocalDateTime
+    ): List<RetrospectiveStatisticsView>
 
     fun findByStudentIdAndProblemId(studentId: String, problemId: String): Retrospective?
 

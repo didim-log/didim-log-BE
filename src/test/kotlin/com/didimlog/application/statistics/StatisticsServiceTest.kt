@@ -1,6 +1,5 @@
 package com.didimlog.application.statistics
 
-import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Solution
 import com.didimlog.domain.Solutions
 import com.didimlog.domain.Student
@@ -9,6 +8,7 @@ import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.domain.repository.RetrospectiveStatisticsView
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -82,7 +82,7 @@ class StatisticsServiceTest {
             )
         )
         every { studentRepository.findById(STUDENT_ID) } returns Optional.of(student(solutions))
-        every { retrospectiveRepository.findAllByStudentId(STUDENT_ID) } returns retrospectives
+        every { retrospectiveRepository.findStatisticsByStudentId(STUDENT_ID) } returns retrospectives
 
         val result = statisticsService.getStatistics(STUDENT_ID)
 
@@ -110,14 +110,14 @@ class StatisticsServiceTest {
         val duplicateDay = result.monthlyHeatmap.single { it.date == today.minusDays(1).toString() }
         assertThat(duplicateDay.count).isEqualTo(1)
         assertThat(duplicateDay.problemIds).containsExactly("duplicate-problem")
-        verify(exactly = 1) { retrospectiveRepository.findAllByStudentId(STUDENT_ID) }
+        verify(exactly = 1) { retrospectiveRepository.findStatisticsByStudentId(STUDENT_ID) }
     }
 
     @Test
     @DisplayName("풀이와 회고가 없으면 모든 통계는 0 또는 빈 목록이다")
     fun `빈 데이터 통계`() {
         every { studentRepository.findById(STUDENT_ID) } returns Optional.of(student())
-        every { retrospectiveRepository.findAllByStudentId(STUDENT_ID) } returns emptyList()
+        every { retrospectiveRepository.findStatisticsByStudentId(STUDENT_ID) } returns emptyList()
 
         val result = statisticsService.getStatistics(STUDENT_ID)
 
@@ -129,7 +129,7 @@ class StatisticsServiceTest {
         assertThat(result.monthlyHeatmap).isEmpty()
         assertThat(result.categoryStats).isEmpty()
         assertThat(result.weaknessStats).isEmpty()
-        verify(exactly = 1) { retrospectiveRepository.findAllByStudentId(STUDENT_ID) }
+        verify(exactly = 1) { retrospectiveRepository.findStatisticsByStudentId(STUDENT_ID) }
     }
 
     @Test
@@ -146,8 +146,18 @@ class StatisticsServiceTest {
             retrospective("year-end", yearEnd),
             retrospective("after-year", yearEnd.plusDays(1))
         )
+        val yearRetrospectives = retrospectives.filter { retrospective ->
+            val date = retrospective.createdAt.toLocalDate()
+            !date.isBefore(yearStart) && !date.isAfter(yearEnd)
+        }
         every { studentRepository.findById(STUDENT_ID) } returns Optional.of(student())
-        every { retrospectiveRepository.findAllByStudentId(STUDENT_ID) } returns retrospectives
+        every {
+            retrospectiveRepository.findHeatmapByStudentIdAndCreatedAtRange(
+                STUDENT_ID,
+                yearStart.atStartOfDay(),
+                yearStart.plusYears(1).atStartOfDay()
+            )
+        } returns yearRetrospectives
 
         val result = statisticsService.getHeatmapByYear(STUDENT_ID, targetYear)
 
@@ -158,7 +168,13 @@ class StatisticsServiceTest {
         )
         assertThat(result.flatMap(HeatmapData::problemIds))
             .containsExactly("year-start", "middle-year", "year-end")
-        verify(exactly = 1) { retrospectiveRepository.findAllByStudentId(STUDENT_ID) }
+        verify(exactly = 1) {
+            retrospectiveRepository.findHeatmapByStudentIdAndCreatedAtRange(
+                STUDENT_ID,
+                yearStart.atStartOfDay(),
+                yearStart.plusYears(1).atStartOfDay()
+            )
+        }
     }
 
     @Test
@@ -166,13 +182,15 @@ class StatisticsServiceTest {
     fun `현재 및 미래 연도 히트맵 범위`() {
         val today = LocalDate.now()
         val futureYear = today.year + 1
-        val retrospectives = listOf(
-            retrospective("today-problem", today),
-            retrospective("tomorrow-problem", today.plusDays(1)),
-            retrospective("future-year-problem", LocalDate.of(futureYear, 6, 15))
-        )
+        val retrospectives = listOf(retrospective("today-problem", today))
         every { studentRepository.findById(STUDENT_ID) } returns Optional.of(student())
-        every { retrospectiveRepository.findAllByStudentId(STUDENT_ID) } returns retrospectives
+        every {
+            retrospectiveRepository.findHeatmapByStudentIdAndCreatedAtRange(
+                STUDENT_ID,
+                LocalDate.of(today.year, 1, 1).atStartOfDay(),
+                today.plusDays(1).atStartOfDay()
+            )
+        } returns retrospectives
 
         val currentYearResult = statisticsService.getHeatmapByYear(STUDENT_ID, 0)
         val futureYearResult = statisticsService.getHeatmapByYear(STUDENT_ID, futureYear)
@@ -185,7 +203,13 @@ class StatisticsServiceTest {
             )
         )
         assertThat(futureYearResult).isEmpty()
-        verify(exactly = 2) { retrospectiveRepository.findAllByStudentId(STUDENT_ID) }
+        verify(exactly = 1) {
+            retrospectiveRepository.findHeatmapByStudentIdAndCreatedAtRange(
+                STUDENT_ID,
+                LocalDate.of(today.year, 1, 1).atStartOfDay(),
+                today.plusDays(1).atStartOfDay()
+            )
+        }
     }
 
     @Test
@@ -200,7 +224,13 @@ class StatisticsServiceTest {
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
         verify(exactly = 1) { studentRepository.findById(STUDENT_ID) }
-        verify(exactly = 0) { retrospectiveRepository.findAllByStudentId(STUDENT_ID) }
+        verify(exactly = 0) {
+            retrospectiveRepository.findHeatmapByStudentIdAndCreatedAtRange(
+                any(),
+                any(),
+                any()
+            )
+        }
     }
 
     private fun student(solutions: Solutions = Solutions()): Student {
@@ -233,11 +263,9 @@ class StatisticsServiceTest {
         date: LocalDate,
         result: ProblemResult? = ProblemResult.SUCCESS,
         solvedCategory: String? = null
-    ): Retrospective {
-        return Retrospective(
-            studentId = STUDENT_ID,
+    ): RetrospectiveStatisticsView {
+        return RetrospectiveStatisticsView(
             problemId = problemId,
-            content = "특성화 테스트를 위한 충분히 긴 회고 내용입니다.",
             createdAt = date.atTime(LocalTime.NOON),
             solutionResult = result,
             solvedCategory = solvedCategory
