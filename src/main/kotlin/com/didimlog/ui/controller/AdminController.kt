@@ -376,12 +376,15 @@ class AdminController(
     ): ResponseEntity<Page<FeedbackResponse>> {
         val pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
         val feedbacks = feedbackService.getAllFeedbacks(pageable)
+        val writerIds = feedbacks.content.mapTo(linkedSetOf()) { feedback -> feedback.writerId }
+        val writersById = if (writerIds.isEmpty()) {
+            emptyMap()
+        } else {
+            studentRepository.findFeedbackWritersByIdIn(writerIds)
+                .associateBy { writer -> writer.id }
+        }
         val response = feedbacks.map { feedback ->
-            val student = studentRepository.findById(feedback.writerId).orElse(null)
-            if (student == null) {
-                return@map FeedbackResponse.from(feedback)
-            }
-            FeedbackResponse.from(feedback, student)
+            FeedbackResponse.from(feedback, writersById[feedback.writerId]?.bojId)
         }
         return ResponseEntity.ok(response)
     }

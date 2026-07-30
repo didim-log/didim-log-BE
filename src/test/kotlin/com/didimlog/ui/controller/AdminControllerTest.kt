@@ -12,6 +12,7 @@ import com.didimlog.domain.enums.FeedbackType
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier.Companion.fromRating
+import com.didimlog.domain.repository.StudentFeedbackWriterView
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
@@ -396,8 +397,8 @@ class AdminControllerTest {
     }
 
     @Test
-    @DisplayName("피드백 목록 조회 성공")
-    fun `피드백 목록 조회 성공`() {
+    @DisplayName("피드백 목록의 중복 작성자를 제거해 한 번에 조회")
+    fun `피드백 목록 작성자를 중복 없이 한 번에 조회`() {
         // given
         val student = Student(
             id = "student1",
@@ -416,13 +417,34 @@ class AdminControllerTest {
                 content = "버그 리포트입니다. 매우 긴 내용을 작성합니다.",
                 type = FeedbackType.BUG,
                 status = FeedbackStatus.PENDING
-            ).copy(id = "feedback1")
+            ).copy(id = "feedback1"),
+            Feedback(
+                writerId = "student1",
+                content = "같은 작성자의 두 번째 피드백 내용입니다.",
+                type = FeedbackType.BUG,
+                status = FeedbackStatus.PENDING
+            ).copy(id = "feedback2"),
+            Feedback(
+                writerId = "deleted-student",
+                content = "삭제된 작성자의 피드백 내용입니다.",
+                type = FeedbackType.BUG,
+                status = FeedbackStatus.PENDING
+            ).copy(id = "feedback3")
         )
         val pageable = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt"))
         val page = PageImpl(feedbacks, pageable, feedbacks.size.toLong())
 
         every { feedbackService.getAllFeedbacks(any()) } returns page
-        every { studentRepository.findById("student1") } returns java.util.Optional.of(student)
+        every {
+            studentRepository.findFeedbackWritersByIdIn(match { ids ->
+                ids.toList() == listOf("student1", "deleted-student")
+            })
+        } returns listOf(
+            StudentFeedbackWriterView(
+                id = "student1",
+                bojId = requireNotNull(student.bojId).value
+            )
+        )
 
         // when & then
         mockMvc.perform(
@@ -434,7 +456,8 @@ class AdminControllerTest {
             .andExpect(status().isOk)
 
         verify(exactly = 1) { feedbackService.getAllFeedbacks(any()) }
-        verify(exactly = 1) { studentRepository.findById("student1") }
+        verify(exactly = 1) { studentRepository.findFeedbackWritersByIdIn(any()) }
+        verify(exactly = 0) { studentRepository.findById(any<String>()) }
     }
 
     @Test
