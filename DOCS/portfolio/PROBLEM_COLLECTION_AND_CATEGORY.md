@@ -125,7 +125,9 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 - 작업 상태는 24시간 TTL이며 서버 재시작 뒤 진행 중 작업을 복구하는 worker는 없다.
 - 상태 전이는 같은 Redis를 공유하는 여러 인스턴스에서 CAS로 조정한다. 구·신 worker의 혼합 실행은 지원하지 않으므로 전체 교체가 필요하다.
 - 작업 생성·상태 갱신 시 여러 Redis key를 함께 다루는 Lua는 standalone Redis 구성을 기준으로 한다.
-- 작업 목록은 sorted index에서 ID를 조회한 뒤 상태를 ID별로 읽는 1+N 구조가 남아 있다.
+- 작업 목록은 sorted index의 ID에 해당하는 상태를 `MGET`으로 한 번에 읽는다.
+  명령의 1+N 구조는 없앴지만 필터·페이징 전에 상태 N개를 모두 전송하고
+  역직렬화한다. [측정 조건과 남은 범위](../refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)
 - 상세 대상은 worker 실행 전에 목록으로 고정되며, 예제는 최대 5쌍만 수집한다.
 - 한국어 표시명이 없는 solved.ac 태그 key도 `fromKorean`에 전달되므로 일부 태그가 `Unknown`으로 합쳐질 수 있다.
 - 계층은 코드에 하드코딩된 직접 부모·자식 관계다. `RELATED`는 유사도 검색이 아니라 부모·형제 확장이다.

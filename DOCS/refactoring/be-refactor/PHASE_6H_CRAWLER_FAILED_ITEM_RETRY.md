@@ -172,3 +172,7 @@ SPRING_DATA_REDIS_PORT=6398 \
 - 작업 목록은 sorted index에서 ID를 읽은 뒤 상태를 하나씩 조회하는 1+N 구조다.
 - 다중 키 Lua는 현재 standalone Redis 구성을 기준으로 한다. Redis Cluster에서는
   같은 hash slot을 보장해야 한다.
+
+> 작업 목록의 1+N 조회는 후속
+> [Phase 6J](./PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)에서 일괄 처리했다.
+> Phase 6H의 실패 항목 재시도 기준선과 결과는 변경하지 않는다.

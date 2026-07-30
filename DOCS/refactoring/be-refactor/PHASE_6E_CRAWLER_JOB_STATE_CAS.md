@@ -163,3 +163,7 @@ MongoDB·Redis에 연결한 전체 `clean check`도 통과했다.
 > 실패 항목 원장과 숫자 순서 기반 재시도는 후속
 > [Phase 6H](./PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)에서 반영했다. Phase 6E의
 > 기준선과 명령 수는 변경하지 않는다.
+
+> 작업 목록의 상태별 `GET` 1+N 조회는 후속
+> [Phase 6J](./PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)에서 `MGET`으로 묶었다.
+> Phase 6E의 CAS 기준선과 수집 실행 명령 수는 변경하지 않는다.

@@ -348,6 +348,23 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 응답 시간이나 운영 처리량의 개선율이 아닙니다.
 비교 조건과 남은 비용은 [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)에 정리했습니다.
 
+### 문제 수집 작업 목록 일괄 조회
+
+| 시나리오 | 직접 비교 항목 | Before | After | 변화 |
+| --- | --- | ---: | ---: | ---: |
+| index 작업 1건 | Redis 목록 읽기 명령 | 2 | 2 | 변화 없음 |
+| index 작업 5건 | Redis 목록 읽기 명령 | 6 | 2 | 66.67% 감소 |
+| index 작업 20건 | Redis 목록 읽기 명령 | 21 | 2 | 90.48% 감소 |
+| 유효 20건·stale 2건 | Redis 조회·정리 명령 | 27 | 5 | 81.48% 감소 |
+
+작업 index에서 ID를 읽은 뒤 상태를 `GET`으로 하나씩 조회하던 흐름을 index 조회
+1회와 `MGET` 1회로 묶었습니다. 만료되거나 읽을 수 없는 상태의 index와 실패
+원장도 모아서 정리합니다. 다만 `MGET`은 index의 상태 값 N개를 모두 읽고 필터와
+페이징은 그 뒤 애플리케이션에서 처리합니다. 표는 Redis 명령 수 비교이며 전송
+데이터, JSON 역직렬화, 응답 시간이나 운영 처리량의 개선율이 아닙니다. stale
+혼합 행은 조회와 정리 쓰기 명령을 함께 센 값입니다.
+[문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)에 fixture와 명령별 측정 범위를 정리했습니다.
+
 ### 동시성·요청 제한 검증
 
 | 검증 범위 | 조건 | 확인 결과 |
@@ -403,6 +420,7 @@ Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [G
 추천 카테고리 확장 조회의 단일 쿼리와 레거시 난이도 읽기 기준은 [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)에 정리했습니다.
 부분 실패 원장과 실패 항목·미처리 구간의 재시도 기준은 [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)에 정리했습니다.
 관리자 피드백 목록의 작성자 projection과 실제 명령 수 비교는 [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)에 정리했습니다.
+작업 목록의 `MGET` 일괄 조회와 stale index 정리 명령 비교는 [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -494,6 +512,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)
 - [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)
 - [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)
+- [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
