@@ -244,6 +244,68 @@ class ProblemCollectorJobStateIntegrationTest {
     }
 
     @Test
+    @DisplayName("재시작 복구가 실행 중 작업을 실패 처리하면 다음 문제를 실행하지 않는다")
+    fun `restart recovery stops in-flight worker before next metadata item`() {
+        var submittedTask: Runnable? = null
+        val firstCallStarted = CountDownLatch(1)
+        val releaseFirstCall = CountDownLatch(1)
+        val workerService = createService(
+            mapper = objectMapper,
+            taskExecutor = Executor { task -> submittedTask = task }
+        )
+        val recoveryService = createService(
+            mapper = objectMapper,
+            recoveryState = ProblemCollectorRecoveryState(
+                ProblemCollectorRecoveryProperties(failOrphanedJobsOnStartup = true)
+            )
+        )
+        every { solvedAcClient.fetchProblem(1) } answers {
+            firstCallStarted.countDown()
+            check(releaseFirstCall.await(5, TimeUnit.SECONDS))
+            SolvedAcProblemResponse(1, "P1", 1, emptyList())
+        }
+        every { solvedAcClient.fetchProblem(2) } returns
+            SolvedAcProblemResponse(2, "P2", 1, emptyList())
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+
+        val jobId = workerService.collectMetadataAsync(1, 2, "admin", "127.0.0.1")
+        val workerExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, WORKER_THREAD_NAME)
+        }
+        val workerFuture = workerExecutor.submit(requireNotNull(submittedTask))
+
+        try {
+            check(firstCallStarted.await(5, TimeUnit.SECONDS))
+            assertThat(readJob(jobId).status).isEqualTo(JobStatus.RUNNING)
+
+            assertThat(recoveryService.failOrphanedJobsDuringStartup()).isEqualTo(1)
+            val recoveredJson = requireNotNull(redisTemplate.opsForValue().get(jobKey(jobId)))
+            val recovered = readJob(jobId)
+            assertThat(recovered.status).isEqualTo(JobStatus.FAILED)
+            assertThat(recovered.errorCode).isEqualTo(ErrorCode.WORKER_UNAVAILABLE.code)
+            assertThat(recovered.errorMessage).contains("서버 재시작")
+
+            releaseFirstCall.countDown()
+            workerFuture.get(10, TimeUnit.SECONDS)
+
+            val stored = readJob(jobId)
+            assertThat(stored.status).isEqualTo(JobStatus.FAILED)
+            assertThat(stored.processedCount).isZero()
+            assertThat(stored.successCount).isZero()
+            assertThat(stored.failCount).isZero()
+            assertThat(stored.lastCheckpointId).isNull()
+            assertThat(redisTemplate.opsForValue().get(jobKey(jobId))).isEqualTo(recoveredJson)
+            assertStatusStorage(jobId)
+            verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
+            verify(exactly = 0) { solvedAcClient.fetchProblem(2) }
+            verify(exactly = 1) { problemRepository.upsertMetadata(any<Problem>()) }
+        } finally {
+            releaseFirstCall.countDown()
+            workerExecutor.shutdownNow()
+        }
+    }
+
+    @Test
     @DisplayName("완료 작업의 실패 원장은 TTL과 함께 저장되고 실패 문제만 재시도한다")
     fun `completed job retries only recorded failed metadata item`() {
         var problemTwoAttempts = 0
@@ -418,7 +480,9 @@ class ProblemCollectorJobStateIntegrationTest {
 
     private fun createService(
         mapper: ObjectMapper,
-        taskExecutor: Executor? = null
+        taskExecutor: Executor? = null,
+        recoveryState: ProblemCollectorRecoveryState =
+            ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties())
     ): ProblemCollectorService {
         return ProblemCollectorService(
             solvedAcClient = solvedAcClient,
@@ -428,6 +492,7 @@ class ProblemCollectorJobStateIntegrationTest {
             objectMapper = mapper,
             adminAuditService = adminAuditService,
             pacer = pacer,
+            recoveryState = recoveryState,
             taskExecutor = taskExecutor
         )
     }

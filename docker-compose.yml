@@ -6,6 +6,8 @@ services:
       - "127.0.0.1:8080:8080"
     env_file:
       - .env
+    environment:
+      PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP: "true"
     networks:
       - didim-log-network
     restart: always

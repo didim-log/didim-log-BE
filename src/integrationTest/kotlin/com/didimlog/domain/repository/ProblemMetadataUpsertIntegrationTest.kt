@@ -2,6 +2,8 @@ package com.didimlog.domain.repository
 
 import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.problem.collector.ProblemCollectorPacer
+import com.didimlog.application.problem.collector.ProblemCollectorRecoveryProperties
+import com.didimlog.application.problem.collector.ProblemCollectorRecoveryState
 import com.didimlog.application.problem.collector.ProblemCollectorService
 import com.didimlog.domain.Example
 import com.didimlog.domain.Problem
@@ -239,6 +241,7 @@ class ProblemMetadataUpsertIntegrationTest {
             objectMapper = ObjectMapper(),
             adminAuditService = mockk<AdminAuditService>(),
             pacer = mockk<ProblemCollectorPacer>(relaxed = true),
+            recoveryState = ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties()),
             taskExecutor = null
         )
 

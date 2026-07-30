@@ -45,6 +45,7 @@ class ProblemCollectorService(
     private val objectMapper: ObjectMapper,
     private val adminAuditService: AdminAuditService,
     private val pacer: ProblemCollectorPacer,
+    private val recoveryState: ProblemCollectorRecoveryState,
     @param:Qualifier("taskExecutor")
     private val taskExecutor: Executor? = null
 ) {
@@ -64,6 +65,8 @@ class ProblemCollectorService(
         private const val METADATA_AVG_SECONDS = 1L
         private const val DETAILS_AVG_SECONDS = 3L
         private const val LANGUAGE_AVG_SECONDS = 1L
+        private const val RESTART_ORPHAN_MESSAGE =
+            "서버 재시작으로 실행 주체를 잃었습니다. 작업을 재시도해주세요."
         private val CREATE_JOB_SCRIPT = DefaultRedisScript(
             """
             if redis.call('EXISTS', KEYS[1]) == 1 then
@@ -244,6 +247,23 @@ class ProblemCollectorService(
     fun getJob(jobId: String): JobStatusUnifiedResponse? {
         val raw = readJob(jobId) ?: return null
         return withQueuePosition(raw)
+    }
+
+    fun failOrphanedJobsDuringStartup(): Int {
+        check(!recoveryState.isReady()) {
+            "재시작 orphan 작업 복구는 작업 생성 gate가 닫힌 시작 단계에서만 실행할 수 있습니다."
+        }
+        val jobIds = redisTemplate.opsForZSet()
+            .reverseRange(JOB_INDEX_KEY, 0, -1)
+            .orEmpty()
+
+        return jobIds.count { jobId ->
+            markFailed(
+                jobId = jobId,
+                errorCode = ErrorCode.WORKER_UNAVAILABLE.code,
+                message = RESTART_ORPHAN_MESSAGE
+            )
+        }
     }
 
     fun getJobs(
@@ -683,7 +703,7 @@ class ProblemCollectorService(
             var fail = 0
 
             for (problemId in problemIds) {
-                if (isCancelled(jobId)) {
+                if (!isRunning(jobId)) {
                     return@runJobLoop
                 }
 
@@ -747,7 +767,7 @@ class ProblemCollectorService(
             var fail = 0
 
             for (problem in targetProblems) {
-                if (isCancelled(jobId)) {
+                if (!isRunning(jobId)) {
                     return@runJobLoop
                 }
 
@@ -785,7 +805,7 @@ class ProblemCollectorService(
             var fail = 0
 
             for (problem in targetProblems) {
-                if (isCancelled(jobId)) {
+                if (!isRunning(jobId)) {
                     return@runJobLoop
                 }
 
@@ -839,7 +859,7 @@ class ProblemCollectorService(
             var fail = 0
 
             for (problem in targetProblems) {
-                if (isCancelled(jobId)) {
+                if (!isRunning(jobId)) {
                     return@runJobLoop
                 }
 
@@ -893,7 +913,7 @@ class ProblemCollectorService(
 
         try {
             block()
-            if (!isCancelled(jobId)) {
+            if (isRunning(jobId)) {
                 markCompleted(jobId)
             }
         } catch (e: InterruptedException) {
@@ -911,6 +931,7 @@ class ProblemCollectorService(
         range: JobRange?,
         createdBy: String
     ): JobStatusUnifiedResponse {
+        recoveryState.requireJobCreationReady()
         val now = nowEpochSeconds()
         val created = JobStatusUnifiedResponse(
             jobId = UUID.randomUUID().toString(),
@@ -979,11 +1000,11 @@ class ProblemCollectorService(
         log.warn("job completion CAS retries exhausted: jobId=$jobId")
     }
 
-    private fun markFailed(jobId: String, errorCode: String, message: String) {
+    private fun markFailed(jobId: String, errorCode: String, message: String): Boolean {
         repeat(MAX_JOB_STATE_RETRIES + 1) {
-            val snapshot = readJobSnapshot(jobId) ?: return
+            val snapshot = readJobSnapshot(jobId) ?: return false
             if (snapshot.job.status != JobStatus.PENDING && snapshot.job.status != JobStatus.RUNNING) {
-                return
+                return false
             }
 
             val now = nowEpochSeconds()
@@ -995,10 +1016,11 @@ class ProblemCollectorService(
                 errorMessage = message
             )
             if (compareAndSetJob(snapshot, failed) != null) {
-                return
+                return true
             }
         }
         log.warn("job failure CAS retries exhausted: jobId=$jobId")
+        return false
     }
 
     private fun updateProgress(
@@ -1214,9 +1236,9 @@ class ProblemCollectorService(
         return job.copy(queuePosition = if (index >= 0) index + 1 else null)
     }
 
-    private fun isCancelled(jobId: String): Boolean {
-        val current = readJob(jobId) ?: return true
-        return current.status == JobStatus.CANCELLED
+    private fun isRunning(jobId: String): Boolean {
+        val current = readJob(jobId) ?: return false
+        return current.status == JobStatus.RUNNING
     }
 
     private fun isAfterCheckpoint(problem: Problem, checkpointExclusive: Int?): Boolean {
@@ -1348,11 +1370,18 @@ class ProblemCollectorService(
             }
         }
 
-        adminAuditService.logAction(
-            adminId = actor,
-            action = action,
-            details = detail,
-            ipAddress = ipAddress
-        )
+        try {
+            adminAuditService.logAction(
+                adminId = actor,
+                action = action,
+                details = detail,
+                ipAddress = ipAddress
+            )
+        } catch (e: RejectedExecutionException) {
+            log.error(
+                "admin audit submission rejected: actor=$actor, action=$action, error=${e.message}",
+                e
+            )
+        }
     }
 }
