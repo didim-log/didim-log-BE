@@ -318,6 +318,21 @@ Before·After 각각 5회 실행했으며 기능 결과 hash는 같았습니다.
 감소율이며 응답 시간이나 운영 처리량 개선율이 아닙니다.
 [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)에 조건과 남은 비용을 정리했습니다.
 
+### 관리자 피드백 작성자 일괄 조회
+
+| 페이지 크기 | 직접 비교 항목 | Before | After | 변화 |
+| ---: | --- | ---: | ---: | ---: |
+| 5 | MongoDB 읽기 명령 | 7 | 3 | 57.14% 감소 |
+| 20 | MongoDB 읽기 명령 | 22 | 3 | 86.36% 감소 |
+| 20 | `students` find | 20 | 1 | 95.00% 감소 |
+
+피드백마다 전체 학생 문서를 조회하던 흐름을 현재 페이지 작성자의 `_id`와
+`bojId` projection 한 번으로 바꿨습니다. 20건 페이지의 작성자 ID는 모두
+서로 다르고 학생 문서는 19건만 있는 조건이며, 삭제된 작성자의 피드백도
+`writerId`를 유지하고 `bojId=null`로 반환했습니다. 표는 MongoDB 읽기 명령 수
+감소율이며 응답 시간이나 운영 처리량 개선율이 아닙니다.
+[관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)에 fixture와 실행 계획을 정리했습니다.
+
 ### 문제 메타데이터 저장 명령 축소
 
 | 시나리오 | 직접 비교 항목 | Before | After | 변화 |
@@ -387,6 +402,7 @@ Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [G
 관리자 대시보드의 저장 경로, 고유 해결 문제 기준과 기간별 MongoDB 집계 결과는 [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)에 정리했습니다.
 추천 카테고리 확장 조회의 단일 쿼리와 레거시 난이도 읽기 기준은 [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)에 정리했습니다.
 부분 실패 원장과 실패 항목·미처리 구간의 재시도 기준은 [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)에 정리했습니다.
+관리자 피드백 목록의 작성자 projection과 실제 명령 수 비교는 [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -477,6 +493,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)
 - [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)
 - [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)
+- [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
