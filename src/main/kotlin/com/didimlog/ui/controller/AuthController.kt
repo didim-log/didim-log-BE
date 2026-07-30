@@ -75,6 +75,16 @@ class AuthController(
                 responseCode = "400",
                 description = "코드가 없거나 만료되었거나 이미 사용됨",
                 content = [Content(schema = Schema(implementation = ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))]
             )
         ]
     )
@@ -108,6 +118,16 @@ class AuthController(
             ApiResponse(
                 responseCode = "404",
                 description = "유효하지 않은 BOJ ID",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -213,6 +233,16 @@ class AuthController(
             ApiResponse(
                 responseCode = "404",
                 description = "유효하지 않은 BOJ ID",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -434,6 +464,16 @@ class AuthController(
             ApiResponse(
                 responseCode = "401",
                 description = "Refresh Token이 만료되었거나 존재하지 않음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]

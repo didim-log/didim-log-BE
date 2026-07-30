@@ -1,5 +1,6 @@
 package com.didimlog.application.auth.oauth
 
+import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
@@ -30,11 +31,13 @@ class OAuthExchangeServiceTest {
     private val studentRepository: StudentRepository = mockk()
     private val jwtTokenProvider: JwtTokenProvider = mockk()
     private val refreshTokenService: RefreshTokenService = mockk()
+    private val credentialSessionCoordinator = RecordingCredentialSessionCoordinator()
     private val service = OAuthExchangeService(
         exchangeCodeStore = exchangeCodeStore,
         studentRepository = studentRepository,
         jwtTokenProvider = jwtTokenProvider,
         refreshTokenService = refreshTokenService,
+        credentialSessionCoordinator = credentialSessionCoordinator,
         exchangeCodeTtlSeconds = 120L
     )
 
@@ -69,6 +72,7 @@ class OAuthExchangeServiceTest {
                     studentRepository = studentRepository,
                     jwtTokenProvider = jwtTokenProvider,
                     refreshTokenService = refreshTokenService,
+                    credentialSessionCoordinator = credentialSessionCoordinator,
                     exchangeCodeTtlSeconds = invalidTtl
                 )
             }
@@ -95,12 +99,39 @@ class OAuthExchangeServiceTest {
         assertThat(result.tier).isEqualTo(Tier.GOLD)
         assertThat(result.tierLevel).isEqualTo(13)
         assertThat(result.provider).isEqualTo(Provider.GITHUB)
+        assertThat(credentialSessionCoordinator.strictStudentIds).containsExactly(STUDENT_ID)
         verify(exactly = 1) { exchangeCodeStore.consume(code) }
         verify(exactly = 1) { studentRepository.findById(STUDENT_ID) }
         verify(exactly = 1) {
             jwtTokenProvider.createToken(BOJ_ID, STUDENT_ID, student.credentialVersion, Role.ADMIN.value)
         }
         verify(exactly = 1) { refreshTokenService.generateAndSave(student) }
+    }
+
+    @Test
+    @DisplayName("코드 소비 뒤 학생 잠금에 실패하면 사용자와 토큰 저장소를 변경하지 않는다")
+    fun `교환 코드 소비 뒤 학생 잠금 실패`() {
+        val code = "lock-conflict-code"
+        val student = linkedStudent(role = Role.USER)
+        every { exchangeCodeStore.consume(code) } returns identity(student)
+        val rejectingService = OAuthExchangeService(
+            exchangeCodeStore = exchangeCodeStore,
+            studentRepository = studentRepository,
+            jwtTokenProvider = jwtTokenProvider,
+            refreshTokenService = refreshTokenService,
+            credentialSessionCoordinator = RejectingCredentialSessionCoordinator(),
+            exchangeCodeTtlSeconds = 120L
+        )
+
+        val exception = assertThrows<BusinessException> {
+            rejectingService.exchange(code)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.SESSION_STATE_CONFLICT)
+        verify(exactly = 1) { exchangeCodeStore.consume(code) }
+        verify(exactly = 0) { studentRepository.findById(any()) }
+        verify(exactly = 0) { jwtTokenProvider.createToken(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenService.generateAndSave(any<Student>()) }
     }
 
     @Test
@@ -283,6 +314,25 @@ class OAuthExchangeServiceTest {
             role = role,
             termsAgreed = true
         )
+    }
+
+    private class RecordingCredentialSessionCoordinator : CredentialSessionCoordinator {
+        val strictStudentIds = mutableListOf<String>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T = action()
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            strictStudentIds += studentId
+            return action()
+        }
+    }
+
+    private class RejectingCredentialSessionCoordinator : CredentialSessionCoordinator {
+        override fun <T> execute(studentId: String, action: () -> T): T = action()
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            throw BusinessException(ErrorCode.SESSION_STATE_CONFLICT)
+        }
     }
 
     companion object {

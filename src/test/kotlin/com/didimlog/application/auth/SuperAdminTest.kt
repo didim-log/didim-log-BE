@@ -33,6 +33,7 @@ class SuperAdminTest {
     private val refreshTokenService: RefreshTokenService = mockk()
     private val bojOwnershipVerificationService =
         mockk<com.didimlog.application.auth.boj.BojOwnershipVerificationService>(relaxed = true)
+    private val credentialSessionCoordinator = RecordingCredentialSessionCoordinator()
 
     private val authService = AuthService(
         solvedAcClient,
@@ -44,7 +45,7 @@ class SuperAdminTest {
         passwordResetCodeGenerator,
         refreshTokenService,
         bojOwnershipVerificationService,
-        ImmediateCredentialSessionCoordinator()
+        credentialSessionCoordinator
     )
 
     @Test
@@ -71,9 +72,15 @@ class SuperAdminTest {
         every { studentRepository.findByBojId(BojId(bojId)) } returns java.util.Optional.empty()
         every { studentRepository.findByEmail(email) } returns java.util.Optional.empty()
         every { passwordEncoder.encode(password) } returns encodedPassword
+        val savedStudent = slot<Student>()
         every {
-            studentRepository.save(any<Student>())
+            studentRepository.save(capture(savedStudent))
         } answers { firstArg<Student>().copy(id = "admin-student-id") }
+        every {
+            studentRepository.findById("admin-student-id")
+        } answers {
+            java.util.Optional.of(savedStudent.captured.copy(id = "admin-student-id"))
+        }
         every {
             jwtTokenProvider.createToken(bojId, "admin-student-id", 0, Role.ADMIN.value)
         } returns "admin-token"
@@ -86,6 +93,8 @@ class SuperAdminTest {
         assertThat(result.token).isEqualTo("admin-token")
         assertThat(result.rating).isEqualTo(rating)
         assertThat(result.tier).isEqualTo(tier)
+        assertThat(credentialSessionCoordinator.strictStudentIds)
+            .containsExactly("admin-student-id")
 
         verify(exactly = 1) {
             studentRepository.save(
@@ -133,5 +142,16 @@ class SuperAdminTest {
             .hasMessageContaining("이미 가입된 BOJ ID입니다")
         
         unmockkObject(com.didimlog.global.util.PasswordValidator)
+    }
+
+    private class RecordingCredentialSessionCoordinator : CredentialSessionCoordinator {
+        val strictStudentIds = mutableListOf<String>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T = action()
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            strictStudentIds += studentId
+            return action()
+        }
     }
 }

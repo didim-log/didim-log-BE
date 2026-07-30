@@ -1,9 +1,12 @@
 package com.didimlog.application.feedback
 
+import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.domain.Feedback
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.FeedbackStatus
 import com.didimlog.domain.enums.FeedbackType
 import com.didimlog.domain.repository.FeedbackRepository
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
@@ -20,7 +23,13 @@ import java.util.*
 class FeedbackServiceTest {
 
     private val feedbackRepository: FeedbackRepository = mockk()
-    private val feedbackService = FeedbackService(feedbackRepository)
+    private val studentRepository: StudentRepository = mockk()
+    private val studentLifecycleCoordinator = RecordingStudentLifecycleCoordinator()
+    private val feedbackService = FeedbackService(
+        feedbackRepository,
+        studentRepository,
+        studentLifecycleCoordinator
+    )
 
     @Test
     @DisplayName("피드백을 등록할 수 있다")
@@ -36,6 +45,7 @@ class FeedbackServiceTest {
             status = FeedbackStatus.PENDING
         ).copy(id = "feedback1")
 
+        every { studentRepository.findById(writerId) } returns Optional.of(mockk<Student>())
         every { feedbackRepository.save(any<Feedback>()) } returns savedFeedback
 
         // when
@@ -46,7 +56,26 @@ class FeedbackServiceTest {
         assertThat(result.content).isEqualTo(content)
         assertThat(result.type).isEqualTo(type)
         assertThat(result.status).isEqualTo(FeedbackStatus.PENDING)
+        assertThat(studentLifecycleCoordinator.executedStudentIds).containsExactly(writerId)
         verify(exactly = 1) { feedbackRepository.save(any<Feedback>()) }
+    }
+
+    @Test
+    @DisplayName("삭제된 학생은 피드백을 등록할 수 없다")
+    fun `피드백 등록 실패 학생 없음`() {
+        every { studentRepository.findById("deleted-student") } returns Optional.empty()
+
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            feedbackService.createFeedback(
+                "deleted-student",
+                "삭제된 학생이 작성하려는 피드백입니다.",
+                FeedbackType.BUG
+            )
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
+        assertThat(studentLifecycleCoordinator.executedStudentIds).containsExactly("deleted-student")
+        verify(exactly = 0) { feedbackRepository.save(any()) }
     }
 
     @Test
@@ -95,6 +124,9 @@ class FeedbackServiceTest {
         ).copy(id = feedbackId)
         val newStatus = FeedbackStatus.COMPLETED
 
+        every {
+            studentRepository.findById(existingFeedback.writerId)
+        } returns Optional.of(mockk<Student>())
         every { feedbackRepository.findById(feedbackId) } returns Optional.of(existingFeedback)
         every { feedbackRepository.save(any<Feedback>()) } answers { firstArg() }
 
@@ -103,8 +135,57 @@ class FeedbackServiceTest {
 
         // then
         assertThat(result.status).isEqualTo(newStatus)
-        verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
+        assertThat(studentLifecycleCoordinator.executedStudentIds).containsExactly(existingFeedback.writerId)
+        verify(exactly = 2) { feedbackRepository.findById(feedbackId) }
         verify(exactly = 1) { feedbackRepository.save(any<Feedback>()) }
+    }
+
+    @Test
+    @DisplayName("잠금 안에서 피드백이 사라지면 상태를 다시 저장하지 않는다")
+    fun `피드백 상태 변경 실패 잠금 안에서 삭제됨`() {
+        val feedbackId = "feedback1"
+        val existingFeedback = Feedback(
+            writerId = "student1",
+            content = "삭제와 경합하는 피드백 상태 변경입니다.",
+            type = FeedbackType.BUG,
+            status = FeedbackStatus.PENDING
+        ).copy(id = feedbackId)
+        every {
+            studentRepository.findById(existingFeedback.writerId)
+        } returns Optional.of(mockk<Student>())
+        every {
+            feedbackRepository.findById(feedbackId)
+        } returnsMany listOf(Optional.of(existingFeedback), Optional.empty())
+
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            feedbackService.updateFeedbackStatus(feedbackId, FeedbackStatus.COMPLETED)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_RESOURCE_NOT_FOUND)
+        verify(exactly = 0) { feedbackRepository.save(any()) }
+    }
+
+    @Test
+    @DisplayName("잠금 안에서 학생이 사라지면 피드백 상태를 저장하지 않는다")
+    fun `피드백 상태 변경 실패 학생 없음`() {
+        val feedbackId = "feedback1"
+        val existingFeedback = Feedback(
+            writerId = "deleted-student",
+            content = "탈퇴와 경합하는 피드백 상태 변경입니다.",
+            type = FeedbackType.BUG,
+            status = FeedbackStatus.PENDING
+        ).copy(id = feedbackId)
+        every { feedbackRepository.findById(feedbackId) } returns Optional.of(existingFeedback)
+        every { studentRepository.findById(existingFeedback.writerId) } returns Optional.empty()
+
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            feedbackService.updateFeedbackStatus(feedbackId, FeedbackStatus.COMPLETED)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
+        assertThat(studentLifecycleCoordinator.executedStudentIds).containsExactly(existingFeedback.writerId)
+        verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
+        verify(exactly = 0) { feedbackRepository.save(any()) }
     }
 
     @Test
@@ -136,6 +217,9 @@ class FeedbackServiceTest {
             status = FeedbackStatus.COMPLETED
         ).copy(id = feedbackId)
 
+        every {
+            studentRepository.findById(completedFeedback.writerId)
+        } returns Optional.of(mockk<Student>())
         every { feedbackRepository.findById(feedbackId) } returns Optional.of(completedFeedback)
         every { feedbackRepository.delete(completedFeedback) } returns Unit
 
@@ -143,7 +227,8 @@ class FeedbackServiceTest {
         feedbackService.deleteFeedback(feedbackId)
 
         // then
-        verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
+        assertThat(studentLifecycleCoordinator.executedStudentIds).containsExactly(completedFeedback.writerId)
+        verify(exactly = 2) { feedbackRepository.findById(feedbackId) }
         verify(exactly = 1) { feedbackRepository.delete(completedFeedback) }
     }
 
@@ -159,6 +244,9 @@ class FeedbackServiceTest {
             status = FeedbackStatus.PENDING
         ).copy(id = feedbackId)
 
+        every {
+            studentRepository.findById(pendingFeedback.writerId)
+        } returns Optional.of(mockk<Student>())
         every { feedbackRepository.findById(feedbackId) } returns Optional.of(pendingFeedback)
 
         // when & then
@@ -167,7 +255,7 @@ class FeedbackServiceTest {
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
         assertThat(exception.message).contains("완료된 피드백만 삭제할 수 있습니다")
-        verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
+        verify(exactly = 2) { feedbackRepository.findById(feedbackId) }
         verify(exactly = 0) { feedbackRepository.delete(any()) }
     }
 
@@ -188,10 +276,16 @@ class FeedbackServiceTest {
         verify(exactly = 1) { feedbackRepository.findById(feedbackId) }
         verify(exactly = 0) { feedbackRepository.delete(any()) }
     }
+
+    private class RecordingStudentLifecycleCoordinator : StudentLifecycleCoordinator {
+        val executedStudentIds = mutableListOf<String>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T {
+            executedStudentIds += studentId
+            return action()
+        }
+    }
 }
-
-
-
 
 
 

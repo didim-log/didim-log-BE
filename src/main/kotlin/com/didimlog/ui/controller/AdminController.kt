@@ -202,7 +202,12 @@ class AdminController(
             ),
             ApiResponse(
                 responseCode = "409",
-                description = "BOJ ID 중복",
+                description = "BOJ ID 중복 또는 같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -408,6 +413,16 @@ class AdminController(
                 responseCode = "404",
                 description = "피드백을 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
     )
@@ -455,6 +470,16 @@ class AdminController(
             ApiResponse(
                 responseCode = "404",
                 description = "피드백을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]

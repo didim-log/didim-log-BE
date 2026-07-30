@@ -46,7 +46,7 @@ class AccountDeletionServiceTest {
         templateRepository = templateRepository,
         passwordResetCodeRepository = passwordResetCodeRepository,
         refreshTokenService = refreshTokenService,
-        credentialSessionCoordinator = ImmediateCredentialSessionCoordinator()
+        studentLifecycleCoordinator = ImmediateCredentialSessionCoordinator()
     )
 
     @Test

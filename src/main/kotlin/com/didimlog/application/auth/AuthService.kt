@@ -591,20 +591,7 @@ class AuthService(
             bojOwnershipVerificationService.consumeVerifiedBojId(it, bojIdVo.value)
         }
         val savedStudent = saveStudentOrThrowDuplicate(bojId, student)
-        val savedStudentId = requireNotNull(savedStudent.id) {
-            "저장된 학생만 Access Token을 발급할 수 있습니다."
-        }
-        val token = jwtTokenProvider.createToken(
-            subject = bojId,
-            studentId = savedStudentId,
-            credentialVersion = savedStudent.credentialVersion,
-            role = savedStudent.role.value
-        )
-        
-        // Refresh Token 발급 및 저장
-        val refreshToken = refreshTokenService.generateAndSave(savedStudent)
-
-        return AuthResult(token, refreshToken, rating, tier, tierLevel)
+        return issueUserToken(savedStudent, bojId)
     }
 
     private fun validateBojIdNotRegistered(bojIdVo: BojId, bojId: String) {
@@ -803,23 +790,39 @@ class AuthService(
         val studentId = requireNotNull(student.id) {
             "저장된 학생만 Access Token을 발급할 수 있습니다."
         }
-        val token = jwtTokenProvider.createToken(
-            subject = bojId,
-            studentId = studentId,
-            credentialVersion = student.credentialVersion,
-            role = student.role.value
-        )
-        
-        // Refresh Token 발급 및 저장
-        val refreshToken = refreshTokenService.generateAndSave(student)
-        
-        return AuthResult(
-            token = token,
-            refreshToken = refreshToken,
-            rating = student.rating,
-            tier = student.tier(),
-            tierLevel = student.solvedAcTierLevel.value
-        )
+        return credentialSessionCoordinator.executeWithCompletionCheck(studentId) {
+            val latestStudent = studentRepository.findById(studentId)
+                .orElseThrow {
+                    BusinessException(
+                        ErrorCode.STUDENT_NOT_FOUND,
+                        "토큰을 발급할 사용자를 찾을 수 없습니다. studentId=$studentId"
+                    )
+                }
+            if (latestStudent.bojId?.value != bojId) {
+                throw BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "토큰을 발급할 사용자를 찾을 수 없습니다. studentId=$studentId"
+                )
+            }
+
+            val token = jwtTokenProvider.createToken(
+                subject = bojId,
+                studentId = studentId,
+                credentialVersion = latestStudent.credentialVersion,
+                role = latestStudent.role.value
+            )
+
+            // Refresh Token 발급 및 저장
+            val refreshToken = refreshTokenService.generateAndSave(latestStudent)
+
+            AuthResult(
+                token = token,
+                refreshToken = refreshToken,
+                rating = latestStudent.rating,
+                tier = latestStudent.tier(),
+                tierLevel = latestStudent.solvedAcTierLevel.value
+            )
+        }
     }
 
     companion object {

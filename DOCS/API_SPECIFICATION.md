@@ -1791,7 +1791,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `UNAUTHORIZED` (401): 인증 필요
 - `ACCESS_DENIED` (403): 권한 부족
 - `DUPLICATE_BOJ_ID` (409): 이미 가입된 BOJ ID
-- `SESSION_STATE_CONFLICT` (409): 같은 사용자의 로그인 또는 비밀번호 변경이 처리 중 (`retryable=true`)
+- `SESSION_STATE_CONFLICT` (409): 같은 사용자의 계정 상태 변경 또는 사용자 소유 데이터 쓰기가 처리 중 (`retryable=true`)
 - `PASSWORD_RESET_CONFLICT` (409): 재설정 코드 소비 뒤 상태가 변경되어 새 코드 발급 필요 (`retryable` 생략)
 - `RESOURCE_STATE_CONFLICT` (409): 요청 중 자원 상태가 변경되어 재시도 필요 (`retryable=true`)
 - `COMMON_RESOURCE_NOT_FOUND` (404): 요청한 자원을 찾을 수 없음
@@ -1805,7 +1805,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `TEMPLATE_CANNOT_DELETE_SYSTEM` (403): 시스템 템플릿은 삭제할 수 없음
 - `MAINTENANCE_MODE` (503): 서비스가 일시적으로 점검 중
 - `RATE_LIMIT_SERVICE_UNAVAILABLE` (503): 요청 제한 저장소에 연결할 수 없어 인증 요청을 처리할 수 없음 (`retryable=true`)
-- `SESSION_STATE_UNAVAILABLE` (503): 세션 상태 저장소에 연결할 수 없어 인증 요청을 처리할 수 없음 (`retryable=true`)
+- `SESSION_STATE_UNAVAILABLE` (503): 세션 상태 저장소에 연결할 수 없어 계정 관련 요청을 처리할 수 없음 (`retryable=true`)
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
 
 **예시 에러 응답:**

@@ -1,11 +1,17 @@
 package com.didimlog.application.log
 
+import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.domain.Log
+import com.didimlog.domain.Student
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.LogRepository
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every
@@ -21,10 +27,28 @@ import java.util.Optional
 class LogServiceTest {
 
     private val logRepository: LogRepository = mockk()
-    private val logService = LogService(logRepository)
+    private val logFeedbackRepository: LogFeedbackRepository = mockk()
+    private val studentRepository: StudentRepository = mockk()
+    private val studentLifecycleCoordinator = RecordingStudentLifecycleCoordinator()
+    private val logService = LogService(
+        logRepository,
+        logFeedbackRepository,
+        studentRepository,
+        studentLifecycleCoordinator
+    )
 
     @Test
     fun `createLog 는 content가 blank면 플레이스홀더로 저장한다`() {
+        every { studentRepository.findById("student-1") } returns Optional.of(
+            Student(
+                id = "student-1",
+                nickname = Nickname("tester1"),
+                provider = Provider.BOJ,
+                providerId = "tester1",
+                bojId = BojId("latest1"),
+                currentTier = Tier.BRONZE
+            )
+        )
         every { logRepository.save(any()) } answers { firstArg() }
 
         val saved = logService.createLog(
@@ -38,9 +62,28 @@ class LogServiceTest {
 
         assertThat(saved.content.value).isEqualTo("(empty)")
         assertThat(saved.studentId).isEqualTo("student-1")
-        assertThat(saved.bojId?.value).isEqualTo("tester1")
+        assertThat(saved.bojId?.value).isEqualTo("latest1")
         assertThat(saved.isSuccess).isTrue()
+        assertThat(studentLifecycleCoordinator.executedStudentIds).containsExactly("student-1")
         verify(exactly = 1) { logRepository.save(any()) }
+    }
+
+    @Test
+    fun `createLog 는 잠금 안에서 학생이 사라졌으면 로그를 저장하지 않는다`() {
+        every { studentRepository.findById("deleted-student") } returns Optional.empty()
+
+        assertThatThrownBy {
+            logService.createLog(
+                title = "로그 제목",
+                content = "로그 내용",
+                code = "print(1)",
+                studentId = "deleted-student"
+            )
+        }.isInstanceOf(BusinessException::class.java)
+            .matches { (it as BusinessException).errorCode == ErrorCode.STUDENT_NOT_FOUND }
+
+        assertThat(studentLifecycleCoordinator.executedStudentIds).containsExactly("deleted-student")
+        verify(exactly = 0) { logRepository.save(any()) }
     }
 
     @Test
@@ -93,5 +136,14 @@ class LogServiceTest {
             studentId = studentId,
             bojId = bojId
         )
+    }
+
+    private class RecordingStudentLifecycleCoordinator : StudentLifecycleCoordinator {
+        val executedStudentIds = mutableListOf<String>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T {
+            executedStudentIds += studentId
+            return action()
+        }
     }
 }

@@ -1,5 +1,7 @@
 package com.didimlog.application.retrospective
 
+import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
+import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.domain.Problem
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Solution
@@ -40,8 +42,47 @@ class RetrospectiveServiceTest {
     private val retrospectiveService = RetrospectiveService(
         retrospectiveRepository,
         studentRepository,
-        problemRepository
+        problemRepository,
+        ImmediateCredentialSessionCoordinator()
     )
+
+    @Test
+    fun `모든 회고 변경은 학생 생명주기 잠금을 먼저 한 번 획득한다`() {
+        val studentId = "student-id"
+        val coordinator = RejectingStudentLifecycleCoordinator()
+        val service = RetrospectiveService(
+            retrospectiveRepository,
+            studentRepository,
+            problemRepository,
+            coordinator
+        )
+
+        assertThrows<LifecycleBoundaryReached> {
+            service.writeRetrospective(
+                studentId = studentId,
+                problemId = "1000",
+                content = "생명주기 잠금 경계를 검증하는 회고입니다.",
+                summary = "잠금 경계"
+            )
+        }
+        assertThrows<LifecycleBoundaryReached> {
+            service.updateRetrospective(
+                retrospectiveId = "retrospective-id",
+                studentId = studentId,
+                content = "생명주기 잠금 경계를 검증하는 수정입니다.",
+                summary = "잠금 경계"
+            )
+        }
+        assertThrows<LifecycleBoundaryReached> {
+            service.toggleBookmark("retrospective-id", studentId)
+        }
+        assertThrows<LifecycleBoundaryReached> {
+            service.deleteRetrospective("retrospective-id", studentId)
+        }
+
+        assertThat(coordinator.studentIds)
+            .containsExactly(studentId, studentId, studentId, studentId)
+    }
 
     @Test
     @DisplayName("writeRetrospective는 새로운 회고를 작성한다")
@@ -848,6 +889,17 @@ class RetrospectiveServiceTest {
             solution.forEach(::add)
         }
     }
+
+    private class RejectingStudentLifecycleCoordinator : StudentLifecycleCoordinator {
+        val studentIds = mutableListOf<String>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T {
+            studentIds += studentId
+            throw LifecycleBoundaryReached()
+        }
+    }
+
+    private class LifecycleBoundaryReached : RuntimeException()
 
     @Test
     @DisplayName("getRetrospective는 회고를 조회한다")

@@ -187,7 +187,7 @@ class StudentWithdrawalConsistencyIntegrationTest {
             templateRepository = templateRepository,
             passwordResetCodeRepository = passwordResetCodeRepository,
             refreshTokenService = refreshTokenService,
-            credentialSessionCoordinator = coordinator
+            studentLifecycleCoordinator = coordinator
         )
         val studentService = StudentService(
             studentRepository = studentRepository,

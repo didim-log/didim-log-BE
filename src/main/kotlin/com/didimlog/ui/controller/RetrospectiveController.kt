@@ -92,7 +92,12 @@ class RetrospectiveController(
             ),
             ApiResponse(
                 responseCode = "409",
-                description = "동시 요청으로 회고 상태가 변경됨",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
@@ -329,7 +334,12 @@ class RetrospectiveController(
             ),
             ApiResponse(
                 responseCode = "409",
-                description = "동시 요청으로 회고 상태가 변경됨",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -488,7 +498,12 @@ class RetrospectiveController(
             ),
             ApiResponse(
                 responseCode = "409",
-                description = "동시 요청으로 회고 상태가 변경됨",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]
@@ -538,7 +553,12 @@ class RetrospectiveController(
             ),
             ApiResponse(
                 responseCode = "409",
-                description = "동시 요청으로 회고 상태가 변경됨",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             )
         ]

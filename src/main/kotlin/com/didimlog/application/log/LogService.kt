@@ -1,8 +1,10 @@
 package com.didimlog.application.log
 
+import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.domain.Log
 import com.didimlog.domain.enums.AiFeedbackStatus
 import com.didimlog.domain.repository.LogRepository
+import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
@@ -17,7 +19,10 @@ import org.springframework.transaction.annotation.Transactional
  */
 @Service
 class LogService(
-    private val logRepository: LogRepository
+    private val logRepository: LogRepository,
+    private val logFeedbackRepository: LogFeedbackRepository,
+    private val studentRepository: StudentRepository,
+    private val studentLifecycleCoordinator: StudentLifecycleCoordinator
 ) {
 
     /**
@@ -27,7 +32,7 @@ class LogService(
      * @param content 로그 내용 (빈 문자열 허용)
      * @param code 사용자 코드
      * @param studentId 변경되지 않는 로그 소유자 ID
-     * @param bojId 로그 생성 시점의 BOJ ID
+     * @param bojId 호출 시점의 BOJ ID. 잠금 안에서 읽은 최신 Student 값이 있으면 그 값을 사용한다.
      * @param isSuccess 풀이 성공 여부 (선택, null 가능)
      * @return 생성된 Log 엔티티
      */
@@ -41,21 +46,25 @@ class LogService(
         isSuccess: Boolean? = null
     ): Log {
         require(studentId.isNotBlank()) { "학생 ID는 필수입니다." }
-        // LogContent는 notBlank를 요구하므로, 빈 문자열인 경우 플레이스홀더를 사용한다.
-        val logContent = when {
-            content.isBlank() -> "(empty)"
-            else -> content
+        return studentLifecycleCoordinator.execute(studentId) {
+            val student = requireActiveStudent(studentId)
+
+            // LogContent는 notBlank를 요구하므로, 빈 문자열인 경우 플레이스홀더를 사용한다.
+            val logContent = when {
+                content.isBlank() -> "(empty)"
+                else -> content
+            }
+            val bojIdVo = student.bojId ?: bojId?.let { BojId(it) }
+            val log = Log(
+                title = LogTitle(title),
+                content = LogContent(logContent),
+                code = LogCode(code),
+                studentId = studentId,
+                bojId = bojIdVo,
+                isSuccess = isSuccess
+            )
+            logRepository.save(log)
         }
-        val bojIdVo = bojId?.let { BojId(it) }
-        val log = Log(
-            title = LogTitle(title),
-            content = LogContent(logContent),
-            code = LogCode(code),
-            studentId = studentId,
-            bojId = bojIdVo,
-            isSuccess = isSuccess
-        )
-        return logRepository.save(log)
     }
 
     /**
@@ -79,17 +88,24 @@ class LogService(
             throw BusinessException(ErrorCode.UNAUTHORIZED, "인증이 필요합니다.")
         }
 
-        val log = logRepository.findById(logId)
-            .orElseThrow {
-                BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "로그를 찾을 수 없습니다. logId=$logId")
+        return studentLifecycleCoordinator.execute(requesterStudentId) {
+            requireActiveStudent(requesterStudentId)
+            val log = findLog(logId)
+
+            if (log.studentId != requesterStudentId) {
+                throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 피드백을 제출할 수 있습니다.")
             }
 
-        if (log.studentId != requesterStudentId) {
-            throw BusinessException(ErrorCode.ACCESS_DENIED, "본인 로그에 대해서만 피드백을 제출할 수 있습니다.")
+            logFeedbackRepository.updateFeedback(
+                logId = logId,
+                studentId = requesterStudentId,
+                status = status,
+                reason = reason
+            ) ?: throw BusinessException(
+                ErrorCode.COMMON_RESOURCE_NOT_FOUND,
+                "로그를 찾을 수 없습니다. logId=$logId"
+            )
         }
-
-        val updatedLog = log.updateFeedback(status, reason)
-        return logRepository.save(updatedLog)
     }
 
     /**
@@ -115,5 +131,21 @@ class LogService(
         }
 
         return log.content.value
+    }
+
+    private fun requireActiveStudent(studentId: String) =
+        studentRepository.findById(studentId)
+            .orElseThrow {
+                BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "학생을 찾을 수 없습니다. studentId=$studentId"
+                )
+            }
+
+    private fun findLog(logId: String): Log {
+        return logRepository.findById(logId)
+            .orElseThrow {
+                BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "로그를 찾을 수 없습니다. logId=$logId")
+            }
     }
 }

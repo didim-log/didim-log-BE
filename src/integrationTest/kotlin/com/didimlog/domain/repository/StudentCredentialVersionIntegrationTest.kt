@@ -4,6 +4,7 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -241,6 +242,38 @@ class StudentCredentialVersionIntegrationTest {
         assertThat(persisted.solvedAcTierLevel).isEqualTo(changedStudent.solvedAcTierLevel)
         assertThat(persisted.currentTier).isEqualTo(changedStudent.currentTier)
         assertThat(persisted.documentVersion).isEqualTo(changedStudent.documentVersion)
+    }
+
+    @Test
+    fun `기본 템플릿 부분 갱신은 다른 학생 필드를 보존하고 삭제된 학생을 다시 만들지 않는다`() {
+        val student = saveStudent(id = "default_template", credentialVersion = 2)
+        val studentId = requireNotNull(student.id)
+
+        val updated = studentRepository.updateDefaultTemplateById(
+            studentId = studentId,
+            category = TemplateCategory.SUCCESS,
+            templateId = "template-success"
+        )
+
+        assertThat(updated?.defaultSuccessTemplateId).isEqualTo("template-success")
+        assertThat(updated?.nickname).isEqualTo(student.nickname)
+        assertThat(updated?.rating).isEqualTo(student.rating)
+        assertThat(updated?.credentialVersion).isEqualTo(student.credentialVersion)
+        assertThat(updated?.documentVersion).isEqualTo(requireNotNull(student.documentVersion) + 1)
+        assertThatThrownBy {
+            studentRepository.save(student.copy(nickname = Nickname("staleuser")))
+        }.isInstanceOf(OptimisticLockingFailureException::class.java)
+
+        studentRepository.deleteById(studentId)
+
+        assertThat(
+            studentRepository.updateDefaultTemplateById(
+                studentId = studentId,
+                category = TemplateCategory.FAIL,
+                templateId = "template-fail"
+            )
+        ).isNull()
+        assertThat(studentRepository.existsById(studentId)).isFalse()
     }
 
     private fun saveStudent(id: String, credentialVersion: Long): Student {

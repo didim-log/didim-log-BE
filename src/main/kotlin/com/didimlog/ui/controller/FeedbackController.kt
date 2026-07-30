@@ -7,6 +7,10 @@ import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.FeedbackCreateRequest
 import com.didimlog.ui.dto.FeedbackResponse
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -30,6 +34,36 @@ class FeedbackController(
         summary = "피드백 등록",
         description = "버그 리포트 또는 건의사항을 등록합니다. JWT 토큰에서 사용자 ID를 자동으로 추출합니다.",
         security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "201", description = "등록 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "세션 상태 저장소를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
     )
     @PostMapping
     fun createFeedback(

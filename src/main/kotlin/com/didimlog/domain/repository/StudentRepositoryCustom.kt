@@ -3,6 +3,7 @@ package com.didimlog.domain.repository
 import com.didimlog.domain.Student
 import com.didimlog.domain.Solutions
 import com.didimlog.domain.enums.PrimaryLanguage
+import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
@@ -43,6 +44,12 @@ interface StudentRepositoryCustom {
         solutions: Solutions,
         consecutiveSolveDays: Int,
         lastSolvedAt: LocalDate?
+    ): Student?
+
+    fun updateDefaultTemplateById(
+        studentId: String,
+        category: TemplateCategory,
+        templateId: String
     ): Student?
 
     fun searchAdminUsers(
