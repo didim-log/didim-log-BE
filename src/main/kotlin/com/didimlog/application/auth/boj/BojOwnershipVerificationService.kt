@@ -114,7 +114,6 @@ class BojOwnershipVerificationService(
         val verifiedBojIdKey = VERIFIED_BOJ_ID_KEY_PREFIX + sessionId
         codeStore.save(verifiedBojIdKey, bojIdVo.value, DEFAULT_TTL_SECONDS)
 
-        log.info("BOJ 소유권 인증 성공: bojId={}, sessionId={}", bojIdVo.value, sessionId)
         return bojIdVo.value
     }
 
