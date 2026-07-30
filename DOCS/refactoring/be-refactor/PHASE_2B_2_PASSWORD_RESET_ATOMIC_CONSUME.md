@@ -127,4 +127,4 @@ Phase 2B-1과 비교한 full-v1 변화는 Line 0.07%p, Branch 0.15%p, Class
 - 사용자별 활성 재설정 코드를 한 개로 제한하고 새 발급이 이전 코드를 대체하는 작업
 - 보안용 난수 생성기와 코드 충돌 재시도 적용
 - 재설정 코드 발급 API의 요청 제한 누락과 Redis 카운터 원자화
-- 비밀번호 변경 뒤 기존 Refresh Token을 폐기하는 세션 정책
+- 완료: [Phase 2E — 비밀번호 변경과 토큰 소유자 고정](./PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md)

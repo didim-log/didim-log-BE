@@ -44,7 +44,8 @@ class AuthService(
     private val passwordResetCodeRepository: PasswordResetCodeRepository,
     private val passwordResetCodeGenerator: PasswordResetCodeGenerator,
     private val refreshTokenService: RefreshTokenService,
-    private val bojOwnershipVerificationService: BojOwnershipVerificationService
+    private val bojOwnershipVerificationService: BojOwnershipVerificationService,
+    private val credentialSessionCoordinator: CredentialSessionCoordinator
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -97,9 +98,9 @@ class AuthService(
         if (!student.matchPassword(password, passwordEncoder)) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 일치하지 않습니다.")
         }
+        val studentId = requireNotNull(student.id) { "저장된 학생 ID가 없습니다." }
 
         // Rating 및 Tier 정보 동기화
-        var currentStudent = student
         try {
             val userResponse = solvedAcClient.fetchUser(bojIdVo)
             val newRating = userResponse.rating
@@ -110,8 +111,9 @@ class AuthService(
                 student.solvedAcTierLevel != updatedStudent.solvedAcTierLevel ||
                 student.currentTier != updatedStudent.currentTier
             ) {
-                currentStudent = studentRepository.updateSolvedAcProfileById(
-                    studentId = requireNotNull(student.id) { "저장된 학생 ID가 없습니다." },
+                studentRepository.updateSolvedAcProfileById(
+                    studentId = studentId,
+                    expectedBojId = bojIdVo,
                     rating = updatedStudent.rating,
                     solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
                     currentTier = updatedStudent.currentTier
@@ -138,19 +140,38 @@ class AuthService(
             // 예외 발생 시에도 로그인은 진행 (기존 정보 유지)
         }
 
-        // JWT Access Token 발급 (role 정보 포함)
-        val token = jwtTokenProvider.createToken(bojId, currentStudent.role.value)
-        
-        // Refresh Token 발급 및 저장
-        val refreshToken = refreshTokenService.generateAndSave(bojId)
-        
-        return AuthResult(
-            token = token,
-            refreshToken = refreshToken,
-            rating = currentStudent.rating,
-            tier = currentStudent.tier(),
-            tierLevel = currentStudent.solvedAcTierLevel.value
-        )
+        return credentialSessionCoordinator.executeWithCompletionCheck(studentId) {
+            val latestStudent = studentRepository.findById(studentId)
+                .orElseThrow {
+                    BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. bojId=$bojId")
+                }
+            val latestBojId = latestStudent.bojId?.value
+            if (latestBojId != bojId) {
+                throw BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "사용자를 찾을 수 없습니다. bojId=$bojId"
+                )
+            }
+            if (!latestStudent.matchPassword(password, passwordEncoder)) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "비밀번호가 일치하지 않습니다.")
+            }
+
+            val token = jwtTokenProvider.createToken(
+                subject = latestBojId,
+                studentId = studentId,
+                credentialVersion = latestStudent.credentialVersion,
+                role = latestStudent.role.value
+            )
+            val refreshToken = refreshTokenService.generateAndSave(latestStudent)
+
+            AuthResult(
+                token = token,
+                refreshToken = refreshToken,
+                rating = latestStudent.rating,
+                tier = latestStudent.tier(),
+                tierLevel = latestStudent.solvedAcTierLevel.value
+            )
+        }
     }
 
     /**
@@ -275,10 +296,29 @@ class AuthService(
         val studentId = student.id
             ?: throw BusinessException(ErrorCode.COMMON_INTERNAL_ERROR, "학생 ID를 찾을 수 없습니다.")
 
-        val passwordResetCode = issuePasswordResetCode(studentId)
+        val (latestStudent, passwordResetCode) = credentialSessionCoordinator.execute(studentId) {
+            val currentStudent = studentRepository.findById(studentId)
+                .orElseThrow {
+                    BusinessException(ErrorCode.STUDENT_NOT_FOUND, "비밀번호를 재설정할 계정을 찾을 수 없습니다.")
+                }
+            if (currentStudent.email != email || currentStudent.bojId != bojIdVo) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "이메일과 BOJ ID가 일치하지 않습니다.")
+            }
+            if (currentStudent.password == null) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "비밀번호가 설정되지 않은 계정입니다. 소셜 로그인 계정은 비밀번호 찾기를 사용할 수 없습니다."
+                )
+            }
+            currentStudent to issuePasswordResetCode(
+                studentId = studentId,
+                credentialVersion = currentStudent.credentialVersion,
+                bojId = requireNotNull(currentStudent.bojId).value
+            )
+        }
 
         val variables = mapOf(
-            "nickname" to student.nickname.value,
+            "nickname" to latestStudent.nickname.value,
             "email" to email,
             "bojId" to bojId,
             "resetCode" to passwordResetCode.resetCode
@@ -307,26 +347,63 @@ class AuthService(
     fun resetPassword(resetCode: String, newPassword: String) {
         PasswordValidator.validate(newPassword)
 
-        val passwordResetCode = passwordResetCodeRepository.consumeByResetCode(resetCode)
-            ?: throw BusinessException(
-                ErrorCode.COMMON_INVALID_INPUT,
-                "유효하지 않은 재설정 코드입니다."
-            )
+        val resetCodeSnapshot = passwordResetCodeRepository.findByResetCode(resetCode)
+            .orElseThrow {
+                BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "유효하지 않은 재설정 코드입니다."
+                )
+            }
 
-        if (passwordResetCode.isExpired()) {
-            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "만료된 재설정 코드입니다.")
+        credentialSessionCoordinator.execute(resetCodeSnapshot.studentId) {
+            val student = studentRepository.findById(resetCodeSnapshot.studentId)
+                .orElseGet {
+                    passwordResetCodeRepository.consumeByResetCode(
+                        resetCode,
+                        resetCodeSnapshot.studentId
+                    )
+                    throw BusinessException(
+                        ErrorCode.STUDENT_NOT_FOUND,
+                        "학생을 찾을 수 없습니다. studentId=${resetCodeSnapshot.studentId}"
+                    )
+                }
+            validatePasswordResetCodeContext(resetCodeSnapshot, student)
+
+            val passwordResetCode = passwordResetCodeRepository.consumeByResetCode(
+                resetCode,
+                resetCodeSnapshot.studentId
+            )
+                ?: throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "유효하지 않은 재설정 코드입니다."
+                )
+            validatePasswordResetCodeContext(passwordResetCode, student)
+            if (passwordResetCode.isExpired()) {
+                throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "만료된 재설정 코드입니다.")
+            }
+
+            if (student.bojId == null) {
+                throw BusinessException(
+                    ErrorCode.COMMON_INVALID_INPUT,
+                    "BOJ ID가 등록되지 않은 계정입니다."
+                )
+            }
+            val encodedPassword = passwordEncoder.encode(newPassword)
+
+            if (
+                !studentRepository.updatePasswordById(
+                    studentId = passwordResetCode.studentId,
+                    encodedPassword = encodedPassword,
+                    expectedCredentialVersion = student.credentialVersion,
+                    expectedBojId = requireNotNull(student.bojId)
+                )
+            ) {
+                throw BusinessException(ErrorCode.PASSWORD_RESET_CONFLICT)
+            }
+            refreshTokenService.revokeAllForStudent(passwordResetCode.studentId)
         }
 
-        val encodedPassword = passwordEncoder.encode(newPassword)
-
-        if (!studentRepository.updatePasswordById(passwordResetCode.studentId, encodedPassword)) {
-            throw BusinessException(
-                ErrorCode.STUDENT_NOT_FOUND,
-                "학생을 찾을 수 없습니다. studentId=${passwordResetCode.studentId}"
-            )
-        }
-
-        log.info("비밀번호 재설정 완료: studentId=${passwordResetCode.studentId}")
+        log.info("비밀번호 재설정 완료: studentId=${resetCodeSnapshot.studentId}")
     }
 
     /**
@@ -341,7 +418,23 @@ class AuthService(
         return studentRepository.existsByBojId(bojIdVo)
     }
 
-    private fun issuePasswordResetCode(studentId: String): PasswordResetCode {
+    private fun validatePasswordResetCodeContext(
+        passwordResetCode: PasswordResetCode,
+        student: Student
+    ) {
+        if (
+            passwordResetCode.credentialVersion != student.credentialVersion ||
+            passwordResetCode.bojId != student.bojId?.value
+        ) {
+            throw BusinessException(ErrorCode.PASSWORD_RESET_CONFLICT)
+        }
+    }
+
+    private fun issuePasswordResetCode(
+        studentId: String,
+        credentialVersion: Long,
+        bojId: String
+    ): PasswordResetCode {
         var lastCollisionField: String? = null
         var resetCode = passwordResetCodeGenerator.generate()
         var issuedAt = LocalDateTime.now()
@@ -351,6 +444,8 @@ class AuthService(
                 return passwordResetCodeRepository.issueForStudent(
                     studentId = studentId,
                     resetCode = resetCode,
+                    credentialVersion = credentialVersion,
+                    bojId = bojId,
                     expiresAt = issuedAt.plusMinutes(RESET_CODE_EXPIRES_MINUTES),
                     createdAt = issuedAt
                 )
@@ -495,11 +590,19 @@ class AuthService(
         verificationSessionId?.let {
             bojOwnershipVerificationService.consumeVerifiedBojId(it, bojIdVo.value)
         }
-        saveStudentOrThrowDuplicate(bojId, student)
-        val token = jwtTokenProvider.createToken(bojId, role.value)
+        val savedStudent = saveStudentOrThrowDuplicate(bojId, student)
+        val savedStudentId = requireNotNull(savedStudent.id) {
+            "저장된 학생만 Access Token을 발급할 수 있습니다."
+        }
+        val token = jwtTokenProvider.createToken(
+            subject = bojId,
+            studentId = savedStudentId,
+            credentialVersion = savedStudent.credentialVersion,
+            role = savedStudent.role.value
+        )
         
         // Refresh Token 발급 및 저장
-        val refreshToken = refreshTokenService.generateAndSave(bojId)
+        val refreshToken = refreshTokenService.generateAndSave(savedStudent)
 
         return AuthResult(token, refreshToken, rating, tier, tierLevel)
     }
@@ -545,9 +648,9 @@ class AuthService(
         }
     }
 
-    private fun saveStudentOrThrowDuplicate(bojId: String, student: Student) {
+    private fun saveStudentOrThrowDuplicate(bojId: String, student: Student): Student {
         try {
-            studentRepository.save(student)
+            return studentRepository.save(student)
         } catch (e: MongoWriteException) {
             if (e.code == 11000) {
                 log.error("MongoDB 중복 키 에러 발생: bojId={}, errorCode={}, message={}", SensitiveDataMasker.maskId(bojId), e.code, e.message, e)
@@ -697,10 +800,18 @@ class AuthService(
     }
 
     private fun issueUserToken(student: Student, bojId: String): AuthResult {
-        val token = jwtTokenProvider.createToken(bojId, Role.USER.value)
+        val studentId = requireNotNull(student.id) {
+            "저장된 학생만 Access Token을 발급할 수 있습니다."
+        }
+        val token = jwtTokenProvider.createToken(
+            subject = bojId,
+            studentId = studentId,
+            credentialVersion = student.credentialVersion,
+            role = student.role.value
+        )
         
         // Refresh Token 발급 및 저장
-        val refreshToken = refreshTokenService.generateAndSave(bojId)
+        val refreshToken = refreshTokenService.generateAndSave(student)
         
         return AuthResult(
             token = token,

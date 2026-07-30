@@ -53,7 +53,8 @@ class AuthServiceFindIdPasswordTest {
         passwordResetCodeRepository = passwordResetCodeRepository,
         passwordResetCodeGenerator = passwordResetCodeGenerator,
         refreshTokenService = refreshTokenService,
-        bojOwnershipVerificationService = bojOwnershipVerificationService
+        bojOwnershipVerificationService = bojOwnershipVerificationService,
+        credentialSessionCoordinator = ImmediateCredentialSessionCoordinator()
     )
 
     @Test
@@ -147,13 +148,17 @@ class AuthServiceFindIdPasswordTest {
 
         every { studentRepository.findByEmail(email) } returns
             Optional.of(passwordStudent(studentId, email, bojId))
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(passwordStudent(studentId, email, bojId))
         every { passwordResetCodeGenerator.generate() } returns resetCode
         every {
             passwordResetCodeRepository.issueForStudent(
                 studentId,
                 resetCode,
                 capture(expiresAt),
-                capture(createdAt)
+                capture(createdAt),
+                0,
+                bojId
             )
         } answers {
             issuedCode(
@@ -173,7 +178,7 @@ class AuthServiceFindIdPasswordTest {
         assertThat(expiresAt.single()).isEqualTo(createdAt.single().plusMinutes(30))
         verify(exactly = 1) { passwordResetCodeGenerator.generate() }
         verify(exactly = 1) {
-            passwordResetCodeRepository.issueForStudent(studentId, resetCode, any(), any())
+            passwordResetCodeRepository.issueForStudent(studentId, resetCode, any(), any(), 0, bojId)
         }
         verify(exactly = 0) { passwordEncoder.encode(any()) }
         verify(exactly = 0) { studentRepository.save(any()) }
@@ -193,6 +198,64 @@ class AuthServiceFindIdPasswordTest {
     }
 
     @Test
+    @DisplayName("findPassword는 잠금 안에서 다시 조회한 최신 자격 증명 버전과 BOJ ID로 코드를 발급한다")
+    fun `비밀번호 찾기는 최신 자격 증명 상태를 코드에 저장한다`() {
+        val email = "test@example.com"
+        val bojId = "testuser"
+        val studentId = "student-id"
+        val resetCode = "RESET001"
+        val snapshotStudent = passwordStudent(studentId, email, bojId).copy(credentialVersion = 2)
+        val latestStudent = snapshotStudent.copy(
+            nickname = Nickname("latestuser"),
+            credentialVersion = 3
+        )
+
+        every { studentRepository.findByEmail(email) } returns Optional.of(snapshotStudent)
+        every { studentRepository.findById(studentId) } returns Optional.of(latestStudent)
+        every { passwordResetCodeGenerator.generate() } returns resetCode
+        every {
+            passwordResetCodeRepository.issueForStudent(
+                studentId,
+                resetCode,
+                any(),
+                any(),
+                latestStudent.credentialVersion,
+                bojId
+            )
+        } answers {
+            issuedCode(
+                studentId = studentId,
+                resetCode = resetCode,
+                expiresAt = arg(2),
+                createdAt = arg(3),
+                credentialVersion = arg(4),
+                bojId = arg(5)
+            )
+        }
+
+        authService.findPassword(email, bojId)
+
+        verify(exactly = 1) {
+            passwordResetCodeRepository.issueForStudent(
+                studentId,
+                resetCode,
+                any(),
+                any(),
+                latestStudent.credentialVersion,
+                bojId
+            )
+        }
+        verify(exactly = 1) {
+            emailService.sendTemplateEmail(
+                email,
+                "[디딤로그] 비밀번호 재설정",
+                "mail/find-password",
+                match { it["nickname"] == latestStudent.nickname.value }
+            )
+        }
+    }
+
+    @Test
     @DisplayName("findPassword는 resetCode 유일 인덱스 충돌 시 새 코드로 재시도한다")
     fun `resetCode 충돌 후 새 코드를 생성해 발급한다`() {
         // given
@@ -206,10 +269,12 @@ class AuthServiceFindIdPasswordTest {
 
         every { studentRepository.findByEmail(email) } returns
             Optional.of(passwordStudent(studentId, email, bojId))
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(passwordStudent(studentId, email, bojId))
         every { passwordResetCodeGenerator.generate() } returnsMany
             listOf(firstResetCode, secondResetCode)
         every {
-            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any())
+            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any(), 0, bojId)
         } answers {
             attempts += 1
             val candidate = arg<String>(1)
@@ -256,9 +321,11 @@ class AuthServiceFindIdPasswordTest {
 
         every { studentRepository.findByEmail(email) } returns
             Optional.of(passwordStudent(studentId, email, bojId))
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(passwordStudent(studentId, email, bojId))
         every { passwordResetCodeGenerator.generate() } returns resetCode
         every {
-            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any())
+            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any(), 0, bojId)
         } answers {
             attempts += 1
             val candidate = arg<String>(1)
@@ -301,10 +368,12 @@ class AuthServiceFindIdPasswordTest {
 
         every { studentRepository.findByEmail(email) } returns
             Optional.of(passwordStudent(studentId, email, bojId))
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(passwordStudent(studentId, email, bojId))
         every { passwordResetCodeGenerator.generate() } returnsMany
             listOf("RESET001", "RESET002", "RESET003", "RESET004", "RESET005")
         every {
-            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any())
+            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any(), 0, bojId)
         } throws duplicateKey(MongoIndexInitializer.PASSWORD_RESET_CODE_UNIQUE_INDEX_NAME)
 
         // when
@@ -317,7 +386,7 @@ class AuthServiceFindIdPasswordTest {
         assertThat(exception.message).contains("비밀번호 재설정 코드를 생성하지 못했습니다.")
         verify(exactly = 5) { passwordResetCodeGenerator.generate() }
         verify(exactly = 5) {
-            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any())
+            passwordResetCodeRepository.issueForStudent(studentId, any(), any(), any(), 0, bojId)
         }
         verify(exactly = 0) { emailService.sendTemplateEmail(any(), any(), any(), any()) }
         verify(exactly = 0) { passwordResetCodeRepository.deleteIssuedCode(any(), any()) }
@@ -335,9 +404,11 @@ class AuthServiceFindIdPasswordTest {
 
         every { studentRepository.findByEmail(email) } returns
             Optional.of(passwordStudent(studentId, email, bojId))
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(passwordStudent(studentId, email, bojId))
         every { passwordResetCodeGenerator.generate() } returns resetCode
         every {
-            passwordResetCodeRepository.issueForStudent(studentId, resetCode, any(), any())
+            passwordResetCodeRepository.issueForStudent(studentId, resetCode, any(), any(), 0, bojId)
         } answers {
             issuedCode(studentId, resetCode, arg(2), arg(3))
         }
@@ -369,9 +440,11 @@ class AuthServiceFindIdPasswordTest {
 
         every { studentRepository.findByEmail(email) } returns
             Optional.of(passwordStudent(studentId, email, bojId))
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(passwordStudent(studentId, email, bojId))
         every { passwordResetCodeGenerator.generate() } returns resetCode
         every {
-            passwordResetCodeRepository.issueForStudent(studentId, resetCode, any(), any())
+            passwordResetCodeRepository.issueForStudent(studentId, resetCode, any(), any(), 0, bojId)
         } answers {
             issuedCode(studentId, resetCode, arg(2), arg(3))
         }
@@ -409,7 +482,7 @@ class AuthServiceFindIdPasswordTest {
         verify(exactly = 0) { emailService.sendTemplateEmail(any(), any(), any(), any()) }
         verify(exactly = 0) { passwordResetCodeGenerator.generate() }
         verify(exactly = 0) {
-            passwordResetCodeRepository.issueForStudent(any(), any(), any(), any())
+            passwordResetCodeRepository.issueForStudent(any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -442,7 +515,7 @@ class AuthServiceFindIdPasswordTest {
         verify(exactly = 0) { emailService.sendEmail(any(), any(), any()) }
         verify(exactly = 0) { passwordResetCodeGenerator.generate() }
         verify(exactly = 0) {
-            passwordResetCodeRepository.issueForStudent(any(), any(), any(), any())
+            passwordResetCodeRepository.issueForStudent(any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -474,7 +547,7 @@ class AuthServiceFindIdPasswordTest {
         verify(exactly = 0) { emailService.sendEmail(any(), any(), any()) }
         verify(exactly = 0) { passwordResetCodeGenerator.generate() }
         verify(exactly = 0) {
-            passwordResetCodeRepository.issueForStudent(any(), any(), any(), any())
+            passwordResetCodeRepository.issueForStudent(any(), any(), any(), any(), any(), any())
         }
     }
 
@@ -497,10 +570,14 @@ class AuthServiceFindIdPasswordTest {
         studentId: String,
         resetCode: String,
         expiresAt: LocalDateTime,
-        createdAt: LocalDateTime
+        createdAt: LocalDateTime,
+        credentialVersion: Long = 0,
+        bojId: String = "testuser"
     ) = com.didimlog.domain.PasswordResetCode(
         resetCode = resetCode,
         studentId = studentId,
+        credentialVersion = credentialVersion,
+        bojId = bojId,
         expiresAt = expiresAt,
         createdAt = createdAt
     )

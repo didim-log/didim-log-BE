@@ -68,7 +68,7 @@ class StudyIntegrationTest {
     fun tearDown() {
         // 테스트 데이터 정리
         try {
-            studentRepository.findByBojId(BojId("test$testId")).ifPresent { studentRepository.delete(it) }
+            student.id?.let(studentRepository::deleteById)
             problemRepository.findById("1000-$testId").ifPresent { problemRepository.delete(it) }
             // 동적으로 생성된 문제들도 정리
             problemRepository.findAll().forEach { p ->
@@ -102,7 +102,7 @@ class StudyIntegrationTest {
 
         successProblems.forEach { p ->
             studyService.submitSolution(
-                bojId = student.bojId!!.value,
+                studentId = requireNotNull(student.id),
                 problemId = p.id.value,
                 timeTaken = 100L,
                 isSuccess = true
@@ -111,7 +111,7 @@ class StudyIntegrationTest {
 
         // when: 추가 문제를 성공적으로 풀어도
         studyService.submitSolution(
-            bojId = student.bojId!!.value,
+            studentId = requireNotNull(student.id),
             problemId = problem.id.value,
             timeTaken = 120L,
             isSuccess = true
@@ -165,13 +165,13 @@ class StudyIntegrationTest {
 
         // when
         studyService.submitSolution(
-            bojId = student.bojId!!.value,
+            studentId = requireNotNull(student.id),
             problemId = problem1.id.value,
             timeTaken = 100L,
             isSuccess = true
         )
         studyService.submitSolution(
-            bojId = student.bojId!!.value,
+            studentId = requireNotNull(student.id),
             problemId = problem2.id.value,
             timeTaken = 120L,
             isSuccess = false
@@ -184,4 +184,3 @@ class StudyIntegrationTest {
         assertThat(updatedStudent.tier()).isEqualTo(Tier.BRONZE)
     }
 }
-

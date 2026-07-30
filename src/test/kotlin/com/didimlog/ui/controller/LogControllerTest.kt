@@ -2,10 +2,17 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.log.LogService
 import com.didimlog.domain.Log
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.AiFeedbackStatus
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.domain.valueobject.Nickname
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
@@ -21,12 +28,12 @@ import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.util.Optional
 
 @DisplayName("LogController 테스트")
 @WebMvcTest(
@@ -51,6 +58,9 @@ class LogControllerTest {
 
     @Autowired
     private lateinit var aiReviewService: com.didimlog.application.log.AiReviewService
+
+    @Autowired
+    private lateinit var studentRepository: StudentRepository
 
     @TestConfiguration
     class TestConfig {
@@ -94,18 +104,19 @@ class LogControllerTest {
         )
 
         every {
-            logService.createLog(any(), any(), any(), any(), any())
+            logService.createLog(any(), any(), any(), any(), any(), any())
         } returns savedLog
+        every { studentRepository.findById("student-id") } returns Optional.of(student("student-id", "user123"))
 
         val authentication = UsernamePasswordAuthenticationToken(
-            "user123",
+            "student-id",
             null,
             listOf(SimpleGrantedAuthority("ROLE_USER"))
         )
 
         mockMvc.perform(
             post("/api/v1/logs")
-                .with(authentication(authentication))
+                .principal(authentication)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -118,7 +129,8 @@ class LogControllerTest {
                 "Problem 1000 Solution",
                 "문제 풀이 회고",
                 "public class Solution { }",
-                any(),
+                "student-id",
+                "user123",
                 null
             )
         }
@@ -134,14 +146,14 @@ class LogControllerTest {
         )
 
         val authentication = UsernamePasswordAuthenticationToken(
-            "user123",
+            "student-id",
             null,
             listOf(SimpleGrantedAuthority("ROLE_USER"))
         )
 
         mockMvc.perform(
             post("/api/v1/logs")
-                .with(authentication(authentication))
+                .principal(authentication)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -151,8 +163,9 @@ class LogControllerTest {
     @Test
     @DisplayName("AI 리뷰 생성 시작 시 202 Accepted 를 반환한다")
     fun `ai 리뷰 생성 시작`() {
+        every { studentRepository.findById("student-id") } returns Optional.of(student("student-id", "user123"))
         every {
-            aiReviewService.requestOneLineReviewAsync("log-1", "user123")
+            aiReviewService.requestOneLineReviewAsync("log-1", "student-id")
         } returns com.didimlog.application.log.AiReviewResult(
             review = "AI 리뷰 생성 중입니다. 잠시 후 다시 시도해주세요.",
             cached = false,
@@ -160,7 +173,7 @@ class LogControllerTest {
         )
 
         val authentication = UsernamePasswordAuthenticationToken(
-            "user123",
+            "student-id",
             null,
             listOf(SimpleGrantedAuthority("ROLE_USER"))
         )
@@ -177,10 +190,11 @@ class LogControllerTest {
     @Test
     @DisplayName("로그 템플릿 조회 성공 시 200 + template 반환")
     fun `로그 템플릿 조회 성공`() {
-        every { logService.getLogTemplate("log-1", "user123") } returns "템플릿 본문"
+        every { studentRepository.findById("student-id") } returns Optional.of(student("student-id", "user123"))
+        every { logService.getLogTemplate("log-1", "student-id") } returns "템플릿 본문"
 
         val authentication = UsernamePasswordAuthenticationToken(
-            "user123",
+            "student-id",
             null,
             listOf(SimpleGrantedAuthority("ROLE_USER"))
         )
@@ -192,17 +206,18 @@ class LogControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.template").value("템플릿 본문"))
 
-        verify(exactly = 1) { logService.getLogTemplate("log-1", "user123") }
+        verify(exactly = 1) { logService.getLogTemplate("log-1", "student-id") }
     }
 
     @Test
-    @DisplayName("AI 리뷰 피드백 제출 시 인증 BOJ ID를 서비스에 전달한다")
+    @DisplayName("AI 리뷰 피드백 제출 시 불변 학생 ID를 서비스에 전달한다")
     fun `AI 리뷰 피드백 제출 성공`() {
+        every { studentRepository.findById("owner-id") } returns Optional.of(student("owner-id", "owner1"))
         every {
-            logService.updateFeedback("log-1", "owner1", AiFeedbackStatus.LIKE, null)
+            logService.updateFeedback("log-1", "owner-id", AiFeedbackStatus.LIKE, null)
         } returns mockk(relaxed = true)
         val authentication = UsernamePasswordAuthenticationToken(
-            "owner1",
+            "owner-id",
             null,
             listOf(SimpleGrantedAuthority("ROLE_USER"))
         )
@@ -217,7 +232,19 @@ class LogControllerTest {
             .andExpect(jsonPath("$.message").value("피드백이 제출되었습니다."))
 
         verify(exactly = 1) {
-            logService.updateFeedback("log-1", "owner1", AiFeedbackStatus.LIKE, null)
+            logService.updateFeedback("log-1", "owner-id", AiFeedbackStatus.LIKE, null)
         }
+    }
+
+    private fun student(studentId: String, bojId: String): Student {
+        return Student(
+            id = studentId,
+            nickname = Nickname("${bojId}_nick"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
     }
 }

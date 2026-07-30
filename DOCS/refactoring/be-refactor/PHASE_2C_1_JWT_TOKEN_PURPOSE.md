@@ -97,6 +97,6 @@ FE는 JWT claim을 인증 판단에 사용하지 않고 토큰 문자열을 구�
 ## 남은 범위
 
 - OAuth2 성공 응답의 Access/Refresh Token 계약 정리
-- 비밀번호 변경 뒤 기존 세션을 무효화하는 정책
+- 완료: [Phase 2E — 비밀번호 변경과 토큰 소유자 고정](./PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md)
 - `app.jwt.expiration`과 `access-token-expiration` 설정 이름 통일
 - 인증 API Rate Limit 원자화

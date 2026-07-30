@@ -76,7 +76,7 @@ class DashboardServiceTest {
 
         val quote = Quote(content = "테스트 명언", author = "테스트 작가")
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
         every {
             retrospectiveRepository.findByStudentIdAndCreatedAtBetween(
                 studentId,
@@ -87,7 +87,7 @@ class DashboardServiceTest {
         every { quoteService.getRandomQuote() } returns quote
 
         // when
-        val result = dashboardService.getDashboard(bojId)
+        val result = dashboardService.getDashboard(studentId)
 
         // then
         assertThat(result.todaySolvedCount).isEqualTo(2)
@@ -129,7 +129,7 @@ class DashboardServiceTest {
 
         val quote = Quote(content = "테스트 명언", author = "테스트 작가")
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
         every {
             retrospectiveRepository.findByStudentIdAndCreatedAtBetween(
                 studentId,
@@ -140,7 +140,7 @@ class DashboardServiceTest {
         every { quoteService.getRandomQuote() } returns quote
 
         // when
-        val result = dashboardService.getDashboard(bojId)
+        val result = dashboardService.getDashboard(studentId)
 
         // then
         assertThat(result.todaySolvedCount).isEqualTo(0)
@@ -169,7 +169,7 @@ class DashboardServiceTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
         every {
             retrospectiveRepository.findByStudentIdAndCreatedAtBetween(
                 studentId,
@@ -180,7 +180,7 @@ class DashboardServiceTest {
         every { quoteService.getRandomQuote() } returns null
 
         // when
-        val result = dashboardService.getDashboard(bojId)
+        val result = dashboardService.getDashboard(studentId)
 
         // then
         assertThat(result.currentTierTitle).isEqualTo("Master")

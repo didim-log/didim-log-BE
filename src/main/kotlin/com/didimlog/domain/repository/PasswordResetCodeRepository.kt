@@ -1,6 +1,7 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.PasswordResetCode
+import java.util.Optional
 import org.springframework.data.mongodb.repository.MongoRepository
 
 /**
@@ -8,8 +9,10 @@ import org.springframework.data.mongodb.repository.MongoRepository
  */
 interface PasswordResetCodeRepository :
     MongoRepository<PasswordResetCode, String>,
-    PasswordResetCodeRepositoryCustom
+    PasswordResetCodeRepositoryCustom {
 
+    fun findByResetCode(resetCode: String): Optional<PasswordResetCode>
+}
 
 
 

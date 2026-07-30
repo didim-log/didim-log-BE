@@ -51,11 +51,11 @@ class RecommendationServiceTest {
             createProblem(id = "p4", tier = Tier.BRONZE, level = 5)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns recommendedProblems
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 2)
 
         // then
         assertThat(recommended).hasSize(2)
@@ -81,12 +81,12 @@ class RecommendationServiceTest {
             createProblem(id = "p3", tier = Tier.BRONZE, level = 5)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
         every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns candidateProblems
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 10)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 10)
 
         // then
         assertThat(recommended).hasSize(2)
@@ -106,12 +106,12 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
         every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns emptyList()
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 5)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 5)
 
         // then
         assertThat(recommended).isEmpty()
@@ -135,12 +135,12 @@ class RecommendationServiceTest {
             createProblem(id = "p3", tier = Tier.BRONZE, level = 5)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
         every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns candidateProblems
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 5)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 5)
 
         // then
         assertThat(recommended).isEmpty()
@@ -165,11 +165,11 @@ class RecommendationServiceTest {
             createProblem(id = "p4", tier = Tier.PLATINUM, level = 20)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(16, 20) } returns recommendedProblems
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 2)
 
         // then
         verify { problemRepository.findByLevelBetweenFlexible(16, 20) }
@@ -181,15 +181,15 @@ class RecommendationServiceTest {
     @DisplayName("학생이 존재하지 않으면 예외가 발생한다")
     fun `학생이 없으면 예외 발생`() {
         // given
-        val bojId = "nonexistent"
+        val studentId = "nonexistent"
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.empty()
+        every { studentRepository.findById(studentId) } returns Optional.empty()
 
         // expect
         assertThatThrownBy {
-            recommendationService.recommendProblems(bojId, count = 5)
+            recommendationService.recommendProblems(studentId, count = 5)
         }.isInstanceOf(com.didimlog.global.exception.BusinessException::class.java)
-            .hasMessageContaining("학생을 찾을 수 없습니다")
+            .hasMessageContaining("studentId=$studentId")
     }
 
     @Test
@@ -208,12 +208,12 @@ class RecommendationServiceTest {
             createProblem(id = "p2", tier = Tier.BRONZE, level = 3)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
         every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns candidateProblems
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 10)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 10)
 
         // then
         assertThat(recommended).hasSize(2)
@@ -238,11 +238,11 @@ class RecommendationServiceTest {
             createProblem(id = "p4", tier = Tier.SILVER, level = 10)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(6, 10) } returns recommendedProblems
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 2)
 
         // then
         assertThat(recommended).hasSize(2)
@@ -269,7 +269,7 @@ class RecommendationServiceTest {
             createProblem(id = "p3", tier = Tier.SILVER, level = 6, category = ProblemCategory.GRAPH_THEORY)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
         every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.IMPLEMENTATION.englishName) } returns implementationProblems
         every { problemRepository.findByLevelBetweenAndTagsIn(1, 5, match { it.contains(ProblemCategory.IMPLEMENTATION.englishName) }) } returns emptyList()
@@ -287,8 +287,9 @@ class RecommendationServiceTest {
         } returns graphProblems
 
         // when
-        val recommendedImplementation = recommendationService.recommendProblems(bojId, count = 5, category = "IMPLEMENTATION")
-        val recommendedGraph = recommendationService.recommendProblems(bojId, count = 5, category = ProblemCategory.GRAPH_THEORY.englishName)
+        val studentId = requireNotNull(student.id)
+        val recommendedImplementation = recommendationService.recommendProblems(studentId, count = 5, category = "IMPLEMENTATION")
+        val recommendedGraph = recommendationService.recommendProblems(studentId, count = 5, category = ProblemCategory.GRAPH_THEORY.englishName)
 
         // then
         assertThat(recommendedImplementation).hasSize(2)
@@ -311,13 +312,17 @@ class RecommendationServiceTest {
             solvedProblemIds = setOf()
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         // tierLevel=3 -> 레벨 1~5 범위
         every { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) } returns emptyList()
         every { problemRepository.findByLevelBetweenAndTagsIn(1, 5, any()) } returns emptyList()
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 5, category = "DYNAMIC_PROGRAMMING")
+        val recommended = recommendationService.recommendProblems(
+            requireNotNull(student.id),
+            count = 5,
+            category = "DYNAMIC_PROGRAMMING"
+        )
 
         // then
         assertThat(recommended).isEmpty()
@@ -342,11 +347,11 @@ class RecommendationServiceTest {
             category = ProblemCategory.BFS
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenAndCategory(1, 5, ProblemCategory.BFS.englishName) } returns listOf(primaryMatch)
 
         val recommended = recommendationService.recommendProblemsDetailed(
-            bojId = bojId,
+            studentId = requireNotNull(student.id),
             count = 10,
             category = "BFS",
             filterMode = CategoryFilterMode.EXACT
@@ -375,7 +380,7 @@ class RecommendationServiceTest {
             category = ProblemCategory.GRAPH_THEORY
         ).copy(tags = listOf(ProblemCategory.DFS.englishName))
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenAndCategory(1, 5, any()) } returns emptyList()
         every {
             problemRepository.findByLevelBetweenAndTagsIn(
@@ -389,7 +394,7 @@ class RecommendationServiceTest {
         } returns listOf(dfsTaggedProblem)
 
         val recommended = recommendationService.recommendProblemsDetailed(
-            bojId = bojId,
+            studentId = requireNotNull(student.id),
             count = 10,
             category = "BFS",
             filterMode = CategoryFilterMode.RELATED
@@ -419,11 +424,11 @@ class RecommendationServiceTest {
             createProblem(id = "p3", tier = Tier.BRONZE, level = 3)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 2)
 
         // then
         assertThat(recommended).hasSize(2)
@@ -452,11 +457,11 @@ class RecommendationServiceTest {
             createProblem(id = "p3", tier = Tier.BRONZE, level = 3)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(1, 2) } returns bronzeProblems.filter { it.level in 1..2 }
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 2)
 
         // then
         assertThat(recommended).hasSize(2)
@@ -481,11 +486,11 @@ class RecommendationServiceTest {
             createProblem(id = "p2", tier = Tier.BRONZE, level = 2)
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(1, 2) } returns bronzeProblems
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 2)
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 2)
 
         // then
         assertThat(recommended).hasSize(2)
@@ -519,11 +524,11 @@ class RecommendationServiceTest {
             descriptionHtml = "<p>Given two integers A and B, output A+B.</p>"
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns listOf(koreanProblem, englishProblemButKo)
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 10, language = "ko")
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 10, language = "ko")
 
         // then
         assertThat(recommended).extracting<String> { it.id.value }.containsExactly("1000")
@@ -555,11 +560,11 @@ class RecommendationServiceTest {
             descriptionHtml = "<p>두 개의 스택으로 큐를 구현하라.</p>"
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById(requireNotNull(student.id)) } returns Optional.of(student)
         every { problemRepository.findByLevelBetweenFlexible(1, 5) } returns listOf(englishProblem, koreanProblemButEn)
 
         // when
-        val recommended = recommendationService.recommendProblems(bojId, count = 10, language = "en")
+        val recommended = recommendationService.recommendProblems(requireNotNull(student.id), count = 10, language = "en")
 
         // then
         assertThat(recommended).extracting<String> { it.id.value }.containsExactly("2000")

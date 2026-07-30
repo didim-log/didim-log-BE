@@ -19,6 +19,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @DisplayName("StudentController 테스트")
@@ -67,7 +68,7 @@ class StudentControllerTest {
         // when & then
         val result = mockMvc.perform(
             patch("/api/v1/students/me")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -89,7 +90,7 @@ class StudentControllerTest {
         // when & then
         val result = mockMvc.perform(
             patch("/api/v1/students/me")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -113,33 +114,54 @@ class StudentControllerTest {
         // when & then
         mockMvc.perform(
             patch("/api/v1/students/me")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
             .andExpect(status().isNoContent)
 
-        verify(exactly = 1) { studentService.updateProfile("bojId", "newNickname", "oldPassword123", "newPassword123") }
+        verify(exactly = 1) {
+            studentService.updateProfile("student-id", "newNickname", "oldPassword123", "newPassword123")
+        }
     }
 
     @Test
     @DisplayName("회원 탈퇴 시 204 No Content 반환")
     fun `회원 탈퇴 성공`() {
         // given
-        every { studentService.withdraw("bojId") } returns Unit
+        every { studentService.withdraw("student-id") } returns Unit
 
         // when & then
         mockMvc.perform(
             delete("/api/v1/students/me")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isNoContent)
 
-        verify(exactly = 1) { studentService.withdraw("bojId") }
+        verify(exactly = 1) { studentService.withdraw("student-id") }
+    }
+
+    @Test
+    @DisplayName("BOJ 프로필 동기화는 인증 학생 ID를 서비스에 전달한다")
+    fun `BOJ 프로필 동기화 학생 ID 전달`() {
+        every { studentService.syncBojProfile("student-id") } returns mockk(relaxed = true)
+
+        mockMvc.perform(
+            post("/api/v1/students/sync")
+                .principal(
+                    org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        "student-id",
+                        null,
+                        emptyList()
+                    )
+                )
+        )
+            .andExpect(status().isOk)
+
+        verify(exactly = 1) { studentService.syncBojProfile("student-id") }
     }
 }
-
 
 
 

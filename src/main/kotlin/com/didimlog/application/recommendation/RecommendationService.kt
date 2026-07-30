@@ -6,7 +6,6 @@ import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
 import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -47,24 +46,24 @@ class RecommendationService(
 ) {
 
     fun recommendProblems(
-        bojId: String,
+        studentId: String,
         count: Int,
         category: String? = null,
         language: String? = null,
         filterMode: CategoryFilterMode = CategoryFilterMode.RELATED
     ): List<Problem> {
-        return recommendProblemsDetailed(bojId, count, category, language, filterMode)
+        return recommendProblemsDetailed(studentId, count, category, language, filterMode)
             .map { it.problem }
     }
 
     fun recommendProblemsDetailed(
-        bojId: String,
+        studentId: String,
         count: Int,
         category: String? = null,
         language: String? = null,
         filterMode: CategoryFilterMode = CategoryFilterMode.RELATED
     ): List<RecommendationProblemMatch> {
-        val student = findStudentByBojIdOrThrow(bojId)
+        val student = findStudentByIdOrThrow(studentId)
         val effectiveTierLevel = student.solvedAcTierLevel.value
         val (minLevel, maxLevel) = calculateTargetDifficultyLevelRange(effectiveTierLevel)
 
@@ -75,11 +74,10 @@ class RecommendationService(
         return selectRandomProblems(unsolvedProblems, count)
     }
 
-    private fun findStudentByBojIdOrThrow(bojId: String): Student {
-        val bojIdVo = BojId(bojId)
-        return studentRepository.findByBojId(bojIdVo)
+    private fun findStudentByIdOrThrow(studentId: String): Student {
+        return studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
             }
     }
 

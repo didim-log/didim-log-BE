@@ -1,5 +1,7 @@
 package com.didimlog.infra.auth
 
+import com.didimlog.application.auth.oauth.OAuthExchangeCodeIdentity
+import com.didimlog.domain.enums.Role
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -44,15 +46,23 @@ class RedisOAuthExchangeCodeStoreIntegrationTest {
     }
 
     @Test
-    @DisplayName("동시에 소비해도 한 번만 학생 ID를 반환하고 저장 TTL을 유지한다")
+    @DisplayName("동시에 소비해도 한 번만 발급 시점 인증 정보를 반환하고 저장 TTL을 유지한다")
     fun `concurrent consume succeeds once and keeps ttl`() {
         val code = "oauth-${UUID.randomUUID()}"
         val studentId = "student-${UUID.randomUUID()}"
+        val identity = OAuthExchangeCodeIdentity(
+            studentId = studentId,
+            bojId = "oauth_boj_user",
+            credentialVersion = 4,
+            role = Role.USER
+        )
         val key = key(code)
         keysToClean += key
 
-        assertThat(store.save(code, studentId, TTL_SECONDS)).isTrue()
-        assertThat(redisTemplate.opsForValue().get(key)).isEqualTo(studentId)
+        assertThat(store.save(code, identity, TTL_SECONDS)).isTrue()
+        assertThat(redisTemplate.opsForValue().get(key))
+            .startsWith("v2:")
+            .endsWith(":4:USER")
         assertThat(redisTemplate.getExpire(key, TimeUnit.SECONDS))
             .isBetween(1L, TTL_SECONDS)
 
@@ -61,7 +71,7 @@ class RedisOAuthExchangeCodeStoreIntegrationTest {
         val start = CountDownLatch(1)
         val results = try {
             val futures = List(CONCURRENCY) {
-                executor.submit<String?> {
+                executor.submit<OAuthExchangeCodeIdentity?> {
                     ready.countDown()
                     check(start.await(10, TimeUnit.SECONDS))
                     store.consume(code)
@@ -77,8 +87,20 @@ class RedisOAuthExchangeCodeStoreIntegrationTest {
             assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue()
         }
 
-        assertThat(results.count { result -> result == studentId }).isEqualTo(1)
+        assertThat(results.count { result -> result == identity }).isEqualTo(1)
         assertThat(results.count { result -> result == null }).isEqualTo(CONCURRENCY - 1)
+        assertThat(redisTemplate.hasKey(key)).isFalse()
+    }
+
+    @Test
+    @DisplayName("이전 studentId 단일 값은 원자 소비 후 fail-closed 한다")
+    fun `legacy payload is consumed and rejected`() {
+        val code = "legacy-oauth-${UUID.randomUUID()}"
+        val key = key(code)
+        keysToClean += key
+        redisTemplate.opsForValue().set(key, "legacy-student-id")
+
+        assertThat(store.consume(code)).isNull()
         assertThat(redisTemplate.hasKey(key)).isFalse()
     }
 

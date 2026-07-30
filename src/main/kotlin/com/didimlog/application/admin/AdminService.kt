@@ -1,5 +1,7 @@
 package com.didimlog.application.admin
 
+import com.didimlog.application.auth.CredentialSessionCoordinator
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Quote
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Role
@@ -31,7 +33,9 @@ class AdminService(
     private val studentRepository: StudentRepository,
     private val quoteRepository: QuoteRepository,
     private val retrospectiveRepository: RetrospectiveRepository,
-    private val passwordEncoder: PasswordEncoder
+    private val passwordEncoder: PasswordEncoder,
+    private val refreshTokenService: RefreshTokenService,
+    private val credentialSessionCoordinator: CredentialSessionCoordinator
 ) {
 
     private val log = LoggerFactory.getLogger(AdminService::class.java)
@@ -104,12 +108,15 @@ class AdminService(
      */
     @Transactional
     fun deleteUser(studentId: String) {
-        val student = studentRepository.findById(studentId)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
-            }
-        
-        studentRepository.delete(student)
+        credentialSessionCoordinator.execute(studentId) {
+            studentRepository.findById(studentId)
+                .orElseThrow {
+                    BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
+                }
+
+            refreshTokenService.revokeAllForStudent(studentId)
+            studentRepository.deleteById(studentId)
+        }
     }
 
     /**
@@ -159,6 +166,22 @@ class AdminService(
      */
     @Transactional
     fun updateUser(studentId: String, request: AdminUserUpdateDto): Student {
+        val updatesCredentialOrIdentity =
+            request.password != null || request.bojId != null || request.role != null
+        if (!updatesCredentialOrIdentity) {
+            return updateUserFields(studentId, request).student
+        }
+
+        return credentialSessionCoordinator.execute(studentId) {
+            val result = updateUserFields(studentId, request)
+            if (result.credentialOrIdentityChanged) {
+                refreshTokenService.revokeAllForStudent(studentId)
+            }
+            result.student
+        }
+    }
+
+    private fun updateUserFields(studentId: String, request: AdminUserUpdateDto): UserUpdateResult {
         val student = studentRepository.findById(studentId)
             .orElseThrow {
                 BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
@@ -167,11 +190,14 @@ class AdminService(
         val before = toAuditSnapshot(student)
         var updatedStudent = student
         var isChanged = false
+        var credentialOrIdentityChanged = false
+        var credentialVersionIncremented = false
 
         val newRole = parseRoleOrNull(request.role)
         if (newRole != null && student.role != newRole) {
             updatedStudent = updatedStudent.copy(role = newRole)
             isChanged = true
+            credentialOrIdentityChanged = true
         }
 
         val newNickname = normalizeTextOrNull(request.nickname)
@@ -197,6 +223,7 @@ class AdminService(
                 }
                 updatedStudent = updatedStudent.copy(bojId = bojIdVo)
                 isChanged = true
+                credentialOrIdentityChanged = true
             }
         }
 
@@ -205,18 +232,26 @@ class AdminService(
             val encodedPassword = passwordEncoder.encode(newPassword)
             updatedStudent = updatedStudent.updatePassword(encodedPassword)
             isChanged = true
+            credentialOrIdentityChanged = true
+            credentialVersionIncremented = true
+        }
+
+        if (credentialOrIdentityChanged && !credentialVersionIncremented) {
+            updatedStudent = updatedStudent.copy(
+                credentialVersion = updatedStudent.credentialVersion + 1
+            )
         }
 
         if (!isChanged) {
             log.info("관리자 사용자 강제 수정: 변경 없음. before={}", before)
-            return student
+            return UserUpdateResult(student, credentialOrIdentityChanged = false)
         }
 
         val saved = studentRepository.save(updatedStudent)
         val after = toAuditSnapshot(saved)
 
         log.info("관리자 사용자 강제 수정 완료. before={}, after={}", before, after)
-        return saved
+        return UserUpdateResult(saved, credentialOrIdentityChanged)
     }
 
     private fun normalizeTextOrNull(value: String?): String? {
@@ -268,4 +303,9 @@ class AdminService(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 날짜 형식입니다. date=$dateString")
         }
     }
+
+    private data class UserUpdateResult(
+        val student: Student,
+        val credentialOrIdentityChanged: Boolean
+    )
 }

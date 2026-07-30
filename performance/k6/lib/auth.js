@@ -10,7 +10,11 @@ function toBase64Url(base64) {
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-export function createJwt(subject = PERF_BOJ_ID, role = "USER") {
+export function createJwt(
+  subject = PERF_BOJ_ID,
+  role = "USER",
+  studentId = env("PERF_STUDENT_ID", "perf-student-1")
+) {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const ttlSeconds = Number(env("JWT_TTL_SECONDS", "3600"));
   const header = {
@@ -21,6 +25,8 @@ export function createJwt(subject = PERF_BOJ_ID, role = "USER") {
     sub: subject,
     role,
     type: "access",
+    studentId,
+    credentialVersion: 0,
     iat: nowSeconds,
     exp: nowSeconds + ttlSeconds,
   };

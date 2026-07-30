@@ -1,6 +1,7 @@
 package com.didimlog.global.auth
 
 import com.didimlog.domain.enums.Role
+import com.didimlog.domain.repository.StudentRepository
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -19,7 +20,8 @@ import org.springframework.web.filter.OncePerRequestFilter
  */
 @Component
 class JwtAuthenticationFilter(
-    private val jwtTokenProviderProvider: ObjectProvider<JwtTokenProvider>
+    private val jwtTokenProviderProvider: ObjectProvider<JwtTokenProvider>,
+    private val studentRepositoryProvider: ObjectProvider<StudentRepository>
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(JwtAuthenticationFilter::class.java)
@@ -53,31 +55,40 @@ class JwtAuthenticationFilter(
         filterChain: FilterChain
     ) {
         val jwtTokenProvider = jwtTokenProviderProvider.getIfAvailable()
-        if (jwtTokenProvider == null) {
+        val studentRepository = studentRepositoryProvider.getIfAvailable()
+        if (jwtTokenProvider == null || studentRepository == null) {
             filterChain.doFilter(request, response)
             return
         }
 
         val token = extractToken(request)
 
-        if (
-            token != null &&
-            jwtTokenProvider.validateToken(token) &&
-            jwtTokenProvider.isAccessToken(token)
-        ) {
+        val tokenIdentity = token?.let(jwtTokenProvider::getAccessTokenIdentity)
+        if (tokenIdentity != null) {
             try {
-                val userId = jwtTokenProvider.getSubject(token)
-                val role = jwtTokenProvider.getRole(token)
-                if (userId.isBlank() || role !in ACCESS_TOKEN_ROLES) {
+                if (tokenIdentity.role !in ACCESS_TOKEN_ROLES) {
                     SecurityContextHolder.clearContext()
                     filterChain.doFilter(request, response)
                     return
                 }
-                
-                // Authentication 객체 생성 (토큰의 role 정보를 기반으로 권한 설정)
-                val authorities = listOf(SimpleGrantedAuthority("ROLE_$role"))
+
+                val student = studentRepository.findById(tokenIdentity.studentId).orElse(null)
+                val currentBojId = student?.bojId?.value
+                if (
+                    student == null ||
+                    currentBojId != tokenIdentity.bojId ||
+                    student.credentialVersion != tokenIdentity.credentialVersion ||
+                    student.role.value != tokenIdentity.role ||
+                    student.role.value !in ACCESS_TOKEN_ROLES
+                ) {
+                    SecurityContextHolder.clearContext()
+                    filterChain.doFilter(request, response)
+                    return
+                }
+
+                val authorities = listOf(SimpleGrantedAuthority("ROLE_${tokenIdentity.role}"))
                 val authentication = UsernamePasswordAuthenticationToken(
-                    userId,
+                    tokenIdentity.studentId,
                     null,
                     authorities
                 )
@@ -85,7 +96,11 @@ class JwtAuthenticationFilter(
                 // SecurityContextHolder에 Authentication 설정
                 SecurityContextHolder.getContext().authentication = authentication
                 
-                log.debug("JWT 인증 성공: userId=$userId, role=$role")
+                log.debug(
+                    "JWT 인증 성공: studentId={}, role={}",
+                    tokenIdentity.studentId,
+                    tokenIdentity.role
+                )
             } catch (e: Exception) {
                 log.error("JWT 토큰 처리 중 오류 발생", e)
                 SecurityContextHolder.clearContext()

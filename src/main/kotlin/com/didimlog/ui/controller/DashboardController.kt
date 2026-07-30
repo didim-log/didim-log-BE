@@ -51,8 +51,8 @@ class DashboardController(
     fun getDashboard(
         authentication: Authentication
     ): ResponseEntity<DashboardResponse> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val dashboardInfo = dashboardService.getDashboard(bojId)
+        val studentId = authentication.name
+        val dashboardInfo = dashboardService.getDashboard(studentId)
         val response = DashboardResponse.from(dashboardInfo)
         return ResponseEntity.ok(response)
     }

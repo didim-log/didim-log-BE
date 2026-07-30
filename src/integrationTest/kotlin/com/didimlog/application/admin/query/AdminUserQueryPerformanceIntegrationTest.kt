@@ -3,6 +3,9 @@ package com.didimlog.application.admin.query
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.didimlog.application.admin.AdminService
+import com.didimlog.application.auth.CredentialSessionCoordinator
+import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
@@ -17,6 +20,7 @@ import com.didimlog.global.config.mongo.MongoIndexInitializer
 import com.mongodb.MongoClientSettings
 import com.mongodb.event.CommandListener
 import com.mongodb.event.CommandStartedEvent
+import io.mockk.mockk
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -589,6 +593,14 @@ class AdminUserQueryPerformanceIntegrationTest {
 
 @TestConfiguration(proxyBeanMethods = false)
 class AdminQueryMongoCommandConfiguration {
+
+    @Bean
+    fun refreshTokenService(): RefreshTokenService = mockk(relaxed = true)
+
+    @Bean
+    fun credentialSessionCoordinator(): CredentialSessionCoordinator {
+        return ImmediateCredentialSessionCoordinator()
+    }
 
     @Bean
     fun mongoCommandCounter(): MongoCommandCounter = MongoCommandCounter()

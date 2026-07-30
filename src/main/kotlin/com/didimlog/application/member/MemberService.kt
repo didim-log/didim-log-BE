@@ -1,7 +1,6 @@
 package com.didimlog.application.member
 
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -20,11 +19,9 @@ class MemberService(
     }
 
     @Transactional
-    fun updateMyNickname(bojId: String, nickname: String) {
-        val member = findStudentByBojIdOrThrow(bojId)
-        val memberId = member.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
-        validateDuplicate(memberId, nickname)
+    fun updateMyNickname(studentId: String, nickname: String) {
+        val member = findStudentByIdOrThrow(studentId)
+        validateDuplicate(studentId, nickname)
         val updated = member.updateNickname(nickname)
         studentRepository.save(updated)
     }
@@ -39,24 +36,23 @@ class MemberService(
     }
 
     @Transactional
-    fun completeOnboarding(bojId: String) {
-        val student = findStudentByBojIdOrThrow(bojId)
+    fun completeOnboarding(studentId: String) {
+        val student = findStudentByIdOrThrow(studentId)
         val updated = student.completeOnboarding()
         studentRepository.save(updated)
     }
 
     @Transactional
-    fun resetOnboarding(bojId: String) {
-        val student = findStudentByBojIdOrThrow(bojId)
+    fun resetOnboarding(studentId: String) {
+        val student = findStudentByIdOrThrow(studentId)
         val updated = student.resetOnboarding()
         studentRepository.save(updated)
     }
 
-    private fun findStudentByBojIdOrThrow(bojId: String): com.didimlog.domain.Student {
-        val bojIdVo = BojId(bojId)
-        return studentRepository.findByBojId(bojIdVo)
+    private fun findStudentByIdOrThrow(studentId: String): com.didimlog.domain.Student {
+        return studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
             }
     }
 
@@ -68,6 +64,5 @@ class MemberService(
         }
     }
 }
-
 
 

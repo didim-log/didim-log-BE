@@ -1,5 +1,7 @@
 package com.didimlog.application.student
 
+import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
@@ -16,6 +18,7 @@ import com.didimlog.infra.solvedac.SolvedAcUserResponse
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
@@ -32,13 +35,16 @@ class StudentServiceTest {
     private val feedbackRepository: FeedbackRepository = mockk(relaxed = true)
     private val passwordEncoder: PasswordEncoder = mockk()
     private val solvedAcClient: com.didimlog.infra.solvedac.SolvedAcClient = mockk(relaxed = true)
+    private val refreshTokenService: RefreshTokenService = mockk(relaxed = true)
 
     private val studentService = StudentService(
         studentRepository,
         retrospectiveRepository,
         feedbackRepository,
         passwordEncoder,
-        solvedAcClient
+        solvedAcClient,
+        refreshTokenService,
+        ImmediateCredentialSessionCoordinator()
     )
 
     @Test
@@ -59,13 +65,13 @@ class StudentServiceTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { studentRepository.existsByNickname(Nickname(newNickname)) } returns false
         every { studentRepository.save(any<Student>()) } answers { firstArg() }
 
         // when
         val result = studentService.updateProfile(
-            bojId = bojId,
+            studentId = "student-id",
             nickname = newNickname,
             currentPassword = null,
             newPassword = null
@@ -73,6 +79,7 @@ class StudentServiceTest {
 
         // then
         assertThat(result.nickname.value).isEqualTo(newNickname)
+        verify(exactly = 0) { refreshTokenService.revokeAllForStudent(any()) }
         verify(exactly = 1) { studentRepository.save(any<Student>()) }
     }
 
@@ -97,15 +104,26 @@ class StudentServiceTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { passwordEncoder.matches(currentPassword, encodedCurrentPassword) } returns true
         every { passwordEncoder.matches(newPassword, encodedCurrentPassword) } returns false
         every { passwordEncoder.encode(newPassword) } returns encodedNewPassword
-        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+        every {
+            studentRepository.updateProfileFieldsById(
+                studentId = "student-id",
+                nickname = null,
+                encodedPassword = encodedNewPassword,
+                primaryLanguage = null,
+                expectedCredentialVersion = 0
+            )
+        } returns student.copy(
+            password = encodedNewPassword,
+            credentialVersion = 1
+        )
 
         // when
         val result = studentService.updateProfile(
-            bojId = bojId,
+            studentId = "student-id",
             nickname = null,
             currentPassword = currentPassword,
             newPassword = newPassword
@@ -113,7 +131,202 @@ class StudentServiceTest {
 
         // then
         assertThat(result.password).isEqualTo(encodedNewPassword)
-        verify(exactly = 1) { studentRepository.save(any<Student>()) }
+        verify(exactly = 1) { refreshTokenService.revokeAllForStudent("student-id") }
+        verify(exactly = 1) {
+            studentRepository.updateProfileFieldsById(
+                studentId = "student-id",
+                nickname = null,
+                encodedPassword = encodedNewPassword,
+                primaryLanguage = null,
+                expectedCredentialVersion = 0
+            )
+        }
+        assertThat(result.credentialVersion).isEqualTo(1)
+        verifyOrder {
+            studentRepository.updateProfileFieldsById(
+                studentId = "student-id",
+                nickname = null,
+                encodedPassword = encodedNewPassword,
+                primaryLanguage = null,
+                expectedCredentialVersion = 0
+            )
+            refreshTokenService.revokeAllForStudent("student-id")
+        }
+        verify(exactly = 0) { studentRepository.save(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("비밀번호 부분 갱신 뒤 Refresh Token 폐기 실패를 전파한다")
+    fun `비밀번호 변경 실패 - 부분 갱신 후 세션 폐기 실패`() {
+        val bojId = "testuser"
+        val currentPassword = "currentPassword123"
+        val newPassword = "newPassword123!"
+        val encodedCurrentPassword = "encoded-current-password"
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = encodedCurrentPassword,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { passwordEncoder.matches(currentPassword, encodedCurrentPassword) } returns true
+        every { passwordEncoder.matches(newPassword, encodedCurrentPassword) } returns false
+        every { passwordEncoder.encode(newPassword) } returns "encoded-new-password"
+        every {
+            studentRepository.updateProfileFieldsById(
+                studentId = "student-id",
+                nickname = null,
+                encodedPassword = "encoded-new-password",
+                primaryLanguage = null,
+                expectedCredentialVersion = 0
+            )
+        } returns student.copy(
+            password = "encoded-new-password",
+            credentialVersion = 1
+        )
+        every {
+            refreshTokenService.revokeAllForStudent("student-id")
+        } throws IllegalStateException("Redis unavailable")
+
+        assertThrows<IllegalStateException> {
+            studentService.updateProfile(
+                studentId = "student-id",
+                nickname = null,
+                currentPassword = currentPassword,
+                newPassword = newPassword
+            )
+        }
+
+        verify(exactly = 1) { refreshTokenService.revokeAllForStudent("student-id") }
+        verify(exactly = 1) {
+            studentRepository.updateProfileFieldsById(
+                studentId = "student-id",
+                nickname = null,
+                encodedPassword = "encoded-new-password",
+                primaryLanguage = null,
+                expectedCredentialVersion = 0
+            )
+        }
+        verifyOrder {
+            studentRepository.updateProfileFieldsById(
+                studentId = "student-id",
+                nickname = null,
+                encodedPassword = "encoded-new-password",
+                primaryLanguage = null,
+                expectedCredentialVersion = 0
+            )
+            refreshTokenService.revokeAllForStudent("student-id")
+        }
+        verify(exactly = 0) { studentRepository.save(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("자격 증명 버전이 바뀌면 비밀번호 변경을 충돌로 중단한다")
+    fun `비밀번호 변경 실패 - 자격 증명 버전 충돌`() {
+        val bojId = "testuser"
+        val currentPassword = "currentPassword123"
+        val newPassword = "newPassword123!"
+        val encodedCurrentPassword = "encoded-current-password"
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = encodedCurrentPassword,
+            credentialVersion = 2,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { passwordEncoder.matches(currentPassword, encodedCurrentPassword) } returns true
+        every { passwordEncoder.matches(newPassword, encodedCurrentPassword) } returns false
+        every { passwordEncoder.encode(newPassword) } returns "encoded-new-password"
+        every {
+            studentRepository.updateProfileFieldsById(
+                studentId = "student-id",
+                nickname = null,
+                encodedPassword = "encoded-new-password",
+                primaryLanguage = null,
+                expectedCredentialVersion = 2
+            )
+        } returns null
+
+        val exception = assertThrows<BusinessException> {
+            studentService.updateProfile(
+                studentId = "student-id",
+                nickname = null,
+                currentPassword = currentPassword,
+                newPassword = newPassword
+            )
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.SESSION_STATE_CONFLICT)
+        verify(exactly = 0) { refreshTokenService.revokeAllForStudent(any()) }
+        verify(exactly = 0) { studentRepository.save(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("잠금 대기 중 BOJ ID가 바뀌어도 같은 학생 ID의 비밀번호를 변경한다")
+    fun `BOJ ID 변경 뒤 학생 ID로 비밀번호 변경`() {
+        val oldBojId = "testuser"
+        val currentPassword = "currentPassword123"
+        val newPassword = "newPassword123!"
+        val encodedCurrentPassword = "encoded-current-password"
+        val student = Student(
+            id = "student-id",
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = oldBojId,
+            bojId = BojId(oldBojId),
+            password = encodedCurrentPassword,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val renamedStudent = student.copy(bojId = BojId("renamed_user"))
+
+        every {
+            studentRepository.findById("student-id")
+        } returnsMany listOf(Optional.of(student), Optional.of(renamedStudent))
+        every { passwordEncoder.matches(currentPassword, encodedCurrentPassword) } returns true
+        every { passwordEncoder.matches(newPassword, encodedCurrentPassword) } returns false
+        every { passwordEncoder.encode(newPassword) } returns "encoded-new-password"
+
+        every {
+            studentRepository.updateProfileFieldsById(
+                "student-id",
+                null,
+                "encoded-new-password",
+                null,
+                0
+            )
+        } returns renamedStudent.copy(password = "encoded-new-password", credentialVersion = 1)
+
+        val result = studentService.updateProfile(
+            studentId = "student-id",
+            nickname = null,
+            currentPassword = currentPassword,
+            newPassword = newPassword
+        )
+
+        assertThat(result.bojId).isEqualTo(BojId("renamed_user"))
+        assertThat(result.credentialVersion).isEqualTo(1)
+        verify(exactly = 1) {
+            studentRepository.updateProfileFieldsById(
+                "student-id",
+                null,
+                "encoded-new-password",
+                null,
+                0
+            )
+        }
+        verify(exactly = 1) { refreshTokenService.revokeAllForStudent("student-id") }
     }
 
     @Test
@@ -134,13 +347,13 @@ class StudentServiceTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { studentRepository.existsByNickname(Nickname(duplicateNickname)) } returns true
 
         // when & then
         assertThatThrownBy {
             studentService.updateProfile(
-                bojId = bojId,
+                studentId = "student-id",
                 nickname = duplicateNickname,
                 currentPassword = null,
                 newPassword = null
@@ -171,13 +384,13 @@ class StudentServiceTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { passwordEncoder.matches(wrongCurrentPassword, encodedCurrentPassword) } returns false
 
         // when & then
         assertThatThrownBy {
             studentService.updateProfile(
-                bojId = bojId,
+                studentId = "student-id",
                 nickname = null,
                 currentPassword = wrongCurrentPassword,
                 newPassword = newPassword
@@ -186,6 +399,7 @@ class StudentServiceTest {
             .isInstanceOf(BusinessException::class.java)
             .matches({ (it as BusinessException).errorCode == ErrorCode.PASSWORD_MISMATCH })
             .hasMessageContaining("현재 비밀번호가 일치하지 않습니다")
+        verify(exactly = 0) { refreshTokenService.revokeAllForStudent(any()) }
     }
 
     @Test
@@ -210,12 +424,12 @@ class StudentServiceTest {
             lastSolvedAt = null
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
 
         // when & then
         assertThatThrownBy {
             studentService.updateProfile(
-                bojId = bojId,
+                studentId = "student-id",
                 nickname = null,
                 currentPassword = null,
                 newPassword = newPassword
@@ -224,19 +438,20 @@ class StudentServiceTest {
             .isInstanceOf(BusinessException::class.java)
             .matches({ (it as BusinessException).errorCode == ErrorCode.COMMON_INVALID_INPUT })
             .hasMessageContaining("현재 비밀번호를 입력해야 합니다")
+        verify(exactly = 0) { refreshTokenService.revokeAllForStudent(any()) }
     }
 
     @Test
     @DisplayName("학생을 찾을 수 없으면 예외가 발생한다")
     fun `학생 없음 예외 발생`() {
         // given
-        val bojId = "nonexistent"
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.empty()
+        val studentId = "nonexistent"
+        every { studentRepository.findById(studentId) } returns Optional.empty()
 
         // when & then
         assertThatThrownBy {
             studentService.updateProfile(
-                bojId = bojId,
+                studentId = studentId,
                 nickname = "newNickname",
                 currentPassword = null,
                 newPassword = null
@@ -263,18 +478,78 @@ class StudentServiceTest {
             role = Role.USER
         )
 
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { studentRepository.delete(student) } returns Unit
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { studentRepository.deleteById(studentId) } returns Unit
         every { retrospectiveRepository.deleteAllByStudentId(studentId) } returns Unit
         every { feedbackRepository.deleteAllByWriterId(studentId) } returns Unit
 
         // when
-        studentService.withdraw(bojId)
+        studentService.withdraw(studentId)
 
         // then
+        verifyOrder {
+            refreshTokenService.revokeAllForStudent(studentId)
+            retrospectiveRepository.deleteAllByStudentId(studentId)
+            feedbackRepository.deleteAllByWriterId(studentId)
+            studentRepository.deleteById(studentId)
+        }
+        verify(exactly = 0) { studentRepository.delete(any<Student>()) }
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 세션 정리에 실패하면 DB 삭제를 시작하지 않는다")
+    fun `회원 탈퇴 세션 정리 실패 시 DB 보존`() {
+        val bojId = "testuser"
+        val studentId = "student-id"
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = bojId,
+            bojId = BojId(bojId),
+            password = "encoded-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every {
+            refreshTokenService.revokeAllForStudent(studentId)
+        } throws IllegalStateException("Redis unavailable")
+
+        assertThrows<IllegalStateException> {
+            studentService.withdraw(studentId)
+        }
+
+        verify(exactly = 0) { retrospectiveRepository.deleteAllByStudentId(any()) }
+        verify(exactly = 0) { feedbackRepository.deleteAllByWriterId(any()) }
+        verify(exactly = 0) { studentRepository.deleteById(any()) }
+    }
+
+    @Test
+    @DisplayName("잠금 대기 중 BOJ ID가 바뀌어도 같은 학생 ID를 탈퇴시킨다")
+    fun `BOJ ID 변경 뒤 학생 ID로 회원 탈퇴`() {
+        val oldBojId = "testuser"
+        val studentId = "student-id"
+        val student = Student(
+            id = studentId,
+            nickname = Nickname("testuser"),
+            provider = Provider.BOJ,
+            providerId = oldBojId,
+            bojId = BojId(oldBojId),
+            password = "encoded-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        val renamedStudent = student.copy(bojId = BojId("renamed_user"))
+        every { studentRepository.findById(studentId) } returns Optional.of(renamedStudent)
+        every { studentRepository.deleteById(studentId) } returns Unit
+
+        studentService.withdraw(studentId)
+
+        verify(exactly = 1) { refreshTokenService.revokeAllForStudent(studentId) }
         verify(exactly = 1) { retrospectiveRepository.deleteAllByStudentId(studentId) }
         verify(exactly = 1) { feedbackRepository.deleteAllByWriterId(studentId) }
-        verify(exactly = 1) { studentRepository.delete(student) }
+        verify(exactly = 1) { studentRepository.deleteById(studentId) }
     }
 
     @Test
@@ -294,7 +569,7 @@ class StudentServiceTest {
             currentTier = Tier.SILVER,
             role = Role.USER
         )
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
             handle = bojId,
             rating = 500,
@@ -302,7 +577,7 @@ class StudentServiceTest {
         )
 
         // when
-        val result = studentService.syncBojProfile(bojId)
+        val result = studentService.syncBojProfile("student-id")
 
         // then
         assertThat(result).isEqualTo(student)
@@ -310,6 +585,7 @@ class StudentServiceTest {
         verify(exactly = 0) {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                BojId(bojId),
                 500,
                 SolvedAcTierLevel.fromRating(500),
                 Tier.SILVER
@@ -334,7 +610,7 @@ class StudentServiceTest {
             currentTier = Tier.SILVER,
             role = Role.USER
         )
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
             handle = bojId,
             rating = 1200,
@@ -347,6 +623,7 @@ class StudentServiceTest {
         every {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                BojId(bojId),
                 1200,
                 SolvedAcTierLevel.fromRating(1200),
                 Tier.GOLD
@@ -354,7 +631,7 @@ class StudentServiceTest {
         } returns expectedStudent
 
         // when
-        val updated = studentService.syncBojProfile(bojId)
+        val updated = studentService.syncBojProfile("student-id")
 
         // then
         assertThat(updated.rating).isEqualTo(1200)
@@ -362,6 +639,7 @@ class StudentServiceTest {
         verify(exactly = 1) {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                BojId(bojId),
                 1200,
                 SolvedAcTierLevel.fromRating(1200),
                 Tier.GOLD
@@ -385,7 +663,7 @@ class StudentServiceTest {
             currentTier = Tier.SILVER,
             role = Role.USER
         )
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
         every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
             handle = bojId,
             rating = 1200,
@@ -394,6 +672,7 @@ class StudentServiceTest {
         every {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                BojId(bojId),
                 1200,
                 SolvedAcTierLevel.fromRating(1200),
                 Tier.GOLD
@@ -401,37 +680,32 @@ class StudentServiceTest {
         } returns null
 
         val exception = assertThrows<BusinessException> {
-            studentService.syncBojProfile(bojId)
+            studentService.syncBojProfile("student-id")
         }
 
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
     }
 
     @Test
-    @DisplayName("BOJ 프로필 갱신 대상의 ID가 없으면 내부 오류를 발생시킨다")
-    fun `syncBojProfile 학생 ID 누락`() {
-        val bojId = "testuser"
+    @DisplayName("BOJ ID가 연결되지 않은 학생은 프로필을 동기화할 수 없다")
+    fun `syncBojProfile BOJ ID 미연동`() {
         val student = Student(
+            id = "student-id",
             nickname = Nickname("testuser"),
-            provider = Provider.BOJ,
-            providerId = bojId,
-            bojId = BojId(bojId),
+            provider = Provider.GITHUB,
+            providerId = "github-id",
+            bojId = null,
             password = "encoded-password",
             rating = 500,
             currentTier = Tier.SILVER,
             role = Role.USER
         )
-        every { studentRepository.findByBojId(BojId(bojId)) } returns Optional.of(student)
-        every { solvedAcClient.fetchUser(BojId(bojId)) } returns SolvedAcUserResponse(
-            handle = bojId,
-            rating = 1200,
-            tier = 13
-        )
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
 
         val exception = assertThrows<BusinessException> {
-            studentService.syncBojProfile(bojId)
+            studentService.syncBojProfile("student-id")
         }
 
-        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INTERNAL_ERROR)
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
     }
 }

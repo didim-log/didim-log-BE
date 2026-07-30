@@ -8,7 +8,6 @@ import com.didimlog.domain.enums.SolvedAcTierStep
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
@@ -31,13 +30,13 @@ class DashboardService(
      * 학생의 대시보드 정보를 조회한다.
      * 오늘의 활동(오늘 푼 문제), 기본 프로필 정보, 랜덤 명언을 포함한다.
      *
-     * @param bojId BOJ ID (JWT 토큰에서 추출)
+     * @param studentId 학생 ID (JWT 토큰에서 추출)
      * @return 대시보드 정보
      * @throws BusinessException 학생을 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun getDashboard(bojId: String): DashboardInfo {
-        val student = findStudentByBojIdOrThrow(bojId)
+    fun getDashboard(studentId: String): DashboardInfo {
+        val student = findStudentByIdOrThrow(studentId)
         val todayRetrospectives = getTodayRetrospectives(student)
         val quote = quoteService.getRandomQuote()
 
@@ -71,11 +70,10 @@ class DashboardService(
         )
     }
 
-    private fun findStudentByBojIdOrThrow(bojId: String): Student {
-        val bojIdVo = BojId(bojId)
-        return studentRepository.findByBojId(bojIdVo)
+    private fun findStudentByIdOrThrow(studentId: String): Student {
+        return studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
             }
     }
 

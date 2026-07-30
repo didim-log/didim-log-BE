@@ -12,6 +12,7 @@ import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.domain.valueobject.TimeTakenSeconds
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.PersistenceCreator
+import org.springframework.data.annotation.Version
 import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -38,6 +39,7 @@ data class Student(
     @Indexed
     val bojId: BojId? = null, // BOJ ID (BOJ 인증을 완료한 경우에만 존재)
     val password: String? = null, // BCrypt로 암호화된 비밀번호 (BOJ 로그인 사용자만 사용)
+    val credentialVersion: Long = 0,
     @Indexed
     val rating: Int = 0, // Solved.ac Rating (점수) - 랭킹 조회 성능 최적화를 위한 인덱스
     val solvedAcTierLevel: SolvedAcTierLevel = SolvedAcTierLevel.fromRating(rating),
@@ -53,7 +55,9 @@ data class Student(
     val defaultSuccessTemplateId: String? = null, // 기본 성공 템플릿 ID (nullable: 시스템 기본값 사용)
     val defaultFailTemplateId: String? = null, // 기본 실패 템플릿 ID (nullable: 시스템 기본값 사용)
     @Indexed
-    val createdAt: LocalDateTime = LocalDateTime.now() // 회원 가입 일시
+    val createdAt: LocalDateTime = LocalDateTime.now(), // 회원 가입 일시
+    @Version
+    val documentVersion: Long? = null
 ) {
     /**
      * Spring Data MongoDB가 DB에서 데이터를 읽어올 때 사용하는 생성자
@@ -89,6 +93,7 @@ data class Student(
         email: String?,
         bojId: BojId?,
         password: String?,
+        credentialVersion: Long?,
         rating: Int?,
         solvedAcTierLevel: SolvedAcTierLevel?,
         currentTier: Tier,
@@ -102,7 +107,8 @@ data class Student(
         isOnboardingFinished: Boolean?,
         defaultSuccessTemplateId: String?,
         defaultFailTemplateId: String?,
-        createdAt: LocalDateTime?
+        createdAt: LocalDateTime?,
+        documentVersion: Long?
     ) : this(
         id = id,
         nickname = nickname,
@@ -111,6 +117,7 @@ data class Student(
         email = email,
         bojId = bojId,
         password = password,
+        credentialVersion = credentialVersion ?: 0,
         rating = rating ?: 0,
         solvedAcTierLevel = solvedAcTierLevel ?: SolvedAcTierLevel.fromRating(rating ?: 0),
         currentTier = currentTier,
@@ -124,7 +131,8 @@ data class Student(
         isOnboardingFinished = isOnboardingFinished ?: false,
         defaultSuccessTemplateId = defaultSuccessTemplateId,
         defaultFailTemplateId = defaultFailTemplateId,
-        createdAt = createdAt ?: LocalDateTime.now()
+        createdAt = createdAt ?: LocalDateTime.now(),
+        documentVersion = documentVersion
     )
 
     /**
@@ -350,7 +358,10 @@ data class Student(
 
     fun updatePassword(encodedPassword: String): Student {
         require(encodedPassword.isNotBlank()) { "비밀번호는 필수입니다." }
-        return copy(password = encodedPassword)
+        return copy(
+            password = encodedPassword,
+            credentialVersion = credentialVersion + 1
+        )
     }
 
     /**

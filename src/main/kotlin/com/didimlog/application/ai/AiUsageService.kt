@@ -41,7 +41,7 @@ class AiUsageService(
     /**
      * AI 서비스 사용 가능 여부를 확인합니다.
      *
-     * @param userId 사용자 ID (bojId)
+     * @param userId 변경되지 않는 학생 ID
      * @return AiStatus (사용 가능 여부 및 현재 상태)
      * @throws BusinessException 사용 불가능한 경우
      */
@@ -77,7 +77,7 @@ class AiUsageService(
     /**
      * AI 사용량을 증가시킵니다 (원자적 연산).
      *
-     * @param userId 사용자 ID
+     * @param userId 변경되지 않는 학생 ID
      */
     fun incrementUsage(userId: String) {
         val today = LocalDate.now().format(DATE_FORMATTER)
@@ -223,7 +223,7 @@ class AiUsageService(
     /**
      * 사용자의 AI 사용량 정보를 조회합니다.
      * 
-     * @param userId 사용자 ID (bojId)
+     * @param userId 변경되지 않는 학생 ID
      * @return 사용자 AI 사용량 정보
      */
     fun getUserUsage(userId: String): UserUsageInfo {

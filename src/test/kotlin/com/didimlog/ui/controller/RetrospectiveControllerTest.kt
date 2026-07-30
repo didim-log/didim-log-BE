@@ -3,17 +3,11 @@ package com.didimlog.ui.controller
 import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.application.template.TemplateService
 import com.didimlog.domain.Retrospective
-import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.repository.ProblemRepository
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.template.Template
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -62,9 +56,6 @@ class RetrospectiveControllerTest {
     private lateinit var retrospectiveService: RetrospectiveService
 
     @Autowired
-    private lateinit var studentRepository: StudentRepository
-
-    @Autowired
     private lateinit var problemRepository: ProblemRepository
 
     @Autowired
@@ -77,9 +68,6 @@ class RetrospectiveControllerTest {
     class TestConfig {
         @Bean
         fun retrospectiveService(): RetrospectiveService = mockk(relaxed = true)
-
-        @Bean
-        fun studentRepository(): StudentRepository = mockk(relaxed = true)
 
         @Bean
         fun problemRepository(): ProblemRepository = mockk(relaxed = true)
@@ -114,22 +102,18 @@ class RetrospectiveControllerTest {
     fun `회고 목록 조회 성공`() {
         // given
         val studentId = "student1"
-        val bojId = "testuser"
-        val bojIdVo = BojId(bojId)
-        val student = createStudent(id = studentId, bojId = bojId)
         val retrospectives = listOf(
             createRetrospective("retro1", studentId, "1000", "회고 내용 1입니다. 이 문제는 DFS를 사용했습니다."),
             createRetrospective("retro2", studentId, "2000", "회고 내용 2입니다. 이 문제는 BFS를 사용했습니다.")
         )
         val page = PageImpl(retrospectives, PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt")), 2)
 
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every { retrospectiveService.searchRetrospectives(any(), any()) } returns page
 
         // when & then
         mockMvc.perform(
             get("/api/v1/retrospectives")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .param("page", "1")
                 .param("size", "10")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -143,6 +127,57 @@ class RetrospectiveControllerTest {
             .andExpect(jsonPath("$.content[0].content").exists())
             .andExpect(jsonPath("$.totalElements").exists())
             .andExpect(jsonPath("$.totalPages").exists())
+
+        verify(exactly = 1) {
+            retrospectiveService.searchRetrospectives(
+                match { it.studentId == studentId },
+                any()
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("회고 검색 조건과 인증된 학생 ID를 서비스에 전달한다")
+    fun `회고 검색 성공`() {
+        val studentId = "student-search"
+        val page = PageImpl(
+            emptyList<Retrospective>(),
+            PageRequest.of(1, 5, Sort.by(Sort.Direction.ASC, "createdAt")),
+            0
+        )
+        every { retrospectiveService.searchRetrospectives(any(), any()) } returns page
+
+        mockMvc.perform(
+            get("/api/v1/retrospectives")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
+                .param("keyword", "DFS")
+                .param("category", "DFS")
+                .param("solvedCategory", "graph")
+                .param("isBookmarked", "true")
+                .param("page", "2")
+                .param("size", "5")
+                .param("sort", "createdAt,asc")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.content").isArray)
+
+        verify(exactly = 1) {
+            retrospectiveService.searchRetrospectives(
+                match {
+                    it.studentId == studentId &&
+                        it.keyword == "DFS" &&
+                        it.category == ProblemCategory.DFS &&
+                        it.solvedCategory == "graph" &&
+                        it.isBookmarked == true
+                },
+                match {
+                    it.pageNumber == 1 &&
+                        it.pageSize == 5 &&
+                        it.sort.getOrderFor("createdAt")?.direction == Sort.Direction.ASC
+                }
+            )
+        }
     }
 
     @Test
@@ -150,12 +185,12 @@ class RetrospectiveControllerTest {
     fun `회고 작성 시 content 필드 누락 검증`() {
         // given
         val request = mapOf<String, Any>() // content 누락
-        val bojId = "testuser"
+        val studentId = "student1"
 
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/retrospectives")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -175,12 +210,12 @@ class RetrospectiveControllerTest {
     fun `회고 작성 시 content 길이 검증`() {
         // given
         val request = RetrospectiveRequest(content = "짧음", summary = "요약") // 10자 미만
-        val bojId = "testuser"
+        val studentId = "student1"
 
         // when & then
         val result = mockMvc.perform(
             post("/api/v1/retrospectives")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -203,12 +238,8 @@ class RetrospectiveControllerTest {
             solveTime = "15m 30s"
         )
         val studentId = "student1"
-        val bojId = "testuser"
-        val bojIdVo = BojId(bojId)
-        val student = createStudent(id = studentId, bojId = bojId)
         val savedRetrospective = createRetrospective("retro1", studentId, "1000", request.content)
 
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every {
             retrospectiveService.writeRetrospective(
                 studentId = studentId,
@@ -224,7 +255,7 @@ class RetrospectiveControllerTest {
         // when & then
         mockMvc.perform(
             post("/api/v1/retrospectives")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .param("problemId", "1000")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
@@ -243,18 +274,14 @@ class RetrospectiveControllerTest {
         // given
         val retrospectiveId = "retro1"
         val studentId = "student1"
-        val bojId = "testuser"
-        val bojIdVo = BojId(bojId)
-        val student = createStudent(id = studentId, bojId = bojId)
         val retrospective = createRetrospective(retrospectiveId, studentId, "1000", "회고 내용입니다. 이 문제는 DFS를 사용했습니다.")
 
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every { retrospectiveService.getRetrospective(retrospectiveId, studentId) } returns retrospective
 
         // when & then
         mockMvc.perform(
             get("/api/v1/retrospectives/$retrospectiveId")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
@@ -271,18 +298,14 @@ class RetrospectiveControllerTest {
         // given
         val retrospectiveId = "retro1"
         val studentId = "student1"
-        val bojId = "testuser"
-        val bojIdVo = BojId(bojId)
-        val student = createStudent(id = studentId, bojId = bojId)
         val retrospective = createRetrospective(retrospectiveId, studentId, "1000", "충분히 긴 회고 내용입니다.")
 
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every { retrospectiveService.deleteRetrospective(retrospectiveId, studentId) } returns retrospective
 
         // when & then
         mockMvc.perform(
             delete("/api/v1/retrospectives/$retrospectiveId")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isNoContent)
@@ -296,16 +319,12 @@ class RetrospectiveControllerTest {
         // given
         val retrospectiveId = "retro1"
         val studentId = "student1"
-        val bojId = "testuser"
-        val bojIdVo = BojId(bojId)
-        val student = createStudent(id = studentId, bojId = bojId)
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every { retrospectiveService.toggleBookmark(retrospectiveId, studentId) } returns true
 
         // when & then
         mockMvc.perform(
             post("/api/v1/retrospectives/$retrospectiveId/bookmark")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
@@ -320,9 +339,6 @@ class RetrospectiveControllerTest {
         // given
         val retrospectiveId = "retro1"
         val studentId = "student1"
-        val bojId = "testuser"
-        val bojIdVo = BojId(bojId)
-        val student = createStudent(id = studentId, bojId = bojId)
         val request = RetrospectiveRequest(
             content = "수정된 회고 내용입니다. 더 자세한 분석을 추가했습니다.",
             summary = "수정된 한 줄 요약",
@@ -338,7 +354,6 @@ class RetrospectiveControllerTest {
                 solveTime = request.solveTime
             )
 
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every {
             retrospectiveService.updateRetrospective(
                 retrospectiveId = retrospectiveId,
@@ -354,7 +369,7 @@ class RetrospectiveControllerTest {
         // when & then
         mockMvc.perform(
             patch("/api/v1/retrospectives/$retrospectiveId")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -385,15 +400,11 @@ class RetrospectiveControllerTest {
         // given
         val retrospectiveId = "retro1"
         val attackerId = "attacker-456"
-        val attackerBojId = "attacker"
-        val bojIdVo = BojId(attackerBojId)
-        val attackerStudent = createStudent(id = attackerId, bojId = attackerBojId)
         val request = RetrospectiveRequest(
             content = "수정된 회고 내용입니다.",
             summary = "수정된 요약"
         )
 
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(attackerStudent)
         every {
             retrospectiveService.updateRetrospective(
                 retrospectiveId = retrospectiveId,
@@ -409,7 +420,7 @@ class RetrospectiveControllerTest {
         // when & then
         mockMvc.perform(
             patch("/api/v1/retrospectives/$retrospectiveId")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(attackerBojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(attackerId, null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request))
         )
@@ -433,9 +444,6 @@ class RetrospectiveControllerTest {
     @DisplayName("회고 기본 템플릿 조회 성공 시 200 OK 및 template 반환")
     fun `회고 기본 템플릿 조회 성공`() {
         val studentId = "student1"
-        val bojId = "testuser"
-        val bojIdVo = BojId(bojId)
-        val student = createStudent(id = studentId, bojId = bojId)
         val defaultTemplate = Template(
             id = "template-1",
             studentId = null,
@@ -444,13 +452,12 @@ class RetrospectiveControllerTest {
             type = TemplateOwnershipType.SYSTEM
         )
 
-        every { studentRepository.findByBojId(bojIdVo) } returns java.util.Optional.of(student)
         every { templateService.getDefaultTemplate(TemplateCategory.SUCCESS, studentId) } returns defaultTemplate
         every { templateService.renderTemplate("template-1", 1000L, studentId, null, null, ProblemResult.SUCCESS) } returns "렌더링된 템플릿"
 
         mockMvc.perform(
             get("/api/v1/retrospectives/template")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(bojId, null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentId, null, emptyList()))
                 .param("problemId", "1000")
                 .param("resultType", "SUCCESS")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -483,17 +490,4 @@ class RetrospectiveControllerTest {
         )
     }
 
-    private fun createStudent(id: String, bojId: String = "testuser"): Student {
-        return Student(
-            id = id,
-            nickname = Nickname("test-user"),
-            provider = Provider.BOJ,
-            providerId = bojId,
-            bojId = BojId(bojId),
-            password = "test-password",
-            currentTier = Tier.BRONZE,
-            role = Role.USER,
-            primaryLanguage = null
-        )
-    }
 }

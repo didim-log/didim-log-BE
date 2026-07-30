@@ -3,6 +3,9 @@ spring:
     active: test
   # 1. OAuth2 설정 (테스트용 가짜 데이터)
   security:
+    user:
+      name: test-swagger
+      password: test-swagger-password
     oauth2:
       client:
         registration:

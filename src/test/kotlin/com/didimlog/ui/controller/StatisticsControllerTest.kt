@@ -73,12 +73,12 @@ class StatisticsControllerTest {
             totalFailures = 1L
         )
 
-        every { statisticsService.getStatistics("bojId") } returns statisticsInfo
+        every { statisticsService.getStatistics("student-id") } returns statisticsInfo
 
         // when & then
         mockMvc.perform(
             get("/api/v1/statistics")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
@@ -91,5 +91,4 @@ class StatisticsControllerTest {
             .andExpect(jsonPath("$.weaknessStats").exists())
     }
 }
-
 

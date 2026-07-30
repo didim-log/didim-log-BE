@@ -132,6 +132,7 @@ class ProblemServiceTest {
         every {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojId,
                 1200,
                 expectedStudent.solvedAcTierLevel,
                 Tier.GOLD
@@ -145,6 +146,7 @@ class ProblemServiceTest {
         verify(exactly = 1) {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojId,
                 1200,
                 expectedStudent.solvedAcTierLevel,
                 Tier.GOLD
@@ -203,6 +205,7 @@ class ProblemServiceTest {
         verify(exactly = 0) {
             studentRepository.updateSolvedAcProfileById(
                 student.id!!,
+                bojId,
                 student.rating,
                 student.solvedAcTierLevel,
                 student.currentTier
@@ -235,6 +238,7 @@ class ProblemServiceTest {
         every {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojId,
                 500,
                 expectedStudent.solvedAcTierLevel,
                 Tier.SILVER
@@ -246,6 +250,7 @@ class ProblemServiceTest {
         verify(exactly = 1) {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojId,
                 500,
                 expectedStudent.solvedAcTierLevel,
                 Tier.SILVER
@@ -280,6 +285,7 @@ class ProblemServiceTest {
         verify(exactly = 0) {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojId,
                 1200,
                 expectedStudent.solvedAcTierLevel,
                 Tier.GOLD
@@ -312,6 +318,7 @@ class ProblemServiceTest {
         every {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojId,
                 1200,
                 expectedStudent.solvedAcTierLevel,
                 Tier.GOLD
@@ -323,6 +330,7 @@ class ProblemServiceTest {
         verify(exactly = 1) {
             studentRepository.updateSolvedAcProfileById(
                 "student-id",
+                bojId,
                 1200,
                 expectedStudent.solvedAcTierLevel,
                 Tier.GOLD

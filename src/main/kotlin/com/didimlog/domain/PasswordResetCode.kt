@@ -7,7 +7,7 @@ import java.time.LocalDateTime
 
 /**
  * 비밀번호 재설정 코드 엔티티
- * 재설정 코드와 만료 시간을 저장한다.
+ * 재설정 코드와 발급 당시 계정 상태, 만료 시간을 저장한다.
  */
 @Document(collection = "password_reset_codes")
 data class PasswordResetCode(
@@ -16,6 +16,8 @@ data class PasswordResetCode(
     @Indexed
     val resetCode: String,
     val studentId: String,
+    val credentialVersion: Long? = null,
+    val bojId: String? = null,
     val expiresAt: LocalDateTime,
     val createdAt: LocalDateTime = LocalDateTime.now()
 ) {
@@ -28,9 +30,6 @@ data class PasswordResetCode(
         return LocalDateTime.now().isAfter(expiresAt)
     }
 }
-
-
-
 
 
 

@@ -52,14 +52,14 @@ Swagger UI에서 카테고리를 기능군 기준으로 통합합니다.
 |--------|-----|----------|---------|----------|------|
 | POST | `/api/v1/auth/oauth/exchange` | OAuth 콜백에서 받은 120초 일회용 코드를 Access/Refresh Token으로 교환합니다. 코드는 한 번만 사용할 수 있습니다. | **Request Body:**<br>- `code` (String, required, max 128) | `OAuthCodeExchangeResponse`<br>- `token` (String)<br>- `refreshToken` (String)<br>- `message` (String)<br>- `rating` (Int)<br>- `tier` (String)<br>- `tierLevel` (Int)<br>- `provider` (String) | None |
 | POST | `/api/v1/auth/signup` | BOJ 프로필 상태 메시지 인증을 마친 세션과 BOJ ID를 확인한 뒤 계정을 생성하고 JWT 토큰을 발급합니다. 인증 세션은 가입 시 한 번만 사용할 수 있습니다. | **Request Body:**<br>`SignupRequest`<br>- `bojId` (String, required): 인증한 BOJ ID<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)`<br>  - 영문·숫자·특수문자 조합 정책 적용<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email`<br>- `verificationSessionId` (String, required): `/boj/code`에서 발급받아 `/boj/verify`를 통과한 세션 ID | `AuthResponse`<br><br>- `token` (String): JWT Access Token<br>- `refreshToken` (String): Refresh Token<br>- `message` (String): 응답 메시지<br>- `rating` (Int): Solved.ac Rating<br>- `tier` (String): 티어명<br>- `tierLevel` (Int): 티어 레벨 | None |
-| POST | `/api/v1/auth/login` | BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 시 Solved.ac API를 통해 Rating 및 Tier 정보를 동기화합니다. | **Request Body:**<br>`AuthRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상) | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token<br>- `message` (String): 응답 메시지 ("로그인에 성공했습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
+| POST | `/api/v1/auth/login` | BOJ ID와 비밀번호로 로그인하고 JWT 토큰을 발급합니다. 비밀번호가 일치하지 않으면 에러가 발생합니다. 로그인 시 Solved.ac API를 통해 Rating 및 Tier 정보를 동기화합니다. | **Request Body:**<br>`AuthRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상) | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token<br>- `refreshToken` (String): Refresh Token<br>- `message` (String): 응답 메시지 ("로그인에 성공했습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | GET | `/api/v1/auth/check-duplicate` | 회원가입 전 BOJ ID 중복 여부를 조회합니다. | **Query Parameters:**<br>- `bojId` (String, required) | `BojIdDuplicateCheckResponse`<br>- `isDuplicate` (Boolean)<br>- `message` (String) | None |
-| POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함)<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
+| POST | `/api/v1/auth/super-admin` | 관리자 키(adminKey)를 입력받아 검증 후 ADMIN 권한으로 계정을 생성하고 JWT 토큰을 발급합니다. 이 API는 초기 관리자 생성을 위해 permitAll로 열려있습니다. | **Request Body:**<br>`SuperAdminRequest`<br>- `bojId` (String, required): BOJ ID<br>  - 유효성: `@NotBlank`<br>- `password` (String, required): 비밀번호<br>  - 유효성: `@NotBlank`, `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: signup API와 동일<br>- `adminKey` (String, required): 관리자 생성용 보안 키<br>  - 유효성: `@NotBlank`<br>  - 환경변수 `ADMIN_SECRET_KEY`와 일치해야 함 | `AuthResponse`<br><br>**AuthResponse 구조:**<br>- `token` (String): JWT Access Token (ADMIN role 포함)<br>- `refreshToken` (String): Refresh Token<br>- `message` (String): 응답 메시지 ("회원가입이 완료되었습니다.")<br>- `rating` (Int): Solved.ac Rating (점수)<br>- `tier` (String): 티어명 (예: "GOLD", "SILVER")<br>- `tierLevel` (Int): 티어 레벨 (Solved.ac 레벨 대표값) | None |
 | POST | `/api/v1/auth/signup/finalize` | 서버가 확인한 OAuth 가입 정보와 연결되지 않은 기존 경로이므로 현재 제공하지 않습니다. | 없음 | `410 Gone` | None |
 | POST | `/api/v1/auth/find-account` | 이메일을 입력받아 가입된 소셜 제공자(Provider)를 반환합니다. | **Request Body:**<br>`FindAccountRequest`<br>- `email` (String, required): 이메일<br>  - 유효성: `@NotBlank`, `@Email` | `FindAccountResponse`<br>- `provider` (String)<br>- `message` (String) | None |
 | POST | `/api/v1/auth/find-id` | 이메일을 입력받아 BOJ ID를 조회합니다. | **Request Body:**<br>`FindIdRequest`<br>- `email` (String, required)<br>  - 유효성: `@NotBlank`, `@Email` | `FindIdPasswordResponse`<br>- `message` (String) | None |
 | POST | `/api/v1/auth/find-password` | 이메일과 BOJ ID를 검증한 뒤 비밀번호 재설정 코드를 발급하고 이메일로 전송합니다. | **Request Body:**<br>`FindPasswordRequest`<br>- `email` (String, required)<br>  - 유효성: `@NotBlank`, `@Email`<br>- `bojId` (String, required)<br>  - 유효성: `@NotBlank` | `FindIdPasswordResponse`<br>- `message` (String) | None |
-| POST | `/api/v1/auth/reset-password` | 비밀번호 재설정 코드와 새 비밀번호로 비밀번호를 변경합니다. | **Request Body:**<br>`ResetPasswordRequest`<br>- `resetCode` (String, required)<br>  - 유효성: `@NotBlank`<br>- `newPassword` (String, required)<br>  - 유효성: `@NotBlank`, `@Size(min=8)` | `FindIdPasswordResponse`<br>- `message` (String) | None |
+| POST | `/api/v1/auth/reset-password` | 비밀번호 재설정 코드와 새 비밀번호로 비밀번호를 변경합니다. 자격 증명 버전을 증가시켜 기존 Access/Refresh Token을 사용할 수 없게 하고 Redis의 Refresh Token을 삭제합니다. | **Request Body:**<br>`ResetPasswordRequest`<br>- `resetCode` (String, required)<br>  - 유효성: `@NotBlank`<br>- `newPassword` (String, required)<br>  - 유효성: `@NotBlank`, `@Size(min=8)` | `FindIdPasswordResponse`<br>- `message` (String) | None |
 | POST | `/api/v1/auth/boj/code` | BOJ 프로필 상태 메시지 인증에 사용할 코드를 발급합니다. | 없음 | `BojCodeIssueResponse`<br>- `sessionId` (String)<br>- `code` (String)<br>- `expiresInSeconds` (Long) | None |
 | POST | `/api/v1/auth/boj/verify` | BOJ 프로필 상태 메시지에서 발급 코드 포함 여부를 확인합니다. 성공한 세션은 `/signup`에서 한 번만 사용할 수 있습니다. | **Request Body:**<br>`BojVerifyRequest`<br>- `sessionId` (String, required)<br>- `bojId` (String, required) | `BojVerifyResponse`<br>- `verified` (Boolean)<br>- `verifiedBojId` (String) | None |
 | POST | `/api/v1/auth/refresh` | Refresh Token으로 Access/Refresh Token을 재발급합니다. | **Headers:**<br>- `Authorization: Bearer {refreshToken}` (optional)<br>**Request Body:**<br>`RefreshTokenRequest`<br>- `refreshToken` (String, optional)<br><br>Body와 Header 중 하나에서 Refresh Token 제공 필요 | `AuthResponse`<br>- `token` (String)<br>- `refreshToken` (String)<br>- `message` (String) | None |
@@ -678,7 +678,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| PATCH | `/api/v1/students/me` | 학생의 닉네임 및 비밀번호를 수정합니다. 닉네임과 비밀번호를 선택적으로 변경할 수 있으며, 비밀번호 변경 시 현재 비밀번호 검증이 필요합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - 유효성: `@Size(min=2, max=20)` (2자 이상 20자 이하)<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
+| PATCH | `/api/v1/students/me` | 학생의 닉네임 및 비밀번호를 수정합니다. 비밀번호 변경 시 현재 비밀번호를 검증하고 자격 증명 버전을 증가시켜 기존 Access/Refresh Token을 사용할 수 없게 합니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰<br><br>**Request Body:**<br>`UpdateProfileRequest`<br>- `nickname` (String, optional): 변경할 닉네임<br>  - 유효성: `@Size(min=2, max=20)` (2자 이상 20자 이하)<br>  - null이면 변경하지 않음<br>- `currentPassword` (String, optional): 현재 비밀번호<br>  - 비밀번호 변경 시 필수 입력<br>- `newPassword` (String, optional): 새로운 비밀번호<br>  - 유효성: `@Size(min=8)` (8자 이상)<br>  - 비밀번호 정책: AuthController의 비밀번호 정책과 동일<br>  - null이면 변경하지 않음 | `204 No Content` (성공 시) | JWT Token |
 | DELETE | `/api/v1/students/me` | 로그인한 사용자의 계정 및 연관 데이터(회고/피드백)를 완전히 삭제합니다. (Hard Delete, 복구 불가) | **Headers:**<br>- `Authorization: Bearer {token}` (required): JWT 토큰 | `204 No Content` (성공 시) | JWT Token |
 
 **예시 요청 (닉네임만 변경):**
@@ -1715,9 +1715,16 @@ JWT 토큰 기반 인증을 지원합니다.
 3. 토큰은 기본적으로 30분 동안 유효합니다 (설정 가능).
 
 **토큰 구조:**
-- JWT 토큰의 `subject` (sub) 클레임에는 사용자 ID (BOJ ID 또는 Student ID)가 저장됩니다.
-- Access Token은 `type=access`와 `role=USER|ADMIN`을 포함하며 보호 API 인증에 사용됩니다.
-- Refresh Token은 `type=refresh`와 고유한 `jti`를 포함하며 `/api/v1/auth/refresh`에서만 사용됩니다.
+- JWT 토큰의 `subject` (sub) 클레임에는 발급 시점의 BOJ ID가 저장됩니다.
+- Access Token은 `type=access`, `role=USER|ADMIN`, 변경되지 않는 `studentId`,
+  비밀번호·권한·BOJ ID가 바뀔 때 증가하는 `credentialVersion`을 포함합니다.
+- 보호 API는 `studentId`로 최신 학생을 조회한 뒤 BOJ ID, 자격 증명 버전, 권한이
+  토큰과 모두 같은 경우에만 인증하고 `studentId`를 principal로 사용합니다.
+- Refresh Token은 `type=refresh`, 고유한 `jti`, 변경되지 않는 `studentId`,
+  비밀번호·권한·BOJ ID가 바뀔 때 증가하는 `credentialVersion`을 포함하며
+  `/api/v1/auth/refresh`에서만 사용됩니다.
+- `studentId` 또는 `credentialVersion`이 없는 이전 Access Token과 `studentId`가
+  없는 이전 Refresh Token은 사용할 수 없으므로 다시 로그인해야 합니다.
 - type이 없거나 role이 없거나 허용되지 않은 role을 가진 토큰은 보호 API 인증에 사용할 수 없습니다.
 - 토큰은 HMAC SHA-256 알고리즘으로 서명됩니다.
 
@@ -1773,6 +1780,9 @@ JWT 토큰 기반 인증을 지원합니다.
 - `UNAUTHORIZED` (401): 인증 필요
 - `ACCESS_DENIED` (403): 권한 부족
 - `DUPLICATE_BOJ_ID` (409): 이미 가입된 BOJ ID
+- `SESSION_STATE_CONFLICT` (409): 같은 사용자의 로그인 또는 비밀번호 변경이 처리 중 (`retryable=true`)
+- `PASSWORD_RESET_CONFLICT` (409): 재설정 코드 소비 뒤 상태가 변경되어 새 코드 발급 필요 (`retryable` 생략)
+- `RESOURCE_STATE_CONFLICT` (409): 요청 중 자원 상태가 변경되어 재시도 필요 (`retryable=true`)
 - `COMMON_RESOURCE_NOT_FOUND` (404): 요청한 자원을 찾을 수 없음
 - `STUDENT_NOT_FOUND` (404): 학생을 찾을 수 없음
 - `PROBLEM_NOT_FOUND` (404): 문제를 찾을 수 없음
@@ -1784,6 +1794,7 @@ JWT 토큰 기반 인증을 지원합니다.
 - `TEMPLATE_CANNOT_DELETE_SYSTEM` (403): 시스템 템플릿은 삭제할 수 없음
 - `MAINTENANCE_MODE` (503): 서비스가 일시적으로 점검 중
 - `RATE_LIMIT_SERVICE_UNAVAILABLE` (503): 요청 제한 저장소에 연결할 수 없어 인증 요청을 처리할 수 없음 (`retryable=true`)
+- `SESSION_STATE_UNAVAILABLE` (503): 세션 상태 저장소에 연결할 수 없어 인증 요청을 처리할 수 없음 (`retryable=true`)
 - `COMMON_INTERNAL_ERROR` (500): 서버 내부 오류
 
 **예시 에러 응답:**
@@ -1857,7 +1868,7 @@ JWT 토큰 기반 인증을 지원합니다.
 
 | Method | URI | 기능 설명 | Request | Response | Auth |
 |--------|-----|----------|---------|----------|------|
-| POST | `/api/v1/logs` | 코딩 로그를 생성합니다. | **Request Body:** `LogCreateRequest`<br>- `title` (String, required)<br>- `content` (String, required, max 5000)<br>- `code` (String, required, max 5000)<br>- `isSuccess` (Boolean, optional) | `LogResponse`<br>- `id` (String) | JWT(Optional) |
+| POST | `/api/v1/logs` | 코딩 로그를 생성합니다. | **Request Body:** `LogCreateRequest`<br>- `title` (String, required)<br>- `content` (String, required, max 5000)<br>- `code` (String, required, max 5000)<br>- `isSuccess` (Boolean, optional) | `LogResponse`<br>- `id` (String) | JWT |
 | GET | `/api/v1/logs/{logId}/template` | 로그 본문 템플릿을 조회합니다. 본인이 작성한 로그만 조회할 수 있습니다. | **Path Variable:** `logId` (String, required) | `LogTemplateResponse`<br>- `template` (String) | JWT |
 | POST | `/api/v1/logs/{logId}/ai-review` | AI 한 줄 리뷰를 요청합니다. 캐시가 있으면 즉시 `200`, 캐시가 없으면 비동기 작업을 등록하고 `202`를 반환합니다. 동일 API를 다시 호출하면 완료 후 캐시 결과를 받을 수 있습니다. | **Path Variable:** `logId` (String, required) | `AiReviewResponse`<br>- `review` (String)<br>- `cached` (Boolean)<br>- `inProgress` (Boolean) | JWT |
 | POST | `/api/v1/logs/{logId}/feedback` | 본인이 작성한 로그의 AI 리뷰 피드백(LIKE/DISLIKE)을 저장합니다. | **Path Variable:** `logId` (String, required)<br>**Request Body:** `LogFeedbackRequest`<br>- `status` (LIKE/DISLIKE, required)<br>- `reason` (String, optional) | `{ \"message\": \"피드백이 제출되었습니다.\" }` | JWT |

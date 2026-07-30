@@ -9,6 +9,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.core.AuthenticationException
 import org.springframework.web.bind.MissingServletRequestParameterException
@@ -80,6 +81,15 @@ class GlobalExceptionHandler {
     fun handleBusinessException(e: BusinessException): ResponseEntity<ErrorResponse> {
         val errorResponse = ErrorResponse.of(e.errorCode, e.message ?: e.errorCode.message)
         return ResponseEntity.status(e.errorCode.status).body(errorResponse)
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException::class)
+    fun handleOptimisticLockingFailureException(
+        e: OptimisticLockingFailureException
+    ): ResponseEntity<ErrorResponse> {
+        log.warn("Optimistic locking conflict: {}", e.message)
+        val errorResponse = ErrorResponse.of(ErrorCode.RESOURCE_STATE_CONFLICT)
+        return ResponseEntity.status(ErrorCode.RESOURCE_STATE_CONFLICT.status).body(errorResponse)
     }
 
     @ExceptionHandler(DuplicateNicknameException::class)

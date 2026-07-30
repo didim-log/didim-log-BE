@@ -91,6 +91,8 @@ class PasswordResetIssuanceConsistencyIntegrationTest {
         assertThat(passwordResetCodeRepository.count()).isEqualTo(1)
         val stored = findByStudentId(STUDENT_ID).single()
         assertThat(stored.resetCode).isEqualTo("CODE0002")
+        assertThat(stored.credentialVersion).isEqualTo(CREDENTIAL_VERSION)
+        assertThat(stored.bojId).isEqualTo(BOJ_ID)
         assertThat(stored.expiresAt).isEqualTo(BASE_TIME.plusMinutes(31))
         assertThat(stored.createdAt).isEqualTo(BASE_TIME.plusMinutes(1))
         assertThat(existsByResetCode("CODE0001")).isFalse()
@@ -404,7 +406,9 @@ class PasswordResetIssuanceConsistencyIntegrationTest {
             studentId = studentId,
             resetCode = resetCode,
             expiresAt = createdAt.plusMinutes(30),
-            createdAt = createdAt
+            createdAt = createdAt,
+            credentialVersion = CREDENTIAL_VERSION,
+            bojId = BOJ_ID
         )
     }
 
@@ -469,7 +473,8 @@ class PasswordResetIssuanceConsistencyIntegrationTest {
             passwordResetCodeRepository = passwordResetCodeRepository,
             passwordResetCodeGenerator = generator,
             refreshTokenService = mockk<RefreshTokenService>(relaxed = true),
-            bojOwnershipVerificationService = mockk<BojOwnershipVerificationService>(relaxed = true)
+            bojOwnershipVerificationService = mockk<BojOwnershipVerificationService>(relaxed = true),
+            credentialSessionCoordinator = ImmediateCredentialSessionCoordinator()
         )
     }
 
@@ -499,6 +504,8 @@ class PasswordResetIssuanceConsistencyIntegrationTest {
     )
 
     companion object {
+        private const val CREDENTIAL_VERSION = 0L
+        private const val BOJ_ID = "reset_user"
         private const val STUDENT_ID = "student-a"
         private const val CONCURRENCY = 20
         private const val MAX_ISSUE_ATTEMPTS = 5

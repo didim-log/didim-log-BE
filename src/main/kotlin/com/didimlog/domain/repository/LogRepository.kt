@@ -12,13 +12,13 @@ import java.time.LocalDateTime
 interface LogRepository : MongoRepository<Log, String> {
     /**
      * BOJ ID로 로그를 페이징하여 조회한다.
-     * bojId는 value object이므로 MongoDB 필드 경로를 명시해야 함
+     * BojId writing converter가 문자열로 저장하므로 MongoDB 필드명을 직접 사용한다.
      *
      * @param bojIdValue BOJ ID 값
      * @param pageable 페이징 정보
      * @return 로그 페이지
      */
-    @Query("{ 'bojId.value': ?0 }")
+    @Query("{ 'bojId': ?0 }")
     fun findByBojIdValue(bojIdValue: String, pageable: Pageable): Page<Log>
 
     /**
@@ -92,11 +92,10 @@ interface LogRepository : MongoRepository<Log, String> {
      * @param pageable 페이징 정보
      * @return 로그 페이지
      */
-    @Query("{ 'bojId.value': ?0, 'aiReviewStatus': { \$in: ?1 } }")
+    @Query("{ 'bojId': ?0, 'aiReviewStatus': { \$in: ?1 } }")
     fun findByBojIdValueAndAiReviewStatusInOrderByCreatedAtDesc(
         bojIdValue: String,
         statuses: List<AiReviewStatus>,
         pageable: Pageable
     ): Page<Log>
 }
-

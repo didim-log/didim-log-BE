@@ -15,7 +15,7 @@ class RedisRefreshTokenStore(
 
     companion object {
         private const val TOKEN_KEY_PREFIX = "refresh:token:"
-        private const val USER_KEY_PREFIX = "refresh:user:"
+        private const val STUDENT_KEY_PREFIX = "refresh:student:"
 
         private val SAVE_SCRIPT = DefaultRedisScript(
             """
@@ -33,11 +33,11 @@ class RedisRefreshTokenStore(
 
         private val ROTATE_SCRIPT = DefaultRedisScript(
             """
-            local storedBojId = redis.call('GET', KEYS[1])
-            if not storedBojId then
+            local storedStudentId = redis.call('GET', KEYS[1])
+            if not storedStudentId then
                 return 0
             end
-            if storedBojId ~= ARGV[1] then
+            if storedStudentId ~= ARGV[1] then
                 return -1
             end
             if redis.call('EXISTS', KEYS[2]) == 1 then
@@ -57,7 +57,7 @@ class RedisRefreshTokenStore(
             Long::class.java
         )
 
-        private val DELETE_BY_BOJ_ID_SCRIPT = DefaultRedisScript(
+        private val DELETE_BY_STUDENT_ID_SCRIPT = DefaultRedisScript(
             """
             local tokens = redis.call('SMEMBERS', KEYS[1])
             for _, token in ipairs(tokens) do
@@ -70,30 +70,30 @@ class RedisRefreshTokenStore(
         )
     }
 
-    override fun save(token: String, bojId: String, ttlSeconds: Long) {
+    override fun save(token: String, studentId: String, ttlSeconds: Long) {
         redisTemplate.execute(
             SAVE_SCRIPT,
-            listOf(tokenKey(token), userKey(bojId)),
-            bojId,
+            listOf(tokenKey(token), studentKey(studentId)),
+            studentId,
             token,
             ttlSeconds.toString()
         )
     }
 
-    override fun matches(token: String, bojId: String): Boolean {
-        return redisTemplate.opsForValue().get(tokenKey(token)) == bojId
+    override fun matches(token: String, studentId: String): Boolean {
+        return redisTemplate.opsForValue().get(tokenKey(token)) == studentId
     }
 
     override fun rotate(
         oldToken: String,
         newToken: String,
-        bojId: String,
+        studentId: String,
         ttlSeconds: Long
     ): Boolean {
         val result = redisTemplate.execute(
             ROTATE_SCRIPT,
-            listOf(tokenKey(oldToken), tokenKey(newToken), userKey(bojId)),
-            bojId,
+            listOf(tokenKey(oldToken), tokenKey(newToken), studentKey(studentId)),
+            studentId,
             oldToken,
             newToken,
             ttlSeconds.toString()
@@ -101,10 +101,10 @@ class RedisRefreshTokenStore(
         return result == 1L
     }
 
-    override fun deleteByBojId(bojId: String) {
+    override fun deleteByStudentId(studentId: String) {
         redisTemplate.execute(
-            DELETE_BY_BOJ_ID_SCRIPT,
-            listOf(userKey(bojId)),
+            DELETE_BY_STUDENT_ID_SCRIPT,
+            listOf(studentKey(studentId)),
             TOKEN_KEY_PREFIX
         )
     }
@@ -113,11 +113,10 @@ class RedisRefreshTokenStore(
         return TOKEN_KEY_PREFIX + token
     }
 
-    private fun userKey(bojId: String): String {
-        return USER_KEY_PREFIX + bojId
+    private fun studentKey(studentId: String): String {
+        return STUDENT_KEY_PREFIX + studentId
     }
 }
-
 
 
 

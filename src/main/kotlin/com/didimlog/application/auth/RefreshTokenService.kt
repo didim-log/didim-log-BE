@@ -1,7 +1,7 @@
 package com.didimlog.application.auth
 
+import com.didimlog.domain.Student
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -32,17 +32,23 @@ class RefreshTokenService(
         val tierLevel: Int
     )
 
-    /**
-     * Refresh Token을 생성하고 저장한다.
-     *
-     * @param bojId 사용자 BOJ ID
-     * @return 생성된 Refresh Token
-     */
-    fun generateAndSave(bojId: String): String {
-        val refreshToken = jwtTokenProvider.createRefreshToken(bojId)
+    fun generateAndSave(student: Student): String {
+        val studentId = requireNotNull(student.id) {
+            "저장된 학생만 Refresh Token을 발급할 수 있습니다."
+        }
+        val bojId = student.bojId?.value
+            ?: throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "BOJ ID가 등록되지 않은 계정입니다."
+            )
+        val refreshToken = jwtTokenProvider.createRefreshToken(
+            subject = bojId,
+            studentId = studentId,
+            credentialVersion = student.credentialVersion
+        )
         val ttlSeconds = refreshTokenExpiration / 1000
-        refreshTokenStore.save(refreshToken, bojId, ttlSeconds)
-        log.debug("Refresh Token 생성 및 저장 완료: bojId=$bojId")
+        refreshTokenStore.save(refreshToken, studentId, ttlSeconds)
+        log.debug("Refresh Token 생성 및 저장 완료: studentId=$studentId")
         return refreshToken
     }
 
@@ -63,32 +69,59 @@ class RefreshTokenService(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 아닙니다.")
         }
 
-        val bojId = jwtTokenProvider.getSubject(refreshToken)
-        if (!refreshTokenStore.matches(refreshToken, bojId)) {
+        val signedBojId = jwtTokenProvider.getSubject(refreshToken)
+        val studentId = jwtTokenProvider.getStudentId(refreshToken)
+            ?: throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "학생 ID가 없는 기존 Refresh Token은 사용할 수 없습니다."
+            )
+        if (!refreshTokenStore.matches(refreshToken, studentId)) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 존재하지 않습니다.")
         }
 
         // 사용자 존재 확인
-        val student = studentRepository.findByBojId(BojId(bojId))
+        val student = studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "사용자를 찾을 수 없습니다. studentId=$studentId")
             }
+        val currentBojId = student.bojId?.value
+        if (currentBojId != signedBojId) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "계정 정보가 변경되어 만료된 Refresh Token입니다."
+            )
+        }
+        if (jwtTokenProvider.getCredentialVersion(refreshToken) != student.credentialVersion) {
+            throw BusinessException(
+                ErrorCode.COMMON_INVALID_INPUT,
+                "비밀번호 변경으로 만료된 Refresh Token입니다."
+            )
+        }
 
-        val newAccessToken = jwtTokenProvider.createToken(bojId, student.role.value)
-        val newRefreshToken = jwtTokenProvider.createRefreshToken(bojId)
+        val newAccessToken = jwtTokenProvider.createToken(
+            subject = currentBojId,
+            studentId = studentId,
+            credentialVersion = student.credentialVersion,
+            role = student.role.value
+        )
+        val newRefreshToken = jwtTokenProvider.createRefreshToken(
+            subject = currentBojId,
+            studentId = studentId,
+            credentialVersion = student.credentialVersion
+        )
         val ttlSeconds = refreshTokenExpiration / 1000
 
         val rotated = refreshTokenStore.rotate(
             oldToken = refreshToken,
             newToken = newRefreshToken,
-            bojId = bojId,
+            studentId = studentId,
             ttlSeconds = ttlSeconds
         )
         if (!rotated) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "Refresh Token이 존재하지 않습니다.")
         }
 
-        log.info("토큰 갱신 완료: bojId=$bojId")
+        log.info("토큰 갱신 완료: studentId=$studentId")
         return RefreshResult(
             accessToken = newAccessToken,
             refreshToken = newRefreshToken,
@@ -101,10 +134,11 @@ class RefreshTokenService(
     /**
      * 사용자의 모든 Refresh Token을 삭제한다 (로그아웃 시 사용).
      *
-     * @param bojId 사용자 BOJ ID
+     * @param studentId 변경 불가능한 학생 ID
      */
-    fun revokeAll(bojId: String) {
-        refreshTokenStore.deleteByBojId(bojId)
-        log.info("사용자 Refresh Token 전체 삭제 완료: bojId=$bojId")
+    fun revokeAllForStudent(studentId: String) {
+        refreshTokenStore.deleteByStudentId(studentId)
+        log.info("사용자 Refresh Token 전체 삭제 완료: studentId=$studentId")
     }
+
 }

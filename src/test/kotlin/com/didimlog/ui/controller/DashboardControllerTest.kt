@@ -87,12 +87,12 @@ class DashboardControllerTest {
             progressPercentage = 50
         )
 
-        every { dashboardService.getDashboard("bojId") } returns dashboardInfo
+        every { dashboardService.getDashboard("student-id") } returns dashboardInfo
 
         // when & then
         mockMvc.perform(
             get("/api/v1/dashboard")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
@@ -112,4 +112,3 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.progressPercentage").value(50))
     }
 }
-

@@ -152,6 +152,27 @@ class StudentTest {
         assertThat(updated.primaryLanguage).isEqualTo(PrimaryLanguage.KOTLIN)
         assertThat(student.primaryLanguage).isEqualTo(PrimaryLanguage.PYTHON) // 원본 불변 확인
     }
-}
 
+    @Test
+    @DisplayName("updatePassword는 비밀번호와 자격 증명 버전을 함께 갱신한다")
+    fun `비밀번호 갱신 시 자격 증명 버전 증가`() {
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            bojId = BojId("tester123"),
+            password = "old-password",
+            credentialVersion = 3,
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+
+        val updated = student.updatePassword("new-password")
+
+        assertThat(updated.password).isEqualTo("new-password")
+        assertThat(updated.credentialVersion).isEqualTo(4)
+        assertThat(student.password).isEqualTo("old-password")
+        assertThat(student.credentialVersion).isEqualTo(3)
+    }
+}
 

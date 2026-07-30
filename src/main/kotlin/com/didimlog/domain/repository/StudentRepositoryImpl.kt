@@ -1,7 +1,10 @@
 package com.didimlog.domain.repository
 
 import com.didimlog.domain.Student
+import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import java.time.LocalDateTime
 import java.util.regex.Pattern
@@ -21,23 +24,85 @@ class StudentRepositoryImpl(
     private val mongoTemplate: MongoTemplate
 ) : StudentRepositoryCustom {
 
-    override fun updatePasswordById(studentId: String, encodedPassword: String): Boolean {
-        val query = Query.query(Criteria.where("_id").`is`(studentId))
-        val update = Update.update("password", encodedPassword)
+    override fun updatePasswordById(
+        studentId: String,
+        encodedPassword: String,
+        expectedCredentialVersion: Long,
+        expectedBojId: BojId
+    ): Boolean {
+        val query = credentialVersionQuery(studentId, expectedCredentialVersion)
+            .addCriteria(Criteria.where("bojId").`is`(expectedBojId.value))
+        val update = Update()
+            .set("password", encodedPassword)
+            .inc("credentialVersion", 1)
+            .inc("documentVersion", 1)
         return mongoTemplate.updateFirst(query, update, Student::class.java).matchedCount == 1L
+    }
+
+    override fun updateProfileFieldsById(
+        studentId: String,
+        nickname: Nickname?,
+        encodedPassword: String?,
+        primaryLanguage: PrimaryLanguage?,
+        expectedCredentialVersion: Long
+    ): Student? {
+        require(nickname != null || encodedPassword != null || primaryLanguage != null) {
+            "갱신할 프로필 필드가 없습니다."
+        }
+
+        val query = credentialVersionQuery(studentId, expectedCredentialVersion)
+        val update = Update()
+        nickname?.let { update.set("nickname", it.value) }
+        encodedPassword?.let {
+            update.set("password", it)
+            update.inc("credentialVersion", 1)
+        }
+        primaryLanguage?.let { update.set("primaryLanguage", it.name) }
+        update.inc("documentVersion", 1)
+
+        return mongoTemplate.findAndModify(
+            query,
+            update,
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Student::class.java
+        )
+    }
+
+    private fun credentialVersionQuery(
+        studentId: String,
+        expectedCredentialVersion: Long
+    ): Query {
+        require(expectedCredentialVersion >= 0) { "자격 증명 버전은 0 이상이어야 합니다." }
+
+        val query = Query.query(Criteria.where("_id").`is`(studentId))
+        val versionCriteria = if (expectedCredentialVersion == 0L) {
+            Criteria().orOperator(
+                Criteria.where("credentialVersion").`is`(0L),
+                Criteria.where("credentialVersion").exists(false)
+            )
+        } else {
+            Criteria.where("credentialVersion").`is`(expectedCredentialVersion)
+        }
+        query.addCriteria(versionCriteria)
+        return query
     }
 
     override fun updateSolvedAcProfileById(
         studentId: String,
+        expectedBojId: BojId,
         rating: Int,
         solvedAcTierLevel: SolvedAcTierLevel,
         currentTier: Tier
     ): Student? {
-        val query = Query.query(Criteria.where("_id").`is`(studentId))
+        val query = Query.query(
+            Criteria.where("_id").`is`(studentId)
+                .and("bojId").`is`(expectedBojId.value)
+        )
         val update = Update()
             .set("rating", rating)
             .set("solvedAcTierLevel", solvedAcTierLevel.value)
             .set("currentTier", currentTier.name)
+            .inc("documentVersion", 1)
         return mongoTemplate.findAndModify(
             query,
             update,

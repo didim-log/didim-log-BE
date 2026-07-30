@@ -23,6 +23,7 @@ import io.mockk.mockk
 import java.time.LocalDateTime
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -74,7 +75,8 @@ class PasswordResetConsistencyIntegrationTest {
 
     private fun createAuthService(
         encoder: PasswordEncoder,
-        solvedAcClient: SolvedAcClient = mockk(relaxed = true)
+        solvedAcClient: SolvedAcClient = mockk(relaxed = true),
+        credentialSessionCoordinator: CredentialSessionCoordinator = ImmediateCredentialSessionCoordinator()
     ): AuthService {
         return AuthService(
             solvedAcClient = solvedAcClient,
@@ -85,7 +87,8 @@ class PasswordResetConsistencyIntegrationTest {
             passwordResetCodeRepository = passwordResetCodeRepository,
             passwordResetCodeGenerator = mockk<PasswordResetCodeGenerator>(relaxed = true),
             refreshTokenService = mockk<RefreshTokenService>(relaxed = true),
-            bojOwnershipVerificationService = mockk<BojOwnershipVerificationService>(relaxed = true)
+            bojOwnershipVerificationService = mockk<BojOwnershipVerificationService>(relaxed = true),
+            credentialSessionCoordinator = credentialSessionCoordinator
         )
     }
 
@@ -101,6 +104,8 @@ class PasswordResetConsistencyIntegrationTest {
             PasswordResetCode(
                 resetCode = RESET_CODE,
                 studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
                 expiresAt = LocalDateTime.now().plusMinutes(30)
             )
         )
@@ -139,6 +144,7 @@ class PasswordResetConsistencyIntegrationTest {
 
         val updatedStudent = studentRepository.findById(requireNotNull(student.id)).orElseThrow()
         assertThat(updatedStudent.password).isEqualTo(passwordEncoder.encoded(NEW_PASSWORD))
+        assertThat(updatedStudent.credentialVersion).isEqualTo(student.credentialVersion + 1)
         assertThat(updatedStudent.nickname).isEqualTo(student.nickname)
         assertThat(updatedStudent.rating).isEqualTo(student.rating)
 
@@ -154,6 +160,8 @@ class PasswordResetConsistencyIntegrationTest {
             PasswordResetCode(
                 resetCode = RESET_CODE,
                 studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
                 expiresAt = LocalDateTime.now().minusSeconds(1)
             )
         )
@@ -176,6 +184,8 @@ class PasswordResetConsistencyIntegrationTest {
             PasswordResetCode(
                 resetCode = RESET_CODE,
                 studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
                 expiresAt = LocalDateTime.now().plusMinutes(30)
             )
         )
@@ -187,6 +197,160 @@ class PasswordResetConsistencyIntegrationTest {
         assertThat(passwordResetCodeRepository.count()).isEqualTo(1)
         assertThat(passwordEncoder.encodeCount.get()).isZero()
         assertThat(studentRepository.findById(requireNotNull(student.id)).orElseThrow().password)
+            .isEqualTo(OLD_PASSWORD)
+    }
+
+    @Test
+    fun `비밀번호 변경 전에 발급한 코드는 새 비밀번호를 덮어쓰지 않는다`() {
+        val student = saveStudent()
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val changedPassword = "changed-password"
+        assertThat(
+            studentRepository.updatePasswordById(
+                requireNotNull(student.id),
+                changedPassword,
+                student.credentialVersion,
+                requireNotNull(student.bojId)
+            )
+        ).isTrue()
+
+        val exception = assertThrows<BusinessException> {
+            authService.resetPassword(RESET_CODE, NEW_PASSWORD)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.PASSWORD_RESET_CONFLICT)
+        val currentStudent = studentRepository.findById(requireNotNull(student.id)).orElseThrow()
+        assertThat(currentStudent.password).isEqualTo(changedPassword)
+        assertThat(currentStudent.credentialVersion).isEqualTo(student.credentialVersion + 1)
+        assertThat(passwordResetCodeRepository.findByResetCode(RESET_CODE)).isPresent
+        assertThat(passwordEncoder.encodeCount.get()).isZero()
+    }
+
+    @Test
+    fun `권한 승격 전에 발급한 코드는 승격된 계정의 비밀번호를 변경하지 않는다`() {
+        val student = saveStudent()
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val promotedStudent = studentRepository.save(
+            student.copy(
+                role = Role.ADMIN,
+                credentialVersion = student.credentialVersion + 1
+            )
+        )
+
+        val exception = assertThrows<BusinessException> {
+            authService.resetPassword(RESET_CODE, NEW_PASSWORD)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.PASSWORD_RESET_CONFLICT)
+        val currentStudent = studentRepository.findById(requireNotNull(student.id)).orElseThrow()
+        assertThat(currentStudent.role).isEqualTo(Role.ADMIN)
+        assertThat(currentStudent.password).isEqualTo(OLD_PASSWORD)
+        assertThat(currentStudent.credentialVersion).isEqualTo(promotedStudent.credentialVersion)
+        assertThat(passwordResetCodeRepository.findByResetCode(RESET_CODE)).isPresent
+        assertThat(passwordEncoder.encodeCount.get()).isZero()
+    }
+
+    @Test
+    fun `BOJ ID 변경 전에 발급한 코드는 변경된 계정의 비밀번호를 바꾸지 않는다`() {
+        val student = saveStudent()
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val changedStudent = studentRepository.save(
+            student.copy(bojId = BojId("changed_user"))
+        )
+
+        val exception = assertThrows<BusinessException> {
+            authService.resetPassword(RESET_CODE, NEW_PASSWORD)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.PASSWORD_RESET_CONFLICT)
+        val currentStudent = studentRepository.findById(requireNotNull(student.id)).orElseThrow()
+        assertThat(currentStudent.bojId).isEqualTo(changedStudent.bojId)
+        assertThat(currentStudent.password).isEqualTo(OLD_PASSWORD)
+        assertThat(passwordResetCodeRepository.findByResetCode(RESET_CODE)).isPresent
+        assertThat(passwordEncoder.encodeCount.get()).isZero()
+    }
+
+    @Test
+    fun `세션 잠금 충돌 시 재설정 코드를 보존한다`() {
+        assertCoordinatorFailurePreservesResetCode(ErrorCode.SESSION_STATE_CONFLICT)
+    }
+
+    @Test
+    fun `세션 상태 저장소 장애 시 재설정 코드를 보존한다`() {
+        assertCoordinatorFailurePreservesResetCode(ErrorCode.SESSION_STATE_UNAVAILABLE)
+    }
+
+    @Test
+    fun `조회 뒤 같은 코드의 소유자가 바뀌면 다른 학생 코드를 소비하지 않는다`() {
+        val snapshotStudent = saveStudent()
+        val replacementStudent = studentRepository.save(
+            snapshotStudent.copy(
+                id = "replacement-${UUID.randomUUID()}",
+                nickname = Nickname("replacement"),
+                providerId = "replacement-user",
+                email = "replacement@example.com",
+                bojId = BojId("replacement_user"),
+                documentVersion = null
+            )
+        )
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(snapshotStudent.id),
+                credentialVersion = snapshotStudent.credentialVersion,
+                bojId = requireNotNull(snapshotStudent.bojId).value,
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val replacingAuthService = createAuthService(
+            encoder = passwordEncoder,
+            credentialSessionCoordinator = BeforeActionCredentialSessionCoordinator {
+                val updateResult = mongoTemplate.updateFirst(
+                    Query.query(Criteria.where("resetCode").`is`(RESET_CODE)),
+                    Update.update("studentId", requireNotNull(replacementStudent.id)),
+                    PasswordResetCode::class.java
+                )
+                assertThat(updateResult.modifiedCount).isEqualTo(1)
+            }
+        )
+
+        val exception = assertThrows<BusinessException> {
+            replacingAuthService.resetPassword(RESET_CODE, NEW_PASSWORD)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        assertThat(exception.message).contains("유효하지 않은 재설정 코드")
+        val preservedCode = passwordResetCodeRepository.findByResetCode(RESET_CODE).orElseThrow()
+        assertThat(preservedCode.studentId).isEqualTo(replacementStudent.id)
+        assertThat(passwordResetCodeRepository.count()).isEqualTo(1)
+        assertThat(passwordEncoder.encodeCount.get()).isZero()
+        assertThat(studentRepository.findById(requireNotNull(snapshotStudent.id)).orElseThrow().password)
+            .isEqualTo(OLD_PASSWORD)
+        assertThat(studentRepository.findById(requireNotNull(replacementStudent.id)).orElseThrow().password)
             .isEqualTo(OLD_PASSWORD)
     }
 
@@ -205,7 +369,7 @@ class PasswordResetConsistencyIntegrationTest {
         }
 
         assertThat(passwordResetCodeRepository.count()).isZero()
-        assertThat(passwordEncoder.encodeCount.get()).isEqualTo(1)
+        assertThat(passwordEncoder.encodeCount.get()).isZero()
     }
 
     @Test
@@ -215,6 +379,8 @@ class PasswordResetConsistencyIntegrationTest {
             PasswordResetCode(
                 resetCode = RESET_CODE,
                 studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
                 expiresAt = LocalDateTime.now().plusMinutes(30)
             )
         )
@@ -251,12 +417,113 @@ class PasswordResetConsistencyIntegrationTest {
     }
 
     @Test
-    fun `로그인 프로필 동기화는 동시에 재설정된 비밀번호를 덮어쓰지 않는다`() {
+    fun `비밀번호 CAS 충돌은 코드를 소비하고 새 코드 발급을 요구한다`() {
+        val student = saveStudent()
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val blockingEncoder = BlockingPasswordEncoder()
+        val conflictingAuthService = createAuthService(blockingEncoder)
+        val executor = Executors.newSingleThreadExecutor()
+
+        val resetFailure = try {
+            val resetFuture = executor.submit {
+                conflictingAuthService.resetPassword(RESET_CODE, NEW_PASSWORD)
+            }
+
+            assertThat(blockingEncoder.entered.await(10, TimeUnit.SECONDS)).isTrue()
+            val versionUpdate = mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").`is`(student.id)),
+                Update().inc("credentialVersion", 1),
+                Student::class.java
+            )
+            assertThat(versionUpdate.modifiedCount).isEqualTo(1)
+
+            blockingEncoder.release.countDown()
+            assertThrows<ExecutionException> {
+                resetFuture.get(10, TimeUnit.SECONDS)
+            }.cause
+        } finally {
+            blockingEncoder.release.countDown()
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue()
+        }
+
+        assertThat(resetFailure).isInstanceOf(BusinessException::class.java)
+        val exception = resetFailure as BusinessException
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.PASSWORD_RESET_CONFLICT)
+        assertThat(exception.errorCode.retryable).isFalse()
+        assertThat(exception.message).contains("새 재설정 코드")
+        assertThat(passwordResetCodeRepository.count()).isZero()
+        val preservedStudent = studentRepository.findById(requireNotNull(student.id)).orElseThrow()
+        assertThat(preservedStudent.password).isEqualTo(OLD_PASSWORD)
+        assertThat(preservedStudent.credentialVersion).isEqualTo(student.credentialVersion + 1)
+    }
+
+    @Test
+    fun `비밀번호 인코딩 중 BOJ ID가 바뀌면 이전 코드의 비밀번호 갱신을 거절한다`() {
+        val student = saveStudent()
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val blockingEncoder = BlockingPasswordEncoder()
+        val conflictingAuthService = createAuthService(blockingEncoder)
+        val executor = Executors.newSingleThreadExecutor()
+
+        val resetFailure = try {
+            val resetFuture = executor.submit {
+                conflictingAuthService.resetPassword(RESET_CODE, NEW_PASSWORD)
+            }
+
+            assertThat(blockingEncoder.entered.await(10, TimeUnit.SECONDS)).isTrue()
+            val bojIdUpdate = mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").`is`(student.id)),
+                Update.update("bojId", "changed_during_reset"),
+                Student::class.java
+            )
+            assertThat(bojIdUpdate.modifiedCount).isEqualTo(1)
+
+            blockingEncoder.release.countDown()
+            assertThrows<ExecutionException> {
+                resetFuture.get(10, TimeUnit.SECONDS)
+            }.cause
+        } finally {
+            blockingEncoder.release.countDown()
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue()
+        }
+
+        assertThat(resetFailure).isInstanceOf(BusinessException::class.java)
+        assertThat((resetFailure as BusinessException).errorCode)
+            .isEqualTo(ErrorCode.PASSWORD_RESET_CONFLICT)
+        assertThat(passwordResetCodeRepository.count()).isZero()
+        val preservedStudent = studentRepository.findById(requireNotNull(student.id)).orElseThrow()
+        assertThat(preservedStudent.bojId).isEqualTo(BojId("changed_during_reset"))
+        assertThat(preservedStudent.password).isEqualTo(OLD_PASSWORD)
+        assertThat(preservedStudent.credentialVersion).isEqualTo(student.credentialVersion)
+    }
+
+    @Test
+    fun `로그인 프로필 동기화와 재설정 뒤 지연 로그인을 차단한다`() {
         val student = saveStudent(password = encoded(OLD_LOGIN_PASSWORD))
         passwordResetCodeRepository.save(
             PasswordResetCode(
                 resetCode = RESET_CODE,
                 studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
                 expiresAt = LocalDateTime.now().plusMinutes(30)
             )
         )
@@ -270,7 +537,7 @@ class PasswordResetConsistencyIntegrationTest {
         val concurrentAuthService = createAuthService(passwordEncoder, blockingSolvedAcClient)
         val executor = Executors.newSingleThreadExecutor()
 
-        val loginResult = try {
+        val loginFailure = try {
             val loginFuture = executor.submit<AuthService.AuthResult> {
                 concurrentAuthService.login(requireNotNull(student.bojId).value, OLD_LOGIN_PASSWORD)
             }
@@ -278,7 +545,9 @@ class PasswordResetConsistencyIntegrationTest {
             assertThat(blockingSolvedAcClient.entered.await(10, TimeUnit.SECONDS)).isTrue()
             concurrentAuthService.resetPassword(RESET_CODE, NEW_PASSWORD)
             blockingSolvedAcClient.release.countDown()
-            loginFuture.get(10, TimeUnit.SECONDS)
+            assertThrows<ExecutionException> {
+                loginFuture.get(10, TimeUnit.SECONDS)
+            }.cause
         } finally {
             blockingSolvedAcClient.release.countDown()
             executor.shutdownNow()
@@ -293,9 +562,9 @@ class PasswordResetConsistencyIntegrationTest {
         assertThat(updatedStudent.currentTier).isEqualTo(Tier.fromRating(SYNCED_RATING))
         assertThat(updatedStudent.nickname).isEqualTo(student.nickname)
         assertThat(studentRepository.count()).isEqualTo(1)
-        assertThat(loginResult.rating).isEqualTo(SYNCED_RATING)
-        assertThat(loginResult.tierLevel).isEqualTo(expectedTierLevel.value)
-        assertThat(loginResult.tier).isEqualTo(Tier.fromRating(SYNCED_RATING))
+        assertThat(loginFailure).isInstanceOf(BusinessException::class.java)
+        assertThat((loginFailure as BusinessException).errorCode)
+            .isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
     }
 
     @Test
@@ -304,6 +573,7 @@ class PasswordResetConsistencyIntegrationTest {
 
         val updatedStudent = studentRepository.updateSolvedAcProfileById(
             studentId = "missing-student",
+            expectedBojId = BojId("missingboj"),
             rating = SYNCED_RATING,
             solvedAcTierLevel = expectedTierLevel,
             currentTier = Tier.fromRating(SYNCED_RATING)
@@ -320,6 +590,8 @@ class PasswordResetConsistencyIntegrationTest {
             PasswordResetCode(
                 resetCode = RESET_CODE,
                 studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
                 expiresAt = LocalDateTime.now().plusMinutes(30)
             )
         )
@@ -338,6 +610,33 @@ class PasswordResetConsistencyIntegrationTest {
         }
 
         assertThat(passwordResetCodeRepository.count()).isZero()
+        assertThat(studentRepository.findById(requireNotNull(student.id)).orElseThrow().password)
+            .isEqualTo(OLD_PASSWORD)
+    }
+
+    private fun assertCoordinatorFailurePreservesResetCode(errorCode: ErrorCode) {
+        val student = saveStudent()
+        passwordResetCodeRepository.save(
+            PasswordResetCode(
+                resetCode = RESET_CODE,
+                studentId = requireNotNull(student.id),
+                credentialVersion = student.credentialVersion,
+                bojId = requireNotNull(student.bojId).value,
+                expiresAt = LocalDateTime.now().plusMinutes(30)
+            )
+        )
+        val rejectingAuthService = createAuthService(
+            encoder = passwordEncoder,
+            credentialSessionCoordinator = RejectingCredentialSessionCoordinator(errorCode)
+        )
+
+        val exception = assertThrows<BusinessException> {
+            rejectingAuthService.resetPassword(RESET_CODE, NEW_PASSWORD)
+        }
+
+        assertThat(exception.errorCode).isEqualTo(errorCode)
+        assertThat(passwordResetCodeRepository.findByResetCode(RESET_CODE)).isPresent
+        assertThat(passwordEncoder.encodeCount.get()).isZero()
         assertThat(studentRepository.findById(requireNotNull(student.id)).orElseThrow().password)
             .isEqualTo(OLD_PASSWORD)
     }
@@ -404,6 +703,32 @@ class PasswordResetConsistencyIntegrationTest {
             entered.countDown()
             check(release.await(10, TimeUnit.SECONDS))
             return response
+        }
+    }
+
+    private class RejectingCredentialSessionCoordinator(
+        private val errorCode: ErrorCode
+    ) : CredentialSessionCoordinator {
+        override fun <T> execute(studentId: String, action: () -> T): T {
+            throw BusinessException(errorCode)
+        }
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            throw BusinessException(errorCode)
+        }
+    }
+
+    private class BeforeActionCredentialSessionCoordinator(
+        private val beforeAction: () -> Unit
+    ) : CredentialSessionCoordinator {
+        override fun <T> execute(studentId: String, action: () -> T): T {
+            beforeAction()
+            return action()
+        }
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            beforeAction()
+            return action()
         }
     }
 

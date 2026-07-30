@@ -51,7 +51,8 @@ class AuthServiceTest {
         passwordResetCodeRepository,
         passwordResetCodeGenerator,
         refreshTokenService,
-        bojOwnershipVerificationService
+        bojOwnershipVerificationService,
+        ImmediateCredentialSessionCoordinator()
     )
 
     @Test
@@ -197,10 +198,14 @@ class AuthServiceTest {
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
         every { studentRepository.findByEmail("test@example.com") } returns Optional.empty()
         every { passwordEncoder.encode(password) } returns encodedPassword
-        every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns token
-        every { refreshTokenService.generateAndSave(bojId) } returns "refresh-token"
+        every {
+            jwtTokenProvider.createToken(bojId, "student1", 0, Role.USER.value)
+        } returns token
+        every { refreshTokenService.generateAndSave(any<Student>()) } returns "refresh-token"
         val savedStudent = slot<Student>()
-        every { studentRepository.save(capture(savedStudent)) } answers { firstArg() }
+        every {
+            studentRepository.save(capture(savedStudent))
+        } answers { firstArg<Student>().copy(id = "student1") }
 
         // when
         val result = authService.signup(bojId, password, "test@example.com", "verification-session")
@@ -329,9 +334,12 @@ class AuthServiceTest {
         val token = "jwt-token"
 
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student1") } returns Optional.of(student)
         every { student.matchPassword(password, passwordEncoder) } returns true
         every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(handle = "testuser", rating = 100, tier = 3)
-        every { jwtTokenProvider.createToken(bojId, Role.USER.value) } returns token
+        every {
+            jwtTokenProvider.createToken(bojId, "student1", student.credentialVersion, Role.USER.value)
+        } returns token
 
         // when
         val result = authService.login(bojId, password)
@@ -344,6 +352,7 @@ class AuthServiceTest {
         verify(exactly = 0) {
             studentRepository.updateSolvedAcProfileById(
                 "student1",
+                bojIdVo,
                 100,
                 student.solvedAcTierLevel,
                 Tier.BRONZE

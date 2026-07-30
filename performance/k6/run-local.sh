@@ -79,6 +79,8 @@ fi
 : "${JWT_REFRESH_TOKEN_EXPIRATION:=604800000}"
 : "${JWT_EXPIRATION:=1800000}"
 : "${ADMIN_SECRET_KEY:=performance-admin-secret}"
+: "${SWAGGER_USERNAME:=performance-swagger}"
+: "${SWAGGER_PASSWORD:=performance-swagger-password}"
 : "${AI_ENABLED:=false}"
 : "${GEMINI_API_KEY:=local-gemini-key}"
 : "${GEMINI_API_URL:=http://localhost:8090/v1beta/models/gemini-2.5-flash:generateContent}"
@@ -92,7 +94,11 @@ fi
 : "${AI_REVIEW_ASYNC_MAX_POOL_SIZE:=16}"
 : "${AI_REVIEW_ASYNC_QUEUE_CAPACITY:=500}"
 : "${PERF_BOJ_ID:=perfuser}"
+: "${PERF_STUDENT_ID:=perf-student-1}"
+: "${PERF_NICKNAME:=perfuser}"
 : "${PERF_AI_BOJ_ID_PREFIX:=${PERF_BOJ_ID}_ai}"
+MANIFEST_PERF_BOJ_ID="$PERF_BOJ_ID"
+MANIFEST_PERF_STUDENT_ID="$PERF_STUDENT_ID"
 : "${PERF_PASSWORD:=PerfPassword123!}"
 : "${PERF_BCRYPT_PASSWORD:=\$2y\$10\$FTcPZSUl3qvlezqQQb7oreLZ8T2XID88ICjFjXipc2Ei4EfS7k9SO}"
 : "${JWT_TTL_SECONDS:=3600}"
@@ -145,7 +151,7 @@ K6_EXPECTED_VERSION="$(tr -d '[:space:]' <"$K6_VERSION_FILE")"
 GIT_DIRTY="$([[ -n "$(git -C "$ROOT_DIR" status --porcelain 2>/dev/null)" ]] && echo true || echo false)"
 
 export BASE_URL SERVER_PORT WIREMOCK_URL WIREMOCK_PORT MOCK_GEMINI_DELAY_MS
-export MONGO_URI MONGO_PORT PERF_BOJ_ID PERF_AI_BOJ_ID_PREFIX PERF_PASSWORD PERF_BCRYPT_PASSWORD
+export MONGO_URI MONGO_PORT PERF_BOJ_ID PERF_STUDENT_ID PERF_NICKNAME PERF_AI_BOJ_ID_PREFIX PERF_PASSWORD PERF_BCRYPT_PASSWORD
 export JWT_TTL_SECONDS
 export REDIS_HOST REDIS_PORT REDIS_DATABASE
 export SPRING_DATA_MONGODB_URI SPRING_DATA_REDIS_HOST SPRING_DATA_REDIS_PORT SPRING_DATA_REDIS_DATABASE
@@ -154,7 +160,7 @@ export SPRING_MAIL_HOST SPRING_MAIL_PORT MAIL_PASSWORD
 export OAUTH_GOOGLE_ID OAUTH_GOOGLE_SECRET OAUTH_GITHUB_ID OAUTH_GITHUB_SECRET
 export OAUTH_NAVER_ID OAUTH_NAVER_SECRET SERVER_URL JWT_SECRET
 export JWT_ACCESS_TOKEN_EXPIRATION JWT_REFRESH_TOKEN_EXPIRATION JWT_EXPIRATION
-export ADMIN_SECRET_KEY AI_ENABLED GEMINI_API_KEY
+export ADMIN_SECRET_KEY SWAGGER_USERNAME SWAGGER_PASSWORD AI_ENABLED GEMINI_API_KEY
 export GEMINI_API_URL GEMINI_CONNECT_TIMEOUT_MILLIS GEMINI_RESPONSE_TIMEOUT_SECONDS
 export GEMINI_READ_TIMEOUT_SECONDS GEMINI_WRITE_TIMEOUT_SECONDS GEMINI_MAX_RETRIES
 export GEMINI_RETRY_BACKOFF_MILLIS
@@ -371,6 +377,20 @@ ai_boj_id_for() {
   printf '%s_%s' "$(safe_boj_token "$PERF_AI_BOJ_ID_PREFIX")" "$(safe_boj_token "$suffix")"
 }
 
+ai_student_id_for() {
+  local suffix="$1"
+  printf 'perf-student-ai-%s' "$(safe_boj_token "$suffix")"
+}
+
+ai_nickname_for() {
+  python3 - "$1" <<'PY'
+import hashlib
+import sys
+
+print("ai" + hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest()[:10])
+PY
+}
+
 start_mocks() {
   assert_local_fixture_environment || return $?
   validate_number_config || return $?
@@ -493,9 +513,12 @@ seed_fixture() {
 }
 
 seed_fixture_with_mongosh() {
+  local include_related="${1:-true}"
   mongosh "$MONGO_URI" --quiet --eval "
-const studentId = 'perf-student-1';
+const studentId = '$PERF_STUDENT_ID';
 const bojId = '$PERF_BOJ_ID';
+const nickname = '$PERF_NICKNAME';
+const includeRelated = $include_related;
 const now = new Date('$PERF_FIXTURE_EPOCH');
 if (Number.isNaN(now.getTime())) {
   throw new Error('invalid PERF_FIXTURE_EPOCH');
@@ -504,12 +527,13 @@ db.students.updateOne(
   { _id: studentId },
   {
     \$set: {
-      nickname: 'perfuser',
+      nickname: nickname,
       provider: 'BOJ',
       providerId: bojId,
-      email: 'perfuser@example.test',
+      email: bojId + '@example.test',
       bojId: bojId,
       password: '$PERF_BCRYPT_PASSWORD',
+      credentialVersion: 0,
       rating: 0,
       solvedAcTierLevel: 0,
       currentTier: 'UNRATED',
@@ -525,64 +549,81 @@ db.students.updateOne(
   { upsert: true }
 );
 
-db.retrospectives.deleteMany({ studentId: studentId, problemId: { \$regex: '^perf-' } });
-const docs = [];
-for (let i = 1; i <= Number('$PERF_FIXTURE_RETROSPECTIVES'); i++) {
-  docs.push({
-    _id: 'perf-retro-' + i,
+let retrospectiveCount = 0;
+if (includeRelated) {
+  db.retrospectives.deleteMany({ studentId: studentId, problemId: { \$regex: '^perf-' } });
+  const docs = [];
+  for (let i = 1; i <= Number('$PERF_FIXTURE_RETROSPECTIVES'); i++) {
+    docs.push({
+      _id: 'perf-retro-' + i,
+      studentId: studentId,
+      problemId: 'perf-' + i,
+      content: '성능 테스트용 회고 내용입니다. 인덱스와 페이징 조회를 확인합니다. #' + i,
+      summary: '성능 fixture ' + i,
+      createdAt: new Date(now.getTime() - i * 3600 * 1000),
+      isBookmarked: i % 10 === 0,
+      solutionResult: i % 4 === 0 ? 'FAIL' : 'SUCCESS',
+      solvedCategory: i % 3 === 0 ? 'DP' : 'Implementation',
+      solveTime: String(300 + i)
+    });
+  }
+  if (docs.length > 0) {
+    db.retrospectives.insertMany(docs, { ordered: false });
+  }
+  db.logs.deleteMany({ title: { \$regex: '^k6-ai-review-' } });
+  retrospectiveCount = db.retrospectives.countDocuments({
     studentId: studentId,
-    problemId: 'perf-' + i,
-    content: '성능 테스트용 회고 내용입니다. 인덱스와 페이징 조회를 확인합니다. #' + i,
-    summary: '성능 fixture ' + i,
-    createdAt: new Date(now.getTime() - i * 3600 * 1000),
-    isBookmarked: i % 10 === 0,
-    solutionResult: i % 4 === 0 ? 'FAIL' : 'SUCCESS',
-    solvedCategory: i % 3 === 0 ? 'DP' : 'Implementation',
-    solveTime: String(300 + i)
+    problemId: { \$regex: '^perf-' }
   });
 }
-if (docs.length > 0) {
-  db.retrospectives.insertMany(docs, { ordered: false });
-}
-db.logs.deleteMany({ title: { \$regex: '^k6-ai-review-' } });
 printjson({
   student: db.students.findOne({ _id: studentId }, { _id: 1, bojId: 1, role: 1 }),
-  retrospectiveCount: db.retrospectives.countDocuments({ studentId: studentId, problemId: { \$regex: '^perf-' } })
+  retrospectiveCount: retrospectiveCount
 });
 "
 }
 
 seed_fixture_with_mongoimport() {
+  local include_related="${1:-true}"
   require_command mongoimport
   local tmp_dir
+  local retrospective_count=0
+  if [[ "$include_related" == "true" ]]; then
+    retrospective_count="$PERF_FIXTURE_RETROSPECTIVES"
+  fi
   tmp_dir="$(mktemp -d)"
   python3 - \
     "$tmp_dir" \
+    "$PERF_STUDENT_ID" \
     "$PERF_BOJ_ID" \
+    "$PERF_NICKNAME" \
     "$PERF_BCRYPT_PASSWORD" \
-    "$PERF_FIXTURE_RETROSPECTIVES" \
+    "$retrospective_count" \
     "$PERF_FIXTURE_EPOCH" <<'PY'
 import json
 import sys
 from datetime import datetime, timedelta
 
-tmp_dir, boj_id, password, count, fixture_epoch = (
+tmp_dir, student_id, boj_id, nickname, password, count, fixture_epoch = (
     sys.argv[1],
     sys.argv[2],
     sys.argv[3],
-    int(sys.argv[4]),
+    sys.argv[4],
     sys.argv[5],
+    int(sys.argv[6]),
+    sys.argv[7],
 )
 now = datetime.fromisoformat(fixture_epoch.replace("Z", "+00:00"))
 
 student = {
-    "_id": "perf-student-1",
-    "nickname": "perfuser",
+    "_id": student_id,
+    "nickname": nickname,
     "provider": "BOJ",
     "providerId": boj_id,
-    "email": "perfuser@example.test",
+    "email": f"{boj_id}@example.test",
     "bojId": boj_id,
     "password": password,
+    "credentialVersion": 0,
     "rating": 0,
     "solvedAcTierLevel": 0,
     "currentTier": "UNRATED",
@@ -600,7 +641,7 @@ for i in range(1, count + 1):
     created_at = now - timedelta(hours=i)
     retrospectives.append({
         "_id": f"perf-retro-{i}",
-        "studentId": "perf-student-1",
+        "studentId": student_id,
         "problemId": f"perf-{i}",
         "content": f"성능 테스트용 회고 내용입니다. 인덱스와 페이징 조회를 확인합니다. #{i}",
         "summary": f"성능 fixture {i}",
@@ -619,8 +660,21 @@ with open(f"{tmp_dir}/retrospectives.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(doc, ensure_ascii=False) + "\n")
 PY
   mongoimport --quiet --uri "$MONGO_URI" --collection students --mode upsert --upsertFields _id --file "$tmp_dir/student.json"
-  mongoimport --quiet --uri "$MONGO_URI" --collection retrospectives --mode upsert --upsertFields _id --file "$tmp_dir/retrospectives.json"
+  if [[ "$include_related" == "true" ]]; then
+    mongoimport --quiet --uri "$MONGO_URI" --collection retrospectives --mode upsert --upsertFields _id --file "$tmp_dir/retrospectives.json"
+  fi
   rm -rf "$tmp_dir"
+}
+
+seed_ai_student_fixture() {
+  assert_local_fixture_environment || return $?
+
+  if command -v mongosh >/dev/null 2>&1; then
+    seed_fixture_with_mongosh false >/dev/null
+    return
+  fi
+
+  seed_fixture_with_mongoimport false
 }
 
 check_k6_version() {
@@ -726,6 +780,8 @@ start_application() {
     "JWT_REFRESH_TOKEN_EXPIRATION=$JWT_REFRESH_TOKEN_EXPIRATION"
     "JWT_EXPIRATION=$JWT_EXPIRATION"
     "ADMIN_SECRET_KEY=$ADMIN_SECRET_KEY"
+    "SWAGGER_USERNAME=$SWAGGER_USERNAME"
+    "SWAGGER_PASSWORD=$SWAGGER_PASSWORD"
     "AI_ENABLED=$AI_ENABLED"
     "GEMINI_API_KEY=$GEMINI_API_KEY"
     "GEMINI_API_URL=$GEMINI_API_URL"
@@ -750,12 +806,19 @@ start_application() {
 run_k6() {
   local name="$1"
   local script="$2"
+  local workload_boj_id="$PERF_BOJ_ID"
+  local workload_student_id="$PERF_STUDENT_ID"
   assert_safe_environment || return $?
   validate_number_config || return $?
   check_k6_version || return $?
   mkdir -p "$RESULTS_DIR"
-  ensure_environment_manifest || return $?
-  SUMMARY_EXPORT="$RESULTS_DIR/$name-$K6_RUN_ID.json" k6 run "$K6_DIR/$script"
+  PERF_BOJ_ID="$MANIFEST_PERF_BOJ_ID" \
+    PERF_STUDENT_ID="$MANIFEST_PERF_STUDENT_ID" \
+    ensure_environment_manifest || return $?
+  PERF_BOJ_ID="$workload_boj_id" \
+    PERF_STUDENT_ID="$workload_student_id" \
+    SUMMARY_EXPORT="$RESULTS_DIR/$name-$K6_RUN_ID.json" \
+    k6 run "$K6_DIR/$script"
 }
 
 smoke() {
@@ -777,15 +840,24 @@ get_log_id_by_run_id() {
 
 ai_review_once() {
   local iteration="${1:-1}"
-  local previous_boj_id="$PERF_BOJ_ID"
+  local ai_boj_id
+  local ai_student_id
+  local ai_nickname
   local k6_status=0
   local verify_status=0
   export AI_RUN_ID="${K6_RUN_ID}-ai-${iteration}"
-  export PERF_BOJ_ID
-  PERF_BOJ_ID="$(ai_boj_id_for "$AI_RUN_ID")"
+  ai_boj_id="$(ai_boj_id_for "$AI_RUN_ID")"
+  ai_student_id="$(ai_student_id_for "$AI_RUN_ID")"
+  ai_nickname="$(ai_nickname_for "$AI_RUN_ID")"
   configure_wiremock || return $?
+  if ! PERF_BOJ_ID="$ai_boj_id" PERF_STUDENT_ID="$ai_student_id" \
+    PERF_NICKNAME="$ai_nickname" seed_ai_student_fixture; then
+    echo "AI fixture seed failed: studentId=$ai_student_id bojId=$ai_boj_id" >&2
+    return 1
+  fi
   local verify_json="$RESULTS_DIR/ai-review-concurrency-$iteration-$AI_RUN_ID-verify.json"
-  run_k6 "ai-review-concurrency-$iteration" "ai-review-concurrency.js" || k6_status=$?
+  PERF_BOJ_ID="$ai_boj_id" PERF_STUDENT_ID="$ai_student_id" \
+    run_k6 "ai-review-concurrency-$iteration" "ai-review-concurrency.js" || k6_status=$?
   "$VERIFY_AI" \
     --run-id "$AI_RUN_ID" \
     --expect-status COMPLETED \
@@ -794,7 +866,6 @@ ai_review_once() {
     --poll-timeout-seconds "$AI_COMPLETED_POLL_TIMEOUT_SECONDS" \
     --poll-interval-millis "$AI_POLL_INTERVAL_MILLIS" \
     --output-json "$verify_json" || verify_status=$?
-  export PERF_BOJ_ID="$previous_boj_id"
   if [[ "$k6_status" -ne 0 || "$verify_status" -ne 0 ]]; then
     echo "AI concurrency iteration $iteration failed: k6_status=$k6_status verify_status=$verify_status" >&2
     return 1
@@ -869,16 +940,25 @@ wait_gemini_rate_window() {
 
 ai_review_failed_retry() {
   export AI_RUN_ID="${K6_RUN_ID}-ai-failed-retry"
-  local previous_boj_id="$PERF_BOJ_ID"
+  local ai_boj_id
+  local ai_student_id
+  local ai_nickname
   local k6_status=0
   local verify_status=0
   local log_id
-  export PERF_BOJ_ID
-  PERF_BOJ_ID="$(ai_boj_id_for "$AI_RUN_ID")"
+  ai_boj_id="$(ai_boj_id_for "$AI_RUN_ID")"
+  ai_student_id="$(ai_student_id_for "$AI_RUN_ID")"
+  ai_nickname="$(ai_nickname_for "$AI_RUN_ID")"
   configure_wiremock || return $?
+  if ! PERF_BOJ_ID="$ai_boj_id" PERF_STUDENT_ID="$ai_student_id" \
+    PERF_NICKNAME="$ai_nickname" seed_ai_student_fixture; then
+    echo "AI retry fixture seed failed: studentId=$ai_student_id bojId=$ai_boj_id" >&2
+    return 1
+  fi
 
   export AI_EXPERIMENT="failed-first"
-  run_k6 "ai-review-failed-retry-first" "ai-review-concurrency.js" || k6_status=$?
+  PERF_BOJ_ID="$ai_boj_id" PERF_STUDENT_ID="$ai_student_id" \
+    run_k6 "ai-review-failed-retry-first" "ai-review-concurrency.js" || k6_status=$?
   "$VERIFY_AI" \
     --run-id "$AI_RUN_ID" \
     --expect-status FAILED \
@@ -900,7 +980,8 @@ ai_review_failed_retry() {
   if [[ -n "$log_id" ]]; then
     export AI_LOG_ID="$log_id"
     export AI_EXPERIMENT="failed-second"
-    run_k6 "ai-review-failed-retry-second" "ai-review-concurrency.js" || k6_status=$?
+    PERF_BOJ_ID="$ai_boj_id" PERF_STUDENT_ID="$ai_student_id" \
+      run_k6 "ai-review-failed-retry-second" "ai-review-concurrency.js" || k6_status=$?
     "$VERIFY_AI" \
       --run-id "$AI_RUN_ID" \
       --expect-status COMPLETED \
@@ -911,10 +992,10 @@ ai_review_failed_retry() {
       --output-json "$RESULTS_DIR/ai-review-failed-retry-$AI_RUN_ID-completed-verify.json" || verify_status=$?
 
     export AI_EXPERIMENT="failed-final"
-    run_k6 "ai-review-failed-retry-final" "ai-review-concurrency.js" || k6_status=$?
+    PERF_BOJ_ID="$ai_boj_id" PERF_STUDENT_ID="$ai_student_id" \
+      run_k6 "ai-review-failed-retry-final" "ai-review-concurrency.js" || k6_status=$?
   fi
 
-  export PERF_BOJ_ID="$previous_boj_id"
   unset AI_EXPERIMENT AI_LOG_ID
   if [[ "$k6_status" -ne 0 || "$verify_status" -ne 0 ]]; then
     echo "AI failed retry failed: k6_status=$k6_status verify_status=$verify_status" >&2
@@ -951,8 +1032,112 @@ cleanup_rate_limit_keys() {
     "rate_limit:password_reset:$RATE_LIMIT_CLIENT_IP" >/dev/null
 }
 
+cleanup_ai_fixture_keys() {
+  assert_local_fixture_environment || return $?
+  if ! command -v redis-cli >/dev/null 2>&1; then
+    echo "redis-cli not found; cannot cleanup AI fixture Redis keys" >&2
+    return 127
+  fi
+
+  local today
+  local global_usage_key
+  local iteration
+  local run_id
+  local student_id
+  local key
+  local usage_keys=()
+  local cache_keys=()
+  today="$(TZ="$APP_TIMEZONE" date +%F)"
+  global_usage_key="AI_USAGE:GLOBAL:$today"
+  usage_keys+=("AI_USAGE:USER:$PERF_STUDENT_ID:$today")
+
+  for iteration in $(seq 1 "$AI_REPEAT_COUNT"); do
+    run_id="${K6_RUN_ID}-ai-${iteration}"
+    student_id="$(ai_student_id_for "$run_id")"
+    usage_keys+=("AI_USAGE:USER:$student_id:$today")
+  done
+  run_id="${K6_RUN_ID}-ai-failed-retry"
+  student_id="$(ai_student_id_for "$run_id")"
+  usage_keys+=("AI_USAGE:USER:$student_id:$today")
+
+  while IFS= read -r key; do
+    if [[ -n "$key" ]]; then
+      cache_keys+=("$key")
+    fi
+  done < <(python3 - "$K6_RUN_ID" "$AI_REPEAT_COUNT" <<'PY'
+import hashlib
+import sys
+
+run_id, repeat_count = sys.argv[1], int(sys.argv[2])
+
+def cache_key(code, result):
+    normalized = code.strip()[:2000]
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return f"AI_REVIEW:CACHE:v1:{result}:{digest}"
+
+for iteration in range(1, repeat_count + 1):
+    ai_run_id = f"{run_id}-ai-{iteration}"
+    code = "\n".join([
+        f"// k6 unique AI fixture: {ai_run_id}",
+        "public class Main {",
+        "  public static void main(String[] args) {",
+        "    int sum = 0;",
+        "    for (int i = 0; i < 100; i++) { sum += i; }",
+        "    System.out.println(sum);",
+        "  }",
+        "}",
+    ])
+    print(cache_key(code, "success"))
+
+retry_run_id = f"{run_id}-ai-failed-retry"
+retry_code = "\n".join([
+    f"// k6 unique failed-retry fixture: {retry_run_id}",
+    "public class Main {",
+    '  static final String MARKER = "FORCE_GEMINI_FAILURE_ONCE";',
+    "  public static void main(String[] args) {",
+    "    System.out.println(MARKER.length());",
+    "  }",
+    "}",
+])
+print(cache_key(retry_code, "fail"))
+PY
+)
+
+  if ! redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DATABASE" eval \
+    "local removed = 0
+     for _, userKey in ipairs(ARGV) do
+       local value = tonumber(redis.call('GET', userKey) or '0') or 0
+       removed = removed + value
+       redis.call('DEL', userKey)
+     end
+     local global = tonumber(redis.call('GET', KEYS[1]) or '0') or 0
+     if removed > 0 and global > 0 then
+       if global > removed then
+         redis.call('DECRBY', KEYS[1], removed)
+       else
+         redis.call('DEL', KEYS[1])
+       end
+     end
+     return removed" \
+    1 "$global_usage_key" "${usage_keys[@]}" >/dev/null; then
+    echo "AI usage fixture Redis key cleanup failed" >&2
+    return 1
+  fi
+
+  if [[ "${#cache_keys[@]}" -gt 0 ]]; then
+    if ! redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DATABASE" del \
+      "${cache_keys[@]}" >/dev/null; then
+      echo "AI review cache fixture Redis key cleanup failed" >&2
+      return 1
+    fi
+  fi
+}
+
 create_jwt() {
-  python3 - "$PERF_BOJ_ID" "${JWT_SECRET:-performance-secret-key-must-be-at-least-256-bits-long-1234567890}" <<'PY'
+  python3 - \
+    "$PERF_BOJ_ID" \
+    "$PERF_STUDENT_ID" \
+    "${JWT_SECRET:-performance-secret-key-must-be-at-least-256-bits-long-1234567890}" <<'PY'
 import base64
 import hashlib
 import hmac
@@ -960,14 +1145,22 @@ import json
 import sys
 import time
 
-subject, secret = sys.argv[1], sys.argv[2]
+subject, student_id, secret = sys.argv[1], sys.argv[2], sys.argv[3]
 now = int(time.time())
 
 def b64url(value):
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
 
 header = {"alg": "HS256", "typ": "JWT"}
-payload = {"sub": subject, "role": "USER", "type": "access", "iat": now, "exp": now + 3600}
+payload = {
+    "sub": subject,
+    "role": "USER",
+    "type": "access",
+    "studentId": student_id,
+    "credentialVersion": 0,
+    "iat": now,
+    "exp": now + 3600,
+}
 unsigned = f"{b64url(json.dumps(header, separators=(',', ':')).encode())}.{b64url(json.dumps(payload, separators=(',', ':')).encode())}"
 signature = b64url(hmac.new(secret.encode(), unsigned.encode(), hashlib.sha256).digest())
 print(f"{unsigned}.{signature}")
@@ -999,8 +1192,12 @@ preflight() {
     return 127
   fi
   mongosh "$MONGO_URI" --quiet --eval "
-const student = db.students.findOne({ _id: 'perf-student-1', bojId: '$PERF_BOJ_ID' });
-const count = db.retrospectives.countDocuments({ studentId: 'perf-student-1', problemId: { \$regex: '^perf-' } });
+const student = db.students.findOne({
+  _id: '$PERF_STUDENT_ID',
+  bojId: '$PERF_BOJ_ID',
+  credentialVersion: 0
+});
+const count = db.retrospectives.countDocuments({ studentId: '$PERF_STUDENT_ID', problemId: { \$regex: '^perf-' } });
 if (!student) { throw new Error('performance fixture student not found'); }
 if (count !== Number('$PERF_FIXTURE_RETROSPECTIVES')) { throw new Error('retrospective fixture count mismatch: ' + count); }
 print(JSON.stringify({ student: student.bojId, retrospectiveCount: count, database: db.getName() }));
@@ -1024,16 +1221,17 @@ cleanup() {
   assert_local_fixture_environment || return $?
   local status=0
   cleanup_rate_limit_keys || status=1
+  cleanup_ai_fixture_keys || status=1
   stop_node_mock || status=1
   if command -v mongosh >/dev/null 2>&1; then
     mongosh "$MONGO_URI" --quiet --eval "
 db.students.deleteMany({ \$or: [
-  { _id: 'perf-student-1' },
+  { _id: '$PERF_STUDENT_ID' },
   { bojId: { \$regex: '^$(safe_boj_token "$PERF_AI_BOJ_ID_PREFIX")' } }
 ] });
 db.retrospectives.deleteMany({ \$or: [
   { _id: { \$regex: '^perf-retro-' } },
-  { studentId: 'perf-student-1', problemId: { \$regex: '^perf-' } }
+  { studentId: '$PERF_STUDENT_ID', problemId: { \$regex: '^perf-' } }
 ] });
 db.logs.deleteMany({ title: { \$regex: '^k6-ai-review-' } });
 print(JSON.stringify({ cleanup: 'done', database: db.getName() }));

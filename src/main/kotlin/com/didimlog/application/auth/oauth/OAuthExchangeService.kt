@@ -40,10 +40,23 @@ class OAuthExchangeService(
 
     fun issue(studentId: String): String {
         require(studentId.isNotBlank()) { "studentId는 비어 있을 수 없습니다." }
+        val student = studentRepository.findById(studentId)
+            .orElseThrow { IllegalStateException("OAuth 교환 코드를 발급할 수 없습니다.") }
+        val bojId = student.bojId?.value
+            ?: throw IllegalStateException("OAuth 교환 코드를 발급할 수 없습니다.")
+        if (student.role != Role.USER && student.role != Role.ADMIN) {
+            throw IllegalStateException("OAuth 교환 코드를 발급할 수 없습니다.")
+        }
+        val identity = OAuthExchangeCodeIdentity(
+            studentId = studentId,
+            bojId = bojId,
+            credentialVersion = student.credentialVersion,
+            role = student.role
+        )
 
         repeat(MAX_ISSUE_ATTEMPTS) {
             val code = generateCode()
-            if (exchangeCodeStore.save(code, studentId, exchangeCodeTtlSeconds)) {
+            if (exchangeCodeStore.save(code, identity, exchangeCodeTtlSeconds)) {
                 return code
             }
         }
@@ -56,18 +69,33 @@ class OAuthExchangeService(
             throw invalidExchangeCode()
         }
 
-        val studentId = exchangeCodeStore.consume(code)
+        val identity = exchangeCodeStore.consume(code)
             ?: throw invalidExchangeCode()
-        val student = studentRepository.findById(studentId)
+        val student = studentRepository.findById(identity.studentId)
             .orElseThrow(::invalidExchangeCode)
         val bojId = student.bojId?.value
             ?: throw invalidExchangeCode()
-        if (student.role != Role.USER && student.role != Role.ADMIN) {
+        if (
+            student.role != Role.USER &&
+            student.role != Role.ADMIN
+        ) {
+            throw invalidExchangeCode()
+        }
+        if (
+            bojId != identity.bojId ||
+            student.credentialVersion != identity.credentialVersion ||
+            student.role != identity.role
+        ) {
             throw invalidExchangeCode()
         }
 
-        val accessToken = jwtTokenProvider.createToken(bojId, student.role.value)
-        val refreshToken = refreshTokenService.generateAndSave(bojId)
+        val accessToken = jwtTokenProvider.createToken(
+            subject = bojId,
+            studentId = identity.studentId,
+            credentialVersion = student.credentialVersion,
+            role = student.role.value
+        )
+        val refreshToken = refreshTokenService.generateAndSave(student)
 
         return ExchangeResult(
             accessToken = accessToken,

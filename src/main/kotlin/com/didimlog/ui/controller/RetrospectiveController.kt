@@ -3,13 +3,10 @@ package com.didimlog.ui.controller
 import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.application.retrospective.RetrospectiveService
 import com.didimlog.application.template.TemplateService
-import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.repository.ProblemRepository
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.ui.dto.BookmarkToggleResponse
@@ -57,7 +54,6 @@ import java.util.concurrent.TimeoutException
 @org.springframework.validation.annotation.Validated
 class RetrospectiveController(
     private val retrospectiveService: RetrospectiveService,
-    private val studentRepository: StudentRepository,
     private val problemRepository: ProblemRepository,
     private val templateService: TemplateService,
     @Value("\${app.template.render-timeout-millis:4000}")
@@ -112,13 +108,8 @@ class RetrospectiveController(
         @Valid
         request: RetrospectiveRequest
     ): ResponseEntity<RetrospectiveResponse> {
-        // JWT 토큰에서 현재 사용자 정보 추출
-        val bojId = authentication.name
-        val currentStudent = getStudentByBojId(bojId)
-        val studentId = currentStudent.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val studentId = authentication.name
 
-        // 토큰에서 추출한 studentId만 사용 (보안 강화)
         val retrospective = retrospectiveService.writeRetrospective(
             studentId = studentId,
             problemId = problemId,
@@ -190,10 +181,7 @@ class RetrospectiveController(
         @RequestParam(required = false)
         sort: String?
     ): ResponseEntity<RetrospectivePageResponse> {
-        val bojId = authentication.name
-        val currentStudent = getStudentByBojId(bojId)
-        val studentId = currentStudent.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val studentId = authentication.name
         val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
         return ResponseEntity.ok(response)
     }
@@ -243,10 +231,7 @@ class RetrospectiveController(
         @NotBlank(message = "회고 ID는 필수입니다.")
         retrospectiveId: String
     ): ResponseEntity<RetrospectiveResponse> {
-        val bojId = authentication.name
-        val currentStudent = getStudentByBojId(bojId)
-        val studentId = currentStudent.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val studentId = authentication.name
 
         val retrospective = retrospectiveService.getRetrospective(retrospectiveId, studentId)
         val response = RetrospectiveResponse.from(
@@ -296,10 +281,7 @@ class RetrospectiveController(
         @RequestParam
         resultType: ProblemResult
     ): ResponseEntity<RetrospectiveTemplateResponse> {
-        val bojId = authentication.name
-        val currentStudent = getStudentByBojId(bojId)
-        val studentId = currentStudent.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val studentId = authentication.name
 
         val templateCategory = if (resultType == ProblemResult.SUCCESS) {
             TemplateCategory.SUCCESS
@@ -340,10 +322,7 @@ class RetrospectiveController(
         @NotBlank(message = "회고 ID는 필수입니다.")
         retrospectiveId: String
     ): ResponseEntity<BookmarkToggleResponse> {
-        val bojId = authentication.name
-        val currentStudent = getStudentByBojId(bojId)
-        val studentId = currentStudent.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val studentId = authentication.name
 
         val isBookmarked = retrospectiveService.toggleBookmark(retrospectiveId, studentId)
         val response = BookmarkToggleResponse(isBookmarked = isBookmarked)
@@ -455,21 +434,6 @@ class RetrospectiveController(
         }
     }
 
-    /**
-     * BOJ ID로 Student를 조회한다.
-     *
-     * @param bojId BOJ ID
-     * @return Student
-     * @throws BusinessException 학생을 찾을 수 없는 경우
-     */
-    private fun getStudentByBojId(bojId: String): Student {
-        val bojIdVo = BojId(bojId)
-        return studentRepository.findByBojId(bojIdVo)
-            .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
-            }
-    }
-
     private fun resolveProblemTitle(problemId: String): String? {
         return problemRepository.findById(problemId)
             .map { it.title }
@@ -507,11 +471,7 @@ class RetrospectiveController(
         @NotBlank(message = "회고 ID는 필수입니다.")
         retrospectiveId: String
     ): ResponseEntity<Void> {
-        // JWT 토큰에서 현재 사용자 정보 추출
-        val bojId = authentication.name
-        val currentStudent = getStudentByBojId(bojId)
-        val studentId = currentStudent.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val studentId = authentication.name
 
         // 소유권 검증 포함된 삭제
         retrospectiveService.deleteRetrospective(retrospectiveId, studentId)
@@ -559,10 +519,7 @@ class RetrospectiveController(
         @Valid
         request: RetrospectiveRequest
     ): ResponseEntity<RetrospectiveResponse> {
-        val bojId = authentication.name
-        val currentStudent = getStudentByBojId(bojId)
-        val studentId = currentStudent.id
-            ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID를 찾을 수 없습니다. bojId=$bojId")
+        val studentId = authentication.name
 
         val retrospective = retrospectiveService.updateRetrospective(
             retrospectiveId = retrospectiveId,

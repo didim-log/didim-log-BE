@@ -115,7 +115,7 @@ class ProblemControllerTest {
 
         every {
             recommendationService.recommendProblemsDetailed(
-                "bojId",
+                "student-id",
                 10,
                 null,
                 null,
@@ -127,7 +127,7 @@ class ProblemControllerTest {
         mockMvc.perform(
             get("/api/v1/problems/recommend")
                 .param("count", "10")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isOk)
@@ -148,7 +148,7 @@ class ProblemControllerTest {
         mockMvc.perform(
             get("/api/v1/problems/recommend")
                 .param("count", "0")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isBadRequest)
@@ -161,7 +161,7 @@ class ProblemControllerTest {
         mockMvc.perform(
             get("/api/v1/problems/recommend")
                 .param("count", "51")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("bojId", null, emptyList()))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null, emptyList()))
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isBadRequest)
@@ -200,4 +200,3 @@ class ProblemControllerTest {
         )
     }
 }
-

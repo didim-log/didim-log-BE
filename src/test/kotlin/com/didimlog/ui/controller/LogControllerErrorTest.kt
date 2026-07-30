@@ -2,7 +2,14 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.log.AiReviewService
 import com.didimlog.application.log.LogService
+import com.didimlog.domain.Student
 import com.didimlog.domain.enums.AiFeedbackStatus
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
@@ -21,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.util.Optional
 
 @DisplayName("LogController 에러 응답 테스트")
 @WebMvcTest(
@@ -42,6 +50,9 @@ class LogControllerErrorTest {
 
     @Autowired
     private lateinit var logService: LogService
+
+    @Autowired
+    private lateinit var studentRepository: StudentRepository
 
     @TestConfiguration
     class TestConfig {
@@ -68,11 +79,24 @@ class LogControllerErrorTest {
     @Test
     @DisplayName("AI 생성 실패 시 503 + AI_GENERATION_FAILED 로 응답한다")
     fun `ai generation failed`() {
-        every { aiReviewService.requestOneLineReviewAsync("log-1", "user123") } throws AiGenerationFailedException()
+        every {
+            studentRepository.findById("student-id")
+        } returns Optional.of(
+            Student(
+                id = "student-id",
+                nickname = Nickname("user_nick"),
+                provider = Provider.BOJ,
+                providerId = "user123",
+                bojId = BojId("user123"),
+                currentTier = Tier.BRONZE,
+                role = Role.USER
+            )
+        )
+        every { aiReviewService.requestOneLineReviewAsync("log-1", "student-id") } throws AiGenerationFailedException()
 
         mockMvc.perform(
             post("/api/v1/logs/log-1/ai-review")
-                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("user123", null))
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("student-id", null))
         )
             .andExpect(status().isServiceUnavailable)
             .andExpect(jsonPath("$.code").value("AI_GENERATION_FAILED"))

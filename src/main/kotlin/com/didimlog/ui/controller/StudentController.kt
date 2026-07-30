@@ -59,9 +59,9 @@ class StudentController(
         @Valid
         request: UpdateProfileRequest
     ): ResponseEntity<Void> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
+        val studentId = authentication.name
         studentService.updateProfile(
-            bojId = bojId,
+            studentId = studentId,
             nickname = request.nickname,
             currentPassword = request.currentPassword,
             newPassword = request.newPassword,
@@ -94,8 +94,8 @@ class StudentController(
     fun withdraw(
         authentication: Authentication
     ): ResponseEntity<Void> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        studentService.withdraw(bojId)
+        val studentId = authentication.name
+        studentService.withdraw(studentId)
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 
@@ -133,10 +133,9 @@ class StudentController(
     fun syncBojProfile(
         authentication: Authentication
     ): ResponseEntity<com.didimlog.ui.dto.StudentProfileResponse> {
-        val bojId = authentication.name // JWT 토큰의 subject(bojId)
-        val updatedStudent = studentService.syncBojProfile(bojId)
+        val studentId = authentication.name
+        val updatedStudent = studentService.syncBojProfile(studentId)
         val response = com.didimlog.ui.dto.StudentProfileResponse.from(updatedStudent)
         return ResponseEntity.ok(response)
     }
 }
-

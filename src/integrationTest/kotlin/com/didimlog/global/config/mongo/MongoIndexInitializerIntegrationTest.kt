@@ -1,12 +1,17 @@
 package com.didimlog.global.config.mongo
 
+import com.didimlog.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.LogCode
+import com.didimlog.domain.valueobject.LogContent
+import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.valueobject.Nickname
 import java.time.Duration
 import java.time.LocalDateTime
@@ -27,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.data.mongo.DataMongoTest
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.data.domain.Sort
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.index.IndexInfo
 import org.springframework.data.mongodb.core.index.Index
@@ -45,6 +51,9 @@ class MongoIndexInitializerIntegrationTest {
 
     @Autowired
     private lateinit var mongoTemplate: MongoTemplate
+
+    @Autowired
+    private lateinit var logRepository: LogRepository
 
     private lateinit var mongoIndexInitializer: MongoIndexInitializer
 
@@ -99,6 +108,18 @@ class MongoIndexInitializerIntegrationTest {
             entityType = PasswordResetCode::class.java,
             name = MongoIndexInitializer.PASSWORD_RESET_STUDENT_ID_UNIQUE_INDEX_NAME,
             "studentId" to Sort.Direction.ASC
+        )
+        assertPlainIndex(
+            entityType = Log::class.java,
+            name = MongoIndexInitializer.LOG_BOJ_SNAPSHOT_CREATED_INDEX_NAME,
+            "bojId" to Sort.Direction.ASC,
+            "createdAt" to Sort.Direction.DESC
+        )
+        assertPlainIndex(
+            entityType = Log::class.java,
+            name = MongoIndexInitializer.LOG_STUDENT_CREATED_INDEX_NAME,
+            "studentId" to Sort.Direction.ASC,
+            "createdAt" to Sort.Direction.DESC
         )
 
         val ttlIndex = requireIndex(
@@ -362,6 +383,31 @@ class MongoIndexInitializerIntegrationTest {
             .doesNotContain(MongoIndexInitializer.STUDENT_BOJ_ID_UNIQUE_INDEX_NAME)
     }
 
+    @Test
+    fun `기존 로그는 BOJ ID만으로 소유자를 자동 연결하지 않는다`() {
+        val now = LocalDateTime.of(2026, 7, 30, 12, 0)
+        mongoTemplate.insert(
+            createStudent(
+                id = "current-owner",
+                nickname = "currentOwner",
+                provider = Provider.BOJ,
+                providerId = "sharedboj",
+                bojId = "sharedboj",
+                createdAt = now.minusDays(10)
+            )
+        )
+        mongoTemplate.insert(legacyLog("legacy-log", "sharedboj", now.minusDays(1)))
+
+        mongoIndexInitializer.ensureIndexes()
+
+        assertThat(logRepository.findById("legacy-log").orElseThrow().studentId).isNull()
+        assertThat(
+            logRepository.findByBojIdValue("sharedboj", PageRequest.of(0, 10))
+                .content
+                .map(Log::id)
+        ).containsExactly("legacy-log")
+    }
+
     private fun assertPlainUniqueIndex(
         entityType: Class<*>,
         name: String,
@@ -370,6 +416,21 @@ class MongoIndexInitializerIntegrationTest {
         val index = requireIndex(entityType, name)
         assertFields(index, *fields)
         assertThat(index.isUnique).isTrue()
+        assertThat(index.isSparse).isFalse()
+        assertThat(index.partialFilterExpression).isNull()
+        assertThat(index.collation).isEmpty
+        assertThat(index.expireAfter).isEmpty
+        assertThat(index.isHidden).isFalse()
+    }
+
+    private fun assertPlainIndex(
+        entityType: Class<*>,
+        name: String,
+        vararg fields: Pair<String, Sort.Direction>
+    ) {
+        val index = requireIndex(entityType, name)
+        assertFields(index, *fields)
+        assertThat(index.isUnique).isFalse()
         assertThat(index.isSparse).isFalse()
         assertThat(index.partialFilterExpression).isNull()
         assertThat(index.collation).isEmpty
@@ -437,7 +498,8 @@ class MongoIndexInitializerIntegrationTest {
         provider: Provider,
         providerId: String,
         bojId: String? = null,
-        email: String? = null
+        email: String? = null,
+        createdAt: LocalDateTime = LocalDateTime.now()
     ): Student {
         return Student(
             id = id,
@@ -447,7 +509,19 @@ class MongoIndexInitializerIntegrationTest {
             email = email,
             bojId = bojId?.let(::BojId),
             currentTier = Tier.BRONZE,
-            role = Role.USER
+            role = Role.USER,
+            createdAt = createdAt
+        )
+    }
+
+    private fun legacyLog(id: String, bojId: String, createdAt: LocalDateTime): Log {
+        return Log(
+            id = id,
+            title = LogTitle("기존 로그 $id"),
+            content = LogContent("기존 로그 내용"),
+            code = LogCode("fun main() = Unit"),
+            bojId = BojId(bojId),
+            createdAt = createdAt
         )
     }
 

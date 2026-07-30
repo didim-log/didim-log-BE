@@ -6,6 +6,7 @@ import com.didimlog.global.security.OAuth2SuccessHandler
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -35,13 +36,49 @@ class SecurityConfig(
     private val oAuth2SuccessHandler: OAuth2SuccessHandler,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val passwordEncoder: PasswordEncoder,
-    @Value("\${spring.security.user.name:admin}")
+    @Value("\${spring.security.user.name}")
     private val swaggerUsername: String,
-    @Value("\${spring.security.user.password:admin123}")
+    @Value("\${spring.security.user.password}")
     private val swaggerPassword: String
 ) {
 
+    init {
+        require(swaggerUsername.isNotBlank()) {
+            "SWAGGER_USERNAME은 비어 있을 수 없습니다."
+        }
+        require(swaggerPassword.isNotBlank()) {
+            "SWAGGER_PASSWORD는 비어 있을 수 없습니다."
+        }
+    }
+
     @Bean
+    @Order(1)
+    fun swaggerSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
+        http
+            .securityMatcher(
+                "/swagger-ui/**",
+                "/swagger-ui.html",
+                "/v3/api-docs/**",
+                "/swagger-resources/**"
+            )
+            .csrf { it.disable() }
+            .cors { }
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .authorizeHttpRequests { requests ->
+                requests.anyRequest().authenticated()
+            }
+            .httpBasic { it.authenticationEntryPoint(basicAuthenticationEntryPoint()) }
+            .exceptionHandling { exceptions ->
+                exceptions
+                    .authenticationEntryPoint(basicAuthenticationEntryPoint())
+                    .accessDeniedHandler(accessDeniedHandler())
+            }
+
+        return http.build()
+    }
+
+    @Bean
+    @Order(2)
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .csrf { it.disable() }
@@ -57,11 +94,10 @@ class SecurityConfig(
                         "/oauth2/**",
                         "/error"
                     ).permitAll()
-                    .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").authenticated()
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .anyRequest().authenticated()
             }
-            .httpBasic { it.authenticationEntryPoint(basicAuthenticationEntryPoint()) }
+            .httpBasic { it.disable() }
             .oauth2Login { oauth2 ->
                 oauth2
                     .userInfoEndpoint { userInfo ->

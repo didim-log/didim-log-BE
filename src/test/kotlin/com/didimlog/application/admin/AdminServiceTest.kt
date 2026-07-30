@@ -1,5 +1,8 @@
 package com.didimlog.application.admin
 
+import com.didimlog.application.auth.CredentialSessionCoordinator
+import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
+import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Quote
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
@@ -16,14 +19,21 @@ import com.didimlog.ui.dto.AdminUserUpdateDto
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
+import java.time.LocalDateTime
+import java.util.Optional
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import org.springframework.security.crypto.password.PasswordEncoder
-import java.time.LocalDateTime
-import java.util.*
 
 @DisplayName("AdminService 테스트")
 class AdminServiceTest {
@@ -32,7 +42,15 @@ class AdminServiceTest {
     private val quoteRepository: QuoteRepository = mockk()
     private val retrospectiveRepository: RetrospectiveRepository = mockk()
     private val passwordEncoder: PasswordEncoder = mockk()
-    private val adminService = AdminService(studentRepository, quoteRepository, retrospectiveRepository, passwordEncoder)
+    private val refreshTokenService: RefreshTokenService = mockk(relaxed = true)
+    private val adminService = AdminService(
+        studentRepository,
+        quoteRepository,
+        retrospectiveRepository,
+        passwordEncoder,
+        refreshTokenService,
+        ImmediateCredentialSessionCoordinator()
+    )
 
     @Test
     @DisplayName("명언 목록을 페이징하여 조회할 수 있다")
@@ -264,14 +282,18 @@ class AdminServiceTest {
         )
 
         every { studentRepository.findById(studentId) } returns Optional.of(student)
-        every { studentRepository.delete(student) } returns Unit
+        every { studentRepository.deleteById(studentId) } returns Unit
 
         // when
         adminService.deleteUser(studentId)
 
         // then
         verify(exactly = 1) { studentRepository.findById(studentId) }
-        verify(exactly = 1) { studentRepository.delete(student) }
+        verifyOrder {
+            refreshTokenService.revokeAllForStudent(studentId)
+            studentRepository.deleteById(studentId)
+        }
+        verify(exactly = 0) { studentRepository.delete(any<Student>()) }
     }
 
     @Test
@@ -287,6 +309,25 @@ class AdminServiceTest {
         }
         assertThat(exception.errorCode).isEqualTo(ErrorCode.STUDENT_NOT_FOUND)
         assertThat(exception.message).contains("학생을 찾을 수 없습니다")
+        verify(exactly = 0) { refreshTokenService.revokeAllForStudent(any()) }
+        verify(exactly = 0) { studentRepository.deleteById(any()) }
+    }
+
+    @Test
+    @DisplayName("강제 탈퇴 세션 정리에 실패하면 학생 삭제를 시작하지 않는다")
+    fun `회원 강제 탈퇴 세션 정리 실패 시 삭제하지 않음`() {
+        val studentId = "student1"
+        val student = student(studentId)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every {
+            refreshTokenService.revokeAllForStudent(studentId)
+        } throws IllegalStateException("Redis unavailable")
+
+        org.junit.jupiter.api.assertThrows<IllegalStateException> {
+            adminService.deleteUser(studentId)
+        }
+
+        verify(exactly = 0) { studentRepository.deleteById(any()) }
     }
 
     @Test
@@ -324,6 +365,64 @@ class AdminServiceTest {
         assertThat(updated.bojId?.value).isEqualTo("newBojId")
         verify(exactly = 1) { studentRepository.findById(studentId) }
         verify(exactly = 1) { studentRepository.save(any<Student>()) }
+        verify(exactly = 1) { refreshTokenService.revokeAllForStudent(studentId) }
+    }
+
+    @Test
+    @DisplayName("관리자 역할 변경은 자격 증명 버전을 올리고 기존 세션을 폐기한다")
+    fun `관리자 역할 단독 변경 시 자격 증명 버전 증가 및 세션 폐기`() {
+        val studentId = "student1"
+        val student = student(studentId).copy(credentialVersion = 4)
+        val coordinator = RecordingCredentialSessionCoordinator()
+        val service = AdminService(
+            studentRepository,
+            quoteRepository,
+            retrospectiveRepository,
+            passwordEncoder,
+            refreshTokenService,
+            coordinator
+        )
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { studentRepository.save(any<Student>()) } answers { firstArg() }
+
+        val updated = service.updateUser(studentId, AdminUserUpdateDto(role = "ROLE_ADMIN"))
+
+        assertThat(updated.role).isEqualTo(Role.ADMIN)
+        assertThat(updated.credentialVersion).isEqualTo(5)
+        assertThat(coordinator.executedStudentIds).containsExactly(studentId)
+        verifyOrder {
+            studentRepository.save(match { it.credentialVersion == 5L })
+            refreshTokenService.revokeAllForStudent(studentId)
+        }
+    }
+
+    @Test
+    @DisplayName("관리자 BOJ ID 왕복 변경은 변경할 때마다 자격 증명 버전을 올린다")
+    fun `관리자 BOJ ID 왕복 변경 시 자격 증명 버전 단조 증가`() {
+        val studentId = "student1"
+        var persisted = student(studentId).copy(credentialVersion = 4)
+
+        every { studentRepository.findById(studentId) } answers { Optional.of(persisted) }
+        every { studentRepository.existsByBojId(BojId("user2")) } returns false
+        every { studentRepository.existsByBojId(BojId("user1")) } returns false
+        every { studentRepository.save(any<Student>()) } answers {
+            firstArg<Student>().also { persisted = it }
+        }
+
+        val changed = adminService.updateUser(
+            studentId,
+            AdminUserUpdateDto(bojId = "user2")
+        )
+        val restored = adminService.updateUser(
+            studentId,
+            AdminUserUpdateDto(bojId = "user1")
+        )
+
+        assertThat(changed.bojId).isEqualTo(BojId("user2"))
+        assertThat(changed.credentialVersion).isEqualTo(5)
+        assertThat(restored.bojId).isEqualTo(BojId("user1"))
+        assertThat(restored.credentialVersion).isEqualTo(6)
+        verify(exactly = 2) { refreshTokenService.revokeAllForStudent(studentId) }
     }
 
     @Test
@@ -352,7 +451,102 @@ class AdminServiceTest {
 
         // then
         assertThat(updated.password).isEqualTo("newEncoded")
+        assertThat(updated.credentialVersion).isEqualTo(1)
         verify(exactly = 1) { passwordEncoder.encode("newPassword123!") }
-        verify(exactly = 1) { studentRepository.save(any<Student>()) }
+        verifyOrder {
+            studentRepository.save(any<Student>())
+            refreshTokenService.revokeAllForStudent(studentId)
+        }
+    }
+
+    @Test
+    @DisplayName("관리자 비밀번호 변경과 같은 학생의 로그인 작업을 직렬화한다")
+    fun `관리자 비밀번호 변경과 로그인 경합 직렬화`() {
+        val studentId = "student1"
+        val student = student(studentId)
+        val coordinator = LockingCredentialSessionCoordinator()
+        val service = AdminService(
+            studentRepository,
+            quoteRepository,
+            retrospectiveRepository,
+            passwordEncoder,
+            refreshTokenService,
+            coordinator
+        )
+        val updateReachedSave = CountDownLatch(1)
+        val allowUpdateToFinish = CountDownLatch(1)
+        val loginAttempted = CountDownLatch(1)
+        val loginEntered = CountDownLatch(1)
+        every { studentRepository.findById(studentId) } returns Optional.of(student)
+        every { passwordEncoder.encode("newPassword123!") } returns "newEncoded"
+        every { studentRepository.save(any<Student>()) } answers {
+            updateReachedSave.countDown()
+            check(allowUpdateToFinish.await(5, TimeUnit.SECONDS))
+            firstArg()
+        }
+
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val updateFuture = executor.submit<Student> {
+                service.updateUser(studentId, AdminUserUpdateDto(password = "newPassword123!"))
+            }
+            assertThat(updateReachedSave.await(5, TimeUnit.SECONDS)).isTrue()
+
+            val loginFuture = executor.submit {
+                loginAttempted.countDown()
+                coordinator.execute(studentId) {
+                    loginEntered.countDown()
+                }
+            }
+
+            assertThat(loginAttempted.await(5, TimeUnit.SECONDS)).isTrue()
+            assertThat(loginEntered.await(200, TimeUnit.MILLISECONDS)).isFalse()
+            allowUpdateToFinish.countDown()
+            updateFuture.get(5, TimeUnit.SECONDS)
+            loginFuture.get(5, TimeUnit.SECONDS)
+            assertThat(loginEntered.count).isZero()
+        } finally {
+            allowUpdateToFinish.countDown()
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue()
+        }
+    }
+
+    private fun student(studentId: String): Student {
+        return Student(
+            id = studentId,
+            nickname = Nickname("user1"),
+            provider = Provider.BOJ,
+            providerId = "user1",
+            bojId = BojId("user1"),
+            password = "oldEncoded",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+    }
+
+    private class LockingCredentialSessionCoordinator : CredentialSessionCoordinator {
+        private val locks = ConcurrentHashMap<String, ReentrantLock>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T {
+            return locks.computeIfAbsent(studentId) { ReentrantLock() }.withLock(action)
+        }
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            return execute(studentId, action)
+        }
+    }
+
+    private class RecordingCredentialSessionCoordinator : CredentialSessionCoordinator {
+        val executedStudentIds = mutableListOf<String>()
+
+        override fun <T> execute(studentId: String, action: () -> T): T {
+            executedStudentIds += studentId
+            return action()
+        }
+
+        override fun <T> executeWithCompletionCheck(studentId: String, action: () -> T): T {
+            return execute(studentId, action)
+        }
     }
 }

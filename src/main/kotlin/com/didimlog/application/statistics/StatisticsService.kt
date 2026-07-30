@@ -4,7 +4,6 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
@@ -26,14 +25,13 @@ class StatisticsService(
      * 월별 잔디(Heatmap), 카테고리별 분포, 누적 풀이 수를 포함한다.
      * 모든 집계 로직은 백엔드에서 처리하여 프론트엔드에 전달한다.
      *
-     * @param bojId BOJ ID (JWT 토큰에서 추출)
+     * @param studentId 학생 ID (JWT 토큰에서 추출)
      * @return 통계 정보
      * @throws BusinessException 학생을 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    fun getStatistics(bojId: String): StatisticsInfo {
-        val student = findStudentByBojIdOrThrow(bojId)
-        val studentId = student.id ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID가 없습니다. bojId=$bojId")
+    fun getStatistics(studentId: String): StatisticsInfo {
+        val student = findStudentByIdOrThrow(studentId)
         val retrospectives = retrospectiveRepository.findAllByStudentId(studentId)
         val monthlyHeatmap = getMonthlyHeatmap(retrospectives)
         val totalSolvedCount = getTotalSolvedCount(student)
@@ -60,11 +58,10 @@ class StatisticsService(
         )
     }
 
-    private fun findStudentByBojIdOrThrow(bojId: String): Student {
-        val bojIdVo = BojId(bojId)
-        return studentRepository.findByBojId(bojIdVo)
+    private fun findStudentByIdOrThrow(studentId: String): Student {
+        return studentRepository.findById(studentId)
             .orElseThrow {
-                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. bojId=$bojId")
+                BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생을 찾을 수 없습니다. studentId=$studentId")
             }
     }
 
@@ -274,14 +271,13 @@ class StatisticsService(
      * 해당 연도의 1월 1일 00:00:00부터 12월 31일 23:59:59까지의 회고 데이터를 집계한다.
      * 현재 연도인 경우 오늘까지만 조회된다.
      *
-     * @param bojId BOJ ID (JWT 토큰에서 추출)
+     * @param studentId 학생 ID (JWT 토큰에서 추출)
      * @param year 조회할 연도 (0이면 현재 연도)
      * @return 히트맵 데이터 리스트
      */
     @Transactional(readOnly = true)
-    fun getHeatmapByYear(bojId: String, year: Int): List<HeatmapData> {
-        val student = findStudentByBojIdOrThrow(bojId)
-        val studentId = student.id ?: throw BusinessException(ErrorCode.STUDENT_NOT_FOUND, "학생 ID가 없습니다. bojId=$bojId")
+    fun getHeatmapByYear(studentId: String, year: Int): List<HeatmapData> {
+        findStudentByIdOrThrow(studentId)
         
         val targetYear = if (year == 0) LocalDate.now().year else year
         val yearStart = LocalDate.of(targetYear, 1, 1)
