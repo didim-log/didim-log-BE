@@ -121,6 +121,11 @@ app:
     recovery:
       # 단일 BE 인스턴스에서만 활성화한다. 시작 시 이전 PENDING/RUNNING 작업을 FAILED 처리한다.
       fail-orphaned-jobs-on-startup: ${PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP:false}
+    worker-lease:
+      # 다중 BE worker 소유권 검증. 만료 작업 자동 인계는 별도 단계에서 활성화한다.
+      enabled: ${PROBLEM_COLLECTOR_WORKER_LEASE_ENABLED:false}
+      lease-duration: ${PROBLEM_COLLECTOR_WORKER_LEASE_DURATION:90s}
+      heartbeat-interval: ${PROBLEM_COLLECTOR_WORKER_HEARTBEAT_INTERVAL:20s}
 
 # CORS 설정 (권장)
 # 배포 환경에서는 ALLOWED_ORIGINS 환경 변수만 변경하면 코드 수정 없이 Origin을 조정할 수 있다.

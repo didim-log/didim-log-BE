@@ -12,9 +12,17 @@ import org.springframework.stereotype.Component
 class ProblemCollectorRecoveryRunner(
     private val properties: ProblemCollectorRecoveryProperties,
     private val recoveryState: ProblemCollectorRecoveryState,
-    private val problemCollectorService: ProblemCollectorService
+    private val problemCollectorService: ProblemCollectorService,
+    workerLeaseProperties: ProblemCollectorWorkerLeaseProperties =
+        ProblemCollectorWorkerLeaseProperties()
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    init {
+        require(!properties.failOrphanedJobsOnStartup || !workerLeaseProperties.enabled) {
+            "problem collector startup recovery and worker lease cannot be enabled together"
+        }
+    }
 
     override fun run(args: ApplicationArguments) {
         if (!properties.failOrphanedJobsOnStartup) {

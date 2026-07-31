@@ -194,7 +194,11 @@ class ProblemCollectorJobListQueryIntegrationTest {
                 )
             )
         assertThat(legacy.commands.totalCount()).isEqualTo(27)
-        assertStaleEntriesRemoved(validJobs.first().jobId, targetsRemoved = false)
+        assertStaleEntriesRemoved(
+            validJobs.first().jobId,
+            targetsRemoved = false,
+            leasesRemoved = false
+        )
 
         clearJobKeys()
         seedStaleFixture(validJobs)
@@ -225,8 +229,12 @@ class ProblemCollectorJobListQueryIntegrationTest {
         assertThat(current.commands.totalCount()).isEqualTo(5)
         assertThat(current.commands.requireSingle("mget").argumentCount).isEqualTo(22)
         assertThat(current.commands.requireSingle("zrem").argumentCount).isEqualTo(3)
-        assertThat(current.commands.requireSingle("del").argumentCount).isEqualTo(4)
-        assertStaleEntriesRemoved(validJobs.first().jobId, targetsRemoved = true)
+        assertThat(current.commands.requireSingle("del").argumentCount).isEqualTo(6)
+        assertStaleEntriesRemoved(
+            validJobs.first().jobId,
+            targetsRemoved = true,
+            leasesRemoved = true
+        )
     }
 
     @Test
@@ -535,6 +543,11 @@ class ProblemCollectorJobListQueryIntegrationTest {
             """{"stale":true}""",
             Duration.ofDays(1)
         )
+        redisTemplate.opsForValue().set(
+            leaseKey(MALFORMED_JOB_ID),
+            """{"stale":true}""",
+            Duration.ofMinutes(1)
+        )
 
         redisTemplate.opsForZSet().add(
             JOB_INDEX_KEY,
@@ -547,11 +560,17 @@ class ProblemCollectorJobListQueryIntegrationTest {
             """{"stale":true}""",
             Duration.ofDays(1)
         )
+        redisTemplate.opsForValue().set(
+            leaseKey(MISSING_JOB_ID),
+            """{"stale":true}""",
+            Duration.ofMinutes(1)
+        )
     }
 
     private fun assertStaleEntriesRemoved(
         validFailureJobId: String,
-        targetsRemoved: Boolean
+        targetsRemoved: Boolean,
+        leasesRemoved: Boolean
     ) {
         assertThat(redisTemplate.opsForZSet().score(JOB_INDEX_KEY, MISSING_JOB_ID)).isNull()
         assertThat(redisTemplate.opsForZSet().score(JOB_INDEX_KEY, MALFORMED_JOB_ID)).isNull()
@@ -562,6 +581,8 @@ class ProblemCollectorJobListQueryIntegrationTest {
         assertThat(redisTemplate.hasKey(targetKey(validFailureJobId))).isTrue()
         assertThat(redisTemplate.hasKey(targetKey(MISSING_JOB_ID))).isEqualTo(!targetsRemoved)
         assertThat(redisTemplate.hasKey(targetKey(MALFORMED_JOB_ID))).isEqualTo(!targetsRemoved)
+        assertThat(redisTemplate.hasKey(leaseKey(MISSING_JOB_ID))).isEqualTo(!leasesRemoved)
+        assertThat(redisTemplate.hasKey(leaseKey(MALFORMED_JOB_ID))).isEqualTo(!leasesRemoved)
     }
 
     private fun persist(job: JobStatusUnifiedResponse) {
@@ -578,7 +599,12 @@ class ProblemCollectorJobListQueryIntegrationTest {
     }
 
     private fun clearJobKeys() {
-        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX, JOB_TARGET_KEY_PREFIX).forEach { prefix ->
+        listOf(
+            JOB_KEY_PREFIX,
+            JOB_FAILURE_KEY_PREFIX,
+            JOB_TARGET_KEY_PREFIX,
+            JOB_LEASE_KEY_PREFIX
+        ).forEach { prefix ->
             val keys = redisTemplate.keys("$prefix*")
             if (keys.isNotEmpty()) {
                 redisTemplate.delete(keys)
@@ -593,10 +619,13 @@ class ProblemCollectorJobListQueryIntegrationTest {
 
     private fun targetKey(jobId: String): String = "$JOB_TARGET_KEY_PREFIX$jobId"
 
+    private fun leaseKey(jobId: String): String = "$JOB_LEASE_KEY_PREFIX$jobId"
+
     private companion object {
         const val JOB_KEY_PREFIX = "problem:job:status:"
         const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
         const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
+        const val JOB_LEASE_KEY_PREFIX = "problem:job:lease:"
         const val JOB_INDEX_KEY = "problem:job:index"
         const val WARMUP_KEY = "problem:job:list:warmup"
         const val MISSING_JOB_ID = "job-missing"
