@@ -101,7 +101,8 @@ class ProblemCollectorBaselineIntegrationTest {
             objectMapper = objectMapper,
             adminAuditService = mockk(relaxed = true),
             taskExecutor = null,
-            pacer = NoOpProblemCollectorPacer
+            pacer = NoOpProblemCollectorPacer,
+            recoveryState = ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties())
         )
 
         problemRepository.deleteAllById(PROBLEM_IDS)

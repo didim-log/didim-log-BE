@@ -152,7 +152,9 @@ MongoDB·Redis에 연결한 전체 `clean check`도 통과했다.
 - 작업 생성 Lua는 상태 키와 index 키 두 개를 함께 사용한다. 현재 standalone Redis
   구성을 기준으로 하며 Redis Cluster로 옮길 때는 같은 hash slot을 보장해야 한다.
 - 작업 상태 TTL은 24시간이다. 주·월 메트릭을 장기간 보존하는 정책은 별도 단계다.
-- 서버 재시작 뒤 `RUNNING` 작업을 이어받는 worker lease와 복구 절차는 없다.
+- 서버 재시작 뒤 `RUNNING` 작업을 자동으로 이어받는 worker lease는 없다.
+  후속 [Phase 6K](./PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)는 단일 BE
+  시작 시 진행 작업을 `FAILED`로 정리한다.
 - 작업 목록은 sorted index에서 ID를 읽은 뒤 상태를 하나씩 조회하는 1+N 구조가
   남아 있다.
 - 실패한 항목을 별도로 보관하는 ledger가 없고 checkpoint는 마지막 처리 ID만

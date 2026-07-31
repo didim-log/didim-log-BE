@@ -117,6 +117,10 @@ app:
   retrospective:
     # 회고 작성일 기준 자동 정리 기간
     retention-days: ${RETROSPECTIVE_RETENTION_DAYS:180}
+  problem-collector:
+    recovery:
+      # 단일 BE 인스턴스에서만 활성화한다. 시작 시 이전 PENDING/RUNNING 작업을 FAILED 처리한다.
+      fail-orphaned-jobs-on-startup: ${PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP:false}
 
 # CORS 설정 (권장)
 # 배포 환경에서는 ALLOWED_ORIGINS 환경 변수만 변경하면 코드 수정 없이 Origin을 조정할 수 있다.

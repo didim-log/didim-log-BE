@@ -176,6 +176,67 @@ class ProblemCollectorServiceTest {
     }
 
     @Test
+    @DisplayName("재시작 복구 중에는 새 작업 상태를 Redis에 만들지 않는다")
+    fun `job creation is blocked until restart recovery is ready`() {
+        val properties = ProblemCollectorRecoveryProperties(
+            failOrphanedJobsOnStartup = true
+        )
+        val recoveryState = ProblemCollectorRecoveryState(properties)
+        val recoveringService = createService(recoveryState = recoveryState)
+
+        val exception = assertThrows<BusinessException> {
+            recoveringService.collectMetadataAsync(
+                start = 1,
+                end = 1,
+                createdBy = "admin",
+                ipAddress = "127.0.0.1"
+            )
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.WORKER_UNAVAILABLE)
+        assertThat(valueStore).isEmpty()
+        assertThat(zsetStore[JOB_INDEX_KEY].orEmpty()).isEmpty()
+        verify(exactly = 0) {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                any<List<String>>(),
+                *anyVararg()
+            )
+        }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(any()) }
+        verify(exactly = 0) { adminAuditService.logAction(any(), any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("감사 로그 실행기가 요청을 거부해도 생성한 작업은 계속 실행한다")
+    fun `audit rejection does not prevent worker execution`() {
+        every { adminAuditService.logAction(any(), any(), any(), any()) } throws
+            RejectedExecutionException("audit executor rejected")
+        every { solvedAcClient.fetchProblem(1) } returns
+            SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        val workerService = createService(taskExecutor = Executor { task -> task.run() })
+
+        val jobId = workerService.collectMetadataAsync(
+            start = 1,
+            end = 1,
+            createdBy = "admin",
+            ipAddress = "127.0.0.1"
+        )
+
+        val stored = objectMapper.readValue(
+            requireNotNull(valueStore["$JOB_KEY_PREFIX$jobId"]),
+            JobStatusUnifiedResponse::class.java
+        )
+        assertThat(stored.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(stored.processedCount).isEqualTo(1)
+        assertThat(stored.successCount).isEqualTo(1)
+        verify(exactly = 1) { adminAuditService.logAction(any(), any(), any(), any()) }
+        verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
+        verify(exactly = 1) { problemRepository.upsertMetadata(any<Problem>()) }
+    }
+
+    @Test
     @DisplayName("작업 목록 상태를 index 순서의 키로 한 번에 조회한다")
     fun `job list loads indexed statuses in one batch`() {
         val oldestPending = sampleJob("job-oldest").copy(
@@ -735,7 +796,11 @@ class ProblemCollectorServiceTest {
         verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 
-    private fun createService(taskExecutor: Executor? = null): ProblemCollectorService {
+    private fun createService(
+        taskExecutor: Executor? = null,
+        recoveryState: ProblemCollectorRecoveryState =
+            ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties())
+    ): ProblemCollectorService {
         return ProblemCollectorService(
             solvedAcClient = solvedAcClient,
             problemRepository = problemRepository,
@@ -744,7 +809,8 @@ class ProblemCollectorServiceTest {
             objectMapper = objectMapper,
             adminAuditService = adminAuditService,
             taskExecutor = taskExecutor,
-            pacer = pacer
+            pacer = pacer,
+            recoveryState = recoveryState
         )
     }
 

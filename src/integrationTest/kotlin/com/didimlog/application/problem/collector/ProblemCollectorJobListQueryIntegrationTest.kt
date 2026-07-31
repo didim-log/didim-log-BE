@@ -90,6 +90,7 @@ class ProblemCollectorJobListQueryIntegrationTest {
             objectMapper = objectMapper,
             adminAuditService = mockk<AdminAuditService>(relaxed = true),
             pacer = mockk<ProblemCollectorPacer>(relaxed = true),
+            recoveryState = ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties()),
             taskExecutor = null
         )
     }

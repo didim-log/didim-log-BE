@@ -128,6 +128,28 @@ class ProblemCollectorControllerTest {
     }
 
     @Test
+    @DisplayName("재시작 복구 중 작업 생성은 재시도 가능한 503을 반환")
+    fun `작업 복구 중 메타데이터 수집 거절`() {
+        every {
+            problemCollectorService.collectMetadataAsync(1, 100, any(), any())
+        } throws BusinessException(
+            ErrorCode.WORKER_UNAVAILABLE,
+            "문제 수집 작업 복구가 진행 중입니다. 잠시 후 다시 시도해주세요."
+        )
+
+        mockMvc.perform(
+            post("/api/v1/admin/problems/collect-metadata")
+                .principal(org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", null, emptyList()))
+                .param("start", "1")
+                .param("end", "100")
+                .contentType(MediaType.APPLICATION_JSON)
+        )
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.code").value("WORKER_UNAVAILABLE"))
+            .andExpect(jsonPath("$.retryable").value(true))
+    }
+
+    @Test
     @DisplayName("메타데이터 수집 상태 조회 성공")
     fun `메타데이터 수집 상태 조회 성공`() {
         val jobId = "job-1"

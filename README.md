@@ -388,6 +388,7 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 | 기본 템플릿 삭제 정합성 | 실제 MongoDB 7.0.16·Redis 7.2.5, 양쪽 기본값·삭제 실패·설정/삭제 경합 | 참조 선행 해제, SYSTEM 참조 보존, 충돌 409, 재시도 뒤 깨진 참조 0건 |
 | 문제 상세·메타데이터 저장 경합 | 실제 MongoDB 7.0.16, 상세 대상 조회 뒤 메타데이터·언어 갱신 후 상세 저장 | 최신 메타데이터·언어 보존, 오래된 전체 문서 덮어쓰기 1건 → 0건, 삭제 대상 재생성 0건 |
 | 문제 수집 작업 상태 | 동일 Runnable 재실행, 실제 Redis 7.2.5의 두 서비스 상태 경합, 문제 6건 수집 명령 계측 | 외부 호출 2건 → 1건, 취소 성공 2건 → 1건, 취소 뒤 최종 상태 `COMPLETED` → `CANCELLED`, 작업당 index `ZADD` 9회 → 1회 |
+| 문제 수집 재시작 고아 작업 | 실제 Redis 7.2.5, 진행 작업 2건·종료 작업 3건·두 서비스 12건 CAS 경합·실행 중 worker | 진행 작업만 `FAILED`, 종료 상태 원문 유지, 작업별 성공 전이 1회, 다음 문제 호출·완료 덮어쓰기 0건 |
 | 문제 수집 실패 항목 재시도 | 실제 Redis 7.2.5, 1~5번 중 문제 ID 2만 실패·취소 뒤 늦은 실패 상태 저장 | 재시도 시 2번 호출 0건 → 1건, 미복구 문제 1건 → 0건, 기존 성공 문제 재호출 0건 |
 | 고아 데이터 읽기 전용 점검 | 실제 MongoDB 7.0.16 합성 fixture, 사용자 소유 관계 5개·기본 참조 2개 | fixture 기대 고아 6건·깨진 기본 참조 2건 일치, 쓰기 단계 0건·점검 필드 전후 hash 동일 |
 | 유지보수 설정 원자화 | 실제 Redis 7.2.5, 종료 시각 만료·유한→무기한 변경·두 서비스 동시 설정 | 설정 키 전체 만료, 무기한 설정 TTL 없음, 서로 다른 설정 조합 0건 |
@@ -421,6 +422,7 @@ Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [G
 부분 실패 원장과 실패 항목·미처리 구간의 재시도 기준은 [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)에 정리했습니다.
 관리자 피드백 목록의 작성자 projection과 실제 명령 수 비교는 [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)에 정리했습니다.
 작업 목록의 `MGET` 일괄 조회와 stale index 정리 명령 비교는 [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)에 정리했습니다.
+단일 BE 재시작 시 진행 작업을 안전하게 종료하고 새 작업 생성을 여는 순서는 [문제 수집 재시작 고아 작업 정리](./DOCS/refactoring/be-refactor/PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -436,6 +438,11 @@ Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [G
 - 해결: 명시적으로 주입한 `TaskExecutor`에 수집 작업을 제출하고, API는 Redis job 생성 후 `jobId`를 반환하도록 분리했습니다.
 - 상태 갱신은 Redis 원본 JSON을 기대값으로 비교하는 Lua CAS로 처리하며 종료 상태는 다시 변경하지 않습니다.
 - 항목 실패 ID는 진행 상태와 같은 Lua CAS에서 기록하고, 완료 작업은 실패 항목만 다시 실행합니다.
+- 단일 BE Docker 구성은 시작할 때 작업 생성 gate를 닫고, 실행 주체를 잃은
+  `PENDING`·`RUNNING` 작업만 `WORKER_UNAVAILABLE`로 실패 처리한 뒤 gate를 엽니다.
+- 재시작 작업을 자동으로 이어서 실행하지는 않습니다. 원본 작업은 `FAILED`로
+  남고 기존 재시도 API가 새 작업을 만듭니다. lease와 fencing이 없는 다중 BE
+  구성에서는 이 복구 설정을 켜지 않습니다.
 - 결과: 관리자 화면은 상태 API를 폴링하며 진행률과 checkpoint를 갱신하고, 같은 작업의 중복 실행과 취소 뒤 상태 덮어쓰기를 막습니다.
 
 ### 인증 API 남용 방지
@@ -457,6 +464,11 @@ export SWAGGER_USERNAME=local-swagger
 export SWAGGER_PASSWORD='replace-with-a-long-local-password'
 ./gradlew bootRun
 ```
+
+`PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP`의 기본값은 `false`입니다.
+BE가 하나인 기본 Docker Compose에서만 `true`로 지정합니다. 여러 BE를 함께
+실행하거나 순차 교체할 때는 worker lease와 fencing을 도입하기 전까지
+`false`를 유지해야 합니다.
 
 외부 BOJ·solved.ac 응답을 사용하지 않는 포트폴리오 촬영 환경에서는 로컬 전용 프로필을 활성화합니다.
 
@@ -513,6 +525,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)
 - [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)
 - [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)
+- [문제 수집 재시작 고아 작업 정리](./DOCS/refactoring/be-refactor/PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

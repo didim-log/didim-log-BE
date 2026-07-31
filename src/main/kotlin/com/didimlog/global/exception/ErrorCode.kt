@@ -62,7 +62,12 @@ enum class ErrorCode(
     AI_GLOBAL_LIMIT_EXCEEDED(503, "AI_GLOBAL_LIMIT_EXCEEDED", "현재 서비스 이용량이 많아 AI 기능이 일시 중지되었습니다."),
     AI_USER_LIMIT_EXCEEDED(429, "AI_USER_LIMIT_EXCEEDED", "일일 AI 사용 횟수를 초과했습니다. 내일 다시 이용해주세요."),
     QUEUE_TIMEOUT(503, "QUEUE_TIMEOUT", "작업 대기열에서 시간 초과가 발생했습니다."),
-    WORKER_UNAVAILABLE(503, "WORKER_UNAVAILABLE", "작업 처리 워커를 사용할 수 없습니다."),
+    WORKER_UNAVAILABLE(
+        503,
+        "WORKER_UNAVAILABLE",
+        "작업 처리 워커를 사용할 수 없습니다.",
+        retryable = true
+    ),
 
     // 500 Internal Server Error
     COMMON_INTERNAL_ERROR(500, "COMMON_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")
