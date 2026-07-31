@@ -22,8 +22,11 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
+import java.util.HexFormat
 import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
@@ -55,6 +58,7 @@ class ProblemCollectorService(
     companion object {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
         private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
+        private const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
         private const val JOB_INDEX_KEY = "problem:job:index"
         private const val JOB_TTL_SECONDS = 86400L
         private const val MAX_JOB_STATE_RETRIES = 3
@@ -69,7 +73,7 @@ class ProblemCollectorService(
             "서버 재시작으로 실행 주체를 잃었습니다. 작업을 재시도해주세요."
         private val CREATE_JOB_SCRIPT = DefaultRedisScript(
             """
-            if redis.call('EXISTS', KEYS[1]) == 1 then
+            if redis.call('EXISTS', KEYS[1]) == 1 or redis.call('EXISTS', KEYS[3]) == 1 then
                 return 0
             end
 
@@ -81,8 +85,9 @@ class ProblemCollectorService(
                 return -1
             end
 
-            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
-            redis.call('ZADD', KEYS[2], ARGV[3], ARGV[4])
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
+            redis.call('SET', KEYS[3], ARGV[2], 'EX', ARGV[3])
+            redis.call('ZADD', KEYS[2], ARGV[4], ARGV[5])
             return 1
             """.trimIndent(),
             Long::class.java
@@ -95,6 +100,17 @@ class ProblemCollectorService(
             end
             if current ~= ARGV[1] then
                 return 0
+            end
+
+            local refreshTargetTtl = false
+            if ARGV[6] ~= '' then
+                local targetType = redis.call('TYPE', KEYS[3])
+                if type(targetType) == 'table' then
+                    targetType = targetType['ok']
+                end
+                if targetType == 'string' then
+                    refreshTargetTtl = true
+                end
             end
 
             if ARGV[4] ~= '' then
@@ -112,6 +128,9 @@ class ProblemCollectorService(
             if ARGV[5] ~= '0' then
                 redis.call('EXPIRE', KEYS[2], ARGV[3])
             end
+            if refreshTargetTtl then
+                redis.call('EXPIRE', KEYS[3], ARGV[3])
+            end
             return 1
             """.trimIndent(),
             Long::class.java
@@ -126,6 +145,11 @@ class ProblemCollectorService(
     private data class FailureLedger(
         val exists: Boolean,
         val problemIds: Set<String>
+    )
+
+    private data class ManifestTargetSelection(
+        val explicitIds: List<String>,
+        val range: JobRange?
     )
 
     /**
@@ -185,15 +209,14 @@ class ProblemCollectorService(
             throw BusinessException(ErrorCode.INVALID_RANGE, "유효하지 않은 범위입니다. start=$start, end=$end")
         }
 
-        val job = createJob(
-            type = ProblemJobType.COLLECT_METADATA,
-            totalCount = end - start + 1,
-            range = JobRange(start, end),
-            createdBy = createdBy
+        return startCollectMetadataWithManifest(
+            explicitTargetIds = emptyList(),
+            targetRange = JobRange(start, end),
+            responseRange = JobRange(start, end),
+            createdBy = createdBy,
+            ipAddress = ipAddress
         )
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, start..end) }
-        return job.jobId
+            .jobId
     }
 
     fun collectDetailsBatchAsync(createdBy: String = "system", ipAddress: String = "unknown"): String {
@@ -337,14 +360,25 @@ class ProblemCollectorService(
 
         val failureLedger = readFailureLedger(jobId)
         val failedProblemIds = failureLedger.problemIds
+        val targetManifest = readTargetManifest(original)
         val interruptedNonMetadataJob = original.jobType != ProblemJobType.COLLECT_METADATA &&
             original.status != JobStatus.COMPLETED
-        val usesLegacyRetryFallback = !failureLedger.exists &&
+        val usesLegacyRetryFallback = targetManifest == null &&
+            !failureLedger.exists &&
             (original.failCount > 0 || interruptedNonMetadataJob)
         if (!usesLegacyRetryFallback && failedProblemIds.size != original.failCount) {
             throw BusinessException(
                 ErrorCode.RESOURCE_STATE_CONFLICT,
                 "실패 항목 기록이 작업 상태와 일치하지 않습니다. jobId=$jobId, failCount=${original.failCount}, recorded=${failedProblemIds.size}"
+            )
+        }
+        if (targetManifest != null) {
+            return retryManifestJob(
+                original = original,
+                manifest = targetManifest,
+                failedProblemIds = failedProblemIds,
+                requestedBy = requestedBy,
+                ipAddress = ipAddress
             )
         }
 
@@ -371,10 +405,10 @@ class ProblemCollectorService(
                 }
 
                 when {
-                    usesLegacyRetryFallback -> startCollectMetadataWithTargets(
-                        targetIds = start..end,
-                        totalCount = end - start + 1,
-                        range = JobRange(start, end),
+                    usesLegacyRetryFallback -> startCollectMetadataWithManifest(
+                        explicitTargetIds = emptyList(),
+                        targetRange = JobRange(start, end),
+                        responseRange = JobRange(start, end),
                         createdBy = requestedBy,
                         ipAddress = ipAddress
                     ).jobId
@@ -387,10 +421,10 @@ class ProblemCollectorService(
                                 requestedBy
                             ).jobId
                         } else {
-                            startCollectMetadataWithTargets(
-                                targetIds = failedIds,
-                                totalCount = failedIds.size,
-                                range = JobRange(failedIds.first(), failedIds.last()),
+                            startCollectMetadataWithManifest(
+                                explicitTargetIds = failedIds,
+                                targetRange = null,
+                                responseRange = JobRange(failedIds.first(), failedIds.last()),
                                 createdBy = requestedBy,
                                 ipAddress = ipAddress
                             ).jobId
@@ -414,25 +448,17 @@ class ProblemCollectorService(
                             checkpointExclusive >= end -> null
                             else -> maxOf(start, checkpointExclusive + 1)
                         }
-                        val tailCount = retryStart?.let { end - it + 1 } ?: 0
-                        val totalCount = failedIds.size + tailCount
-                        if (totalCount == 0) {
+                        if (failedIds.isEmpty() && retryStart == null) {
                             createNoopCompletedJob(
                                 ProblemJobType.COLLECT_METADATA,
                                 JobRange(start, end),
                                 requestedBy
                             ).jobId
                         } else {
-                            val targetIds = sequence {
-                                yieldAll(failedIds)
-                                if (retryStart != null) {
-                                    yieldAll(retryStart..end)
-                                }
-                            }.asIterable()
-                            startCollectMetadataWithTargets(
-                                targetIds = targetIds,
-                                totalCount = totalCount,
-                                range = JobRange(
+                            startCollectMetadataWithManifest(
+                                explicitTargetIds = failedIds,
+                                targetRange = retryStart?.let { JobRange(it, end) },
+                                responseRange = JobRange(
                                     failedIds.firstOrNull() ?: requireNotNull(retryStart),
                                     if (retryStart == null) failedIds.last() else end
                                 ),
@@ -519,6 +545,196 @@ class ProblemCollectorService(
         )
 
         return retryJob
+    }
+
+    private fun retryManifestJob(
+        original: JobStatusUnifiedResponse,
+        manifest: ProblemJobTargetManifest,
+        failedProblemIds: Set<String>,
+        requestedBy: String,
+        ipAddress: String
+    ): JobStatusUnifiedResponse {
+        val selected = selectManifestRetryTargets(
+            original = original,
+            manifest = manifest,
+            failedProblemIds = failedProblemIds
+        )
+        val retryJobId = when (original.jobType) {
+            ProblemJobType.COLLECT_METADATA -> {
+                val explicitIds = selected.explicitIds.map { problemId ->
+                    problemId.toIntOrNull()
+                        ?: targetManifestConflict(
+                            original.jobId,
+                            "메타데이터 작업 대상 ID가 숫자가 아닙니다. problemId=$problemId"
+                        )
+                }
+                if (explicitIds.isEmpty() && selected.range == null) {
+                    createNoopCompletedJob(
+                        type = ProblemJobType.COLLECT_METADATA,
+                        range = original.range,
+                        createdBy = requestedBy
+                    ).jobId
+                } else {
+                    startCollectMetadataWithManifest(
+                        explicitTargetIds = explicitIds,
+                        targetRange = selected.range,
+                        responseRange = metadataResponseRange(selected),
+                        createdBy = requestedBy,
+                        ipAddress = ipAddress
+                    ).jobId
+                }
+            }
+
+            ProblemJobType.COLLECT_DETAILS -> {
+                val selectedProblems = loadManifestProblems(
+                    targetIds = selected.explicitIds,
+                    jobId = original.jobId
+                ).filter { problem ->
+                    failedProblemIds.contains(problem.id.value) ||
+                        problem.descriptionHtml == null
+                }
+                startCollectDetailsWithTargets(
+                    selectedProblems,
+                    requestedBy,
+                    ipAddress
+                ).jobId
+            }
+
+            ProblemJobType.REFRESH_DETAILS -> {
+                val selectedProblems = loadManifestProblems(
+                    targetIds = selected.explicitIds,
+                    jobId = original.jobId
+                )
+                startRefreshDetailsWithTargets(
+                    selectedProblems,
+                    requestedBy,
+                    ipAddress,
+                    original.range
+                ).jobId
+            }
+
+            ProblemJobType.UPDATE_LANGUAGE -> {
+                val selectedProblems = loadManifestProblems(
+                    targetIds = selected.explicitIds,
+                    jobId = original.jobId
+                )
+                startUpdateLanguageWithTargets(
+                    selectedProblems,
+                    requestedBy,
+                    ipAddress
+                ).jobId
+            }
+        }
+
+        val retryJob = getJob(retryJobId)
+            ?: throw BusinessException(
+                ErrorCode.JOB_NOT_FOUND,
+                "재시도 작업 생성에 실패했습니다. jobId=$retryJobId"
+            )
+        logJobAction(
+            requestedBy,
+            AdminActionType.PROBLEM_JOB_RETRY,
+            ipAddress,
+            retryJob,
+            "retryFrom=${original.jobId}"
+        )
+        return retryJob
+    }
+
+    private fun selectManifestRetryTargets(
+        original: JobStatusUnifiedResponse,
+        manifest: ProblemJobTargetManifest,
+        failedProblemIds: Set<String>
+    ): ManifestTargetSelection {
+        val targetCount = validateManifestForJob(original, manifest)
+        if (original.processedCount !in 0..targetCount) {
+            targetManifestConflict(
+                original.jobId,
+                "처리 수가 대상 수 범위를 벗어났습니다. processed=${original.processedCount}, total=$targetCount"
+            )
+        }
+
+        if (original.processedCount == 0) {
+            if (original.lastCheckpointId != null) {
+                targetManifestConflict(original.jobId, "처리 전 작업에 체크포인트가 있습니다.")
+            }
+        } else {
+            val expectedCheckpoint = targetIdAt(manifest, original.processedCount - 1)
+            if (original.lastCheckpointId != expectedCheckpoint) {
+                targetManifestConflict(
+                    original.jobId,
+                    "체크포인트가 manifest 처리 위치와 일치하지 않습니다."
+                )
+            }
+        }
+
+        val failedWithPositions = failedProblemIds.map { failedId ->
+            val position = targetPosition(manifest, failedId)
+                ?: targetManifestConflict(
+                    original.jobId,
+                    "실패 항목이 manifest에 없습니다. problemId=$failedId"
+                )
+            if (position >= original.processedCount) {
+                targetManifestConflict(
+                    original.jobId,
+                    "실패 항목이 처리 완료 prefix 밖에 있습니다. problemId=$failedId"
+                )
+            }
+            position to failedId
+        }.sortedBy { it.first }
+        val orderedFailedIds = failedWithPositions.map { it.second }
+
+        if (original.status == JobStatus.COMPLETED) {
+            if (original.processedCount != targetCount) {
+                targetManifestConflict(
+                    original.jobId,
+                    "완료 작업의 처리 수가 대상 수와 일치하지 않습니다."
+                )
+            }
+            return ManifestTargetSelection(
+                explicitIds = orderedFailedIds,
+                range = null
+            )
+        }
+
+        val unprocessed = dropManifestTargets(manifest, original.processedCount)
+        return ManifestTargetSelection(
+            explicitIds = orderedFailedIds + unprocessed.explicitIds,
+            range = unprocessed.range
+        )
+    }
+
+    private fun loadManifestProblems(
+        targetIds: List<String>,
+        jobId: String
+    ): List<Problem> {
+        if (targetIds.isEmpty()) {
+            return emptyList()
+        }
+        val foundProblems = problemRepository.findAllById(targetIds.toSet())
+        val byId = foundProblems.associateBy { it.id.value }
+        val missingCount = targetIds.count { targetId -> !byId.containsKey(targetId) }
+        if (missingCount > 0) {
+            log.info("retry skips deleted manifest problems: jobId=$jobId, missingCount=$missingCount")
+        }
+        return targetIds.mapNotNull(byId::get)
+    }
+
+    private fun metadataResponseRange(
+        selected: ManifestTargetSelection
+    ): JobRange {
+        val explicitIds = selected.explicitIds.map { problemId ->
+            problemId.toIntOrNull()
+                ?: throw IllegalStateException("메타데이터 작업 대상 ID가 숫자가 아닙니다. problemId=$problemId")
+        }
+        val starts = explicitIds + listOfNotNull(selected.range?.start)
+        val ends = explicitIds + listOfNotNull(selected.range?.end)
+        return JobRange(
+            start = starts.minOrNull()
+                ?: throw IllegalStateException("메타데이터 재시도 대상이 없습니다."),
+            end = ends.maxOrNull()
+                ?: throw IllegalStateException("메타데이터 재시도 대상이 없습니다.")
+        )
     }
 
     fun getJobMetrics(window: JobMetricsWindow): JobMetricsResponse {
@@ -618,28 +834,32 @@ class ProblemCollectorService(
         val orderedTargets = orderProblems(targets)
         val job = createJob(
             type = ProblemJobType.COLLECT_DETAILS,
-            totalCount = orderedTargets.size,
             range = null,
-            createdBy = createdBy
+            createdBy = createdBy,
+            manifestExplicitIds = orderedTargets.map { it.id.value },
+            manifestRange = null
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
 
-    private fun startCollectMetadataWithTargets(
-        targetIds: Iterable<Int>,
-        totalCount: Int,
-        range: JobRange,
+    private fun startCollectMetadataWithManifest(
+        explicitTargetIds: List<Int>,
+        targetRange: JobRange?,
+        responseRange: JobRange,
         createdBy: String,
         ipAddress: String
     ): JobStatusUnifiedResponse {
+        val fixedTargetIds = explicitTargetIds.toList()
         val job = createJob(
             type = ProblemJobType.COLLECT_METADATA,
-            totalCount = totalCount,
-            range = range,
-            createdBy = createdBy
+            range = responseRange,
+            createdBy = createdBy,
+            manifestExplicitIds = fixedTargetIds.map(Int::toString),
+            manifestRange = targetRange
         )
+        val targetIds = metadataTargetIds(fixedTargetIds, targetRange)
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, targetIds) }
         return job
@@ -654,9 +874,10 @@ class ProblemCollectorService(
         val orderedTargets = orderProblems(targets)
         val job = createJob(
             type = ProblemJobType.REFRESH_DETAILS,
-            totalCount = orderedTargets.size,
             range = range,
-            createdBy = createdBy
+            createdBy = createdBy,
+            manifestExplicitIds = orderedTargets.map { it.id.value },
+            manifestRange = null
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
@@ -671,9 +892,10 @@ class ProblemCollectorService(
         val orderedTargets = orderProblems(targets)
         val job = createJob(
             type = ProblemJobType.UPDATE_LANGUAGE,
-            totalCount = orderedTargets.size,
             range = null,
-            createdBy = createdBy
+            createdBy = createdBy,
+            manifestExplicitIds = orderedTargets.map { it.id.value },
+            manifestRange = null
         )
         logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, orderedTargets) }
@@ -685,7 +907,13 @@ class ProblemCollectorService(
         range: JobRange?,
         createdBy: String
     ): JobStatusUnifiedResponse {
-        val created = createJob(type, 0, range, createdBy)
+        val created = createJob(
+            type = type,
+            range = range,
+            createdBy = createdBy,
+            manifestExplicitIds = emptyList(),
+            manifestRange = null
+        )
         if (markRunning(created.jobId)) {
             markCompleted(created.jobId)
         }
@@ -927,14 +1155,25 @@ class ProblemCollectorService(
 
     private fun createJob(
         type: ProblemJobType,
-        totalCount: Int,
         range: JobRange?,
-        createdBy: String
+        createdBy: String,
+        manifestExplicitIds: List<String>,
+        manifestRange: JobRange?
     ): JobStatusUnifiedResponse {
         recoveryState.requireJobCreationReady()
         val now = nowEpochSeconds()
+        val jobId = UUID.randomUUID().toString()
+        val manifest = ProblemJobTargetManifest(
+            version = ProblemJobTargetManifest.CURRENT_VERSION,
+            jobId = jobId,
+            jobType = type,
+            explicitIds = manifestExplicitIds.toList(),
+            range = manifestRange
+        )
+        val totalCount = validateAndCountTargetManifest(manifest)
+        val manifestJson = objectMapper.writeValueAsString(manifest)
         val created = JobStatusUnifiedResponse(
-            jobId = UUID.randomUUID().toString(),
+            jobId = jobId,
             jobType = type,
             status = JobStatus.PENDING,
             queuedAt = now,
@@ -952,10 +1191,14 @@ class ProblemCollectorService(
             lastCheckpointId = null,
             errorCode = null,
             errorMessage = null,
-            createdBy = createdBy
+            createdBy = createdBy,
+            targetManifest = ProblemJobTargetManifestReference(
+                schemaVersion = manifest.version,
+                sha256 = sha256(manifestJson)
+            )
         )
 
-        return persistNewJob(created)
+        return persistNewJob(created, manifestJson)
     }
 
     private fun getTypedJob(jobId: String, type: ProblemJobType): JobStatusUnifiedResponse? {
@@ -1068,6 +1311,129 @@ class ProblemCollectorService(
         }
     }
 
+    private fun readTargetManifest(
+        job: JobStatusUnifiedResponse
+    ): ProblemJobTargetManifest? {
+        val reference = job.targetManifest ?: return null
+        if (reference.schemaVersion != ProblemJobTargetManifest.CURRENT_VERSION) {
+            targetManifestConflict(
+                job.jobId,
+                "지원하지 않는 manifest 참조 버전입니다. version=${reference.schemaVersion}"
+            )
+        }
+
+        val key = targetKey(job.jobId)
+        if (redisTemplate.type(key) != DataType.STRING) {
+            targetManifestConflict(job.jobId, "대상 manifest key가 없거나 문자열이 아닙니다.")
+        }
+        val rawJson = redisTemplate.opsForValue().get(key)
+            ?: targetManifestConflict(job.jobId, "대상 manifest를 찾을 수 없습니다.")
+        if (sha256(rawJson) != reference.sha256) {
+            targetManifestConflict(job.jobId, "대상 manifest hash가 상태 참조와 일치하지 않습니다.")
+        }
+
+        val manifest = runCatching {
+            objectMapper.readValue(rawJson, ProblemJobTargetManifest::class.java)
+        }.getOrElse {
+            targetManifestConflict(job.jobId, "대상 manifest JSON을 읽을 수 없습니다.")
+        }
+        validateManifestForJob(job, manifest)
+        return manifest
+    }
+
+    private fun validateManifestForJob(
+        job: JobStatusUnifiedResponse,
+        manifest: ProblemJobTargetManifest
+    ): Int {
+        if (manifest.jobId != job.jobId) {
+            targetManifestConflict(job.jobId, "대상 manifest jobId가 작업 상태와 다릅니다.")
+        }
+        if (manifest.jobType != job.jobType) {
+            targetManifestConflict(job.jobId, "대상 manifest 작업 유형이 작업 상태와 다릅니다.")
+        }
+        val targetCount = try {
+            validateAndCountTargetManifest(manifest)
+        } catch (e: IllegalArgumentException) {
+            targetManifestConflict(job.jobId, e.message ?: "대상 manifest가 올바르지 않습니다.")
+        }
+        if (targetCount != job.totalCount) {
+            targetManifestConflict(
+                job.jobId,
+                "대상 수가 작업 상태와 다릅니다. manifest=$targetCount, status=${job.totalCount}"
+            )
+        }
+        return targetCount
+    }
+
+    private fun targetPosition(
+        manifest: ProblemJobTargetManifest,
+        targetId: String
+    ): Int? {
+        val explicitIndex = manifest.explicitIds.indexOf(targetId)
+        if (explicitIndex >= 0) {
+            return explicitIndex
+        }
+
+        val start = manifest.range?.start ?: return null
+        val end = manifest.range.end ?: return null
+        val numericId = targetId.toIntOrNull() ?: return null
+        if (numericId !in start..end) {
+            return null
+        }
+        return manifest.explicitIds.size + (numericId - start)
+    }
+
+    private fun targetIdAt(
+        manifest: ProblemJobTargetManifest,
+        index: Int
+    ): String {
+        if (index < manifest.explicitIds.size) {
+            return manifest.explicitIds[index]
+        }
+        val start = manifest.range?.start
+            ?: targetManifestConflict(manifest.jobId, "manifest 대상 위치가 범위를 벗어났습니다.")
+        val end = manifest.range.end
+            ?: targetManifestConflict(manifest.jobId, "manifest 범위의 end가 없습니다.")
+        val numericId = start.toLong() + index.toLong() - manifest.explicitIds.size.toLong()
+        if (numericId > end.toLong()) {
+            targetManifestConflict(manifest.jobId, "manifest 대상 위치가 범위를 벗어났습니다.")
+        }
+        return numericId.toString()
+    }
+
+    private fun dropManifestTargets(
+        manifest: ProblemJobTargetManifest,
+        processedCount: Int
+    ): ManifestTargetSelection {
+        if (processedCount < manifest.explicitIds.size) {
+            return ManifestTargetSelection(
+                explicitIds = manifest.explicitIds.drop(processedCount),
+                range = manifest.range
+            )
+        }
+
+        val consumedFromRange = processedCount - manifest.explicitIds.size
+        val range = manifest.range ?: return ManifestTargetSelection(emptyList(), null)
+        val start = requireNotNull(range.start)
+        val end = requireNotNull(range.end)
+        val remainingStart = start.toLong() + consumedFromRange.toLong()
+        return if (remainingStart > end.toLong()) {
+            ManifestTargetSelection(emptyList(), null)
+        } else {
+            ManifestTargetSelection(
+                explicitIds = emptyList(),
+                range = JobRange(remainingStart.toInt(), end)
+            )
+        }
+    }
+
+    private fun targetManifestConflict(jobId: String, reason: String): Nothing {
+        throw BusinessException(
+            ErrorCode.RESOURCE_STATE_CONFLICT,
+            "작업 대상 manifest가 올바르지 않습니다. jobId=$jobId, reason=$reason"
+        )
+    }
+
     private fun readJobSnapshot(jobId: String): JobSnapshot? {
         val json = redisTemplate.opsForValue().get(jobKey(jobId)) ?: return null
         return deserializeJob(jobId, json)
@@ -1082,14 +1448,18 @@ class ProblemCollectorService(
             .getOrNull()
     }
 
-    private fun persistNewJob(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
+    private fun persistNewJob(
+        job: JobStatusUnifiedResponse,
+        manifestJson: String
+    ): JobStatusUnifiedResponse {
         val normalized = normalize(job)
         val key = jobKey(normalized.jobId)
         val json = objectMapper.writeValueAsString(normalized)
         val result = redisTemplate.execute(
             CREATE_JOB_SCRIPT,
-            listOf(key, JOB_INDEX_KEY),
+            listOf(key, JOB_INDEX_KEY, targetKey(normalized.jobId)),
             json,
+            manifestJson,
             JOB_TTL_SECONDS.toString(),
             normalized.queuedAt.toString(),
             normalized.jobId
@@ -1106,14 +1476,22 @@ class ProblemCollectorService(
         failedProblemId: String? = null
     ): JobStatusUnifiedResponse? {
         val normalized = normalize(updated)
+        check(normalized.targetManifest == snapshot.job.targetManifest) {
+            "작업 상태 갱신 중 대상 manifest 참조를 변경할 수 없습니다. jobId=${normalized.jobId}"
+        }
         val result = redisTemplate.execute(
             COMPARE_AND_SET_JOB_SCRIPT,
-            listOf(jobKey(normalized.jobId), failureKey(normalized.jobId)),
+            listOf(
+                jobKey(normalized.jobId),
+                failureKey(normalized.jobId),
+                targetKey(normalized.jobId)
+            ),
             snapshot.rawJson,
             objectMapper.writeValueAsString(normalized),
             JOB_TTL_SECONDS.toString(),
             failedProblemId.orEmpty(),
-            normalized.failCount.toString()
+            normalized.failCount.toString(),
+            normalized.targetManifest?.schemaVersion?.toString().orEmpty()
         )
         return when (result) {
             JOB_STATE_UPDATED -> normalized
@@ -1153,7 +1531,11 @@ class ProblemCollectorService(
 
         if (staleIds.isNotEmpty()) {
             redisTemplate.opsForZSet().remove(JOB_INDEX_KEY, *staleIds.toTypedArray())
-            redisTemplate.delete(staleIds.map(::failureKey))
+            redisTemplate.delete(
+                staleIds.flatMap { jobId ->
+                    listOf(failureKey(jobId), targetKey(jobId))
+                }
+            )
         }
 
         return jobs.sortedByDescending { it.queuedAt }
@@ -1285,6 +1667,86 @@ class ProblemCollectorService(
         )
     }
 
+    private fun metadataTargetIds(
+        explicitTargetIds: List<Int>,
+        targetRange: JobRange?
+    ): Iterable<Int> {
+        return sequence {
+            yieldAll(explicitTargetIds)
+            if (targetRange != null) {
+                val start = requireNotNull(targetRange.start)
+                val end = requireNotNull(targetRange.end)
+                yieldAll(start..end)
+            }
+        }.asIterable()
+    }
+
+    private fun validateAndCountTargetManifest(
+        manifest: ProblemJobTargetManifest
+    ): Int {
+        require(manifest.version == ProblemJobTargetManifest.CURRENT_VERSION) {
+            "지원하지 않는 작업 대상 manifest 버전입니다. version=${manifest.version}"
+        }
+        require(manifest.jobId.isNotBlank()) {
+            "작업 대상 manifest jobId가 비어 있습니다."
+        }
+        require(manifest.explicitIds.none(String::isBlank)) {
+            "작업 대상 manifest에 빈 ID가 있습니다. jobId=${manifest.jobId}"
+        }
+        require(manifest.explicitIds.distinct().size == manifest.explicitIds.size) {
+            "작업 대상 manifest에 중복 ID가 있습니다. jobId=${manifest.jobId}"
+        }
+
+        val targetRange = manifest.range
+        val rangeCount = if (targetRange == null) {
+            0L
+        } else {
+            require(manifest.jobType == ProblemJobType.COLLECT_METADATA) {
+                "메타데이터 작업 외에는 범위 manifest를 사용할 수 없습니다. jobId=${manifest.jobId}"
+            }
+            val start = requireNotNull(targetRange.start) {
+                "작업 대상 manifest 범위의 start가 없습니다. jobId=${manifest.jobId}"
+            }
+            val end = requireNotNull(targetRange.end) {
+                "작업 대상 manifest 범위의 end가 없습니다. jobId=${manifest.jobId}"
+            }
+            require(start > 0 && end > 0 && start <= end) {
+                "작업 대상 manifest 범위가 올바르지 않습니다. jobId=${manifest.jobId}, start=$start, end=$end"
+            }
+            end.toLong() - start.toLong() + 1L
+        }
+
+        if (manifest.jobType == ProblemJobType.COLLECT_METADATA) {
+            val explicitProblemIds = manifest.explicitIds.map { problemId ->
+                requireNotNull(problemId.toIntOrNull()) {
+                    "메타데이터 작업 대상 ID가 숫자가 아닙니다. jobId=${manifest.jobId}, problemId=$problemId"
+                }
+            }
+            require(explicitProblemIds.all { it > 0 }) {
+                "메타데이터 작업 대상 ID는 1 이상이어야 합니다. jobId=${manifest.jobId}"
+            }
+            if (targetRange != null) {
+                val start = requireNotNull(targetRange.start)
+                val end = requireNotNull(targetRange.end)
+                require(explicitProblemIds.none { it in start..end }) {
+                    "작업 대상 manifest의 명시 ID와 범위가 겹칩니다. jobId=${manifest.jobId}"
+                }
+            }
+        }
+
+        val targetCount = manifest.explicitIds.size.toLong() + rangeCount
+        require(targetCount <= Int.MAX_VALUE.toLong()) {
+            "작업 대상 수가 허용 범위를 벗어났습니다. jobId=${manifest.jobId}, count=$targetCount"
+        }
+        return targetCount.toInt()
+    }
+
+    private fun sha256(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(StandardCharsets.UTF_8))
+        return HexFormat.of().formatHex(digest)
+    }
+
     private fun orderProblems(problems: List<Problem>): List<Problem> {
         return problems
             .distinctBy { it.id.value }
@@ -1339,6 +1801,10 @@ class ProblemCollectorService(
 
     private fun failureKey(jobId: String): String {
         return "$JOB_FAILURE_KEY_PREFIX$jobId"
+    }
+
+    private fun targetKey(jobId: String): String {
+        return "$JOB_TARGET_KEY_PREFIX$jobId"
     }
 
     private fun nowEpochSeconds(): Long {
