@@ -97,7 +97,7 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 
 [대상 manifest와 중단 지점 검증 결과](../refactoring/be-refactor/PHASE_6L_CRAWLER_TARGET_MANIFEST.md)
 
-### 4. 단일 인스턴스 재시작 정리
+### 4. 재시작 작업 정리와 worker 자동 인계
 
 1. 복구 설정이 켜진 단일 BE는 작업 생성 gate를 닫은 상태로 시작한다.
 2. Redis 작업 index를 읽고 이전 `PENDING`·`RUNNING` 작업만 Lua CAS로
@@ -106,14 +106,22 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
    manifest의 TTL은 24시간으로 맞춘다.
 4. 복구가 끝난 뒤에만 새 작업 생성을 허용한다. 복구 오류는 시작 실패로
    전파한다.
-5. 원본 작업을 자동 재개하지 않으며 관리자가 재시도하면 별도 작업을 만든다.
-6. worker는 항목 사이와 완료 전에 `RUNNING` 상태를 확인해 복구 뒤 후속 실행과
+5. worker는 항목 사이와 완료 전에 `RUNNING` 상태를 확인해 복구 뒤 후속 실행과
    완료 덮어쓰기를 막는다.
+6. 다중 BE에서는 worker lease scanner가 lease 없는 `PENDING`·`RUNNING` 작업을
+   실행기에 다시 제출한다. Runnable이 시작된 뒤 상태 원문과 lease 부재를 확인해
+   하나의 worker만 새 attempt를 얻는다.
+7. 새 worker는 상태의 `processedCount`와 checkpoint가 manifest prefix와 같은지
+   확인하고 남은 suffix만 실행한다. 삭제된 대상도 생략하지 않고 실패 1건으로
+   기록해 전체 처리 수를 맞춘다.
 
-이 설정은 BE가 하나인 Docker Compose에서만 활성화한다. 다중 인스턴스에서는
-worker lease와 fencing이 없으므로 기본값 `false`를 유지한다.
+단일 인스턴스 시작 복구와 worker lease는 함께 켤 수 없다. worker lease는 Redis
+작업 상태를 보호하지만 이미 시작한 외부 호출과 MongoDB 쓰기를 중단하지 못하므로
+기본값 `false`를 유지한다.
 
 [재시작 고아 작업 정리와 검증 결과](../refactoring/be-refactor/PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)
+
+[worker lease와 만료 작업 자동 인계 검증 결과](../refactoring/be-refactor/PHASE_6M_B_CRAWLER_WORKER_TAKEOVER.md)
 
 ### 5. 카테고리 추천 검색
 
@@ -154,10 +162,11 @@ worker lease와 fencing이 없으므로 기본값 `false`를 유지한다.
 - 같은 원본 작업의 재시도를 동시에 요청하면 여러 자식 작업이 만들어질 수 있다.
 - 취소는 항목 사이에서 상태를 확인하는 방식이라 진행 중 HTTP 호출이나 대기 시간을 즉시 중단하지 않는다.
 - 작업 상태·실패 원장·대상 manifest는 24시간 TTL이다. 단일 BE 재시작에서는
-  진행 작업을 `FAILED`로 정리하지만 자동으로 이어서 실행하지 않는다.
-- 상태 전이는 같은 Redis를 공유하는 여러 인스턴스에서 CAS로 조정한다. 다른
-  인스턴스의 worker 소유권을 판별하는 lease와 fencing은 없으므로 재시작 복구
-  설정은 다중 인스턴스에서 사용할 수 없다.
+  진행 작업을 `FAILED`로 정리하고, worker lease 모드에서는 lease 없는 작업을
+  manifest suffix부터 이어서 실행한다.
+- 상태 전이는 같은 Redis를 공유하는 여러 인스턴스에서 CAS와 worker lease로
+  조정한다. 시작 복구 설정은 단일 인스턴스 전용이며 worker lease와 함께 켤 수
+  없다.
 - 복구와 겹쳐 이미 시작된 외부 호출과 MongoDB 저장 한 건은 끝날 수 있다.
 - 작업 생성·상태 갱신 시 여러 Redis key를 함께 다루는 Lua는 standalone Redis 구성을 기준으로 한다.
 - 작업 목록은 sorted index의 ID에 해당하는 상태를 `MGET`으로 한 번에 읽는다.

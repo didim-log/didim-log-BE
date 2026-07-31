@@ -188,8 +188,8 @@ SPRING_DATA_REDIS_PORT=6398 \
 - 현재 소유권 검증 범위는 Redis 상태·실패 원장·lease다.
 - 취소나 lease 교체 전에 시작한 외부 HTTP 호출과 MongoDB 쓰기 한 건은 끝날 수
   있다. exactly-once 실행과 rollback을 보장하지 않는다.
-- 만료 작업 자동 인계, manifest suffix 재개, executor 거부 작업 재제출은
-  Phase 6M-B 범위다.
+- 만료 작업 자동 인계, manifest suffix 재개, executor 거부 작업 재제출은 후속
+  [Phase 6M-B](./PHASE_6M_B_CRAWLER_WORKER_TAKEOVER.md)에 정리했다.
 - 메타데이터·상세·언어의 늦은 MongoDB 쓰기 차단과 전역 fencing token은
   Phase 6M-C 범위다.
 - heartbeat scheduler는 단일 스레드이며 현재 collector executor의 최대 동시
