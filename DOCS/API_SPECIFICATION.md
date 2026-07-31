@@ -1259,11 +1259,12 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   - `null`: 대상 manifest 도입 전에 생성된 기존 작업
   - 실제 대상 ID는 별도 Redis 값에 저장하며 API 응답에는 hash 참조만 반환합니다.
 - `workerAttempt` (Object, nullable)
-  - worker lease 활성 작업:
+  - worker lease가 활성화되고 `RUNNING` 선점에 성공한 작업:
     `{ "schemaVersion": Int, "ownerId": String, "attemptId": String, "attemptNumber": Long }`
   - `attemptNumber`는 같은 작업 안에서 증가하는 시도 번호이며 MongoDB 쓰기용
     전역 fencing token이 아닙니다.
-  - worker lease가 비활성화됐거나 도입 전에 생성된 작업은 `null`입니다.
+  - claim 전 `PENDING`, 실행기 제출 실패, worker lease 비활성 작업과 도입 전에
+    생성된 작업은 `null`입니다.
 
 **상태 전이**
 - 실행: `PENDING -> RUNNING -> COMPLETED|FAILED`
