@@ -1242,7 +1242,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `lastHeartbeatAt` (Long, nullable, Unix seconds)
 - `completedAt` (Long, nullable, Unix seconds)
 - `totalCount` (Int)
-  - 보장 규칙: `PENDING`/`RUNNING` 상태에서도 0이 아닌 유효 범위 기준 총 작업 수를 반환합니다.
+  - 작업 생성 시 저장한 manifest 기준으로 고정하며, 선택된 대상이 없으면 `0`일
+    수 있습니다.
 - `processedCount` (Int)
 - `successCount` (Int)
 - `failCount` (Int)
@@ -1263,14 +1264,26 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     `{ "schemaVersion": Int, "ownerId": String, "attemptId": String, "attemptNumber": Long }`
   - `attemptNumber`는 같은 작업 안에서 증가하는 시도 번호이며 MongoDB 쓰기용
     전역 fencing token이 아닙니다.
-  - claim 전 `PENDING`, 실행기 제출 실패, worker lease 비활성 작업과 도입 전에
-    생성된 작업은 `null`입니다.
+  - lease가 만료된 `RUNNING` 작업을 새 worker가 이어받으면 기존 값보다 1 큰
+    `attemptNumber`가 저장됩니다.
+  - claim 전 `PENDING`, lease 모드의 실행기 제출 실패와 worker lease 비활성
+    작업은 `null`입니다.
+  - worker lease 도입 전에 생성된 작업도 자동 인계 claim 전에는 `null`이며,
+    claim 뒤에는 새 attempt가 저장됩니다. manifest나 재개 상태가 유효하지 않은
+    경우에만 외부 호출 없이 `FAILED` 처리됩니다.
 
 **상태 전이**
 - 실행: `PENDING -> RUNNING -> COMPLETED|FAILED`
-- worker lease 활성 시 `PENDING -> RUNNING`과 lease 생성을 한 Lua에서 처리하고,
-  현재 `workerAttempt`와 lease가 모두 같은 worker만 진행률·종료 상태를 씁니다.
-- 실행기 제출 실패: `PENDING -> FAILED`
+- worker lease 활성 시 `PENDING` 또는 lease가 없는 `RUNNING`의 새 attempt와
+  lease 생성을 한 Lua에서 처리하고, 현재 `workerAttempt`와 lease가 모두 같은
+  worker만 진행률·종료 상태를 씁니다.
+- worker lease 비활성 상태의 실행기 제출 실패: `PENDING -> FAILED`
+- worker lease 활성 상태의 실행기 제출 실패: 상태와 lease를 변경하지 않고 다음
+  scanner 주기에 다시 제출
+- worker lease scanner: `PENDING`은 처음부터, lease가 만료된 `RUNNING`은
+  `processedCount` 이후 manifest suffix부터 같은 jobId로 실행
+- manifest가 없거나 손상된 자동 인계 대상: claim 뒤 현재 attempt의 CAS로 외부
+  호출 없이 `FAILED`
 - 단일 인스턴스 시작 복구: 이전 `PENDING|RUNNING -> FAILED`
   (`errorCode=WORKER_UNAVAILABLE`)
 - 단일 인스턴스 시작 복구와 worker lease는 동시에 활성화할 수 없습니다.

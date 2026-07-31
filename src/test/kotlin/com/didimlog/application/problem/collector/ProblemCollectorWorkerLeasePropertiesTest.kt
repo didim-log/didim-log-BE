@@ -43,5 +43,19 @@ class ProblemCollectorWorkerLeasePropertiesTest {
                 heartbeatInterval = Duration.ofNanos(1)
             )
         }
+        assertThrows<IllegalArgumentException> {
+            ProblemCollectorWorkerLeaseProperties(
+                scanInterval = Duration.ofNanos(1)
+            )
+        }
+    }
+
+    @Test
+    fun `scanner 주기는 양수여야 한다`() {
+        assertThrows<IllegalArgumentException> {
+            ProblemCollectorWorkerLeaseProperties(
+                scanInterval = Duration.ZERO
+            )
+        }
     }
 }

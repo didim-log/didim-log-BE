@@ -7,7 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class ProblemCollectorWorkerLeaseProperties(
     val enabled: Boolean = false,
     val leaseDuration: Duration = Duration.ofSeconds(90),
-    val heartbeatInterval: Duration = Duration.ofSeconds(20)
+    val heartbeatInterval: Duration = Duration.ofSeconds(20),
+    val scanInterval: Duration = Duration.ofSeconds(10)
 ) {
     init {
         require(!leaseDuration.isZero && !leaseDuration.isNegative) {
@@ -21,6 +22,12 @@ data class ProblemCollectorWorkerLeaseProperties(
         }
         require(heartbeatInterval.toMillis() > 0) {
             "problem collector worker heartbeat interval must be at least one millisecond"
+        }
+        require(!scanInterval.isZero && !scanInterval.isNegative) {
+            "problem collector worker scan interval must be positive"
+        }
+        require(scanInterval.toMillis() > 0) {
+            "problem collector worker scan interval must be at least one millisecond"
         }
         require(leaseDuration >= heartbeatInterval.multipliedBy(3)) {
             "problem collector worker lease duration must be at least three times the heartbeat interval"

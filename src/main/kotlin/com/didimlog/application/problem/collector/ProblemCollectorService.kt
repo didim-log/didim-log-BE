@@ -28,6 +28,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.HexFormat
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
@@ -313,8 +314,22 @@ class ProblemCollectorService(
     private data class JobWorkerContext(
         val attempt: ProblemJobWorkerAttempt?,
         val leaseValue: String?,
+        val sourceJob: JobStatusUnifiedResponse,
         val ownershipLost: AtomicBoolean = AtomicBoolean(false)
     )
+
+    private data class ProblemTarget(
+        val problemId: String,
+        val problem: Problem?
+    )
+
+    private data class JobProgress(
+        val processedCount: Int,
+        val successCount: Int,
+        val failCount: Int
+    )
+
+    private val scheduledJobIds = ConcurrentHashMap.newKeySet<String>()
 
     /**
      * Solved.ac API를 통해 문제 메타데이터를 수집하여 DB에 저장한다 (Upsert).
@@ -454,6 +469,19 @@ class ProblemCollectorService(
                 message = RESTART_ORPHAN_MESSAGE
             )
         }
+    }
+
+    fun submitRecoverableJobs(): Int {
+        if (!workerLeaseProperties.enabled) {
+            return 0
+        }
+
+        return loadAllJobs()
+            .asSequence()
+            .filter { job ->
+                job.status == JobStatus.PENDING || job.status == JobStatus.RUNNING
+            }
+            .count { job -> submitRecoverableJob(job) }
     }
 
     fun getJobs(
@@ -1094,41 +1122,32 @@ class ProblemCollectorService(
             jobId = jobId,
             defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
         ) { worker ->
-            var processed = 0
-            var success = 0
-            var fail = 0
+            processMetadataTargets(
+                jobId = jobId,
+                worker = worker,
+                problemIds = problemIds,
+                initialProgress = JobProgress(0, 0, 0)
+            )
+        }
+    }
 
-            for (problemId in problemIds) {
-                if (!isWorkerRunning(jobId, worker)) {
-                    return@runJobLoop
-                }
-
-                var failedProblemId: String? = null
-                try {
-                    upsertProblemMetadata(problemId)
-                    success++
-                } catch (e: Exception) {
-                    fail++
-                    failedProblemId = problemId.toString()
-                    log.warn("metadata job item failed: jobId=$jobId, problemId=$problemId, error=${e.message}")
-                }
-
-                processed++
-                if (
-                    !updateProgress(
-                        jobId,
-                        worker,
-                        processed,
-                        success,
-                        fail,
-                        problemId.toString(),
-                        failedProblemId
-                    )
-                ) {
-                    return@runJobLoop
-                }
-                pacer.pauseMetadata()
-            }
+    private fun processMetadataTargets(
+        jobId: String,
+        worker: JobWorkerContext,
+        problemIds: Iterable<Int>,
+        initialProgress: JobProgress
+    ) {
+        processJobTargets(
+            jobId = jobId,
+            worker = worker,
+            targets = problemIds,
+            initialProgress = initialProgress,
+            operationName = "metadata",
+            targetId = Int::toString,
+            pause = pacer::pauseMetadata
+        ) { problemId ->
+            upsertProblemMetadata(problemId)
+            true
         }
     }
 
@@ -1170,187 +1189,361 @@ class ProblemCollectorService(
 
     private fun collectDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
-            var processed = 0
-            var success = 0
-            var fail = 0
+            processDetailsTargets(
+                jobId = jobId,
+                worker = worker,
+                targets = targetProblems.map { ProblemTarget(it.id.value, it) },
+                initialProgress = JobProgress(0, 0, 0)
+            )
+        }
+    }
 
-            for (problem in targetProblems) {
-                if (!isWorkerRunning(jobId, worker)) {
-                    return@runJobLoop
-                }
-
-                var failedProblemId: String? = null
-                try {
-                    val details = bojCrawler.crawlProblemDetails(problem.id.value)
-                    if (details == null) {
-                        fail++
-                        failedProblemId = problem.id.value
-                    } else {
-                        if (updateProblemDetails(problem.id.value, details) == null) {
-                            fail++
-                            failedProblemId = problem.id.value
-                        } else {
-                            success++
-                        }
-                    }
-                } catch (e: Exception) {
-                    fail++
-                    failedProblemId = problem.id.value
-                    log.error("details job item failed: jobId=$jobId, problemId=${problem.id.value}, error=${e.message}", e)
-                }
-
-                processed++
-                if (
-                    !updateProgress(
-                        jobId,
-                        worker,
-                        processed,
-                        success,
-                        fail,
-                        problem.id.value,
-                        failedProblemId
-                    )
-                ) {
-                    return@runJobLoop
-                }
-                pacer.pauseDetails()
+    private fun processDetailsTargets(
+        jobId: String,
+        worker: JobWorkerContext,
+        targets: List<ProblemTarget>,
+        initialProgress: JobProgress
+    ) {
+        processJobTargets(
+            jobId = jobId,
+            worker = worker,
+            targets = targets,
+            initialProgress = initialProgress,
+            operationName = "details",
+            targetId = ProblemTarget::problemId,
+            pause = pacer::pauseDetails
+        ) { target ->
+            if (target.problem == null) {
+                return@processJobTargets false
             }
+            val details = bojCrawler.crawlProblemDetails(target.problemId)
+                ?: return@processJobTargets false
+            updateProblemDetails(target.problemId, details) != null
         }
     }
 
     private fun refreshDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
-            var processed = 0
-            var success = 0
-            var fail = 0
+            processRefreshDetailsTargets(
+                jobId = jobId,
+                worker = worker,
+                targets = targetProblems.map { ProblemTarget(it.id.value, it) },
+                initialProgress = JobProgress(0, 0, 0)
+            )
+        }
+    }
 
-            for (problem in targetProblems) {
-                if (!isWorkerRunning(jobId, worker)) {
-                    return@runJobLoop
-                }
-
-                var failedProblemId: String? = null
-                try {
-                    val details = bojCrawler.crawlProblemDetails(problem.id.value)
-                    if (details == null) {
-                        fail++
-                        failedProblemId = problem.id.value
-                    } else {
-                        val detectedLanguage = ProblemLanguageDetector.detectFromTexts(
-                            listOf(
-                                problem.title,
-                                details.descriptionHtml,
-                                details.inputDescriptionHtml,
-                                details.outputDescriptionHtml,
-                                details.sampleInputs.joinToString("\n"),
-                                details.sampleOutputs.joinToString("\n")
-                            )
-                        )
-                        if (
-                            updateProblemDetails(
-                                problemId = problem.id.value,
-                                details = details,
-                                language = detectedLanguage
-                            ) == null
-                        ) {
-                            fail++
-                            failedProblemId = problem.id.value
-                        } else {
-                            success++
-                        }
-                    }
-                } catch (e: Exception) {
-                    fail++
-                    failedProblemId = problem.id.value
-                    log.error("refresh job item failed: jobId=$jobId, problemId=${problem.id.value}, error=${e.message}", e)
-                }
-
-                processed++
-                if (
-                    !updateProgress(
-                        jobId,
-                        worker,
-                        processed,
-                        success,
-                        fail,
-                        problem.id.value,
-                        failedProblemId
-                    )
-                ) {
-                    return@runJobLoop
-                }
-                pacer.pauseDetails()
-            }
+    private fun processRefreshDetailsTargets(
+        jobId: String,
+        worker: JobWorkerContext,
+        targets: List<ProblemTarget>,
+        initialProgress: JobProgress
+    ) {
+        processJobTargets(
+            jobId = jobId,
+            worker = worker,
+            targets = targets,
+            initialProgress = initialProgress,
+            operationName = "refresh",
+            targetId = ProblemTarget::problemId,
+            pause = pacer::pauseDetails
+        ) { target ->
+            val problem = target.problem
+                ?: return@processJobTargets false
+            val details = bojCrawler.crawlProblemDetails(target.problemId)
+                ?: return@processJobTargets false
+            val detectedLanguage = ProblemLanguageDetector.detectFromTexts(
+                listOf(
+                    problem.title,
+                    details.descriptionHtml,
+                    details.inputDescriptionHtml,
+                    details.outputDescriptionHtml,
+                    details.sampleInputs.joinToString("\n"),
+                    details.sampleOutputs.joinToString("\n")
+                )
+            )
+            updateProblemDetails(
+                problemId = target.problemId,
+                details = details,
+                language = detectedLanguage
+            ) != null
         }
     }
 
     private fun updateLanguageBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
         runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
-            var processed = 0
-            var success = 0
-            var fail = 0
+            processLanguageTargets(
+                jobId = jobId,
+                worker = worker,
+                targets = targetProblems.map { ProblemTarget(it.id.value, it) },
+                initialProgress = JobProgress(0, 0, 0)
+            )
+        }
+    }
 
-            for (problem in targetProblems) {
-                if (!isWorkerRunning(jobId, worker)) {
-                    return@runJobLoop
-                }
+    private fun processLanguageTargets(
+        jobId: String,
+        worker: JobWorkerContext,
+        targets: List<ProblemTarget>,
+        initialProgress: JobProgress
+    ) {
+        processJobTargets(
+            jobId = jobId,
+            worker = worker,
+            targets = targets,
+            initialProgress = initialProgress,
+            operationName = "language",
+            targetId = ProblemTarget::problemId
+        ) { target ->
+            val problem = target.problem ?: return@processJobTargets false
+            val detectedLanguage = ProblemLanguageDetector.detect(problem)
+            detectedLanguage == null ||
+                problem.language.equals(detectedLanguage, ignoreCase = true) ||
+                problemRepository.updateLanguage(target.problemId, detectedLanguage)
+        }
+    }
 
-                var failedProblemId: String? = null
-                try {
-                    val detectedLanguage = ProblemLanguageDetector.detect(problem)
-                    if (detectedLanguage == null || problem.language.equals(detectedLanguage, ignoreCase = true)) {
-                        success++
-                    } else if (problemRepository.updateLanguage(problem.id.value, detectedLanguage)) {
-                        success++
-                    } else {
-                        fail++
-                        failedProblemId = problem.id.value
-                    }
-                } catch (e: Exception) {
+    private fun <T> processJobTargets(
+        jobId: String,
+        worker: JobWorkerContext,
+        targets: Iterable<T>,
+        initialProgress: JobProgress,
+        operationName: String,
+        targetId: (T) -> String,
+        pause: () -> Unit = {},
+        process: (T) -> Boolean
+    ) {
+        var processed = initialProgress.processedCount
+        var success = initialProgress.successCount
+        var fail = initialProgress.failCount
+
+        for (target in targets) {
+            if (!isWorkerRunning(jobId, worker)) {
+                return
+            }
+
+            val problemId = targetId(target)
+            var failedProblemId: String? = null
+            try {
+                if (process(target)) {
+                    success++
+                } else {
                     fail++
-                    failedProblemId = problem.id.value
-                    log.error("language job item failed: jobId=$jobId, problemId=${problem.id.value}, error=${e.message}", e)
+                    failedProblemId = problemId
+                }
+            } catch (e: Exception) {
+                fail++
+                failedProblemId = problemId
+                log.error(
+                    "$operationName job item failed: jobId=$jobId, problemId=$problemId, error=${e.message}",
+                    e
+                )
+            }
+
+            processed++
+            if (
+                !updateProgress(
+                    jobId,
+                    worker,
+                    processed,
+                    success,
+                    fail,
+                    problemId,
+                    failedProblemId
+                )
+            ) {
+                return
+            }
+            pause()
+        }
+    }
+
+    private fun submitRecoverableJob(job: JobStatusUnifiedResponse): Boolean {
+        if (job.workerAttempt?.attemptNumber == Long.MAX_VALUE) {
+            log.error("recoverable job attempt number is exhausted: jobId={}", job.jobId)
+            return false
+        }
+        when (redisTemplate.type(leaseKey(job.jobId))) {
+            DataType.STRING -> return false
+            DataType.NONE -> Unit
+            else -> {
+                log.error("recoverable job has invalid lease type: jobId={}", job.jobId)
+                return false
+            }
+        }
+
+        return executeAsync(job.jobId) {
+            runManifestJob(job.jobId)
+        }
+    }
+
+    private fun runManifestJob(jobId: String) {
+        runJobLoop(
+            jobId = jobId,
+            defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code,
+            allowTakeover = true
+        ) { worker ->
+            readResumeState(jobId, worker) ?: return@runJobLoop
+            val sourceJob = worker.sourceJob
+            if (sourceJob.targetManifest == null) {
+                markWorkerFailed(
+                    jobId = jobId,
+                    worker = worker,
+                    errorCode = ErrorCode.WORKER_UNAVAILABLE.code,
+                    message = "서버 재시작 전 형식의 작업은 자동으로 이어서 실행할 수 없습니다."
+                )
+                return@runJobLoop
+            }
+            val manifest = validateOwnedResumeState(sourceJob, worker)
+                ?: return@runJobLoop
+            val remainingTargets = dropManifestTargets(manifest, sourceJob.processedCount)
+            val initialProgress = JobProgress(
+                processedCount = sourceJob.processedCount,
+                successCount = sourceJob.successCount,
+                failCount = sourceJob.failCount
+            )
+
+            when (sourceJob.jobType) {
+                ProblemJobType.COLLECT_METADATA -> {
+                    val explicitIds = remainingTargets.explicitIds.map { problemId ->
+                        requireNotNull(problemId.toIntOrNull()) {
+                            "메타데이터 작업 대상 ID가 숫자가 아닙니다. problemId=$problemId"
+                        }
+                    }
+                    processMetadataTargets(
+                        jobId = jobId,
+                        worker = worker,
+                        problemIds = metadataTargetIds(explicitIds, remainingTargets.range),
+                        initialProgress = initialProgress
+                    )
                 }
 
-                processed++
-                if (
-                    !updateProgress(
-                        jobId,
-                        worker,
-                        processed,
-                        success,
-                        fail,
-                        problem.id.value,
-                        failedProblemId
+                ProblemJobType.COLLECT_DETAILS -> {
+                    processDetailsTargets(
+                        jobId = jobId,
+                        worker = worker,
+                        targets = loadProblemTargets(remainingTargets, jobId),
+                        initialProgress = initialProgress
                     )
-                ) {
-                    return@runJobLoop
+                }
+
+                ProblemJobType.REFRESH_DETAILS -> {
+                    processRefreshDetailsTargets(
+                        jobId = jobId,
+                        worker = worker,
+                        targets = loadProblemTargets(remainingTargets, jobId),
+                        initialProgress = initialProgress
+                    )
+                }
+
+                ProblemJobType.UPDATE_LANGUAGE -> {
+                    processLanguageTargets(
+                        jobId = jobId,
+                        worker = worker,
+                        targets = loadProblemTargets(remainingTargets, jobId),
+                        initialProgress = initialProgress
+                    )
                 }
             }
         }
     }
 
-    private fun executeAsync(jobId: String, block: () -> Unit) {
+    private fun readResumeState(
+        jobId: String,
+        worker: JobWorkerContext
+    ): JobStatusUnifiedResponse? {
+        return try {
+            readOwnedWorkerJob(jobId, worker)
+        } catch (e: RuntimeException) {
+            worker.ownershipLost.set(true)
+            log.error("recoverable job state read failed: jobId={}, error={}", jobId, e.message)
+            null
+        }
+    }
+
+    private fun readOwnedWorkerJob(
+        jobId: String,
+        worker: JobWorkerContext
+    ): JobStatusUnifiedResponse? {
+        val current = readJob(jobId) ?: return null
+        if (!isWorkerSnapshot(current, worker)) {
+            worker.ownershipLost.set(true)
+            return null
+        }
+        return current
+    }
+
+    private fun validateOwnedResumeState(
+        job: JobStatusUnifiedResponse,
+        worker: JobWorkerContext
+    ): ProblemJobTargetManifest? {
+        return try {
+            validateResumeState(job)
+        } catch (e: BusinessException) {
+            throw e
+        } catch (e: RuntimeException) {
+            worker.ownershipLost.set(true)
+            log.error("recoverable job validation read failed: jobId={}, error={}", job.jobId, e.message)
+            null
+        }
+    }
+
+    private fun loadProblemTargets(
+        selection: ManifestTargetSelection,
+        jobId: String
+    ): List<ProblemTarget> {
+        check(selection.range == null) {
+            "비메타데이터 작업에 범위 대상이 있습니다. jobId=$jobId"
+        }
+        if (selection.explicitIds.isEmpty()) {
+            return emptyList()
+        }
+
+        val problemsById = problemRepository.findAllById(selection.explicitIds.toSet())
+            .associateBy { problem -> problem.id.value }
+        return selection.explicitIds.map { problemId ->
+            ProblemTarget(problemId, problemsById[problemId])
+        }
+    }
+
+    private fun executeAsync(jobId: String, block: () -> Unit): Boolean {
+        if (!scheduledJobIds.add(jobId)) {
+            return false
+        }
+
+        val scheduledTask = Runnable {
+            try {
+                block()
+            } finally {
+                scheduledJobIds.remove(jobId)
+            }
+        }
         val executor = taskExecutor
         if (executor == null) {
-            block()
-            return
+            scheduledTask.run()
+            return true
         }
 
         try {
-            executor.execute(block)
+            executor.execute(scheduledTask)
+            return true
         } catch (e: RejectedExecutionException) {
+            scheduledJobIds.remove(jobId)
             log.error("job submission rejected: jobId=$jobId, error=${e.message}", e)
-            markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업 실행을 제출할 수 없습니다.")
+            if (!workerLeaseProperties.enabled) {
+                markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업 실행을 제출할 수 없습니다.")
+            }
+            return false
         }
     }
 
     private fun runJobLoop(
         jobId: String,
         defaultFailureCode: String,
+        allowTakeover: Boolean = false,
         block: (JobWorkerContext) -> Unit
     ) {
-        val worker = claimWorker(jobId) ?: return
+        val worker = claimWorker(jobId, allowTakeover) ?: return
         var heartbeat: ScheduledFuture<*>? = null
 
         try {
@@ -1366,6 +1559,14 @@ class ProblemCollectorService(
                 worker,
                 ErrorCode.WORKER_UNAVAILABLE.code,
                 "작업이 인터럽트되었습니다."
+            )
+        } catch (e: BusinessException) {
+            log.warn("job state validation failed: jobId=$jobId, error=${e.message}")
+            markWorkerFailed(
+                jobId,
+                worker,
+                e.errorCode.code,
+                e.message ?: e.errorCode.message
             )
         } catch (e: Exception) {
             log.error("job failed unexpectedly: jobId=$jobId, error=${e.message}", e)
@@ -1429,9 +1630,16 @@ class ProblemCollectorService(
         return if (job.jobType == type) job else null
     }
 
-    private fun claimWorker(jobId: String): JobWorkerContext? {
+    private fun claimWorker(
+        jobId: String,
+        allowTakeover: Boolean = false
+    ): JobWorkerContext? {
         val snapshot = readJobSnapshot(jobId) ?: return null
-        if (snapshot.job.status != JobStatus.PENDING) {
+        val canClaimPending = snapshot.job.status == JobStatus.PENDING
+        val canTakeOverRunning = workerLeaseProperties.enabled &&
+            allowTakeover &&
+            snapshot.job.status == JobStatus.RUNNING
+        if (!canClaimPending && !canTakeOverRunning) {
             return null
         }
 
@@ -1445,39 +1653,59 @@ class ProblemCollectorService(
                 errorMessage = null
             )
             return if (compareAndSetJob(snapshot, running) != null) {
-                JobWorkerContext(attempt = null, leaseValue = null)
+                JobWorkerContext(
+                    attempt = null,
+                    leaseValue = null,
+                    sourceJob = snapshot.job
+                )
             } else {
                 null
             }
         }
 
+        val previousAttemptNumber = snapshot.job.workerAttempt?.attemptNumber ?: 0L
+        if (previousAttemptNumber == Long.MAX_VALUE) {
+            log.error("job attempt number is exhausted: jobId={}", jobId)
+            return null
+        }
         val attempt = ProblemJobWorkerAttempt(
             ownerId = workerIdentity.ownerId,
             attemptId = UUID.randomUUID().toString(),
-            attemptNumber = Math.addExact(snapshot.job.workerAttempt?.attemptNumber ?: 0L, 1L)
+            attemptNumber = previousAttemptNumber + 1L
         )
         val running = snapshot.job.copy(
             status = JobStatus.RUNNING,
-            startedAt = now,
+            startedAt = snapshot.job.startedAt ?: now,
             lastHeartbeatAt = now,
+            completedAt = null,
+            estimatedRemainingSeconds = estimateRemaining(
+                snapshot.job.jobType,
+                JobStatus.RUNNING,
+                snapshot.job.processedCount,
+                snapshot.job.totalCount
+            ),
+            queuePosition = null,
             errorCode = null,
             errorMessage = null,
             workerAttempt = attempt
         )
-        val normalized = normalize(running)
         val leaseValue = objectMapper.writeValueAsString(attempt)
         val result = redisTemplate.execute(
             CLAIM_JOB_SCRIPT,
             jobStateKeys(jobId),
             snapshot.rawJson,
-            objectMapper.writeValueAsString(normalized),
+            objectMapper.writeValueAsString(running),
             JOB_TTL_SECONDS.toString(),
             leaseValue,
             workerLeaseProperties.leaseDuration.toMillis().toString(),
-            normalized.targetManifest?.schemaVersion?.toString().orEmpty()
+            running.targetManifest?.schemaVersion?.toString().orEmpty()
         )
         return when (result) {
-            JOB_STATE_UPDATED -> JobWorkerContext(attempt, leaseValue)
+            JOB_STATE_UPDATED -> JobWorkerContext(
+                attempt = attempt,
+                leaseValue = leaseValue,
+                sourceJob = snapshot.job
+            )
             JOB_STATE_MISSING,
             JOB_STATE_CONFLICT,
             JOB_LEASE_CONFLICT -> null
@@ -1598,6 +1826,18 @@ class ProblemCollectorService(
             }
             if (!isWorkerSnapshot(snapshot.job, worker)) {
                 return false
+            }
+            check(processedCount == snapshot.job.processedCount + 1) {
+                "작업 진행 수는 한 건씩 증가해야 합니다. jobId=$jobId"
+            }
+            check(successCount >= snapshot.job.successCount && failCount >= snapshot.job.failCount) {
+                "작업 성공 또는 실패 수는 감소할 수 없습니다. jobId=$jobId"
+            }
+            check(successCount + failCount == processedCount) {
+                "작업 처리 수가 성공 수와 실패 수의 합과 다릅니다. jobId=$jobId"
+            }
+            check((failedProblemId != null) == (failCount == snapshot.job.failCount + 1)) {
+                "실패 항목과 실패 수 증가가 일치하지 않습니다. jobId=$jobId"
             }
 
             val now = nowEpochSeconds()
@@ -1746,6 +1986,86 @@ class ProblemCollectorService(
                 "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=$jobId"
             )
         }
+    }
+
+    private fun validateResumeState(
+        job: JobStatusUnifiedResponse
+    ): ProblemJobTargetManifest {
+        if (job.status != JobStatus.PENDING && job.status != JobStatus.RUNNING) {
+            targetManifestConflict(job.jobId, "종료된 작업은 이어서 실행할 수 없습니다.")
+        }
+        if (job.completedAt != null) {
+            targetManifestConflict(job.jobId, "실행 중 작업에 종료 시각이 있습니다.")
+        }
+        if (job.status == JobStatus.PENDING) {
+            if (
+                job.startedAt != null ||
+                job.workerAttempt != null ||
+                job.processedCount != 0 ||
+                job.successCount != 0 ||
+                job.failCount != 0
+            ) {
+                targetManifestConflict(job.jobId, "대기 작업에 실행 이력 또는 진행 상태가 있습니다.")
+            }
+        } else {
+            val attempt = job.workerAttempt
+                ?: targetManifestConflict(job.jobId, "실행 중 작업에 worker attempt가 없습니다.")
+            if (
+                attempt.schemaVersion != ProblemJobWorkerAttempt.CURRENT_SCHEMA_VERSION ||
+                attempt.ownerId.isBlank() ||
+                attempt.attemptId.isBlank() ||
+                attempt.attemptNumber < 1
+            ) {
+                targetManifestConflict(job.jobId, "worker attempt가 올바르지 않습니다.")
+            }
+        }
+        if (job.processedCount !in 0..job.totalCount) {
+            targetManifestConflict(
+                job.jobId,
+                "처리 수가 대상 수 범위를 벗어났습니다. processed=${job.processedCount}, total=${job.totalCount}"
+            )
+        }
+        if (job.successCount < 0 || job.failCount < 0) {
+            targetManifestConflict(job.jobId, "성공 또는 실패 수가 음수입니다.")
+        }
+        if (job.successCount + job.failCount != job.processedCount) {
+            targetManifestConflict(job.jobId, "처리 수가 성공 수와 실패 수의 합과 다릅니다.")
+        }
+
+        val manifest = readTargetManifest(job)
+            ?: targetManifestConflict(job.jobId, "대상 manifest 참조가 없습니다.")
+        if (job.processedCount == 0) {
+            if (job.lastCheckpointId != null) {
+                targetManifestConflict(job.jobId, "처리 전 작업에 체크포인트가 있습니다.")
+            }
+        } else {
+            val expectedCheckpoint = targetIdAt(manifest, job.processedCount - 1)
+            if (job.lastCheckpointId != expectedCheckpoint) {
+                targetManifestConflict(job.jobId, "체크포인트가 manifest 처리 위치와 일치하지 않습니다.")
+            }
+        }
+
+        val failureLedger = readFailureLedger(job.jobId)
+        if (failureLedger.problemIds.size != job.failCount) {
+            targetManifestConflict(
+                job.jobId,
+                "실패 수가 실패 항목 기록 수와 다릅니다. fail=${job.failCount}, recorded=${failureLedger.problemIds.size}"
+            )
+        }
+        failureLedger.problemIds.forEach { failedProblemId ->
+            val position = targetPosition(manifest, failedProblemId)
+                ?: targetManifestConflict(
+                    job.jobId,
+                    "실패 항목이 manifest에 없습니다. problemId=$failedProblemId"
+                )
+            if (position >= job.processedCount) {
+                targetManifestConflict(
+                    job.jobId,
+                    "실패 항목이 처리 완료 prefix 밖에 있습니다. problemId=$failedProblemId"
+                )
+            }
+        }
+        return manifest
     }
 
     private fun readTargetManifest(
