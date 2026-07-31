@@ -160,16 +160,22 @@ SPRING_DATA_REDIS_PORT=6398 \
 
 - 작업을 자동으로 이어서 실행하지 않는다. 원본은 `FAILED`로 남고 재시도는 새
   작업을 만든다.
-- 비메타데이터 작업과 떨어진 문제 ID 재시도의 정확한 대상 manifest가 없다.
+- Phase 6K 시점에는 비메타데이터 작업과 떨어진 문제 ID 재시도의 정확한 대상
+  manifest가 없었다. 후속
+  [Phase 6L](./PHASE_6L_CRAWLER_TARGET_MANIFEST.md)에서 대상 ID와 순서를 저장했다.
 - 여러 BE에서 사용할 worker owner, lease, heartbeat 기반 인계와 fencing token이
   없다.
 - 이미 시작한 외부 호출과 MongoDB 쓰기는 한 건까지 끝날 수 있다.
 - 시작 스캔은 index의 모든 ID를 읽고 상태를 확인한다. index가 커질 때의 시작
   시간 최적화와 선제 정리는 별도 단계다.
-- 손상된 JSON은 시작 복구에서 삭제하지 않는다. 작업 목록 조회의 stale 정리
-  경로는 index membership과 실패 원장만 제거하고, 손상된 상태 key는 TTL이
-  끝날 때까지 남는다.
-- 상태와 실패 원장은 24시간 뒤 만료된다. 장기 운영 메트릭 보존 정책은 별도
-  단계다.
+- 손상된 JSON은 시작 복구에서 삭제하지 않는다. 작업 목록 조회의 stale 정리는
+  index membership과 실패 원장을 제거한다. Phase 6L 이후에는 대상 manifest도
+  함께 제거하지만 손상된 상태 key는 TTL이 끝날 때까지 남는다.
+- 상태와 실패 원장은 24시간 뒤 만료된다. Phase 6L의 대상 manifest도 같은 TTL을
+  사용한다. 장기 운영 메트릭 보존 정책은 별도 단계다.
 - Docker Compose 전체 환경 해석은 배포용 `.env`가 있는 환경에서 다시 확인해야
   한다. 현재 검증에서는 Compose 구조와 YAML 문법을 확인했다.
+
+> Phase 6L 이후 시작 복구 CAS는 대상 manifest 참조를 보존하고 String manifest의
+> TTL도 상태·실패 원장과 함께 갱신한다. Phase 6K의 복구 기준선과 결과는 변경하지
+> 않는다.

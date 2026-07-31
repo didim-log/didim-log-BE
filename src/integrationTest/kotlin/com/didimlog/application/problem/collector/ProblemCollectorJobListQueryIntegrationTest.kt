@@ -174,7 +174,7 @@ class ProblemCollectorJobListQueryIntegrationTest {
     }
 
     @Test
-    fun `만료 상태와 손상 JSON을 제외하고 index와 실패 원장을 한 번에 정리한다`() {
+    fun `만료 상태와 손상 JSON을 제외하고 index와 부가 키를 한 번에 정리한다`() {
         val validJobs = sampleJobs(20)
         seedStaleFixture(validJobs)
         val expected = expectedPage(validJobs, page = 1, size = 20)
@@ -194,7 +194,7 @@ class ProblemCollectorJobListQueryIntegrationTest {
                 )
             )
         assertThat(legacy.commands.totalCount()).isEqualTo(27)
-        assertStaleEntriesRemoved(validJobs.first().jobId)
+        assertStaleEntriesRemoved(validJobs.first().jobId, targetsRemoved = false)
 
         clearJobKeys()
         seedStaleFixture(validJobs)
@@ -225,8 +225,8 @@ class ProblemCollectorJobListQueryIntegrationTest {
         assertThat(current.commands.totalCount()).isEqualTo(5)
         assertThat(current.commands.requireSingle("mget").argumentCount).isEqualTo(22)
         assertThat(current.commands.requireSingle("zrem").argumentCount).isEqualTo(3)
-        assertThat(current.commands.requireSingle("del").argumentCount).isEqualTo(2)
-        assertStaleEntriesRemoved(validJobs.first().jobId)
+        assertThat(current.commands.requireSingle("del").argumentCount).isEqualTo(4)
+        assertStaleEntriesRemoved(validJobs.first().jobId, targetsRemoved = true)
     }
 
     @Test
@@ -513,6 +513,11 @@ class ProblemCollectorJobListQueryIntegrationTest {
     private fun seedStaleFixture(validJobs: List<JobStatusUnifiedResponse>) {
         validJobs.forEach(::persist)
         redisTemplate.opsForSet().add(failureKey(validJobs.first().jobId), "kept")
+        redisTemplate.opsForValue().set(
+            targetKey(validJobs.first().jobId),
+            """{"kept":true}""",
+            Duration.ofDays(1)
+        )
 
         redisTemplate.opsForZSet().add(
             JOB_INDEX_KEY,
@@ -525,6 +530,11 @@ class ProblemCollectorJobListQueryIntegrationTest {
             Duration.ofDays(1)
         )
         redisTemplate.opsForSet().add(failureKey(MALFORMED_JOB_ID), "1001")
+        redisTemplate.opsForValue().set(
+            targetKey(MALFORMED_JOB_ID),
+            """{"stale":true}""",
+            Duration.ofDays(1)
+        )
 
         redisTemplate.opsForZSet().add(
             JOB_INDEX_KEY,
@@ -532,15 +542,26 @@ class ProblemCollectorJobListQueryIntegrationTest {
             (BASE_QUEUED_AT + 21).toDouble()
         )
         redisTemplate.opsForSet().add(failureKey(MISSING_JOB_ID), "1002")
+        redisTemplate.opsForValue().set(
+            targetKey(MISSING_JOB_ID),
+            """{"stale":true}""",
+            Duration.ofDays(1)
+        )
     }
 
-    private fun assertStaleEntriesRemoved(validFailureJobId: String) {
+    private fun assertStaleEntriesRemoved(
+        validFailureJobId: String,
+        targetsRemoved: Boolean
+    ) {
         assertThat(redisTemplate.opsForZSet().score(JOB_INDEX_KEY, MISSING_JOB_ID)).isNull()
         assertThat(redisTemplate.opsForZSet().score(JOB_INDEX_KEY, MALFORMED_JOB_ID)).isNull()
         assertThat(redisTemplate.hasKey(failureKey(MISSING_JOB_ID))).isFalse()
         assertThat(redisTemplate.hasKey(failureKey(MALFORMED_JOB_ID))).isFalse()
         assertThat(redisTemplate.hasKey(failureKey(validFailureJobId))).isTrue()
         assertThat(redisTemplate.hasKey(jobKey(validFailureJobId))).isTrue()
+        assertThat(redisTemplate.hasKey(targetKey(validFailureJobId))).isTrue()
+        assertThat(redisTemplate.hasKey(targetKey(MISSING_JOB_ID))).isEqualTo(!targetsRemoved)
+        assertThat(redisTemplate.hasKey(targetKey(MALFORMED_JOB_ID))).isEqualTo(!targetsRemoved)
     }
 
     private fun persist(job: JobStatusUnifiedResponse) {
@@ -557,7 +578,7 @@ class ProblemCollectorJobListQueryIntegrationTest {
     }
 
     private fun clearJobKeys() {
-        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX).forEach { prefix ->
+        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX, JOB_TARGET_KEY_PREFIX).forEach { prefix ->
             val keys = redisTemplate.keys("$prefix*")
             if (keys.isNotEmpty()) {
                 redisTemplate.delete(keys)
@@ -570,9 +591,12 @@ class ProblemCollectorJobListQueryIntegrationTest {
 
     private fun failureKey(jobId: String): String = "$JOB_FAILURE_KEY_PREFIX$jobId"
 
+    private fun targetKey(jobId: String): String = "$JOB_TARGET_KEY_PREFIX$jobId"
+
     private companion object {
         const val JOB_KEY_PREFIX = "problem:job:status:"
         const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
+        const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
         const val JOB_INDEX_KEY = "problem:job:index"
         const val WARMUP_KEY = "problem:job:list:warmup"
         const val MISSING_JOB_ID = "job-missing"

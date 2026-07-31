@@ -8,7 +8,10 @@ import com.didimlog.infra.solvedac.SolvedAcClient
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.Duration
+import java.util.HexFormat
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -55,6 +58,13 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
     @Test
     fun `재시작 복구는 진행 중 작업만 실패 처리하고 저장된 진행 상태를 보존한다`() {
         val pending = sampleJob("job-pending", JobStatus.PENDING)
+        val runningManifest = ProblemJobTargetManifest(
+            version = ProblemJobTargetManifest.CURRENT_VERSION,
+            jobId = "job-running",
+            jobType = ProblemJobType.COLLECT_METADATA,
+            range = JobRange(1, 5)
+        )
+        val runningManifestJson = objectMapper.writeValueAsString(runningManifest)
         val running = sampleJob("job-running", JobStatus.RUNNING).copy(
             startedAt = BASE_TIME + 1,
             lastHeartbeatAt = BASE_TIME + 3,
@@ -64,7 +74,11 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
             failCount = 1,
             progressPercentage = 60,
             range = JobRange(1, 5),
-            lastCheckpointId = "3"
+            lastCheckpointId = "3",
+            targetManifest = ProblemJobTargetManifestReference(
+                schemaVersion = runningManifest.version,
+                sha256 = sha256(runningManifestJson)
+            )
         )
         val completed = sampleJob("job-completed", JobStatus.COMPLETED).copy(
             startedAt = BASE_TIME + 1,
@@ -87,6 +101,11 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
         listOf(pending.jobId, running.jobId).forEach { jobId ->
             redisTemplate.expire(jobKey(jobId), Duration.ofSeconds(SHORT_TTL_SECONDS))
         }
+        redisTemplate.opsForValue().set(
+            targetKey(running.jobId),
+            runningManifestJson,
+            Duration.ofSeconds(SHORT_TTL_SECONDS)
+        )
         redisTemplate.opsForSet().add(failureKey(running.jobId), "2")
         redisTemplate.expire(
             failureKey(running.jobId),
@@ -95,6 +114,9 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
         val terminalRaw = listOf(completed, failed, cancelled).associate { job ->
             job.jobId to requireNotNull(redisTemplate.opsForValue().get(jobKey(job.jobId)))
         }
+        val runningManifestRaw = requireNotNull(
+            redisTemplate.opsForValue().get(targetKey(running.jobId))
+        )
 
         val recoveredCount = createService().failOrphanedJobsDuringStartup()
 
@@ -103,6 +125,8 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
         assertRestartFailure(readJob(running.jobId), running)
         assertThat(redisTemplate.opsForSet().members(failureKey(running.jobId)))
             .containsExactly("2")
+        assertThat(redisTemplate.opsForValue().get(targetKey(running.jobId)))
+            .isEqualTo(runningManifestRaw)
 
         terminalRaw.forEach { (jobId, rawJson) ->
             assertThat(redisTemplate.opsForValue().get(jobKey(jobId))).isEqualTo(rawJson)
@@ -114,9 +138,13 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
         }
         val statusTtl = redisTemplate.getExpire(jobKey(running.jobId), TimeUnit.SECONDS)
         val failureTtl = redisTemplate.getExpire(failureKey(running.jobId), TimeUnit.SECONDS)
+        val targetTtl = redisTemplate.getExpire(targetKey(running.jobId), TimeUnit.SECONDS)
         assertThat(failureTtl)
             .isBetween(JOB_TTL_SECONDS - TTL_ASSERTION_TOLERANCE_SECONDS, JOB_TTL_SECONDS)
+        assertThat(targetTtl)
+            .isBetween(JOB_TTL_SECONDS - TTL_ASSERTION_TOLERANCE_SECONDS, JOB_TTL_SECONDS)
         assertThat(statusTtl - failureTtl).isBetween(-1L, 1L)
+        assertThat(statusTtl - targetTtl).isBetween(-1L, 1L)
     }
 
     @Test
@@ -266,6 +294,7 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
         assertThat(actual.progressPercentage).isEqualTo(original.progressPercentage)
         assertThat(actual.lastCheckpointId).isEqualTo(original.lastCheckpointId)
         assertThat(actual.range).isEqualTo(original.range)
+        assertThat(actual.targetManifest).isEqualTo(original.targetManifest)
     }
 
     private fun persist(job: JobStatusUnifiedResponse) {
@@ -314,7 +343,7 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
     }
 
     private fun deleteJobKeys() {
-        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX).forEach { prefix ->
+        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX, JOB_TARGET_KEY_PREFIX).forEach { prefix ->
             val keys = redisTemplate.keys("$prefix*")
             if (keys.isNotEmpty()) {
                 redisTemplate.delete(keys)
@@ -326,6 +355,15 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
     private fun jobKey(jobId: String): String = "$JOB_KEY_PREFIX$jobId"
 
     private fun failureKey(jobId: String): String = "$JOB_FAILURE_KEY_PREFIX$jobId"
+
+    private fun targetKey(jobId: String): String = "$JOB_TARGET_KEY_PREFIX$jobId"
+
+    private fun sha256(value: String): String {
+        return HexFormat.of().formatHex(
+            MessageDigest.getInstance("SHA-256")
+                .digest(value.toByteArray(StandardCharsets.UTF_8))
+        )
+    }
 
     private class FirstReadBarrierObjectMapper(
         private val firstReadsReady: CountDownLatch
@@ -354,6 +392,7 @@ class ProblemCollectorOrphanRecoveryIntegrationTest {
     private companion object {
         const val JOB_KEY_PREFIX = "problem:job:status:"
         const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
+        const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
         const val JOB_INDEX_KEY = "problem:job:index"
         const val MALFORMED_JOB_ID = "job-malformed"
         const val WRONG_TYPE_JOB_ID = "job-wrong-type"

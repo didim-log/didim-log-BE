@@ -22,8 +22,11 @@ import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifyOrder
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.Duration
 import java.util.Collections
+import java.util.HexFormat
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -66,6 +69,7 @@ class ProblemCollectorServiceTest {
     companion object {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
         private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
+        private const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
         private const val JOB_INDEX_KEY = "problem:job:index"
     }
 
@@ -75,7 +79,12 @@ class ProblemCollectorServiceTest {
         every { redisTemplate.opsForSet() } returns setOps
         every { redisTemplate.opsForZSet() } returns zSetOps
         every { redisTemplate.type(any()) } answers {
-            if (failureStore.containsKey(firstArg())) DataType.SET else DataType.NONE
+            val key = firstArg<String>()
+            when {
+                failureStore.containsKey(key) -> DataType.SET
+                valueStore.containsKey(key) -> DataType.STRING
+                else -> DataType.NONE
+            }
         }
         every { setOps.members(any()) } answers {
             failureStore[firstArg()].orEmpty().toSet()
@@ -91,20 +100,22 @@ class ProblemCollectorServiceTest {
             val scriptArguments = thirdArg<Array<out Any>>()
             synchronized(valueStore) {
                 when {
-                    keys.size == 2 && keys[1] == JOB_INDEX_KEY -> {
+                    keys.size == 3 && keys[1] == JOB_INDEX_KEY -> {
                         val jobKey = keys[0]
-                        if (valueStore.containsKey(jobKey)) {
+                        val targetKey = keys[2]
+                        if (valueStore.containsKey(jobKey) || valueStore.containsKey(targetKey)) {
                             0L
                         } else {
-                            val jobId = scriptArguments[3].toString()
+                            val jobId = scriptArguments[4].toString()
                             valueStore[jobKey] = scriptArguments[0].toString()
+                            valueStore[targetKey] = scriptArguments[1].toString()
                             zsetStore.computeIfAbsent(keys[1]) { mutableMapOf() }[jobId] =
-                                scriptArguments[2].toString().toDouble()
+                                scriptArguments[3].toString().toDouble()
                             1L
                         }
                     }
 
-                    keys.size == 2 -> {
+                    keys.size == 3 -> {
                         val current = valueStore[keys[0]]
                         when {
                             current == null -> -1L
@@ -546,6 +557,58 @@ class ProblemCollectorServiceTest {
     }
 
     @Test
+    @DisplayName("manifest 기반 언어 재시도는 미처리 ID만 조회하고 현재 DB 대상을 섞지 않는다")
+    fun `manifest language retry loads only unprocessed target ids`() {
+        val sourceJobId = "job-manifest-language"
+        val manifest = ProblemJobTargetManifest(
+            version = ProblemJobTargetManifest.CURRENT_VERSION,
+            jobId = sourceJobId,
+            jobType = ProblemJobType.UPDATE_LANGUAGE,
+            explicitIds = listOf("1001", "1003", "1005"),
+            range = null
+        )
+        seedManifestJob(
+            sampleJob(sourceJobId).copy(
+                jobType = ProblemJobType.UPDATE_LANGUAGE,
+                status = JobStatus.CANCELLED,
+                totalCount = 3,
+                processedCount = 1,
+                successCount = 1,
+                progressPercentage = 33,
+                range = null,
+                lastCheckpointId = "1001",
+                completedAt = 1700001000
+            ),
+            manifest
+        )
+        val problem1003 = sampleProblem("1003", title = "English problem title")
+        val problem1005 = sampleProblem("1005", title = "English problem title")
+        every {
+            problemRepository.findAllById(setOf("1003", "1005"))
+        } returns listOf(problem1005, problem1003)
+        every { problemRepository.updateLanguage(any(), "en") } returns true
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(2)
+        verify(exactly = 1) {
+            problemRepository.findAllById(setOf("1003", "1005"))
+        }
+        verify(exactly = 0) { problemRepository.findAll() }
+        verifyOrder {
+            problemRepository.updateLanguage("1003", "en")
+            problemRepository.updateLanguage("1005", "en")
+        }
+        val childManifest = objectMapper.readValue(
+            requireNotNull(valueStore["$JOB_TARGET_KEY_PREFIX${retryJob.jobId}"]),
+            ProblemJobTargetManifest::class.java
+        )
+        assertThat(childManifest.explicitIds).containsExactly("1003", "1005")
+        assertThat(childManifest.range).isNull()
+    }
+
+    @Test
     @DisplayName("삭제된 실패 문제는 제외하고 남아 있는 상세 수집 실패 문제를 재시도한다")
     fun `detail retry skips deleted failed item and continues remaining failures`() {
         val sourceJobId = "job-deleted-failed-item"
@@ -621,7 +684,8 @@ class ProblemCollectorServiceTest {
                 match<List<String>> {
                     it == listOf(
                         "$JOB_KEY_PREFIX$jobId",
-                        "$JOB_FAILURE_KEY_PREFIX$jobId"
+                        "$JOB_FAILURE_KEY_PREFIX$jobId",
+                        "$JOB_TARGET_KEY_PREFIX$jobId"
                     )
                 },
                 *anyVararg()
@@ -639,7 +703,8 @@ class ProblemCollectorServiceTest {
                 any<RedisScript<Long>>(),
                 listOf(
                     "$JOB_KEY_PREFIX$jobId",
-                    "$JOB_FAILURE_KEY_PREFIX$jobId"
+                    "$JOB_FAILURE_KEY_PREFIX$jobId",
+                    "$JOB_TARGET_KEY_PREFIX$jobId"
                 ),
                 *anyVararg()
             )
@@ -841,6 +906,28 @@ class ProblemCollectorServiceTest {
         valueStore["$JOB_KEY_PREFIX${job.jobId}"] = objectMapper.writeValueAsString(job)
         val set = zsetStore.computeIfAbsent(JOB_INDEX_KEY) { mutableMapOf() }
         set[job.jobId] = job.queuedAt.toDouble()
+    }
+
+    private fun seedManifestJob(
+        job: JobStatusUnifiedResponse,
+        manifest: ProblemJobTargetManifest
+    ) {
+        val manifestJson = objectMapper.writeValueAsString(manifest)
+        seedJob(
+            job.copy(
+                targetManifest = ProblemJobTargetManifestReference(
+                    schemaVersion = manifest.version,
+                    sha256 = sha256(manifestJson)
+                )
+            )
+        )
+        valueStore["$JOB_TARGET_KEY_PREFIX${job.jobId}"] = manifestJson
+    }
+
+    private fun sha256(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(StandardCharsets.UTF_8))
+        return HexFormat.of().formatHex(digest)
     }
 
     private fun sampleJob(jobId: String): JobStatusUnifiedResponse {

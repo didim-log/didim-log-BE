@@ -22,5 +22,6 @@ data class JobStatusUnifiedResponse(
     val lastCheckpointId: String?,
     val errorCode: String?,
     val errorMessage: String?,
-    val createdBy: String
+    val createdBy: String,
+    val targetManifest: ProblemJobTargetManifestReference? = null
 )

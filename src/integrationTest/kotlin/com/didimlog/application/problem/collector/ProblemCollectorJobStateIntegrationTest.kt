@@ -15,8 +15,11 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.verify
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.Duration
 import java.util.Collections
+import java.util.HexFormat
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executor
@@ -470,12 +473,132 @@ class ProblemCollectorJobStateIntegrationTest {
         assertThat(retryJob.range).isEqualTo(JobRange(2, 5))
         assertThat(retryJob.successCount).isEqualTo(3)
         assertThat(retryJob.lastCheckpointId).isEqualTo("5")
+        val retryManifest = objectMapper.readValue(
+            requireNotNull(redisTemplate.opsForValue().get(targetKey(retryJob.jobId))),
+            ProblemJobTargetManifest::class.java
+        )
+        assertThat(retryManifest.explicitIds).containsExactly("2")
+        assertThat(retryManifest.range).isEqualTo(JobRange(4, 5))
         listOf(2, 4, 5).forEach { problemId ->
             verify(exactly = 1) { solvedAcClient.fetchProblem(problemId) }
         }
         listOf(1, 3).forEach { problemId ->
             verify(exactly = 0) { solvedAcClient.fetchProblem(problemId) }
         }
+    }
+
+    @Test
+    @DisplayName("떨어진 대상 manifest 작업은 처리 위치 뒤의 실제 대상만 재시도한다")
+    fun `sparse manifest retry does not expand public range`() {
+        val sourceJobId = "job-sparse-manifest"
+        val manifest = ProblemJobTargetManifest(
+            version = ProblemJobTargetManifest.CURRENT_VERSION,
+            jobId = sourceJobId,
+            jobType = ProblemJobType.COLLECT_METADATA,
+            explicitIds = listOf("2", "5")
+        )
+        val manifestJson = objectMapper.writeValueAsString(manifest)
+        val source = sampleRunningJob(sourceJobId).copy(
+            status = JobStatus.CANCELLED,
+            completedAt = 1_700_000_005,
+            totalCount = 2,
+            processedCount = 1,
+            successCount = 1,
+            failCount = 0,
+            progressPercentage = 50,
+            range = JobRange(2, 5),
+            lastCheckpointId = "2",
+            targetManifest = ProblemJobTargetManifestReference(
+                schemaVersion = manifest.version,
+                sha256 = sha256(manifestJson)
+            )
+        )
+        persist(source)
+        redisTemplate.opsForValue().set(
+            targetKey(sourceJobId),
+            manifestJson,
+            Duration.ofDays(1)
+        )
+        every { solvedAcClient.fetchProblem(5) } returns
+            SolvedAcProblemResponse(5, "P5", 1, emptyList())
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        val service = createService(objectMapper)
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(1)
+        assertThat(retryJob.range).isEqualTo(JobRange(5, 5))
+        assertThat(retryJob.successCount).isEqualTo(1)
+        val retryManifestJson = requireNotNull(
+            redisTemplate.opsForValue().get(targetKey(retryJob.jobId))
+        )
+        val retryManifest = objectMapper.readValue(
+            retryManifestJson,
+            ProblemJobTargetManifest::class.java
+        )
+        assertThat(retryManifest.explicitIds).containsExactly("5")
+        assertThat(retryManifest.range).isNull()
+        verify(exactly = 0) { solvedAcClient.fetchProblem(2) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(3) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(4) }
+        verify(exactly = 1) { solvedAcClient.fetchProblem(5) }
+    }
+
+    @Test
+    @DisplayName("혼합 manifest 재시도는 실패 prefix와 범위의 미처리 suffix만 실행한다")
+    fun `hybrid manifest retry preserves explicit and range boundary`() {
+        val sourceJobId = "job-hybrid-manifest"
+        val manifest = ProblemJobTargetManifest(
+            version = ProblemJobTargetManifest.CURRENT_VERSION,
+            jobId = sourceJobId,
+            jobType = ProblemJobType.COLLECT_METADATA,
+            explicitIds = listOf("2"),
+            range = JobRange(4, 5)
+        )
+        val manifestJson = objectMapper.writeValueAsString(manifest)
+        val source = sampleRunningJob(sourceJobId).copy(
+            status = JobStatus.CANCELLED,
+            completedAt = 1_700_000_005,
+            totalCount = 3,
+            processedCount = 2,
+            successCount = 1,
+            failCount = 1,
+            progressPercentage = 66,
+            range = JobRange(2, 5),
+            lastCheckpointId = "4",
+            targetManifest = ProblemJobTargetManifestReference(
+                schemaVersion = manifest.version,
+                sha256 = sha256(manifestJson)
+            )
+        )
+        persist(source)
+        redisTemplate.opsForValue().set(
+            targetKey(sourceJobId),
+            manifestJson,
+            Duration.ofDays(1)
+        )
+        redisTemplate.opsForSet().add(failureKey(sourceJobId), "2")
+        every { solvedAcClient.fetchProblem(2) } returns
+            SolvedAcProblemResponse(2, "P2", 1, emptyList())
+        every { solvedAcClient.fetchProblem(5) } returns
+            SolvedAcProblemResponse(5, "P5", 1, emptyList())
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        val service = createService(objectMapper)
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(2)
+        val retryManifest = objectMapper.readValue(
+            requireNotNull(redisTemplate.opsForValue().get(targetKey(retryJob.jobId))),
+            ProblemJobTargetManifest::class.java
+        )
+        assertThat(retryManifest.explicitIds).containsExactly("2")
+        assertThat(retryManifest.range).isEqualTo(JobRange(5, 5))
+        verify(exactly = 1) { solvedAcClient.fetchProblem(2) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(4) }
+        verify(exactly = 1) { solvedAcClient.fetchProblem(5) }
     }
 
     private fun createService(
@@ -565,7 +688,7 @@ class ProblemCollectorJobStateIntegrationTest {
     }
 
     private fun deleteJobKeys() {
-        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX).forEach { prefix ->
+        listOf(JOB_KEY_PREFIX, JOB_FAILURE_KEY_PREFIX, JOB_TARGET_KEY_PREFIX).forEach { prefix ->
             val keys = redisTemplate.keys("$prefix*")
             if (keys.isNotEmpty()) {
                 redisTemplate.delete(keys)
@@ -578,9 +701,19 @@ class ProblemCollectorJobStateIntegrationTest {
 
     private fun failureKey(jobId: String): String = "$JOB_FAILURE_KEY_PREFIX$jobId"
 
+    private fun targetKey(jobId: String): String = "$JOB_TARGET_KEY_PREFIX$jobId"
+
+    private fun sha256(value: String): String {
+        return HexFormat.of().formatHex(
+            MessageDigest.getInstance("SHA-256")
+                .digest(value.toByteArray(StandardCharsets.UTF_8))
+        )
+    }
+
     companion object {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
         private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
+        private const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
         private const val JOB_INDEX_KEY = "problem:job:index"
         private const val JOB_TTL_SECONDS = 86_400L
         private const val SUCCESS = "OK"
