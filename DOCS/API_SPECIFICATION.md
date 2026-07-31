@@ -1258,12 +1258,21 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   - 신규 작업: `{ "schemaVersion": Int, "sha256": String }`
   - `null`: 대상 manifest 도입 전에 생성된 기존 작업
   - 실제 대상 ID는 별도 Redis 값에 저장하며 API 응답에는 hash 참조만 반환합니다.
+- `workerAttempt` (Object, nullable)
+  - worker lease 활성 작업:
+    `{ "schemaVersion": Int, "ownerId": String, "attemptId": String, "attemptNumber": Long }`
+  - `attemptNumber`는 같은 작업 안에서 증가하는 시도 번호이며 MongoDB 쓰기용
+    전역 fencing token이 아닙니다.
+  - worker lease가 비활성화됐거나 도입 전에 생성된 작업은 `null`입니다.
 
 **상태 전이**
 - 실행: `PENDING -> RUNNING -> COMPLETED|FAILED`
+- worker lease 활성 시 `PENDING -> RUNNING`과 lease 생성을 한 Lua에서 처리하고,
+  현재 `workerAttempt`와 lease가 모두 같은 worker만 진행률·종료 상태를 씁니다.
 - 실행기 제출 실패: `PENDING -> FAILED`
 - 단일 인스턴스 시작 복구: 이전 `PENDING|RUNNING -> FAILED`
   (`errorCode=WORKER_UNAVAILABLE`)
+- 단일 인스턴스 시작 복구와 worker lease는 동시에 활성화할 수 없습니다.
 - 취소: `PENDING|RUNNING -> CANCELLED`
 - `COMPLETED|FAILED|CANCELLED`는 종료 상태이며 이후 변경되지 않습니다.
 

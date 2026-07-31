@@ -58,6 +58,7 @@ flowchart LR
 
 - `ui → application → domain → infra` 방향으로 유스케이스와 외부 의존성을 분리했습니다.
 - 관리자 문제 수집은 요청과 작업 실행을 분리하고, Redis에 진행 상태·성공/실패 수·checkpoint·실패 문제 ID·실제 대상 manifest를 기록합니다.
+- worker lease 모드에서는 상태의 attempt와 Redis lease가 같은 worker만 heartbeat·진행률·종료 상태를 갱신합니다.
 - 문제, 사용자 풀이, 로그, 회고는 목적이 다른 MongoDB 문서로 관리합니다.
 - AI 리뷰는 MongoDB `findAndModify` 기반 잠금으로 동일 로그의 중복 생성을 제어합니다.
 
@@ -391,6 +392,7 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 | 문제 수집 재시작 고아 작업 | 실제 Redis 7.2.5, 진행 작업 2건·종료 작업 3건·두 서비스 12건 CAS 경합·실행 중 worker | 진행 작업만 `FAILED`, 종료 상태 원문 유지, 작업별 성공 전이 1회, 다음 문제 호출·완료 덮어쓰기 0건 |
 | 문제 수집 실패 항목 재시도 | 실제 Redis 7.2.5, 1~5번 중 문제 ID 2만 실패·취소 뒤 늦은 실패 상태 저장 | 재시도 시 2번 호출 0건 → 1건, 미복구 문제 1건 → 0건, 기존 성공 문제 재호출 0건 |
 | 문제 수집 재시도 대상 manifest | 실제 Redis 7.2.5의 비연속 `[2, 5]`·혼합 `explicitIds + range`·손상 상태, MockK 비메타데이터 조회 | 저장 대상 밖 호출 0건, 현재 DB 전체 조회 0건, 손상·처리 위치 불일치 자식 작업 0건 |
+| 문제 수집 worker lease | 실제 Redis 7.2.5의 동시 claim·heartbeat/진행률 경합·lease 교체·취소, MockK 외부 클라이언트·저장소 | claim 1건, MockK 외부 클라이언트·저장소 호출 각 1건, stale 상태·실패 원장 쓰기 0건, 종료 뒤 lease 0건 |
 | 고아 데이터 읽기 전용 점검 | 실제 MongoDB 7.0.16 합성 fixture, 사용자 소유 관계 5개·기본 참조 2개 | fixture 기대 고아 6건·깨진 기본 참조 2건 일치, 쓰기 단계 0건·점검 필드 전후 hash 동일 |
 | 유지보수 설정 원자화 | 실제 Redis 7.2.5, 종료 시각 만료·유한→무기한 변경·두 서비스 동시 설정 | 설정 키 전체 만료, 무기한 설정 TTL 없음, 서로 다른 설정 조합 0건 |
 
@@ -425,6 +427,7 @@ Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [G
 작업 목록의 `MGET` 일괄 조회와 stale index 정리 명령 비교는 [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)에 정리했습니다.
 단일 BE 재시작 시 진행 작업을 안전하게 종료하고 새 작업 생성을 여는 순서는 [문제 수집 재시작 고아 작업 정리](./DOCS/refactoring/be-refactor/PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)에 정리했습니다.
 작업 생성 시 대상 ID와 순서를 저장하고 중단 지점부터 같은 대상만 재시도하는 기준은 [문제 수집 대상 manifest](./DOCS/refactoring/be-refactor/PHASE_6L_CRAWLER_TARGET_MANIFEST.md)에 정리했습니다.
+현재 worker만 heartbeat·진행률·종료 상태를 쓰도록 lease 원문을 함께 비교하는 경계는 [문제 수집 worker lease](./DOCS/refactoring/be-refactor/PHASE_6M_A_CRAWLER_WORKER_LEASE.md)에 정리했습니다.
 
 ## 8. 트러블 슈팅
 
@@ -443,11 +446,17 @@ Gemini 호출 간격과 RPM·RPD의 원자 처리, 재시도 허가 순서는 [G
 - 신규 작업은 상태·대상 manifest·index를 같은 Lua에서 만들고, 재시도는 manifest의
   처리 위치와 실패 원장을 함께 검증합니다. 참조가 있는데 manifest가 없거나
   손상됐다면 새 작업을 만들지 않고 409를 반환합니다.
+- worker lease 모드는 상태의 `workerAttempt`와 lease 원문을 함께 비교합니다.
+  heartbeat는 항목 처리와 분리하고, 현재 worker만 진행률·실패 원장·종료 상태를
+  갱신합니다.
 - 단일 BE Docker 구성은 시작할 때 작업 생성 gate를 닫고, 실행 주체를 잃은
   `PENDING`·`RUNNING` 작업만 `WORKER_UNAVAILABLE`로 실패 처리한 뒤 gate를 엽니다.
 - 재시작 작업을 자동으로 이어서 실행하지는 않습니다. 원본 작업은 `FAILED`로
-  남고 기존 재시도 API가 새 작업을 만듭니다. lease와 fencing이 없는 다중 BE
-  구성에서는 이 복구 설정을 켜지 않습니다.
+  남고 기존 재시도 API가 새 작업을 만듭니다. 시작 실패 복구와 worker lease는
+  동시에 켤 수 없습니다.
+- 현재 worker lease 단계는 Redis 작업 상태·실패 원장만 보호하며 만료 작업 자동
+  인계와 MongoDB 쓰기 fencing은 포함하지 않습니다. 후속 두 단계 전에는 운영 설정을
+  활성화하지 않습니다.
 - 결과: 관리자 화면은 상태 API를 폴링하며 진행률과 checkpoint를 갱신하고, 같은 작업의 중복 실행과 취소 뒤 상태 덮어쓰기를 막습니다.
 
 ### 인증 API 남용 방지
@@ -472,8 +481,11 @@ export SWAGGER_PASSWORD='replace-with-a-long-local-password'
 
 `PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP`의 기본값은 `false`입니다.
 BE가 하나인 기본 Docker Compose에서만 `true`로 지정합니다. 여러 BE를 함께
-실행하거나 순차 교체할 때는 worker lease와 fencing을 도입하기 전까지
-`false`를 유지해야 합니다.
+실행하거나 순차 교체할 때는 `false`를 유지해야 합니다.
+
+`PROBLEM_COLLECTOR_WORKER_LEASE_ENABLED`도 기본값은 `false`입니다. 현재 단계는
+Redis 상태 소유권 검증까지만 포함하므로 만료 작업 자동 인계와 MongoDB 쓰기
+fencing이 끝나기 전에는 운영 환경에서 활성화하지 않습니다.
 
 외부 BOJ·solved.ac 응답을 사용하지 않는 포트폴리오 촬영 환경에서는 로컬 전용 프로필을 활성화합니다.
 
@@ -500,6 +512,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - OAuth2 로그인은 기존 연결 계정에만 제공하며 신규 소셜 가입은 지원하지 않습니다.
 - 데모의 외부 BOJ·solved.ac 응답은 고정 fixture이므로 실제 외부 연동 성공을 증명하지 않습니다.
 - 문제 수집 대상 manifest는 문제 ID와 순서만 고정하며 당시 문제 문서 내용의 snapshot이나 exactly-once 실행을 보장하지 않습니다.
+- 문제 수집 worker lease는 Redis 상태·실패 원장만 보호합니다. 취소 전에 시작한 외부 호출과 MongoDB 쓰기 한 건은 끝날 수 있습니다.
 - 성능 수치는 로컬 합성 환경의 결과이며 운영 성능이나 일반화된 개선율로 해석할 수 없습니다.
 - 외부 API 계약이 변경되면 클라이언트와 응답 모델을 갱신해야 할 수 있습니다.
 
@@ -533,6 +546,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)
 - [문제 수집 재시작 고아 작업 정리](./DOCS/refactoring/be-refactor/PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)
 - [문제 수집 대상 manifest](./DOCS/refactoring/be-refactor/PHASE_6L_CRAWLER_TARGET_MANIFEST.md)
+- [문제 수집 worker lease](./DOCS/refactoring/be-refactor/PHASE_6M_A_CRAWLER_WORKER_LEASE.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
