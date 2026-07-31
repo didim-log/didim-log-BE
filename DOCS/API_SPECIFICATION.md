@@ -1229,7 +1229,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | GET | `/api/v1/admin/problems/jobs` | 작업 목록을 조회합니다. | **Query:** `type`, `status`, `from`, `to`, `page`, `size` | `JobPageResponse<JobStatusUnifiedResponse>` | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/jobs/{jobId}` | 작업 단건을 조회합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
 | POST | `/api/v1/admin/problems/jobs/{jobId}/cancel` | 작업을 취소합니다. (`PENDING/RUNNING -> CANCELLED`) | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
-| POST | `/api/v1/admin/problems/jobs/{jobId}/retry` | 종료 작업의 실패 항목과 체크포인트 이후 미처리 항목을 재시도합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
+| POST | `/api/v1/admin/problems/jobs/{jobId}/retry` | 종료 작업의 실패 항목과 저장된 대상 manifest의 미처리 항목을 재시도합니다. 기존 작업은 종전 checkpoint 기준을 사용합니다. | **Path:** `jobId` | `JobStatusUnifiedResponse` | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/jobs/metrics` | 운영 메트릭을 조회합니다. | **Query:** `window=DAY|WEEK|MONTH` | `JobMetricsResponse` | JWT Token (ADMIN) |
 | GET | `/api/v1/admin/problems/jobs/audit` | 작업 감사 로그(실행자/시간/범위/결과)를 조회합니다. | **Query:** `type`, `status`, `from`, `to`, `page`, `size` | `JobPageResponse<JobAuditResponse>` | JWT Token (ADMIN) |
 
@@ -1254,6 +1254,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `errorCode` (String, nullable)
 - `errorMessage` (String, nullable)
 - `createdBy` (String)
+- `targetManifest` (Object, nullable)
+  - 신규 작업: `{ "schemaVersion": Int, "sha256": String }`
+  - `null`: 대상 manifest 도입 전에 생성된 기존 작업
+  - 실제 대상 ID는 별도 Redis 값에 저장하며 API 응답에는 hash 참조만 반환합니다.
 
 **상태 전이**
 - 실행: `PENDING -> RUNNING -> COMPLETED|FAILED`
@@ -1264,21 +1268,30 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - `COMPLETED|FAILED|CANCELLED`는 종료 상태이며 이후 변경되지 않습니다.
 
 **재시도 대상**
-- `COMPLETED`: 실패 원장에 기록된 문제 ID만 재시도합니다.
-- `FAILED|CANCELLED`: 실패 문제 ID와 `lastCheckpointId` 이후 미처리 대상을 합쳐
-  중복 제거 후 숫자 문제 ID 순서로 처리합니다.
+- `targetManifest`가 있는 `COMPLETED`: 전체 대상을 처리한 상태인지 확인한 뒤 실패
+  원장에 기록된 문제 ID만 manifest 순서로 재시도합니다.
+- `targetManifest`가 있는 `FAILED|CANCELLED`: 처리 완료 prefix의 실패 문제와
+  `processedCount` 이후 manifest suffix를 합쳐 원래 순서로 처리합니다.
+- `processedCount > 0`이면 직전 manifest 대상이 `lastCheckpointId`와 같은지
+  확인합니다.
 - 시작 복구로 `FAILED`가 된 원본 작업도 같은 재시도 API를 사용합니다. 원본
   상태를 다시 `RUNNING`으로 바꾸거나 자동으로 이어서 실행하지 않고 새 작업을
   만듭니다.
-- 실패 원장이 도입되기 전에 생성된 `failCount > 0` 작업과 중단된 비메타데이터
-  작업은 원본 범위 또는 현재 조회 가능한 대상을 다시 처리합니다.
+- `targetManifest` 참조가 없는 기존 작업은 원본 range·checkpoint 또는 현재 조회
+  가능한 비메타데이터 대상을 사용하는 종전 경로를 유지합니다.
 - 비메타데이터 실패 문제가 재시도 전에 삭제됐다면 해당 문제는 제외합니다.
+- 비메타데이터 신규 작업은 manifest에서 선택된 ID만 DB에서 조회하므로 원본 작업
+  뒤 추가된 문제는 섞이지 않습니다.
 - 실패 원장이 존재하지만 원장 크기와 `failCount`가 다르면
   `409 RESOURCE_STATE_CONFLICT`를 반환하고 새 작업을 만들지 않습니다.
 - 실패 원장 key가 Redis Set이 아닌 경우에도 같은 409를 반환합니다.
+- manifest 참조가 있는데 대상 key가 없거나 자료형·JSON·hash·작업 유형·대상 수·
+  처리 위치가 맞지 않아도 같은 409를 반환합니다. 이 경우 기존 range 경로로
+  우회하지 않습니다.
 - 메타데이터 재시도의 `range`는 선택 ID의 최솟값과 최댓값, 상세 새로고침은
   원본 범위입니다. 상세 수집·언어 갱신은 `range=null`입니다. 메타데이터 선택
-  ID가 떨어져 있으면 `totalCount`가 연속 범위 크기보다 작을 수 있습니다.
+  ID가 떨어져 있으면 `totalCount`가 연속 범위 크기보다 작을 수 있으며, 정확한
+  대상은 서버에 저장된 manifest를 기준으로 합니다.
 
 **표준 에러 코드**
 - `INVALID_RANGE`

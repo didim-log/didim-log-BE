@@ -14,7 +14,7 @@
 | `GET /api/v1/admin/problems/collect-metadata/status/{jobId}` | 메타데이터 작업 상태 조회 | Redis |
 | `POST /api/v1/admin/problems/collect-details` | 상세 HTML이 없는 문제 비동기 수집 | MongoDB `problems`, Redis 작업 상태 |
 | `POST /api/v1/admin/problems/refresh-details` | 상세 강제 재수집 | MongoDB `problems`, Redis 작업 상태 |
-| `POST /api/v1/admin/problems/jobs/{jobId}/retry` | 종료 작업의 실패 항목·미처리 구간 재시도 | Redis 작업 상태·실패 원장 |
+| `POST /api/v1/admin/problems/jobs/{jobId}/retry` | 종료 작업의 실패 항목·미처리 구간 재시도 | Redis 작업 상태·실패 원장·대상 manifest |
 | `GET /api/v1/problems/recommend` | 카테고리 정책을 적용한 추천 | `problems`, `students` 조회 |
 | `GET /api/v1/problems/categories/meta` | 부모·자식·연관 카테고리 메타 조회 | 코드의 정적 계층 정의 |
 
@@ -25,13 +25,13 @@
 ```mermaid
 flowchart TD
     A["관리자: 메타데이터 수집 요청"] --> B["ProblemCollectorController"]
-    B --> C["Redis에 PENDING 상태·작업 index 원자 저장"]
+    B --> C["Redis에 PENDING 상태·대상 manifest·작업 index 원자 저장"]
     C --> D["taskExecutor worker"]
     D --> E["SolvedAcClient.fetchProblem"]
     E --> F["ProblemCategoryMapper로 태그 정규화"]
     F --> G["MongoDB problems upsert"]
     H["관리자: 상세 수집 요청"] --> H2["ProblemCollectorController"]
-    H2 --> H3["Redis에 PENDING 상태·작업 index 원자 저장"]
+    H2 --> H3["Redis에 PENDING 상태·대상 manifest·작업 index 원자 저장"]
     H3 --> H4["taskExecutor worker"]
     H4 --> I["BojCrawler.crawlProblemDetails"]
     I --> G
@@ -51,7 +51,8 @@ flowchart TD
 ### 1. 메타데이터 수집과 정규화
 
 1. `ProblemCollectorController.collectMetadata`가 범위와 관리자 정보를 `ProblemCollectorService.collectMetadataAsync`에 전달한다.
-2. 서비스는 Redis Lua로 `PENDING` 상태와 sorted index를 함께 만든 뒤 `taskExecutor.execute`로 worker를 등록하고 `jobId`를 즉시 반환한다.
+2. 서비스는 Redis Lua로 `PENDING` 상태, 대상 manifest와 sorted index를 함께 만든
+   뒤 `taskExecutor.execute`로 worker를 등록하고 `jobId`를 즉시 반환한다.
 3. `collectMetadataAsyncInternal`은 번호별로 `SolvedAcClient.fetchProblem`을 호출한다.
 4. `ProblemCategoryMapper.extractTagsToEnglish`는 한국어 표시명을 `ProblemCategory`로 변환하고 영문 정식명 목록으로 중복 제거한다.
 5. `determineCategory`는 첫 번째 정규 태그를 대표 `category`로 사용한다. 태그가 없으면 `IMPLEMENTATION`이다.
@@ -63,6 +64,11 @@ worker의 갱신은 반영하지 않으며 `COMPLETED`, `FAILED`, `CANCELLED` �
 변경하지 않는다. 실패 ID는 작업별 Set에 24시간 보관하고 상태와 TTL을 맞춘다.
 sorted index는 작업을 만들 때 한 번만 기록한다.
 
+대상 manifest는 상태와 별도 Redis String으로 24시간 저장한다. 연속 메타데이터
+범위는 `range`, 비연속 메타데이터와 비메타데이터 작업은 실행 순서의 명시 ID로
+기록한다. 상태에는 manifest version과 SHA-256 참조만 두며, 상태·manifest·index는
+같은 생성 Lua에서 전부 저장하거나 전부 저장하지 않는다.
+
 ### 2. 상세 보강
 
 1. `collectDetailsBatchAsync`는 `descriptionHtml`이 없는 문제를 먼저 조회한다.
@@ -71,27 +77,33 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 
 ### 3. 실패 항목 재시도
 
-1. `COMPLETED` 작업은 실패 원장에 있는 문제만 다시 처리한다.
-2. `FAILED`·`CANCELLED` 작업은 실패 문제와 checkpoint 이후 미처리 대상을 합친다.
-3. 대상은 중복 제거 후 숫자 문제 ID 오름차순으로 실행한다.
-4. 원장이 도입되기 전에 생성된 부분 실패 작업과 중단된 비메타데이터 작업은
-   원본 범위 또는 현재 조회 가능한 대상을 보수적으로 다시 처리한다.
+1. 신규 `COMPLETED` 작업은 전체 대상을 처리했는지 확인하고 실패 원장에 있는
+   문제만 manifest 순서로 다시 처리한다.
+2. 신규 `FAILED`·`CANCELLED` 작업은 처리 완료 prefix의 실패 문제와
+   `processedCount` 이후 manifest suffix를 합친다.
+3. 처리 위치의 직전 ID와 checkpoint, 실패 ID와 처리 prefix가 맞는지 확인한다.
+4. 비메타데이터 작업은 선택된 ID만 `findAllById`로 조회해 원래 순서로 복원한다.
+   원본 작업 뒤 DB에 추가된 문제는 대상에 섞이지 않는다.
 5. 실패 문제가 그 사이 삭제됐다면 제외하고 남은 문제를 계속 처리한다.
-6. Set이 존재하지만 `failCount`와 원장 크기가 다르거나 원장 key가 Set이 아니면
-   새 작업을 만들지 않고 `409 RESOURCE_STATE_CONFLICT`를 반환한다.
+6. manifest 참조가 있는데 key가 없거나 자료형·hash·JSON·대상 수·처리 위치가
+   맞지 않으면 새 작업을 만들지 않고 `409 RESOURCE_STATE_CONFLICT`를 반환한다.
+7. manifest가 없는 기존 작업만 원본 범위·checkpoint 또는 현재 조회 가능한
+   비메타데이터 대상을 사용하는 종전 경로를 유지한다.
 
 상태 JSON의 진행률 갱신과 실패 ID 추가는 같은 Lua에서 수행한다. 취소가 먼저
 반영되면 늦게 도착한 진행률과 실패 ID는 모두 폐기된다.
 
 [실패 항목 원장과 검증 결과](../refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)
 
+[대상 manifest와 중단 지점 검증 결과](../refactoring/be-refactor/PHASE_6L_CRAWLER_TARGET_MANIFEST.md)
+
 ### 4. 단일 인스턴스 재시작 정리
 
 1. 복구 설정이 켜진 단일 BE는 작업 생성 gate를 닫은 상태로 시작한다.
 2. Redis 작업 index를 읽고 이전 `PENDING`·`RUNNING` 작업만 Lua CAS로
    `FAILED` 처리한다.
-3. 처리 수, checkpoint와 실패 원장은 보존하고 상태·원장의 TTL은 24시간으로
-   맞춘다.
+3. 처리 수, checkpoint, 실패 원장과 대상 manifest 참조는 보존하고 상태·원장·
+   manifest의 TTL은 24시간으로 맞춘다.
 4. 복구가 끝난 뒤에만 새 작업 생성을 허용한다. 복구 오류는 시작 실패로
    전파한다.
 5. 원본 작업을 자동 재개하지 않으며 관리자가 재시도하면 별도 작업을 만든다.
@@ -135,13 +147,14 @@ worker lease와 fencing이 없으므로 기본값 `false`를 유지한다.
 ## 알려진 제약
 
 - 항목 하나의 수집 실패는 `failCount`로 기록되지만 전체 작업은 `COMPLETED`가 될 수 있다.
-- 첫 재시도는 기록된 실패 ID만 선택하지만, 떨어진 ID를 묶은 재시도 작업이 다시
-  중단되면 연속 `range` 사이의 문제를 중복 처리할 수 있다. 정확한 대상 manifest는
-  아직 없다.
+- 대상 manifest는 문제 ID의 포함 관계와 실행 순서만 고정한다. 당시 제목·본문·
+  언어를 복제하는 snapshot이나 exactly-once 실행은 아니다.
+- manifest 참조가 있는 작업의 대상 데이터가 없거나 손상됐다면 legacy 범위로
+  우회하지 않고 409를 반환한다.
 - 같은 원본 작업의 재시도를 동시에 요청하면 여러 자식 작업이 만들어질 수 있다.
 - 취소는 항목 사이에서 상태를 확인하는 방식이라 진행 중 HTTP 호출이나 대기 시간을 즉시 중단하지 않는다.
-- 작업 상태는 24시간 TTL이다. 단일 BE 재시작에서는 진행 작업을 `FAILED`로
-  정리하지만 자동으로 이어서 실행하지 않는다.
+- 작업 상태·실패 원장·대상 manifest는 24시간 TTL이다. 단일 BE 재시작에서는
+  진행 작업을 `FAILED`로 정리하지만 자동으로 이어서 실행하지 않는다.
 - 상태 전이는 같은 Redis를 공유하는 여러 인스턴스에서 CAS로 조정한다. 다른
   인스턴스의 worker 소유권을 판별하는 lease와 fencing은 없으므로 재시작 복구
   설정은 다중 인스턴스에서 사용할 수 없다.

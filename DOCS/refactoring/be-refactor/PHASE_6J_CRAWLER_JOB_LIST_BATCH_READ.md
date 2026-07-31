@@ -146,10 +146,15 @@ SPRING_DATA_REDIS_PORT=6398 \
   Redis 단계의 범위 조회나 보조 index는 이번 범위에 포함하지 않았다.
 - 작업 index 자체에는 TTL이 없다. 상태가 만료된 index 항목은 목록을 읽을 때
   정리하므로 조회가 없는 동안의 선제 정리 정책은 별도 단계다.
-- 작업 상태와 실패 원장은 24시간 뒤 만료된다. 주·월 메트릭을 장기간 보존하는
-  저장 정책은 별도 단계다.
+- Phase 6J의 작업 상태와 실패 원장은 24시간 뒤 만료된다. 후속
+  [Phase 6L](./PHASE_6L_CRAWLER_TARGET_MANIFEST.md)에서 추가한 대상 manifest도
+  같은 TTL을 사용한다. 주·월 메트릭 장기 보존 정책은 별도 단계다.
 - 서버 재시작 뒤 `PENDING`·`RUNNING` 작업을 자동으로 이어받는 worker lease는
   없다. 후속 [Phase 6K](./PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)는 단일
   BE 시작 시 진행 작업을 `FAILED`로 정리한다.
 - 현재는 standalone Redis 구성을 기준으로 한다. Redis Cluster에서 여러 상태
   key를 `MGET`하려면 같은 hash slot을 보장하거나 다른 조회 방식을 사용해야 한다.
+
+> [Phase 6L](./PHASE_6L_CRAWLER_TARGET_MANIFEST.md) 이후 stale 상태 정리는 실패
+> 원장과 대상 manifest key를 함께 삭제한다. Phase 6J의 조회 명령 수 기준선은
+> 변경하지 않는다.

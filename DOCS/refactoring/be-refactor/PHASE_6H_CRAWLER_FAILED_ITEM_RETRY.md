@@ -157,11 +157,10 @@ SPRING_DATA_REDIS_PORT=6398 \
 
 ## 남은 제한
 
-- 메타데이터 재시도의 공개 `range`는 선택 대상의 최솟값과 최댓값, 상세
-  새로고침은 원본 범위를 담는다. 상세 수집·언어 갱신은 `range=null`이다.
-  `{2, 5}` 같은 비연속 대상 목록은 별도로 저장하지 않으므로 해당 자식 작업이
-  다시 중단되면 다음 재시도에서 중간 ID를 중복 처리할 수 있다. 정확한 대상
-  manifest는 별도 단계다.
+- Phase 6H 시점의 공개 `range`는 선택 대상의 최솟값과 최댓값만 담아 `{2, 5}`
+  같은 비연속 자식 작업이 다시 중단되면 중간 ID를 중복 처리할 수 있었다. 후속
+  [Phase 6L](./PHASE_6L_CRAWLER_TARGET_MANIFEST.md)에서 실제 대상 ID와 순서를
+  별도 manifest로 저장해 이 제한을 해소했다.
 - 같은 원본 작업의 재시도 요청을 동시에 보내면 여러 자식 작업이 만들어질 수
   있다. 원본별 retry claim은 별도 단계다.
 - 서버 재시작 뒤 `PENDING`·`RUNNING` 작업을 자동으로 이어받는 worker lease는
@@ -176,4 +175,6 @@ SPRING_DATA_REDIS_PORT=6398 \
 
 > 작업 목록의 1+N 조회는 후속
 > [Phase 6J](./PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)에서 일괄 처리했다.
+> 정확한 재시도 대상 저장은 후속
+> [Phase 6L](./PHASE_6L_CRAWLER_TARGET_MANIFEST.md)에서 처리했다.
 > Phase 6H의 실패 항목 재시도 기준선과 결과는 변경하지 않는다.
