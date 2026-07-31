@@ -30,6 +30,10 @@ import java.util.HexFormat
 import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 /**
@@ -50,7 +54,13 @@ class ProblemCollectorService(
     private val pacer: ProblemCollectorPacer,
     private val recoveryState: ProblemCollectorRecoveryState,
     @param:Qualifier("taskExecutor")
-    private val taskExecutor: Executor? = null
+    private val taskExecutor: Executor? = null,
+    private val workerLeaseProperties: ProblemCollectorWorkerLeaseProperties =
+        ProblemCollectorWorkerLeaseProperties(),
+    private val workerIdentity: ProblemCollectorWorkerIdentity =
+        ProblemCollectorWorkerIdentity(),
+    @param:Qualifier(PROBLEM_COLLECTOR_HEARTBEAT_EXECUTOR)
+    private val heartbeatExecutor: ScheduledExecutorService? = null
 ) {
 
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
@@ -59,6 +69,7 @@ class ProblemCollectorService(
         private const val JOB_KEY_PREFIX = "problem:job:status:"
         private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
         private const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
+        private const val JOB_LEASE_KEY_PREFIX = "problem:job:lease:"
         private const val JOB_INDEX_KEY = "problem:job:index"
         private const val JOB_TTL_SECONDS = 86400L
         private const val MAX_JOB_STATE_RETRIES = 3
@@ -66,6 +77,9 @@ class ProblemCollectorService(
         private const val JOB_STATE_MISSING = -1L
         private const val JOB_STATE_CONFLICT = 0L
         private const val JOB_STATE_UPDATED = 1L
+        private const val JOB_LEASE_CONFLICT = -3L
+        private const val JOB_LEASE_INVALID = -4L
+        private const val JOB_LEASE_DURATION_INVALID = -6L
         private const val METADATA_AVG_SECONDS = 1L
         private const val DETAILS_AVG_SECONDS = 3L
         private const val LANGUAGE_AVG_SECONDS = 1L
@@ -131,7 +145,151 @@ class ProblemCollectorService(
             if refreshTargetTtl then
                 redis.call('EXPIRE', KEYS[3], ARGV[3])
             end
+            if ARGV[7] == '1' then
+                redis.call('DEL', KEYS[4])
+            end
             return 1
+            """.trimIndent(),
+            Long::class.java
+        )
+        private val CLAIM_JOB_SCRIPT = DefaultRedisScript(
+            """
+            local current = redis.call('GET', KEYS[1])
+            if not current then
+                return -1
+            end
+            if current ~= ARGV[1] then
+                return 0
+            end
+
+            local leaseMillis = tonumber(ARGV[5])
+            if not leaseMillis or leaseMillis < 1 then
+                return -6
+            end
+
+            local leaseType = redis.call('TYPE', KEYS[4])
+            if type(leaseType) == 'table' then
+                leaseType = leaseType['ok']
+            end
+            if leaseType == 'string' then
+                return -3
+            end
+            if leaseType ~= 'none' then
+                return -4
+            end
+
+            local refreshTargetTtl = false
+            if ARGV[6] ~= '' then
+                local targetType = redis.call('TYPE', KEYS[3])
+                if type(targetType) == 'table' then
+                    targetType = targetType['ok']
+                end
+                if targetType == 'string' then
+                    refreshTargetTtl = true
+                end
+            end
+
+            local failureType = redis.call('TYPE', KEYS[2])
+            if type(failureType) == 'table' then
+                failureType = failureType['ok']
+            end
+
+            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+            redis.call('SET', KEYS[4], ARGV[4], 'PX', ARGV[5])
+            if failureType == 'set' then
+                redis.call('EXPIRE', KEYS[2], ARGV[3])
+            end
+            if refreshTargetTtl then
+                redis.call('EXPIRE', KEYS[3], ARGV[3])
+            end
+            return 1
+            """.trimIndent(),
+            Long::class.java
+        )
+        private val OWNED_COMPARE_AND_SET_JOB_SCRIPT = DefaultRedisScript(
+            """
+            local current = redis.call('GET', KEYS[1])
+            if not current then
+                return -1
+            end
+            if current ~= ARGV[1] then
+                return 0
+            end
+
+            local leaseMillis = tonumber(ARGV[8])
+            if not leaseMillis or leaseMillis < 1 then
+                return -6
+            end
+
+            local leaseType = redis.call('TYPE', KEYS[4])
+            if type(leaseType) == 'table' then
+                leaseType = leaseType['ok']
+            end
+            if leaseType == 'none' then
+                return -3
+            end
+            if leaseType ~= 'string' then
+                return -4
+            end
+            if redis.call('GET', KEYS[4]) ~= ARGV[7] then
+                return -3
+            end
+
+            local refreshTargetTtl = false
+            if ARGV[6] ~= '' then
+                local targetType = redis.call('TYPE', KEYS[3])
+                if type(targetType) == 'table' then
+                    targetType = targetType['ok']
+                end
+                if targetType == 'string' then
+                    refreshTargetTtl = true
+                end
+            end
+
+            if ARGV[4] ~= '' then
+                local failureType = redis.call('TYPE', KEYS[2])
+                if type(failureType) == 'table' then
+                    failureType = failureType['ok']
+                end
+                if failureType ~= 'none' and failureType ~= 'set' then
+                    return -2
+                end
+            end
+
+            if ARGV[4] ~= '' then
+                redis.call('SADD', KEYS[2], ARGV[4])
+            end
+            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+            if ARGV[5] ~= '0' then
+                redis.call('EXPIRE', KEYS[2], ARGV[3])
+            end
+            if refreshTargetTtl then
+                redis.call('EXPIRE', KEYS[3], ARGV[3])
+            end
+            if ARGV[9] == '1' then
+                redis.call('DEL', KEYS[4])
+            else
+                redis.call('PEXPIRE', KEYS[4], ARGV[8])
+            end
+            return 1
+            """.trimIndent(),
+            Long::class.java
+        )
+        private val RENEW_JOB_LEASE_SCRIPT = DefaultRedisScript(
+            """
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+            end
+            return 0
+            """.trimIndent(),
+            Long::class.java
+        )
+        private val RELEASE_JOB_LEASE_SCRIPT = DefaultRedisScript(
+            """
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('DEL', KEYS[1])
+            end
+            return 0
             """.trimIndent(),
             Long::class.java
         )
@@ -150,6 +308,12 @@ class ProblemCollectorService(
     private data class ManifestTargetSelection(
         val explicitIds: List<String>,
         val range: JobRange?
+    )
+
+    private data class JobWorkerContext(
+        val attempt: ProblemJobWorkerAttempt?,
+        val leaseValue: String?,
+        val ownershipLost: AtomicBoolean = AtomicBoolean(false)
     )
 
     /**
@@ -273,6 +437,9 @@ class ProblemCollectorService(
     }
 
     fun failOrphanedJobsDuringStartup(): Int {
+        check(!workerLeaseProperties.enabled) {
+            "worker lease가 활성화된 동안 시작 orphan 실패 처리를 실행할 수 없습니다."
+        }
         check(!recoveryState.isReady()) {
             "재시작 orphan 작업 복구는 작업 생성 gate가 닫힌 시작 단계에서만 실행할 수 있습니다."
         }
@@ -914,9 +1081,10 @@ class ProblemCollectorService(
             manifestExplicitIds = emptyList(),
             manifestRange = null
         )
-        if (markRunning(created.jobId)) {
-            markCompleted(created.jobId)
-        }
+        runJobLoop(
+            jobId = created.jobId,
+            defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
+        ) { }
         return readJob(created.jobId)
             ?: throw IllegalStateException("생성한 작업 상태를 찾을 수 없습니다. jobId=${created.jobId}")
     }
@@ -925,13 +1093,13 @@ class ProblemCollectorService(
         runJobLoop(
             jobId = jobId,
             defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
-        ) {
+        ) { worker ->
             var processed = 0
             var success = 0
             var fail = 0
 
             for (problemId in problemIds) {
-                if (!isRunning(jobId)) {
+                if (!isWorkerRunning(jobId, worker)) {
                     return@runJobLoop
                 }
 
@@ -946,7 +1114,19 @@ class ProblemCollectorService(
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problemId.toString(), failedProblemId)
+                if (
+                    !updateProgress(
+                        jobId,
+                        worker,
+                        processed,
+                        success,
+                        fail,
+                        problemId.toString(),
+                        failedProblemId
+                    )
+                ) {
+                    return@runJobLoop
+                }
                 pacer.pauseMetadata()
             }
         }
@@ -989,13 +1169,13 @@ class ProblemCollectorService(
     }
 
     private fun collectDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
-        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) {
+        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
             var processed = 0
             var success = 0
             var fail = 0
 
             for (problem in targetProblems) {
-                if (!isRunning(jobId)) {
+                if (!isWorkerRunning(jobId, worker)) {
                     return@runJobLoop
                 }
 
@@ -1020,20 +1200,32 @@ class ProblemCollectorService(
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problem.id.value, failedProblemId)
+                if (
+                    !updateProgress(
+                        jobId,
+                        worker,
+                        processed,
+                        success,
+                        fail,
+                        problem.id.value,
+                        failedProblemId
+                    )
+                ) {
+                    return@runJobLoop
+                }
                 pacer.pauseDetails()
             }
         }
     }
 
     private fun refreshDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
-        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) {
+        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
             var processed = 0
             var success = 0
             var fail = 0
 
             for (problem in targetProblems) {
-                if (!isRunning(jobId)) {
+                if (!isWorkerRunning(jobId, worker)) {
                     return@runJobLoop
                 }
 
@@ -1074,20 +1266,32 @@ class ProblemCollectorService(
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problem.id.value, failedProblemId)
+                if (
+                    !updateProgress(
+                        jobId,
+                        worker,
+                        processed,
+                        success,
+                        fail,
+                        problem.id.value,
+                        failedProblemId
+                    )
+                ) {
+                    return@runJobLoop
+                }
                 pacer.pauseDetails()
             }
         }
     }
 
     private fun updateLanguageBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
-        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) {
+        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
             var processed = 0
             var success = 0
             var fail = 0
 
             for (problem in targetProblems) {
-                if (!isRunning(jobId)) {
+                if (!isWorkerRunning(jobId, worker)) {
                     return@runJobLoop
                 }
 
@@ -1109,7 +1313,19 @@ class ProblemCollectorService(
                 }
 
                 processed++
-                updateProgress(jobId, processed, success, fail, problem.id.value, failedProblemId)
+                if (
+                    !updateProgress(
+                        jobId,
+                        worker,
+                        processed,
+                        success,
+                        fail,
+                        problem.id.value,
+                        failedProblemId
+                    )
+                ) {
+                    return@runJobLoop
+                }
             }
         }
     }
@@ -1129,27 +1345,34 @@ class ProblemCollectorService(
         }
     }
 
-    private inline fun runJobLoop(
+    private fun runJobLoop(
         jobId: String,
         defaultFailureCode: String,
-        block: () -> Unit
+        block: (JobWorkerContext) -> Unit
     ) {
-        val marked = markRunning(jobId)
-        if (!marked) {
-            return
-        }
+        val worker = claimWorker(jobId) ?: return
+        var heartbeat: ScheduledFuture<*>? = null
 
         try {
-            block()
-            if (isRunning(jobId)) {
-                markCompleted(jobId)
+            heartbeat = startHeartbeat(jobId, worker)
+            block(worker)
+            if (isWorkerRunning(jobId, worker)) {
+                markWorkerCompleted(jobId, worker)
             }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업이 인터럽트되었습니다.")
+            markWorkerFailed(
+                jobId,
+                worker,
+                ErrorCode.WORKER_UNAVAILABLE.code,
+                "작업이 인터럽트되었습니다."
+            )
         } catch (e: Exception) {
             log.error("job failed unexpectedly: jobId=$jobId, error=${e.message}", e)
-            markFailed(jobId, defaultFailureCode, e.message ?: "unexpected error")
+            markWorkerFailed(jobId, worker, defaultFailureCode, e.message ?: "unexpected error")
+        } finally {
+            heartbeat?.cancel(false)
+            releaseWorkerLease(jobId, worker)
         }
     }
 
@@ -1206,27 +1429,92 @@ class ProblemCollectorService(
         return if (job.jobType == type) job else null
     }
 
-    private fun markRunning(jobId: String): Boolean {
-        val snapshot = readJobSnapshot(jobId) ?: return false
+    private fun claimWorker(jobId: String): JobWorkerContext? {
+        val snapshot = readJobSnapshot(jobId) ?: return null
         if (snapshot.job.status != JobStatus.PENDING) {
-            return false
+            return null
         }
 
         val now = nowEpochSeconds()
+        if (!workerLeaseProperties.enabled) {
+            val running = snapshot.job.copy(
+                status = JobStatus.RUNNING,
+                startedAt = now,
+                lastHeartbeatAt = now,
+                errorCode = null,
+                errorMessage = null
+            )
+            return if (compareAndSetJob(snapshot, running) != null) {
+                JobWorkerContext(attempt = null, leaseValue = null)
+            } else {
+                null
+            }
+        }
+
+        val attempt = ProblemJobWorkerAttempt(
+            ownerId = workerIdentity.ownerId,
+            attemptId = UUID.randomUUID().toString(),
+            attemptNumber = Math.addExact(snapshot.job.workerAttempt?.attemptNumber ?: 0L, 1L)
+        )
         val running = snapshot.job.copy(
             status = JobStatus.RUNNING,
             startedAt = now,
             lastHeartbeatAt = now,
             errorCode = null,
-            errorMessage = null
+            errorMessage = null,
+            workerAttempt = attempt
         )
-        return compareAndSetJob(snapshot, running) != null
+        val normalized = normalize(running)
+        val leaseValue = objectMapper.writeValueAsString(attempt)
+        val result = redisTemplate.execute(
+            CLAIM_JOB_SCRIPT,
+            jobStateKeys(jobId),
+            snapshot.rawJson,
+            objectMapper.writeValueAsString(normalized),
+            JOB_TTL_SECONDS.toString(),
+            leaseValue,
+            workerLeaseProperties.leaseDuration.toMillis().toString(),
+            normalized.targetManifest?.schemaVersion?.toString().orEmpty()
+        )
+        return when (result) {
+            JOB_STATE_UPDATED -> JobWorkerContext(attempt, leaseValue)
+            JOB_STATE_MISSING,
+            JOB_STATE_CONFLICT,
+            JOB_LEASE_CONFLICT -> null
+            JOB_FAILURE_LEDGER_INVALID -> throw IllegalStateException(
+                "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=$jobId"
+            )
+            JOB_LEASE_INVALID -> throw IllegalStateException(
+                "작업 lease Redis 타입이 올바르지 않습니다. jobId=$jobId"
+            )
+            JOB_LEASE_DURATION_INVALID -> throw IllegalStateException(
+                "작업 lease 시간이 올바르지 않습니다. jobId=$jobId"
+            )
+            else -> throw IllegalStateException(
+                "알 수 없는 작업 선점 결과입니다. jobId=$jobId, result=$result"
+            )
+        }
     }
 
-    private fun markCompleted(jobId: String) {
+    private fun markWorkerCompleted(jobId: String, worker: JobWorkerContext) {
         repeat(MAX_JOB_STATE_RETRIES + 1) {
             val snapshot = readJobSnapshot(jobId) ?: return
-            if (snapshot.job.status != JobStatus.RUNNING) {
+            if (!isWorkerSnapshot(snapshot.job, worker)) {
+                return
+            }
+            if (snapshot.job.processedCount != snapshot.job.totalCount) {
+                log.error(
+                    "job completion rejected due to incomplete progress: jobId={}, processed={}, total={}",
+                    jobId,
+                    snapshot.job.processedCount,
+                    snapshot.job.totalCount
+                )
+                markWorkerFailed(
+                    jobId,
+                    worker,
+                    ErrorCode.WORKER_UNAVAILABLE.code,
+                    "처리 수가 전체 대상 수와 일치하지 않아 작업을 완료하지 못했습니다."
+                )
                 return
             }
 
@@ -1236,11 +1524,39 @@ class ProblemCollectorService(
                 completedAt = now,
                 lastHeartbeatAt = now
             )
-            if (compareAndSetJob(snapshot, completed) != null) {
+            if (compareAndSetWorkerJob(snapshot, completed, worker) != null) {
                 return
             }
         }
         log.warn("job completion CAS retries exhausted: jobId=$jobId")
+    }
+
+    private fun markWorkerFailed(
+        jobId: String,
+        worker: JobWorkerContext,
+        errorCode: String,
+        message: String
+    ): Boolean {
+        repeat(MAX_JOB_STATE_RETRIES + 1) {
+            val snapshot = readJobSnapshot(jobId) ?: return false
+            if (!isWorkerSnapshot(snapshot.job, worker)) {
+                return false
+            }
+
+            val now = nowEpochSeconds()
+            val failed = snapshot.job.copy(
+                status = JobStatus.FAILED,
+                completedAt = now,
+                lastHeartbeatAt = now,
+                errorCode = errorCode,
+                errorMessage = message
+            )
+            if (compareAndSetWorkerJob(snapshot, failed, worker) != null) {
+                return true
+            }
+        }
+        log.warn("owned job failure CAS retries exhausted: jobId=$jobId")
+        return false
     }
 
     private fun markFailed(jobId: String, errorCode: String, message: String): Boolean {
@@ -1268,26 +1584,147 @@ class ProblemCollectorService(
 
     private fun updateProgress(
         jobId: String,
+        worker: JobWorkerContext,
         processedCount: Int,
         successCount: Int,
         failCount: Int,
         checkpointId: String?,
         failedProblemId: String?
-    ) {
-        val snapshot = readJobSnapshot(jobId) ?: return
-        if (snapshot.job.status != JobStatus.RUNNING) {
+    ): Boolean {
+        repeat(MAX_JOB_STATE_RETRIES + 1) {
+            val snapshot = readJobSnapshot(jobId) ?: run {
+                worker.ownershipLost.set(true)
+                return false
+            }
+            if (!isWorkerSnapshot(snapshot.job, worker)) {
+                return false
+            }
+
+            val now = nowEpochSeconds()
+            val updated = snapshot.job.copy(
+                processedCount = processedCount,
+                successCount = successCount,
+                failCount = failCount,
+                lastCheckpointId = checkpointId ?: snapshot.job.lastCheckpointId,
+                lastHeartbeatAt = now
+            )
+            if (compareAndSetWorkerJob(snapshot, updated, worker, failedProblemId) != null) {
+                return true
+            }
+        }
+        log.warn("job progress CAS retries exhausted: jobId=$jobId")
+        worker.ownershipLost.set(true)
+        return false
+    }
+
+    private fun startHeartbeat(
+        jobId: String,
+        worker: JobWorkerContext
+    ): ScheduledFuture<*>? {
+        if (worker.attempt == null) {
+            return null
+        }
+
+        val executor = checkNotNull(heartbeatExecutor) {
+            "worker lease를 활성화하려면 problem collector heartbeat executor가 필요합니다."
+        }
+        val intervalMillis = workerLeaseProperties.heartbeatInterval.toMillis()
+        return executor.scheduleAtFixedRate(
+            {
+                try {
+                    updateHeartbeat(jobId, worker)
+                } catch (e: RuntimeException) {
+                    worker.ownershipLost.set(true)
+                    log.error("job heartbeat failed: jobId=$jobId, error=${e.message}", e)
+                }
+            },
+            intervalMillis,
+            intervalMillis,
+            TimeUnit.MILLISECONDS
+        )
+    }
+
+    private fun updateHeartbeat(jobId: String, worker: JobWorkerContext) {
+        if (worker.ownershipLost.get()) {
+            return
+        }
+        val leaseValue = worker.leaseValue ?: return
+        val renewed = redisTemplate.execute(
+            RENEW_JOB_LEASE_SCRIPT,
+            listOf(leaseKey(jobId)),
+            leaseValue,
+            workerLeaseProperties.leaseDuration.toMillis().toString()
+        )
+        if (renewed != JOB_STATE_UPDATED) {
+            worker.ownershipLost.set(true)
+            log.warn("job lease ownership lost during heartbeat: jobId=$jobId")
             return
         }
 
-        val now = nowEpochSeconds()
-        val updated = snapshot.job.copy(
-            processedCount = processedCount,
-            successCount = successCount,
-            failCount = failCount,
-            lastCheckpointId = checkpointId ?: snapshot.job.lastCheckpointId,
-            lastHeartbeatAt = now
-        )
-        compareAndSetJob(snapshot, updated, failedProblemId)
+        repeat(MAX_JOB_STATE_RETRIES + 1) {
+            val snapshot = readJobSnapshot(jobId) ?: run {
+                worker.ownershipLost.set(true)
+                return
+            }
+            if (!isWorkerSnapshot(snapshot.job, worker)) {
+                worker.ownershipLost.set(true)
+                return
+            }
+
+            val updated = snapshot.job.copy(lastHeartbeatAt = nowEpochSeconds())
+            if (compareAndSetWorkerJob(snapshot, updated, worker) != null) {
+                return
+            }
+            if (worker.ownershipLost.get()) {
+                return
+            }
+        }
+        log.warn("job heartbeat state CAS retries exhausted: jobId=$jobId")
+    }
+
+    private fun releaseWorkerLease(jobId: String, worker: JobWorkerContext) {
+        val leaseValue = worker.leaseValue ?: return
+        try {
+            redisTemplate.execute(
+                RELEASE_JOB_LEASE_SCRIPT,
+                listOf(leaseKey(jobId)),
+                leaseValue
+            )
+        } catch (e: RuntimeException) {
+            log.error("job lease release failed: jobId=$jobId, error=${e.message}", e)
+        }
+    }
+
+    private fun isWorkerRunning(jobId: String, worker: JobWorkerContext): Boolean {
+        if (worker.ownershipLost.get()) {
+            return false
+        }
+        val current = readJob(jobId) ?: return false
+        if (!isWorkerSnapshot(current, worker)) {
+            return false
+        }
+
+        val leaseValue = worker.leaseValue ?: return true
+        val owned = redisTemplate.opsForValue().get(leaseKey(jobId)) == leaseValue
+        if (!owned) {
+            worker.ownershipLost.set(true)
+        }
+        return owned
+    }
+
+    private fun isWorkerSnapshot(
+        job: JobStatusUnifiedResponse,
+        worker: JobWorkerContext
+    ): Boolean {
+        if (job.status != JobStatus.RUNNING) {
+            return false
+        }
+        val attempt = worker.attempt
+        return if (attempt == null) {
+            job.workerAttempt == null
+        } else {
+            !worker.ownershipLost.get() && job.workerAttempt == attempt
+        }
     }
 
     private fun readJob(jobId: String): JobStatusUnifiedResponse? {
@@ -1481,17 +1918,14 @@ class ProblemCollectorService(
         }
         val result = redisTemplate.execute(
             COMPARE_AND_SET_JOB_SCRIPT,
-            listOf(
-                jobKey(normalized.jobId),
-                failureKey(normalized.jobId),
-                targetKey(normalized.jobId)
-            ),
+            jobStateKeys(normalized.jobId),
             snapshot.rawJson,
             objectMapper.writeValueAsString(normalized),
             JOB_TTL_SECONDS.toString(),
             failedProblemId.orEmpty(),
             normalized.failCount.toString(),
-            normalized.targetManifest?.schemaVersion?.toString().orEmpty()
+            normalized.targetManifest?.schemaVersion?.toString().orEmpty(),
+            if (isTerminal(normalized.status)) "1" else "0"
         )
         return when (result) {
             JOB_STATE_UPDATED -> normalized
@@ -1502,6 +1936,62 @@ class ProblemCollectorService(
             JOB_STATE_CONFLICT -> null
             else -> throw IllegalStateException(
                 "알 수 없는 작업 상태 갱신 결과입니다. jobId=${normalized.jobId}, result=$result"
+            )
+        }
+    }
+
+    private fun compareAndSetWorkerJob(
+        snapshot: JobSnapshot,
+        updated: JobStatusUnifiedResponse,
+        worker: JobWorkerContext,
+        failedProblemId: String? = null
+    ): JobStatusUnifiedResponse? {
+        if (worker.attempt == null) {
+            return compareAndSetJob(snapshot, updated, failedProblemId)
+        }
+        if (worker.ownershipLost.get() || snapshot.job.workerAttempt != worker.attempt) {
+            return null
+        }
+
+        val normalized = normalize(updated)
+        check(normalized.targetManifest == snapshot.job.targetManifest) {
+            "작업 상태 갱신 중 대상 manifest 참조를 변경할 수 없습니다. jobId=${normalized.jobId}"
+        }
+        check(normalized.workerAttempt == worker.attempt) {
+            "worker 상태 갱신 중 attempt를 변경할 수 없습니다. jobId=${normalized.jobId}"
+        }
+        val result = redisTemplate.execute(
+            OWNED_COMPARE_AND_SET_JOB_SCRIPT,
+            jobStateKeys(normalized.jobId),
+            snapshot.rawJson,
+            objectMapper.writeValueAsString(normalized),
+            JOB_TTL_SECONDS.toString(),
+            failedProblemId.orEmpty(),
+            normalized.failCount.toString(),
+            normalized.targetManifest?.schemaVersion?.toString().orEmpty(),
+            requireNotNull(worker.leaseValue),
+            workerLeaseProperties.leaseDuration.toMillis().toString(),
+            if (isTerminal(normalized.status)) "1" else "0"
+        )
+        return when (result) {
+            JOB_STATE_UPDATED -> normalized
+            JOB_FAILURE_LEDGER_INVALID -> throw IllegalStateException(
+                "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=${normalized.jobId}"
+            )
+            JOB_LEASE_INVALID -> throw IllegalStateException(
+                "작업 lease Redis 타입이 올바르지 않습니다. jobId=${normalized.jobId}"
+            )
+            JOB_LEASE_DURATION_INVALID -> throw IllegalStateException(
+                "작업 lease 시간이 올바르지 않습니다. jobId=${normalized.jobId}"
+            )
+            JOB_LEASE_CONFLICT -> {
+                worker.ownershipLost.set(true)
+                null
+            }
+            JOB_STATE_MISSING,
+            JOB_STATE_CONFLICT -> null
+            else -> throw IllegalStateException(
+                "알 수 없는 worker 상태 갱신 결과입니다. jobId=${normalized.jobId}, result=$result"
             )
         }
     }
@@ -1533,7 +2023,7 @@ class ProblemCollectorService(
             redisTemplate.opsForZSet().remove(JOB_INDEX_KEY, *staleIds.toTypedArray())
             redisTemplate.delete(
                 staleIds.flatMap { jobId ->
-                    listOf(failureKey(jobId), targetKey(jobId))
+                    listOf(failureKey(jobId), targetKey(jobId), leaseKey(jobId))
                 }
             )
         }
@@ -1616,11 +2106,6 @@ class ProblemCollectorService(
 
         val index = pending.indexOfFirst { it.jobId == job.jobId }
         return job.copy(queuePosition = if (index >= 0) index + 1 else null)
-    }
-
-    private fun isRunning(jobId: String): Boolean {
-        val current = readJob(jobId) ?: return false
-        return current.status == JobStatus.RUNNING
     }
 
     private fun isAfterCheckpoint(problem: Problem, checkpointExclusive: Int?): Boolean {
@@ -1805,6 +2290,19 @@ class ProblemCollectorService(
 
     private fun targetKey(jobId: String): String {
         return "$JOB_TARGET_KEY_PREFIX$jobId"
+    }
+
+    private fun leaseKey(jobId: String): String {
+        return "$JOB_LEASE_KEY_PREFIX$jobId"
+    }
+
+    private fun jobStateKeys(jobId: String): List<String> {
+        return listOf(
+            jobKey(jobId),
+            failureKey(jobId),
+            targetKey(jobId),
+            leaseKey(jobId)
+        )
     }
 
     private fun nowEpochSeconds(): Long {

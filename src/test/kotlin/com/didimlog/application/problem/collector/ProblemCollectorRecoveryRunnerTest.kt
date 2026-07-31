@@ -73,4 +73,24 @@ class ProblemCollectorRecoveryRunnerTest {
         assertThat(recoveryState.isReady()).isFalse()
         verify(exactly = 1) { service.failOrphanedJobsDuringStartup() }
     }
+
+    @Test
+    fun `시작 복구와 worker lease를 함께 활성화할 수 없다`() {
+        val properties = ProblemCollectorRecoveryProperties(
+            failOrphanedJobsOnStartup = true
+        )
+
+        val exception = assertThrows<IllegalArgumentException> {
+            ProblemCollectorRecoveryRunner(
+                problemCollectorService = service,
+                recoveryState = ProblemCollectorRecoveryState(properties),
+                properties = properties,
+                workerLeaseProperties = ProblemCollectorWorkerLeaseProperties(
+                    enabled = true
+                )
+            )
+        }
+
+        assertThat(exception.message).contains("cannot be enabled together")
+    }
 }

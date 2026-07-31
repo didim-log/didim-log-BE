@@ -70,6 +70,7 @@ class ProblemCollectorServiceTest {
         private const val JOB_KEY_PREFIX = "problem:job:status:"
         private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
         private const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
+        private const val JOB_LEASE_KEY_PREFIX = "problem:job:lease:"
         private const val JOB_INDEX_KEY = "problem:job:index"
     }
 
@@ -115,7 +116,7 @@ class ProblemCollectorServiceTest {
                         }
                     }
 
-                    keys.size == 3 -> {
+                    keys.size == 4 -> {
                         val current = valueStore[keys[0]]
                         when {
                             current == null -> -1L
@@ -126,6 +127,9 @@ class ProblemCollectorServiceTest {
                                 if (failedProblemId.isNotEmpty()) {
                                     failureStore.computeIfAbsent(keys[1]) { mutableSetOf() }
                                         .add(failedProblemId)
+                                }
+                                if (scriptArguments[6].toString() == "1") {
+                                    valueStore.remove(keys[3])
                                 }
                                 1L
                             }
@@ -389,6 +393,57 @@ class ProblemCollectorServiceTest {
         assertThat(service.getMetadataCollectJobStatus(jobId)?.status).isEqualTo(JobStatus.COMPLETED)
         verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
         verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+    }
+
+    @Test
+    @DisplayName("진행률 CAS가 계속 충돌하면 처리되지 않은 작업을 완료하지 않는다")
+    fun `progress conflicts do not produce an incomplete completed job`() {
+        var submittedTask: Runnable? = null
+        service = createService(Executor { task -> submittedTask = task })
+        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { solvedAcClient.fetchProblem(2) } returns SolvedAcProblemResponse(2, "B", 1, emptyList())
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val jobId = service.collectMetadataAsync(1, 2, "admin", "127.0.0.1")
+        val stateKeys = listOf(
+            "$JOB_KEY_PREFIX$jobId",
+            "$JOB_FAILURE_KEY_PREFIX$jobId",
+            "$JOB_TARGET_KEY_PREFIX$jobId",
+            "$JOB_LEASE_KEY_PREFIX$jobId"
+        )
+        every {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                stateKeys,
+                *anyVararg()
+            )
+        } answers {
+            val scriptArguments = thirdArg<Array<out Any>>()
+            synchronized(valueStore) {
+                val current = valueStore[stateKeys[0]]
+                when {
+                    current == null -> -1L
+                    current != scriptArguments[0].toString() -> 0L
+                    objectMapper.readValue(
+                        scriptArguments[1].toString(),
+                        JobStatusUnifiedResponse::class.java
+                    ).processedCount > 0 -> 0L
+                    else -> {
+                        valueStore[stateKeys[0]] = scriptArguments[1].toString()
+                        1L
+                    }
+                }
+            }
+        }
+
+        requireNotNull(submittedTask).run()
+
+        val stored = service.getMetadataCollectJobStatus(jobId)
+        assertThat(stored?.status).isEqualTo(JobStatus.RUNNING)
+        assertThat(stored?.processedCount).isZero()
+        assertThat(stored?.completedAt).isNull()
+        verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(2) }
     }
 
     @Test
@@ -685,7 +740,8 @@ class ProblemCollectorServiceTest {
                     it == listOf(
                         "$JOB_KEY_PREFIX$jobId",
                         "$JOB_FAILURE_KEY_PREFIX$jobId",
-                        "$JOB_TARGET_KEY_PREFIX$jobId"
+                        "$JOB_TARGET_KEY_PREFIX$jobId",
+                        "$JOB_LEASE_KEY_PREFIX$jobId"
                     )
                 },
                 *anyVararg()
@@ -704,7 +760,8 @@ class ProblemCollectorServiceTest {
                 listOf(
                     "$JOB_KEY_PREFIX$jobId",
                     "$JOB_FAILURE_KEY_PREFIX$jobId",
-                    "$JOB_TARGET_KEY_PREFIX$jobId"
+                    "$JOB_TARGET_KEY_PREFIX$jobId",
+                    "$JOB_LEASE_KEY_PREFIX$jobId"
                 ),
                 *anyVararg()
             )

@@ -23,5 +23,6 @@ data class JobStatusUnifiedResponse(
     val errorCode: String?,
     val errorMessage: String?,
     val createdBy: String,
-    val targetManifest: ProblemJobTargetManifestReference? = null
+    val targetManifest: ProblemJobTargetManifestReference? = null,
+    val workerAttempt: ProblemJobWorkerAttempt? = null
 )
