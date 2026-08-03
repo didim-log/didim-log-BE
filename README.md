@@ -69,6 +69,7 @@ flowchart LR
 
 - solved.ac 문제 메타데이터 수집과 MongoDB upsert
 - BOJ 문제 본문·입력·출력·예제 HTML 수집
+- BOJ 상세 조회 최대 `K`개 제한 병렬 처리와 manifest 순서 저장
 - Redis 기반 작업 상태의 Lua CAS 전이, TTL, sorted index, 진행률, heartbeat, checkpoint, 실패 항목 원장·대상 manifest
 - 관리자 작업 목록·취소·재시도·감사 로그·운영 메트릭 API
 
@@ -350,6 +351,19 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 응답 시간이나 운영 처리량의 개선율이 아닙니다.
 비교 조건과 남은 비용은 [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)에 정리했습니다.
 
+### 3,400건 문제 상세 제한 병렬 수집
+
+| 조건 | 순차 중앙값 | `K=4` 중앙값 | 변화 |
+| --- | ---: | ---: | ---: |
+| 3,400건·10ms 고정 지연·3회 | 55.632초 | 12.226초 | 77.96% 단축 |
+
+외부 BOJ 호출 대신 10ms 후 결정적 상세를 반환하는 fixture를 사용했고,
+MongoDB 7.0.16·Redis 7.2.5와 실제 작업 상태·부분 갱신 경로를 포함했습니다.
+세 회 모두 문서 3,400건, 성공 3,400건, 누락·중복·미완성 상세 0건,
+최종 결과 hash 일치를 확인했습니다. pacer를 끄고 측정한 로컬 파이프라인
+비교이므로 실제 BOJ 3,400건 수집 시간이나 운영 처리량으로 해석하지 않습니다.
+[제한 병렬 설계·검증·재현 방법](./DOCS/refactoring/be-refactor/PHASE_6N_CRAWLER_DETAILS_BOUNDED_PARALLEL.md)에 정리했습니다.
+
 ### 문제 수집 작업 목록 일괄 조회
 
 | 시나리오 | 직접 비교 항목 | Before | After | 변화 |
@@ -472,6 +486,10 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
   - 조건: 실제 Redis 7.2.5의 `PENDING` 재제출·만료 `RUNNING` 경합·4개 작업 유형 manifest suffix·실행기 거부·손상 manifest
   - 결과: claim 성공 1건, 외부 호출·저장 각 1건, prefix 재호출 0건, 기존 카운터 보존, 삭제 대상 실패 기록, 유효 lease 갱신 0건
 
+- **[문제 상세 제한 병렬 수집](./DOCS/refactoring/be-refactor/PHASE_6N_CRAWLER_DETAILS_BOUNDED_PARALLEL.md)**
+  - 조건: 3,400건, 10ms 고정 fixture, 실제 MongoDB 7.0.16·Redis 7.2.5, 3회 반복
+  - 결과: 중앙값 55.632→12.226초, 77.96% 단축, 누락·중복·미완성 상세 0건, 결과 hash 일치
+
 #### 운영 정합성
 
 - **[고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md)**
@@ -514,6 +532,9 @@ upsert합니다. 두 시나리오 모두 `find 6 → 0`, `update 6 → 6`이었�
 - 만료된 `RUNNING` 작업은 기존 카운터와 checkpoint를 유지하고 manifest suffix만
   처리합니다. manifest가 없거나 손상된 작업은 외부 호출 없이 현재 worker의
   소유권으로 `FAILED` 처리합니다.
+- 상세 외부 조회만 전용 executor에서 최대 `K`개씩 실행하고,
+  MongoDB·Redis는 coordinator가 manifest 순서로 반영해 연속 checkpoint를
+  유지합니다. 기본은 병렬 비활성화·`K=1`입니다.
 - 시작 실패 복구와 worker lease는 동시에 켤 수 없습니다. worker lease는 Redis
   상태·실패 원장만 보호하며 MongoDB 쓰기 fencing은 포함하지 않으므로 운영 기본값은
   `false`입니다.
@@ -574,6 +595,10 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - 데모의 외부 BOJ·solved.ac 응답은 고정 fixture이므로 실제 외부 연동 성공을 증명하지 않습니다.
 - 문제 수집 대상 manifest는 문제 ID와 순서만 고정하며 당시 문제 문서 내용의 snapshot이나 exactly-once 실행을 보장하지 않습니다.
 - 문제 수집 worker lease와 자동 인계는 Redis 상태·실패 원장만 보호합니다. lease 만료 전에 시작한 외부 호출과 MongoDB 쓰기 한 건은 새 worker의 같은 항목 처리와 겹칠 수 있습니다.
+- 문제 상세 요청 시작 간격은 하나의 JVM에서만 공유하며, 여러 BE
+  인스턴스의 합산 요청률을 제한하지는 않습니다.
+- 취소는 결과 반영을 막지만 이미 시작된 최대 `K`개의 HTTP 요청을
+  즉시 종료한다고 보장하지 않습니다.
 - 성능 수치는 로컬 합성 환경의 결과이며 운영 성능이나 일반화된 개선율로 해석할 수 없습니다.
 - 외부 API 계약이 변경되면 클라이언트와 응답 모델을 갱신해야 할 수 있습니다.
 
@@ -609,6 +634,7 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 - [문제 수집 대상 manifest](./DOCS/refactoring/be-refactor/PHASE_6L_CRAWLER_TARGET_MANIFEST.md)
 - [문제 수집 worker lease](./DOCS/refactoring/be-refactor/PHASE_6M_A_CRAWLER_WORKER_LEASE.md)
 - [문제 수집 만료 작업 자동 인계](./DOCS/refactoring/be-refactor/PHASE_6M_B_CRAWLER_WORKER_TAKEOVER.md)
+- [문제 상세 제한 병렬 수집](./DOCS/refactoring/be-refactor/PHASE_6N_CRAWLER_DETAILS_BOUNDED_PARALLEL.md)
 - [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
 - [PR 가이드](./DOCS/PR_GUIDE.md)
 - [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)

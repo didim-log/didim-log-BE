@@ -118,6 +118,10 @@ app:
     # 회고 작성일 기준 자동 정리 기간
     retention-days: ${RETROSPECTIVE_RETENTION_DAYS:180}
   problem-collector:
+    parallel:
+      # BOJ 상세 조회만 제한 병렬화하며, 요청 시작 간격은 JVM 내에서 공유한다.
+      enabled: ${PROBLEM_COLLECTOR_PARALLEL_ENABLED:false}
+      max-concurrency: ${PROBLEM_COLLECTOR_MAX_CONCURRENCY:1}
     recovery:
       # 단일 BE 인스턴스에서만 활성화한다. 시작 시 이전 PENDING/RUNNING 작업을 FAILED 처리한다.
       fail-orphaned-jobs-on-startup: ${PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP:false}

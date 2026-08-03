@@ -72,8 +72,18 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 ### 2. 상세 보강
 
 1. `collectDetailsBatchAsync`는 `descriptionHtml`이 없는 문제를 먼저 조회한다.
-2. worker의 `collectDetailsBatchAsyncInternal`이 `BojCrawler.crawlProblemDetails`를 호출한다.
-3. `#problem_description`, `#problem_input`, `#problem_output`과 최대 5개의 입출력 예제를 읽어 같은 `problems` 문서에 저장한다.
+2. 동일 JVM의 수집 작업이 공유하는 pacer가 BOJ 요청 시작 간격을
+   2~4초로 제한한다.
+3. 병렬 설정을 켜면 전용 executor가 `BojCrawler.crawlProblemDetails`를
+   최대 `K`개씩 실행한다. 기본은 비활성화·`K=1`이다.
+4. `#problem_description`, `#problem_input`, `#problem_output`과 최대 5개의
+   입출력 예제를 읽는다.
+5. 조회가 뒤섞여 완료돼도 coordinator가 대상 manifest 순서로
+   MongoDB 부분 갱신과 Redis 진행률·checkpoint를 반영한다.
+6. 중간 실패는 문제 ID를 Redis 실패 원장에 남기고 다른 대상을
+   계속 처리한다. 추가 대기 결과는 최대 `K`개로 `O(K)`다.
+
+[제한 병렬 수집 설계와 3,400건 측정](../refactoring/be-refactor/PHASE_6N_CRAWLER_DETAILS_BOUNDED_PARALLEL.md)
 
 ### 3. 실패 항목 재시도
 
@@ -160,7 +170,8 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 - manifest 참조가 있는 작업의 대상 데이터가 없거나 손상됐다면 legacy 범위로
   우회하지 않고 409를 반환한다.
 - 같은 원본 작업의 재시도를 동시에 요청하면 여러 자식 작업이 만들어질 수 있다.
-- 취소는 항목 사이에서 상태를 확인하는 방식이라 진행 중 HTTP 호출이나 대기 시간을 즉시 중단하지 않는다.
+- 취소와 worker lease 상실은 결과 반영을 막지만, 이미 시작된
+  최대 `K`개의 HTTP 호출을 즉시 종료한다고 보장하지 않는다.
 - 작업 상태·실패 원장·대상 manifest는 24시간 TTL이다. 단일 BE 재시작에서는
   진행 작업을 `FAILED`로 정리하고, worker lease 모드에서는 lease 없는 작업을
   manifest suffix부터 이어서 실행한다.
@@ -168,6 +179,15 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
   조정한다. 시작 복구 설정은 단일 인스턴스 전용이며 worker lease와 함께 켤 수
   없다.
 - 복구와 겹쳐 이미 시작된 외부 호출과 MongoDB 저장 한 건은 끝날 수 있다.
+- 요청 시작 간격은 동일 JVM에서만 공유한다. 여러 BE 인스턴스의
+  합산 요청률을 제한하려면 단일 수집 worker 배치나 Redis 분산 limiter가
+  필요하다.
+- worker 소유권 확인과 MongoDB 저장 사이에는 분산 fencing이 없다.
+  경계에서 한 건이 재호출될 수 있으며 ID 기반 부분 갱신으로 최종
+  문서를 멱등하게 만든다.
+- `BojCrawler`는 429·5xx·timeout과 기타 4xx를 구분한 자동
+  재시도를 제공하지 않는다. 실패 ID는 작업 재시도 API로 다시
+  처리한다.
 - 작업 생성·상태 갱신 시 여러 Redis key를 함께 다루는 Lua는 standalone Redis 구성을 기준으로 한다.
 - 작업 목록은 sorted index의 ID에 해당하는 상태를 `MGET`으로 한 번에 읽는다.
   명령의 1+N 구조는 없앴지만 필터·페이징 전에 상태 N개를 모두 전송하고
