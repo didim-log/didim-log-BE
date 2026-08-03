@@ -28,6 +28,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.HexFormat
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
@@ -61,7 +62,8 @@ class ProblemCollectorService(
     private val workerIdentity: ProblemCollectorWorkerIdentity =
         ProblemCollectorWorkerIdentity(),
     @param:Qualifier(PROBLEM_COLLECTOR_HEARTBEAT_EXECUTOR)
-    private val heartbeatExecutor: ScheduledExecutorService? = null
+    private val heartbeatExecutor: ScheduledExecutorService? = null,
+    private val parallelProblemDetailsFetcher: ParallelProblemDetailsFetcher? = null
 ) {
 
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
@@ -341,6 +343,7 @@ class ProblemCollectorService(
         var failCount = 0
 
         for (problemId in start..end) {
+            pacer.pauseMetadata()
             try {
                 upsertProblemMetadata(problemId)
                 successCount++
@@ -354,7 +357,6 @@ class ProblemCollectorService(
                 failCount++
             }
 
-            pacer.pauseMetadata()
         }
 
         log.info("문제 메타데이터 수집 완료: 성공=$successCount, 실패=$failCount")
@@ -372,11 +374,11 @@ class ProblemCollectorService(
 
         for (problem in problemsWithoutDetails) {
             try {
+                pacer.pauseDetails()
                 val details = bojCrawler.crawlProblemDetails(problem.id.value) ?: continue
                 if (updateProblemDetails(problem.id.value, details) == null) {
                     log.warn("문제 상세 정보 저장 대상 없음: problemId=${problem.id.value}")
                 }
-                pacer.pauseDetails()
             } catch (e: Exception) {
                 log.error("문제 상세 정보 수집 실패: problemId=${problem.id.value}, error=${e.message}", e)
             }
@@ -1144,7 +1146,7 @@ class ProblemCollectorService(
             initialProgress = initialProgress,
             operationName = "metadata",
             targetId = Int::toString,
-            pause = pacer::pauseMetadata
+            beforeProcess = pacer::pauseMetadata
         ) { problemId ->
             upsertProblemMetadata(problemId)
             true
@@ -1204,20 +1206,13 @@ class ProblemCollectorService(
         targets: List<ProblemTarget>,
         initialProgress: JobProgress
     ) {
-        processJobTargets(
+        processFetchedDetailsTargets(
             jobId = jobId,
             worker = worker,
             targets = targets,
             initialProgress = initialProgress,
-            operationName = "details",
-            targetId = ProblemTarget::problemId,
-            pause = pacer::pauseDetails
-        ) { target ->
-            if (target.problem == null) {
-                return@processJobTargets false
-            }
-            val details = bojCrawler.crawlProblemDetails(target.problemId)
-                ?: return@processJobTargets false
+            operationName = "details"
+        ) { target, details ->
             updateProblemDetails(target.problemId, details) != null
         }
     }
@@ -1239,19 +1234,14 @@ class ProblemCollectorService(
         targets: List<ProblemTarget>,
         initialProgress: JobProgress
     ) {
-        processJobTargets(
+        processFetchedDetailsTargets(
             jobId = jobId,
             worker = worker,
             targets = targets,
             initialProgress = initialProgress,
-            operationName = "refresh",
-            targetId = ProblemTarget::problemId,
-            pause = pacer::pauseDetails
-        ) { target ->
-            val problem = target.problem
-                ?: return@processJobTargets false
-            val details = bojCrawler.crawlProblemDetails(target.problemId)
-                ?: return@processJobTargets false
+            operationName = "refresh"
+        ) { target, details ->
+            val problem = requireNotNull(target.problem)
             val detectedLanguage = ProblemLanguageDetector.detectFromTexts(
                 listOf(
                     problem.title,
@@ -1268,6 +1258,99 @@ class ProblemCollectorService(
                 language = detectedLanguage
             ) != null
         }
+    }
+
+    private fun processFetchedDetailsTargets(
+        jobId: String,
+        worker: JobWorkerContext,
+        targets: List<ProblemTarget>,
+        initialProgress: JobProgress,
+        operationName: String,
+        store: (ProblemTarget, ProblemDetails) -> Boolean
+    ) {
+        val fetcher = parallelProblemDetailsFetcher
+        if (fetcher == null) {
+            processJobTargets(
+                jobId = jobId,
+                worker = worker,
+                targets = targets,
+                initialProgress = initialProgress,
+                operationName = operationName,
+                targetId = ProblemTarget::problemId,
+                beforeProcess = pacer::pauseDetails
+            ) { target ->
+                if (target.problem == null) {
+                    return@processJobTargets false
+                }
+                val details = bojCrawler.crawlProblemDetails(target.problemId)
+                    ?: return@processJobTargets false
+                store(target, details)
+            }
+            return
+        }
+
+        var processed = initialProgress.processedCount
+        var success = initialProgress.successCount
+        var fail = initialProgress.failCount
+
+        fetcher.fetchOrdered<ProblemTarget, ProblemDetails?>(
+            targets = targets,
+            fetch = { target ->
+                if (target.problem == null) {
+                    null
+                } else {
+                    pacer.pauseDetails()
+                    bojCrawler.crawlProblemDetails(target.problemId)
+                }
+            },
+            onResult = { result ->
+                if (!isWorkerRunning(jobId, worker)) {
+                    return@fetchOrdered false
+                }
+
+                val problemId = result.target.problemId
+                var failedProblemId: String? = null
+                if (result.outcome is OrderedFetchOutcome.Failure) {
+                    val cause = result.outcome.cause
+                    when (cause) {
+                        is InterruptedException -> throw cause
+                        is CancellationException -> throw InterruptedException(
+                            "problem details fetch was cancelled"
+                        ).apply { initCause(cause) }
+                    }
+                }
+                try {
+                    val details = when (val outcome = result.outcome) {
+                        is OrderedFetchOutcome.Success -> outcome.value
+                        is OrderedFetchOutcome.Failure -> throw outcome.cause
+                    }
+                    if (details != null && store(result.target, details)) {
+                        success++
+                    } else {
+                        fail++
+                        failedProblemId = problemId
+                    }
+                } catch (e: Exception) {
+                    fail++
+                    failedProblemId = problemId
+                    log.error(
+                        "$operationName job item failed: jobId=$jobId, problemId=$problemId, error=${e.message}",
+                        e
+                    )
+                }
+
+                processed++
+                updateProgress(
+                    jobId,
+                    worker,
+                    processed,
+                    success,
+                    fail,
+                    problemId,
+                    failedProblemId
+                )
+            }
+        )
     }
 
     private fun updateLanguageBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
@@ -1310,7 +1393,7 @@ class ProblemCollectorService(
         initialProgress: JobProgress,
         operationName: String,
         targetId: (T) -> String,
-        pause: () -> Unit = {},
+        beforeProcess: () -> Unit = {},
         process: (T) -> Boolean
     ) {
         var processed = initialProgress.processedCount
@@ -1324,6 +1407,7 @@ class ProblemCollectorService(
 
             val problemId = targetId(target)
             var failedProblemId: String? = null
+            beforeProcess()
             try {
                 if (process(target)) {
                     success++
@@ -1354,7 +1438,6 @@ class ProblemCollectorService(
             ) {
                 return
             }
-            pause()
         }
     }
 

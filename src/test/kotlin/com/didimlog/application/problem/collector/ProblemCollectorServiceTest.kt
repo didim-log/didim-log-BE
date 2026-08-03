@@ -44,6 +44,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import org.springframework.data.redis.core.ZSetOperations
 import org.springframework.data.redis.core.script.RedisScript
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
 
 @DisplayName("ProblemCollectorService 테스트")
 class ProblemCollectorServiceTest {
@@ -886,6 +887,173 @@ class ProblemCollectorServiceTest {
     }
 
     @Test
+    @DisplayName("병렬 상세 조회가 뒤섞여 완료돼도 저장과 체크포인트는 대상 순서를 유지한다")
+    fun `parallel detail fetch commits results in manifest order`() {
+        val problems = listOf("1001", "1002", "1003").map(::sampleProblem)
+        val laterTargetsStarted = CountDownLatch(2)
+        val storedProblemIds = Collections.synchronizedList(mutableListOf<String>())
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 3)
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails(any()) } answers {
+                val problemId = firstArg<String>()
+                if (problemId == "1001") {
+                    check(laterTargetsStarted.await(1, TimeUnit.SECONDS))
+                } else {
+                    laterTargetsStarted.countDown()
+                }
+                sampleDetails(descriptionHtml = "<p>$problemId</p>")
+            }
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                firstArg<String>().also(storedProblemIds::add).let(::sampleProblem)
+            }
+            val parallelService = createService(
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 3)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            val status = parallelService.getDetailsCollectJobStatus(jobId)
+
+            assertThat(storedProblemIds).containsExactly("1001", "1002", "1003")
+            assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+            assertThat(status?.processedCount).isEqualTo(3)
+            assertThat(status?.successCount).isEqualTo(3)
+            assertThat(status?.lastCheckpointId).isEqualTo("1003")
+            verify(exactly = 3) { pacer.pauseDetails() }
+        } finally {
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
+    @DisplayName("병렬 상세 조회 중 한 건이 실패해도 실패 ID를 남기고 연속 체크포인트를 완료한다")
+    fun `parallel detail fetch records failure without breaking contiguous progress`() {
+        val problems = listOf("1001", "1002", "1003").map(::sampleProblem)
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 2)
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails(any()) } answers {
+                val problemId = firstArg<String>()
+                if (problemId == "1002") {
+                    error("fixture crawl failure")
+                }
+                sampleDetails(descriptionHtml = "<p>$problemId</p>")
+            }
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                sampleProblem(firstArg())
+            }
+            val parallelService = createService(
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 2)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            val status = parallelService.getDetailsCollectJobStatus(jobId)
+
+            assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+            assertThat(status?.processedCount).isEqualTo(3)
+            assertThat(status?.successCount).isEqualTo(2)
+            assertThat(status?.failCount).isEqualTo(1)
+            assertThat(status?.lastCheckpointId).isEqualTo("1003")
+            assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty())
+                .containsExactly("1002")
+            verify(exactly = 0) { problemRepository.updateDetails("1002", any()) }
+        } finally {
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
+    @DisplayName("병렬 상세 조회가 interrupt되면 항목 실패로 소비하지 않고 작업을 중단한다")
+    fun `parallel detail interruption stops the job without advancing progress`() {
+        val problems = listOf("1001", "1002").map(::sampleProblem)
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 2)
+        val jobExecutor = Executors.newSingleThreadExecutor()
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails("1001") } throws
+                InterruptedException("crawler interrupted")
+            every { bojCrawler.crawlProblemDetails("1002") } returns sampleDetails()
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                sampleProblem(firstArg())
+            }
+            val parallelService = createService(
+                taskExecutor = jobExecutor,
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 2)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            jobExecutor.shutdown()
+            assertThat(jobExecutor.awaitTermination(2, TimeUnit.SECONDS)).isTrue()
+            val status = parallelService.getDetailsCollectJobStatus(jobId)
+
+            assertThat(status?.status).isEqualTo(JobStatus.FAILED)
+            assertThat(status?.processedCount).isZero()
+            assertThat(status?.successCount).isZero()
+            assertThat(status?.failCount).isZero()
+            assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).isEmpty()
+            verify(exactly = 0) { problemRepository.updateDetails(any(), any()) }
+        } finally {
+            jobExecutor.shutdownNow()
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
+    @DisplayName("병렬 상세 작업을 취소하면 완료 대기 결과를 저장하지 않고 남은 창을 취소한다")
+    fun `parallel detail cancellation prevents buffered results from being stored`() {
+        val problems = (1001..1005).map { sampleProblem(it.toString()) }
+        val firstWindowStarted = CountDownLatch(3)
+        val releaseFirstTarget = CountDownLatch(1)
+        val neverRelease = CountDownLatch(1)
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 3)
+        val jobExecutor = Executors.newSingleThreadExecutor()
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails(any()) } answers {
+                val problemId = firstArg<String>()
+                firstWindowStarted.countDown()
+                if (problemId == "1001") {
+                    check(releaseFirstTarget.await(1, TimeUnit.SECONDS))
+                    sampleDetails()
+                } else {
+                    neverRelease.await()
+                    sampleDetails()
+                }
+            }
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                sampleProblem(firstArg())
+            }
+            val parallelService = createService(
+                taskExecutor = jobExecutor,
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 3)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            assertThat(firstWindowStarted.await(1, TimeUnit.SECONDS)).isTrue()
+
+            val cancelled = parallelService.cancelJob(jobId, "admin", "127.0.0.1")
+            releaseFirstTarget.countDown()
+            jobExecutor.shutdown()
+
+            assertThat(jobExecutor.awaitTermination(2, TimeUnit.SECONDS)).isTrue()
+            assertThat(cancelled.status).isEqualTo(JobStatus.CANCELLED)
+            assertThat(parallelService.getDetailsCollectJobStatus(jobId)?.status)
+                .isEqualTo(JobStatus.CANCELLED)
+            verify(exactly = 0) { problemRepository.updateDetails(any(), any()) }
+            verify(exactly = 0) { bojCrawler.crawlProblemDetails("1004") }
+            verify(exactly = 0) { bojCrawler.crawlProblemDetails("1005") }
+        } finally {
+            releaseFirstTarget.countDown()
+            jobExecutor.shutdownNow()
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
     @DisplayName("언어 수집은 언어 필드만 부분 갱신한다")
     fun `language collection updates only language`() {
         val problem = sampleProblem("1003", title = "English problem title").copy(language = "ko")
@@ -921,7 +1089,8 @@ class ProblemCollectorServiceTest {
     private fun createService(
         taskExecutor: Executor? = null,
         recoveryState: ProblemCollectorRecoveryState =
-            ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties())
+            ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties()),
+        parallelProblemDetailsFetcher: ParallelProblemDetailsFetcher? = null
     ): ProblemCollectorService {
         return ProblemCollectorService(
             solvedAcClient = solvedAcClient,
@@ -932,9 +1101,31 @@ class ProblemCollectorServiceTest {
             adminAuditService = adminAuditService,
             taskExecutor = taskExecutor,
             pacer = pacer,
-            recoveryState = recoveryState
+            recoveryState = recoveryState,
+            parallelProblemDetailsFetcher = parallelProblemDetailsFetcher
         )
     }
+
+    private fun parallelCrawlerExecutor(maxConcurrency: Int): ThreadPoolTaskExecutor =
+        ThreadPoolTaskExecutor().apply {
+            corePoolSize = maxConcurrency
+            maxPoolSize = maxConcurrency
+            queueCapacity = maxConcurrency * 2
+            setThreadNamePrefix("problem-service-test-")
+            initialize()
+        }
+
+    private fun parallelFetcher(
+        executor: ThreadPoolTaskExecutor,
+        maxConcurrency: Int
+    ): ParallelProblemDetailsFetcher =
+        ParallelProblemDetailsFetcher(
+            problemCrawlerExecutor = executor,
+            properties = ProblemCollectorParallelProperties(
+                enabled = true,
+                maxConcurrency = maxConcurrency
+            )
+        )
 
     private fun sampleProblem(id: String, title: String = "기존 문제"): Problem {
         return Problem(
