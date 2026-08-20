@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">DidimLog BOJ 소유권 인증과 제한 병렬 문제 수집 흐름</title>
+  <desc id="desc">BOJ 프로필 상태 메시지로 계정 소유권을 확인하는 흐름과 Redis manifest, 최대 K개 외부 조회, 순서 보장 coordinator를 이용한 문제 상세 수집 흐름</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563EB" />
+    </marker>
+    <style>
+      text { font-family: Inter, Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", Arial, sans-serif; }
+      .label { font-size: 15px; font-weight: 600; letter-spacing: 0.08em; fill: #2563EB; }
+      .title { font-size: 32px; font-weight: 700; fill: #0F172A; }
+      .body { font-size: 15px; font-weight: 400; fill: #475569; }
+      .lane { font-size: 17px; font-weight: 700; fill: #0F172A; }
+      .node { font-size: 16px; font-weight: 700; fill: #0F172A; }
+      .copy { font-size: 13px; font-weight: 400; fill: #475569; }
+      .metric { font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace; font-size: 18px; font-weight: 700; fill: #047857; }
+      .foot { font-size: 13px; font-weight: 400; fill: #475569; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="675" fill="#FFFFFF" />
+  <text class="label" x="90" y="68">DIDIMLOG · TWO VERIFIED BOUNDARIES</text>
+  <text class="title" x="90" y="112">소유권을 확인하고, 수집 상태를 잃지 않는 두 경계</text>
+  <text class="body" x="90" y="143">가입은 BOJ 프로필 수정 권한으로, 수집은 manifest와 순서 보장 coordinator로 제어합니다.</text>
+  <path d="M90 168 H1110" stroke="#E2E8F0" stroke-width="2" />
+
+  <text class="lane" x="90" y="222">BOJ 소유권 인증</text>
+  <path d="M278 254 H310" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)" />
+  <path d="M510 254 H542" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)" />
+  <path d="M742 254 H774" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)" />
+  <g transform="translate(90 232)">
+    <path d="M0 0 H188 V86 H0" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">코드·세션 발급</text>
+    <text class="copy" x="14" y="61">Redis · TTL 5분</text>
+  </g>
+  <g transform="translate(310 232)">
+    <path d="M0 0 H200 V86 H0" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">BOJ 프로필 수정</text>
+    <text class="copy" x="14" y="61">상태 메시지에 코드 기록</text>
+  </g>
+  <g transform="translate(542 232)">
+    <path d="M0 0 H200 V86 H0" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">프로필 조회·소비</text>
+    <text class="copy" x="14" y="61">코드는 한 번만 사용</text>
+  </g>
+  <g transform="translate(774 232)">
+    <path d="M0 0 H336 V86 H0" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">인증된 BOJ ID로 가입</text>
+    <text class="copy" x="14" y="61">MongoDB 사용자 저장 · JWT/Refresh 발급</text>
+  </g>
+
+  <text class="lane" x="90" y="372">문제 상세 제한 병렬 수집</text>
+  <path d="M258 423 H282" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)" />
+  <path d="M450 423 H474" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)" />
+  <path d="M642 423 H666" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)" />
+  <path d="M858 423 H882" stroke="#2563EB" stroke-width="3" marker-end="url(#arrow)" />
+  <g transform="translate(90 397)">
+    <path d="M0 0 H168 V86 H0" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">관리자 요청</text>
+    <text class="copy" x="14" y="61">jobId 즉시 반환</text>
+  </g>
+  <g transform="translate(282 397)">
+    <path d="M0 0 H168 V86 H0" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">Redis manifest</text>
+    <text class="copy" x="14" y="61">대상·순서·상태 고정</text>
+  </g>
+  <g transform="translate(474 397)">
+    <path d="M0 0 H168 V86 H0" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">외부 조회 ≤ K</text>
+    <text class="copy" x="14" y="61">전용 executor</text>
+  </g>
+  <g transform="translate(666 397)">
+    <path d="M0 0 H192 V86 H0" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">순서 보장 반영</text>
+    <text class="copy" x="14" y="61">coordinator · O(K)</text>
+  </g>
+  <g transform="translate(882 397)">
+    <path d="M0 0 H228 V86 H0" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2" />
+    <text class="node" x="14" y="34">MongoDB + Redis</text>
+    <text class="copy" x="14" y="61">부분 갱신·checkpoint·실패 ID</text>
+  </g>
+
+  <path d="M90 530 H1110" stroke="#E2E8F0" stroke-width="2" />
+  <circle cx="105" cy="574" r="8" fill="#10B981" />
+  <text class="metric" x="126" y="581">55.632s → 12.226s  ·  -77.96%  ·  누락/중복/미완성 0</text>
+  <text class="foot" x="90" y="617">로컬 측정: 3,400건 · 외부 BOJ 대신 10ms 고정 fixture · pacer off · MongoDB 7.0.16 · Redis 7.2.5 · 3회 중앙값</text>
+  <text class="foot" x="90" y="643">비교 설정 K=4 · 운영 기본값은 병렬 비활성화, K=1 · 실제 BOJ 처리량으로 해석하지 않음</text>
+</svg>

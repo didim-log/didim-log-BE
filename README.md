@@ -92,6 +92,10 @@ flowchart LR
 
 ## 5. 핵심 데이터 흐름
 
+<p align="center">
+  <img src="./DOCS/assets/portfolio/didimlog-core-flow.svg" width="900" alt="BOJ 계정 소유권 인증과 문제 상세 제한 병렬 수집의 검증 경계" />
+</p>
+
 ### 5-1. BOJ 계정 인증과 회원가입
 
 회원가입 전에 서버가 발급한 코드를 BOJ 프로필 상태 메시지에서 확인합니다. 인증된 BOJ ID는 가입 요청에서 한 번만 사용할 수 있는 세션에 연결합니다.
@@ -212,36 +216,34 @@ flowchart LR
 
 ## 6. 화면으로 확인하기
 
-| 데모 | 기능 요약 |
-| --- | --- |
-| `01` | BOJ 상태 메시지 인증 → 회원가입 → 대시보드 이동 |
-| `02` | 관리자 비동기 수집 → Redis 작업 상태 → MongoDB 저장 |
-| `03` | 풀이 결과 → 코드 로그 → 회고 저장·조회 |
-| `04` | solved.ac 태그 정규화 → 카테고리 계층 확장 검색 |
+대표 이미지를 선택하면 각 원본 GIF가 열립니다.
 
-### 01. BOJ 계정 인증과 회원가입
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <strong>BOJ 소유권 확인과 회원가입</strong><br /><br />
+      <a href="./DOCS/assets/portfolio/01-boj-signup_demo.gif">
+        <img src="./DOCS/assets/portfolio/01-boj-signup-poster.png" alt="BOJ 소유권 확인 후 회원 정보를 입력하는 화면" />
+      </a>
+    </td>
+    <td width="50%" align="center">
+      <strong>비동기 문제 수집 상태</strong><br /><br />
+      <a href="./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif">
+        <img src="./DOCS/assets/portfolio/02-crawler-pipeline-poster.png" alt="관리자 문제 상세 수집의 진행률과 작업 상태 화면" />
+      </a>
+    </td>
+  </tr>
+</table>
 
-BOJ 프로필 상태 메시지에서 인증 코드를 확인한 뒤 회원가입을 완료합니다. 세션과 저장 경계는 [BOJ 인증과 회원가입 상세 흐름](./DOCS/portfolio/BOJ_SIGNUP_FLOW.md)에 정리했습니다.
+<details>
+<summary>원본 화면 흐름 4개 보기</summary>
 
-![BOJ 계정 인증과 회원가입](./DOCS/assets/portfolio/01-boj-signup_demo.gif)
+- [BOJ 상태 메시지 인증 → 회원가입 → 대시보드](./DOCS/assets/portfolio/01-boj-signup_demo.gif)
+- [관리자 비동기 수집 → Redis 작업 상태 → MongoDB 저장](./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif)
+- [풀이 결과 → 코드 로그 → 회고 저장·조회](./DOCS/assets/portfolio/03-problem-solve-save_demo.gif)
+- [solved.ac 태그 정규화 → 카테고리 계층 확장 검색](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
 
-### 02. 비동기 문제 수집
-
-관리자가 수집 작업을 시작하고 Redis 작업 상태와 MongoDB 저장 결과를 확인합니다. 수집 단계는 [문제 수집과 카테고리 처리 상세 흐름](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md)에 정리했습니다.
-
-![문제 수집 파이프라인](./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif)
-
-### 03. 풀이 결과·로그·회고 저장
-
-풀이 결과를 저장한 뒤 코드를 로그로 남기고 회고를 생성·조회합니다. 요청별 저장 대상은 [풀이 결과·로그·회고 상세 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md)에 정리했습니다.
-
-![문제 풀이 결과와 코드 및 회고 저장](./DOCS/assets/portfolio/03-problem-solve-save_demo.gif)
-
-### 04. 카테고리 메타데이터와 계층 검색
-
-solved.ac 태그를 `category`와 `tags`로 정규화하고 계층 확장 검색 결과를 확인합니다. 정규화 기준은 [문제 수집과 카테고리 처리 상세 흐름](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md)에 정리했습니다.
-
-![카테고리 메타데이터 파이프라인](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
+</details>
 
 > 외부 BOJ·solved.ac 응답과 BOJ 인증 코드 생성에는 `portfolio-fixture`의 고정값을 사용했습니다. 화면은 React FE가 로컬 Spring Boot API를 호출하고 Redis와 MongoDB에 저장한 결과입니다.
 
