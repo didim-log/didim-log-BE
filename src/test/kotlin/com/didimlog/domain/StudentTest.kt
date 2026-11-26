@@ -4,10 +4,13 @@ import com.didimlog.domain.enums.*
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.domain.valueobject.TimeTakenSeconds
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.within
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 
@@ -380,5 +383,127 @@ class StudentTest {
         assertThat(student.defaultTemplateCategories("shared-template"))
             .containsExactlyInAnyOrder(TemplateCategory.SUCCESS, TemplateCategory.FAIL)
         assertThat(student.defaultTemplateCategories("other-template")).isEmpty()
+    }
+
+    @Test
+    @DisplayName("저장소에서 누락 필드가 있는 레거시 문서를 읽으면 안전한 기본값으로 채운다")
+    fun `레거시 문서 기본값 보정`() {
+        val student = Student(
+            id = "legacy",
+            nickname = Nickname("legacy"),
+            provider = Provider.GOOGLE,
+            providerId = "google-1",
+            email = null,
+            bojId = null,
+            password = null,
+            credentialVersion = null,
+            rating = 1600,
+            solvedAcTierLevel = null,
+            currentTier = Tier.GOLD,
+            role = null,
+            termsAgreed = null,
+            isVerified = null,
+            solutions = null,
+            consecutiveSolveDays = null,
+            lastSolvedAt = null,
+            primaryLanguage = null,
+            isOnboardingFinished = null,
+            defaultSuccessTemplateId = null,
+            defaultFailTemplateId = null,
+            createdAt = null,
+            documentVersion = null
+        )
+
+        assertThat(student.credentialVersion).isZero()
+        assertThat(student.solvedAcTierLevel).isEqualTo(SolvedAcTierLevel.fromRating(1600))
+        assertThat(student.role).isEqualTo(Role.GUEST)
+        assertThat(student.termsAgreed).isFalse()
+        assertThat(student.isVerified).isFalse()
+        assertThat(student.solutions.getAll()).isEmpty()
+        assertThat(student.consecutiveSolveDays).isZero()
+        assertThat(student.isOnboardingFinished).isFalse()
+        assertThat(student.createdAt).isCloseTo(LocalDateTime.now(), within(5, ChronoUnit.SECONDS))
+        assertThat(student.documentVersion).isNull()
+    }
+
+    @Test
+    @DisplayName("레거시 문서에 rating도 없으면 0점 기준으로 Solved.ac 티어 레벨을 계산한다")
+    fun `레거시 문서 rating 누락`() {
+        val student = Student(
+            id = "legacy", nickname = Nickname("legacy"), provider = Provider.BOJ, providerId = "p",
+            email = null, bojId = null, password = null, credentialVersion = 2L, rating = null,
+            solvedAcTierLevel = null, currentTier = Tier.BRONZE, role = Role.USER, termsAgreed = true,
+            isVerified = true, solutions = null, consecutiveSolveDays = 3, lastSolvedAt = null,
+            primaryLanguage = PrimaryLanguage.KOTLIN, isOnboardingFinished = true,
+            defaultSuccessTemplateId = "s", defaultFailTemplateId = "f",
+            createdAt = LocalDateTime.of(2025, 1, 1, 0, 0), documentVersion = 7L
+        )
+
+        assertThat(student.rating).isZero()
+        assertThat(student.solvedAcTierLevel).isEqualTo(SolvedAcTierLevel(0))
+        assertThat(student.credentialVersion).isEqualTo(2L)
+        assertThat(student.role).isEqualTo(Role.USER)
+        assertThat(student.createdAt).isEqualTo(LocalDateTime.of(2025, 1, 1, 0, 0))
+        assertThat(student.documentVersion).isEqualTo(7L)
+    }
+
+    @Test
+    @DisplayName("소셜 가입 마무리는 약관 동의 시 닉네임을 설정하고 USER로 승격한다")
+    fun `소셜 가입 마무리`() {
+        val guest = Student(
+            nickname = Nickname("guest"),
+            provider = Provider.GITHUB,
+            providerId = "gh-1",
+            currentTier = Tier.BRONZE
+        )
+
+        val finalized = guest.finalizeSignup("member", termsAgreed = true)
+
+        assertThat(finalized.nickname).isEqualTo(Nickname("member"))
+        assertThat(finalized.role).isEqualTo(Role.USER)
+        assertThat(finalized.termsAgreed).isTrue()
+        assertThatThrownBy { guest.finalizeSignup("member", termsAgreed = false) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("약관 동의는 필수입니다.")
+        assertThatThrownBy { guest.finalizeSignup("member", BojId("boj1"), "a@b.c", termsAgreed = false) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("약관 동의는 필수입니다.")
+        assertThatThrownBy { guest.finalizeSignup("x", termsAgreed = true) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    @DisplayName("닉네임 변경은 닉네임 정책을 적용하고 비밀번호 변경은 빈 값을 거부한다")
+    fun `닉네임과 비밀번호 검증`() {
+        val student = Student(
+            nickname = Nickname("tester"),
+            provider = Provider.BOJ,
+            providerId = "tester123",
+            password = null,
+            currentTier = Tier.BRONZE
+        )
+
+        assertThat(student.updateNickname("renamed").nickname).isEqualTo(Nickname("renamed"))
+        assertThatThrownBy { student.updateNickname("admin") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { student.updatePassword(" ") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("비밀번호는 필수입니다.")
+    }
+
+    @Test
+    @DisplayName("비밀번호가 없는 소셜 계정은 인코더 호출 없이 비밀번호 불일치로 판단한다")
+    fun `비밀번호 없는 계정 매칭`() {
+        val student = Student(
+            nickname = Nickname("social"),
+            provider = Provider.GOOGLE,
+            providerId = "g-1",
+            password = null,
+            currentTier = Tier.BRONZE
+        )
+        val encoder = io.mockk.mockk<org.springframework.security.crypto.password.PasswordEncoder>()
+
+        assertThat(student.matchPassword("anything", encoder)).isFalse()
+        io.mockk.verify(exactly = 0) { encoder.matches(any(), any()) }
     }
 }
