@@ -629,7 +629,7 @@ class AuthService(
         try {
             return studentRepository.save(student)
         } catch (e: MongoWriteException) {
-            if (e.code == 11000) {
+            if (e.code == MONGO_DUPLICATE_KEY_ERROR_CODE) {
                 log.error("MongoDB 중복 키 에러 발생: bojId={}, errorCode={}, message={}", SensitiveDataMasker.maskId(bojId), e.code, e.message, e)
                 throw duplicateStudentException(bojId, e)
             }
