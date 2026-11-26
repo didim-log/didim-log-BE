@@ -1,5 +1,6 @@
 package com.didimlog.global.util
 
+import com.didimlog.domain.enums.PrimaryLanguage
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -323,5 +324,76 @@ class CodeLanguageDetectorTest {
 
         // then
         assertThat(result).isEqualTo("GO")
+    }
+
+    @Test
+    @DisplayName("C++ 기능이 없는 C 코드는 C로 감지한다")
+    fun `C 코드 감지`() {
+        val cCode = """
+            #include <stdio.h>
+            int main() {
+                int n;
+                scanf("%d", &n);
+                printf("%d\n", n);
+                return 0;
+            }
+        """.trimIndent()
+
+        assertThat(CodeLanguageDetector.detect(cCode)).isEqualTo("C")
+        assertThat(CodeLanguageDetector.detectAsPrimaryLanguage(cCode)).isEqualTo(PrimaryLanguage.C)
+    }
+
+    @Test
+    @DisplayName("C++ 기능이 있으면 같은 include 코드라도 C보다 C++을 우선한다")
+    fun `C++ 기능이 있으면 C 감점`() {
+        val cppCode = """
+            #include <cstdio>
+            int main() {
+                std::printf("%d", 1);
+                return 0;
+            }
+        """.trimIndent()
+
+        assertThat(CodeLanguageDetector.detectAsPrimaryLanguage(cppCode)).isEqualTo(PrimaryLanguage.CPP)
+    }
+
+    @Test
+    @DisplayName("C# 코드를 감지해 PrimaryLanguage로 변환한다")
+    fun `C# 코드 감지`() {
+        val csharpCode = """
+            using System;
+            namespace Solution {
+                class Program {
+                    static void Main(string[] args) {
+                        Console.WriteLine("Hello");
+                    }
+                }
+            }
+        """.trimIndent()
+
+        assertThat(CodeLanguageDetector.detectAsPrimaryLanguage(csharpCode)).isEqualTo(PrimaryLanguage.CSHARP)
+    }
+
+    @Test
+    @DisplayName("감지 결과와 PrimaryLanguage 변환 결과는 항상 같은 언어를 가리킨다")
+    fun `PrimaryLanguage 변환 일관성`() {
+        val samples = listOf(
+            "fun main() { val x = 1; println(x) }",
+            "public class Main { public static void main(String[] args) { System.out.println(1); } }",
+            "def solve():\n    return 1\nprint(solve())",
+            "package main\nimport \"fmt\"\nfunc main() { fmt.Println(1) }",
+            "const x = 1; console.log(x); let y = () => x;",
+            "x <- c(1, 2)\ncat(x)",
+            "",
+            "안녕하세요"
+        )
+
+        samples.forEach { code ->
+            val detected = CodeLanguageDetector.detect(code)
+            assertThat(CodeLanguageDetector.detectAsPrimaryLanguage(code))
+                .`as`(code)
+                .isEqualTo(PrimaryLanguage.valueOf(detected))
+        }
+        assertThat(CodeLanguageDetector.detectAsPrimaryLanguage("")).isEqualTo(PrimaryLanguage.TEXT)
     }
 }
