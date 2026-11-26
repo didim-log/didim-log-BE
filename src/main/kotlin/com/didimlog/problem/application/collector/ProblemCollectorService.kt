@@ -6,7 +6,6 @@ import com.didimlog.problem.application.collector.ProblemJobRedisKeys.leaseKey
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.MAX_JOB_STATE_RETRIES
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.estimateRemaining
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.isTerminal
-import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.withQueuePositions
 import com.didimlog.problem.application.collector.ProblemJobTargets.dropManifestTargets
 import com.didimlog.problem.application.collector.ProblemJobTargets.filterProblemsByRange
 import com.didimlog.problem.application.collector.ProblemJobTargets.isAfterCheckpoint
@@ -32,11 +31,9 @@ import org.springframework.data.redis.connection.DataType
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.ScheduledExecutorService
-import kotlin.math.min
 
 /**
  * 문제 데이터 수집 서비스
@@ -85,6 +82,7 @@ class ProblemCollectorService(
         stateStore = stateStore,
         workerLeaseCoordinator = workerLeaseCoordinator
     )
+    private val jobQueries = ProblemJobQueries(stateStore)
     private val targetCollector = ProblemJobTargetCollector(
         solvedAcClient = solvedAcClient,
         problemRepository = problemRepository,
@@ -200,24 +198,23 @@ class ProblemCollectorService(
     }
 
     fun getMetadataCollectJobStatus(jobId: String): JobStatusUnifiedResponse? {
-        return getTypedJob(jobId, ProblemJobType.COLLECT_METADATA)
+        return jobQueries.getTypedJob(jobId, ProblemJobType.COLLECT_METADATA)
     }
 
     fun getDetailsCollectJobStatus(jobId: String): JobStatusUnifiedResponse? {
-        return getTypedJob(jobId, ProblemJobType.COLLECT_DETAILS)
+        return jobQueries.getTypedJob(jobId, ProblemJobType.COLLECT_DETAILS)
     }
 
     fun getDetailsRefreshJobStatus(jobId: String): JobStatusUnifiedResponse? {
-        return getTypedJob(jobId, ProblemJobType.REFRESH_DETAILS)
+        return jobQueries.getTypedJob(jobId, ProblemJobType.REFRESH_DETAILS)
     }
 
     fun getLanguageUpdateJobStatus(jobId: String): JobStatusUnifiedResponse? {
-        return getTypedJob(jobId, ProblemJobType.UPDATE_LANGUAGE)
+        return jobQueries.getTypedJob(jobId, ProblemJobType.UPDATE_LANGUAGE)
     }
 
     fun getJob(jobId: String): JobStatusUnifiedResponse? {
-        val raw = stateStore.readJob(jobId) ?: return null
-        return withQueuePosition(raw)
+        return jobQueries.getJob(jobId)
     }
 
     fun failOrphanedJobsDuringStartup(): Int {
@@ -261,27 +258,7 @@ class ProblemCollectorService(
         page: Int,
         size: Int
     ): JobPageResponse<JobStatusUnifiedResponse> {
-        if (page <= 0 || size <= 0) {
-            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "page와 size는 1 이상이어야 합니다.")
-        }
-        if (from != null && to != null && from > to) {
-            throw BusinessException(ErrorCode.INVALID_RANGE, "from은 to보다 클 수 없습니다. from=$from, to=$to")
-        }
-
-        val filtered = withQueuePositions(stateStore.loadAllJobsPruningStaleIndex())
-            .filter { job -> type == null || job.jobType == type }
-            .filter { job -> status == null || job.status == status }
-            .filter { job -> from == null || job.queuedAt >= from }
-            .filter { job -> to == null || job.queuedAt <= to }
-            .sortedByDescending { it.queuedAt }
-
-        val offset = (page - 1) * size
-        if (offset >= filtered.size) {
-            return JobPageResponse.of(emptyList(), page, size, filtered.size.toLong())
-        }
-
-        val end = min(offset + size, filtered.size)
-        return JobPageResponse.of(filtered.subList(offset, end), page, size, filtered.size.toLong())
+        return jobQueries.getJobs(type, status, from, to, page, size)
     }
 
     fun cancelJob(jobId: String, cancelledBy: String, ipAddress: String = "unknown"): JobStatusUnifiedResponse {
@@ -304,7 +281,7 @@ class ProblemCollectorService(
             val cancelled = stateStore.compareAndSetJob(snapshot, updated)
             if (cancelled != null) {
                 auditLogger.logJobAction(cancelledBy, AdminActionType.PROBLEM_JOB_CANCEL, ipAddress, cancelled)
-                return withQueuePosition(cancelled)
+                return jobQueries.withQueuePosition(cancelled)
             }
         }
 
@@ -702,71 +679,7 @@ class ProblemCollectorService(
     }
 
     fun getJobMetrics(window: JobMetricsWindow): JobMetricsResponse {
-        val threshold = when (window) {
-            JobMetricsWindow.DAY -> stateStore.nowEpochSeconds() - Duration.ofDays(1).seconds
-            JobMetricsWindow.WEEK -> stateStore.nowEpochSeconds() - Duration.ofDays(7).seconds
-            JobMetricsWindow.MONTH -> stateStore.nowEpochSeconds() - Duration.ofDays(30).seconds
-        }
-
-        val jobs = stateStore.loadAllJobsPruningStaleIndex().filter { it.queuedAt >= threshold }
-        val totalJobs = jobs.size.toLong()
-        val completedJobs = jobs.count { it.status == JobStatus.COMPLETED }.toLong()
-        val failedJobs = jobs.count { it.status == JobStatus.FAILED }.toLong()
-        val cancelledJobs = jobs.count { it.status == JobStatus.CANCELLED }.toLong()
-
-        val averageDurationSeconds = jobs
-            .mapNotNull { job ->
-                val started = job.startedAt
-                val completed = job.completedAt
-                if (started == null || completed == null || completed < started) {
-                    null
-                } else {
-                    completed - started
-                }
-            }
-            .let { durations ->
-                if (durations.isEmpty()) {
-                    0L
-                } else {
-                    durations.sum() / durations.size
-                }
-            }
-
-        val averageFailureRate = jobs
-            .map { job ->
-                if (job.totalCount <= 0) {
-                    if (job.status == JobStatus.FAILED) 1.0 else 0.0
-                } else {
-                    job.failCount.toDouble() / job.totalCount.toDouble()
-                }
-            }
-            .let { rates ->
-                if (rates.isEmpty()) {
-                    0.0
-                } else {
-                    rates.sum() / rates.size.toDouble()
-                }
-            }
-
-        val topErrorCodes = jobs
-            .mapNotNull { it.errorCode }
-            .groupingBy { it }
-            .eachCount()
-            .entries
-            .sortedByDescending { it.value }
-            .take(5)
-            .map { JobErrorCodeMetric(it.key, it.value.toLong()) }
-
-        return JobMetricsResponse(
-            window = window,
-            totalJobs = totalJobs,
-            completedJobs = completedJobs,
-            failedJobs = failedJobs,
-            cancelledJobs = cancelledJobs,
-            averageDurationSeconds = averageDurationSeconds,
-            averageFailureRate = averageFailureRate,
-            topErrorCodes = topErrorCodes
-        )
+        return jobQueries.getJobMetrics(window)
     }
 
     fun getJobAudit(
@@ -777,17 +690,7 @@ class ProblemCollectorService(
         page: Int,
         size: Int
     ): JobPageResponse<JobAuditResponse> {
-        val jobsPage = getJobs(type, status, from, to, page, size)
-        val audits = jobsPage.content.map { JobAuditResponse.from(it) }
-        return JobPageResponse(
-            content = audits,
-            page = jobsPage.page,
-            size = jobsPage.size,
-            totalElements = jobsPage.totalElements,
-            totalPages = jobsPage.totalPages,
-            hasNext = jobsPage.hasNext,
-            hasPrevious = jobsPage.hasPrevious
-        )
+        return jobQueries.getJobAudit(type, status, from, to, page, size)
     }
 
     private fun startCollectDetailsWithTargets(
@@ -951,24 +854,6 @@ class ProblemCollectorService(
         )
 
         return stateStore.persistNewJob(created, manifestJson)
-    }
-
-    private fun getTypedJob(jobId: String, type: ProblemJobType): JobStatusUnifiedResponse? {
-        val job = getJob(jobId) ?: return null
-        return if (job.jobType == type) job else null
-    }
-
-    private fun withQueuePosition(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
-        if (job.status != JobStatus.PENDING) {
-            return job.copy(queuePosition = null)
-        }
-
-        val pending = stateStore.loadAllJobsPruningStaleIndex()
-            .filter { it.status == JobStatus.PENDING }
-            .sortedWith(compareBy<JobStatusUnifiedResponse> { it.queuedAt }.thenBy { it.jobId })
-
-        val index = pending.indexOfFirst { it.jobId == job.jobId }
-        return job.copy(queuePosition = if (index >= 0) index + 1 else null)
     }
 
     private fun loadRetryProblemCandidates(
