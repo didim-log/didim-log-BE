@@ -51,9 +51,10 @@ flowchart TD
 ### 1. 메타데이터 수집과 정규화
 
 1. `ProblemCollectorController.collectMetadata`가 범위와 관리자 정보를 `ProblemCollectorService.collectMetadataAsync`에 전달한다.
-2. 서비스는 Redis Lua로 `PENDING` 상태, 대상 manifest와 sorted index를 함께 만든
-   뒤 `taskExecutor.execute`로 worker를 등록하고 `jobId`를 즉시 반환한다.
-3. `collectMetadataAsyncInternal`은 번호별로 `SolvedAcClient.fetchProblem`을 호출한다.
+2. 서비스는 `ProblemJobLauncher`를 통해 Redis Lua로 `PENDING` 상태, 대상 manifest와
+   sorted index를 함께 만든 뒤 `taskExecutor.execute`로 worker를 등록하고 `jobId`를
+   즉시 반환한다.
+3. `ProblemJobTargetCollector.collectMetadataAsyncInternal`은 번호별로 `SolvedAcClient.fetchProblem`을 호출한다.
 4. `ProblemCategoryMapper.extractTagsToEnglish`는 한국어 표시명을 `ProblemCategory`로 변환하고 영문 정식명 목록으로 중복 제거한다.
 5. `determineCategory`는 첫 번째 정규 태그를 대표 `category`로 사용한다. 태그가 없으면 `IMPLEMENTATION`이다.
 6. 신규·기존 문제 모두 메타데이터 소유 필드만 MongoDB modifier upsert로 갱신하며, 기존 상세·URL·언어는 보존한다.
@@ -146,7 +147,12 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 주요 구현 파일:
 
 - `problem/api/ProblemCollectorController.kt`
-- `problem/application/collector/ProblemCollectorService.kt`
+- `problem/application/collector/ProblemCollectorService.kt` (진입점, 협력 클래스 연결)
+- `problem/application/collector/ProblemJobLauncher.kt` (작업 생성·제출)
+- `problem/application/collector/ProblemJobTargetCollector.kt` (작업 유형별 대상 처리)
+- `problem/application/collector/ProblemJobStateStore.kt`, `ProblemJobRedisScripts.kt` (Redis 상태와 Lua CAS)
+- `problem/application/collector/ProblemJobWorkerLeaseCoordinator.kt` (worker 선점·heartbeat)
+- `problem/application/collector/ProblemJobRetryPlanner.kt` (재시도 대상 선택)
 - `infra/solvedac/ProblemCategoryMapper.kt`
 - `recommendation/application/RecommendationService.kt`
 - `problem/application/category/AlgorithmHierarchyUtils.kt`

@@ -115,7 +115,21 @@ main() {
       src/integrationTest/kotlin/com/didimlog/problem/application/collector/ProblemCollectorDetailsParallelBenchmarkIntegrationTest.kt \
       src/main/kotlin/com/didimlog/problem/application/collector/ParallelProblemDetailsFetcher.kt \
       src/main/kotlin/com/didimlog/problem/application/collector/ProblemCollectorParallelProperties.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/JobWorkerContext.kt \
       src/main/kotlin/com/didimlog/problem/application/collector/ProblemCollectorService.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobAuditLogger.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobExecutionRunner.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobLauncher.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobManifestValidator.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobQueries.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobRedisKeys.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobRedisScripts.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobRetryPlanner.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobStateStore.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobStatusCalculator.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobTargetCollector.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobTargets.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobWorkerLeaseCoordinator.kt \
       src/main/kotlin/com/didimlog/problem/domain/repository/ProblemRepositoryImpl.kt \
       performance/crawler/run-details-parallel-benchmark.sh |
       shasum -a 256 |
