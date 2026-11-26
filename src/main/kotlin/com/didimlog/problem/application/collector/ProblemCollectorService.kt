@@ -2,6 +2,27 @@ package com.didimlog.problem.application.collector
 
 import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.problem.application.category.ProblemLanguageDetector
+import com.didimlog.problem.application.collector.ProblemJobRedisKeys.JOB_INDEX_KEY
+import com.didimlog.problem.application.collector.ProblemJobRedisKeys.JOB_TTL_SECONDS
+import com.didimlog.problem.application.collector.ProblemJobRedisKeys.failureKey
+import com.didimlog.problem.application.collector.ProblemJobRedisKeys.jobKey
+import com.didimlog.problem.application.collector.ProblemJobRedisKeys.jobStateKeys
+import com.didimlog.problem.application.collector.ProblemJobRedisKeys.leaseKey
+import com.didimlog.problem.application.collector.ProblemJobRedisKeys.targetKey
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.CLAIM_JOB_SCRIPT
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.COMPARE_AND_SET_JOB_SCRIPT
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.CREATE_JOB_SCRIPT
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_FAILURE_LEDGER_INVALID
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_LEASE_CONFLICT
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_LEASE_DURATION_INVALID
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_LEASE_INVALID
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_STATE_CONFLICT
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_STATE_MISSING
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_STATE_UPDATED
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.MAX_JOB_STATE_RETRIES
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.OWNED_COMPARE_AND_SET_JOB_SCRIPT
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.RELEASE_JOB_LEASE_SCRIPT
+import com.didimlog.problem.application.collector.ProblemJobRedisScripts.RENEW_JOB_LEASE_SCRIPT
 import com.didimlog.problem.domain.Problem
 import com.didimlog.admin.domain.AdminActionType
 import com.didimlog.problem.domain.repository.ProblemDetailsUpdate
@@ -19,7 +40,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.data.redis.connection.DataType
 import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.nio.charset.StandardCharsets
@@ -69,233 +89,11 @@ class ProblemCollectorService(
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
 
     companion object {
-        private const val JOB_KEY_PREFIX = "problem:job:status:"
-        private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
-        private const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
-        private const val JOB_LEASE_KEY_PREFIX = "problem:job:lease:"
-        private const val JOB_INDEX_KEY = "problem:job:index"
-        private const val JOB_TTL_SECONDS = 86400L
-        private const val MAX_JOB_STATE_RETRIES = 3
-        private const val JOB_FAILURE_LEDGER_INVALID = -2L
-        private const val JOB_STATE_MISSING = -1L
-        private const val JOB_STATE_CONFLICT = 0L
-        private const val JOB_STATE_UPDATED = 1L
-        private const val JOB_LEASE_CONFLICT = -3L
-        private const val JOB_LEASE_INVALID = -4L
-        private const val JOB_LEASE_DURATION_INVALID = -6L
         private const val METADATA_AVG_SECONDS = 1L
         private const val DETAILS_AVG_SECONDS = 3L
         private const val LANGUAGE_AVG_SECONDS = 1L
         private const val RESTART_ORPHAN_MESSAGE =
             "서버 재시작으로 실행 주체를 잃었습니다. 작업을 재시도해주세요."
-        private val CREATE_JOB_SCRIPT = DefaultRedisScript(
-            """
-            if redis.call('EXISTS', KEYS[1]) == 1 or redis.call('EXISTS', KEYS[3]) == 1 then
-                return 0
-            end
-
-            local indexType = redis.call('TYPE', KEYS[2])
-            if type(indexType) == 'table' then
-                indexType = indexType['ok']
-            end
-            if indexType ~= 'none' and indexType ~= 'zset' then
-                return -1
-            end
-
-            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
-            redis.call('SET', KEYS[3], ARGV[2], 'EX', ARGV[3])
-            redis.call('ZADD', KEYS[2], ARGV[4], ARGV[5])
-            return 1
-            """.trimIndent(),
-            Long::class.java
-        )
-        private val COMPARE_AND_SET_JOB_SCRIPT = DefaultRedisScript(
-            """
-            local current = redis.call('GET', KEYS[1])
-            if not current then
-                return -1
-            end
-            if current ~= ARGV[1] then
-                return 0
-            end
-
-            local refreshTargetTtl = false
-            if ARGV[6] ~= '' then
-                local targetType = redis.call('TYPE', KEYS[3])
-                if type(targetType) == 'table' then
-                    targetType = targetType['ok']
-                end
-                if targetType == 'string' then
-                    refreshTargetTtl = true
-                end
-            end
-
-            if ARGV[4] ~= '' then
-                local failureType = redis.call('TYPE', KEYS[2])
-                if type(failureType) == 'table' then
-                    failureType = failureType['ok']
-                end
-                if failureType ~= 'none' and failureType ~= 'set' then
-                    return -2
-                end
-                redis.call('SADD', KEYS[2], ARGV[4])
-            end
-
-            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
-            if ARGV[5] ~= '0' then
-                redis.call('EXPIRE', KEYS[2], ARGV[3])
-            end
-            if refreshTargetTtl then
-                redis.call('EXPIRE', KEYS[3], ARGV[3])
-            end
-            if ARGV[7] == '1' then
-                redis.call('DEL', KEYS[4])
-            end
-            return 1
-            """.trimIndent(),
-            Long::class.java
-        )
-        private val CLAIM_JOB_SCRIPT = DefaultRedisScript(
-            """
-            local current = redis.call('GET', KEYS[1])
-            if not current then
-                return -1
-            end
-            if current ~= ARGV[1] then
-                return 0
-            end
-
-            local leaseMillis = tonumber(ARGV[5])
-            if not leaseMillis or leaseMillis < 1 then
-                return -6
-            end
-
-            local leaseType = redis.call('TYPE', KEYS[4])
-            if type(leaseType) == 'table' then
-                leaseType = leaseType['ok']
-            end
-            if leaseType == 'string' then
-                return -3
-            end
-            if leaseType ~= 'none' then
-                return -4
-            end
-
-            local refreshTargetTtl = false
-            if ARGV[6] ~= '' then
-                local targetType = redis.call('TYPE', KEYS[3])
-                if type(targetType) == 'table' then
-                    targetType = targetType['ok']
-                end
-                if targetType == 'string' then
-                    refreshTargetTtl = true
-                end
-            end
-
-            local failureType = redis.call('TYPE', KEYS[2])
-            if type(failureType) == 'table' then
-                failureType = failureType['ok']
-            end
-
-            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
-            redis.call('SET', KEYS[4], ARGV[4], 'PX', ARGV[5])
-            if failureType == 'set' then
-                redis.call('EXPIRE', KEYS[2], ARGV[3])
-            end
-            if refreshTargetTtl then
-                redis.call('EXPIRE', KEYS[3], ARGV[3])
-            end
-            return 1
-            """.trimIndent(),
-            Long::class.java
-        )
-        private val OWNED_COMPARE_AND_SET_JOB_SCRIPT = DefaultRedisScript(
-            """
-            local current = redis.call('GET', KEYS[1])
-            if not current then
-                return -1
-            end
-            if current ~= ARGV[1] then
-                return 0
-            end
-
-            local leaseMillis = tonumber(ARGV[8])
-            if not leaseMillis or leaseMillis < 1 then
-                return -6
-            end
-
-            local leaseType = redis.call('TYPE', KEYS[4])
-            if type(leaseType) == 'table' then
-                leaseType = leaseType['ok']
-            end
-            if leaseType == 'none' then
-                return -3
-            end
-            if leaseType ~= 'string' then
-                return -4
-            end
-            if redis.call('GET', KEYS[4]) ~= ARGV[7] then
-                return -3
-            end
-
-            local refreshTargetTtl = false
-            if ARGV[6] ~= '' then
-                local targetType = redis.call('TYPE', KEYS[3])
-                if type(targetType) == 'table' then
-                    targetType = targetType['ok']
-                end
-                if targetType == 'string' then
-                    refreshTargetTtl = true
-                end
-            end
-
-            if ARGV[4] ~= '' then
-                local failureType = redis.call('TYPE', KEYS[2])
-                if type(failureType) == 'table' then
-                    failureType = failureType['ok']
-                end
-                if failureType ~= 'none' and failureType ~= 'set' then
-                    return -2
-                end
-            end
-
-            if ARGV[4] ~= '' then
-                redis.call('SADD', KEYS[2], ARGV[4])
-            end
-            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
-            if ARGV[5] ~= '0' then
-                redis.call('EXPIRE', KEYS[2], ARGV[3])
-            end
-            if refreshTargetTtl then
-                redis.call('EXPIRE', KEYS[3], ARGV[3])
-            end
-            if ARGV[9] == '1' then
-                redis.call('DEL', KEYS[4])
-            else
-                redis.call('PEXPIRE', KEYS[4], ARGV[8])
-            end
-            return 1
-            """.trimIndent(),
-            Long::class.java
-        )
-        private val RENEW_JOB_LEASE_SCRIPT = DefaultRedisScript(
-            """
-            if redis.call('GET', KEYS[1]) == ARGV[1] then
-                return redis.call('PEXPIRE', KEYS[1], ARGV[2])
-            end
-            return 0
-            """.trimIndent(),
-            Long::class.java
-        )
-        private val RELEASE_JOB_LEASE_SCRIPT = DefaultRedisScript(
-            """
-            if redis.call('GET', KEYS[1]) == ARGV[1] then
-                return redis.call('DEL', KEYS[1])
-            end
-            return 0
-            """.trimIndent(),
-            Long::class.java
-        )
     }
 
     private data class JobSnapshot(
@@ -2681,31 +2479,6 @@ class ProblemCollectorService(
             val numericProblemId = problem.id.value.toIntOrNull() ?: return@filter false
             numericProblemId in start..end
         }
-    }
-
-    private fun jobKey(jobId: String): String {
-        return "$JOB_KEY_PREFIX$jobId"
-    }
-
-    private fun failureKey(jobId: String): String {
-        return "$JOB_FAILURE_KEY_PREFIX$jobId"
-    }
-
-    private fun targetKey(jobId: String): String {
-        return "$JOB_TARGET_KEY_PREFIX$jobId"
-    }
-
-    private fun leaseKey(jobId: String): String {
-        return "$JOB_LEASE_KEY_PREFIX$jobId"
-    }
-
-    private fun jobStateKeys(jobId: String): List<String> {
-        return listOf(
-            jobKey(jobId),
-            failureKey(jobId),
-            targetKey(jobId),
-            leaseKey(jobId)
-        )
     }
 
     private fun nowEpochSeconds(): Long {

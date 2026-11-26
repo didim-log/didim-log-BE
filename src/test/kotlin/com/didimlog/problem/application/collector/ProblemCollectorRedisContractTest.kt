@@ -1,6 +1,5 @@
 package com.didimlog.problem.application.collector
 
-import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -40,18 +39,18 @@ class ProblemCollectorRedisContractTest {
     @Test
     @DisplayName("Redis 키 접두사, 인덱스 키, TTL이 그대로다")
     fun `redis key prefixes stay the same`() {
-        assertThat(staticValue("JOB_KEY_PREFIX")).isEqualTo("problem:job:status:")
-        assertThat(staticValue("JOB_FAILURE_KEY_PREFIX")).isEqualTo("problem:job:failures:")
-        assertThat(staticValue("JOB_TARGET_KEY_PREFIX")).isEqualTo("problem:job:targets:")
-        assertThat(staticValue("JOB_LEASE_KEY_PREFIX")).isEqualTo("problem:job:lease:")
-        assertThat(staticValue("JOB_INDEX_KEY")).isEqualTo("problem:job:index")
-        assertThat(staticValue("JOB_TTL_SECONDS")).isEqualTo(86400L)
+        assertThat(ProblemJobRedisKeys.JOB_KEY_PREFIX).isEqualTo("problem:job:status:")
+        assertThat(ProblemJobRedisKeys.JOB_FAILURE_KEY_PREFIX).isEqualTo("problem:job:failures:")
+        assertThat(ProblemJobRedisKeys.JOB_TARGET_KEY_PREFIX).isEqualTo("problem:job:targets:")
+        assertThat(ProblemJobRedisKeys.JOB_LEASE_KEY_PREFIX).isEqualTo("problem:job:lease:")
+        assertThat(ProblemJobRedisKeys.JOB_INDEX_KEY).isEqualTo("problem:job:index")
+        assertThat(ProblemJobRedisKeys.JOB_TTL_SECONDS).isEqualTo(86400L)
     }
 
     @Test
     @DisplayName("스크립트에 넘기는 작업 상태 키 순서가 그대로다")
     fun `job state keys keep their order`() {
-        assertThat(jobStateKeys("job-1")).containsExactly(
+        assertThat(ProblemJobRedisKeys.jobStateKeys("job-1")).containsExactly(
             "problem:job:status:job-1",
             "problem:job:failures:job-1",
             "problem:job:targets:job-1",
@@ -62,47 +61,24 @@ class ProblemCollectorRedisContractTest {
     @Test
     @DisplayName("Lua 결과 코드와 CAS 재시도 한도가 그대로다")
     fun `script result codes stay the same`() {
-        assertThat(staticValue("JOB_FAILURE_LEDGER_INVALID")).isEqualTo(-2L)
-        assertThat(staticValue("JOB_STATE_MISSING")).isEqualTo(-1L)
-        assertThat(staticValue("JOB_STATE_CONFLICT")).isEqualTo(0L)
-        assertThat(staticValue("JOB_STATE_UPDATED")).isEqualTo(1L)
-        assertThat(staticValue("JOB_LEASE_CONFLICT")).isEqualTo(-3L)
-        assertThat(staticValue("JOB_LEASE_INVALID")).isEqualTo(-4L)
-        assertThat(staticValue("JOB_LEASE_DURATION_INVALID")).isEqualTo(-6L)
-        assertThat(staticValue("MAX_JOB_STATE_RETRIES")).isEqualTo(3)
+        assertThat(ProblemJobRedisScripts.JOB_FAILURE_LEDGER_INVALID).isEqualTo(-2L)
+        assertThat(ProblemJobRedisScripts.JOB_STATE_MISSING).isEqualTo(-1L)
+        assertThat(ProblemJobRedisScripts.JOB_STATE_CONFLICT).isEqualTo(0L)
+        assertThat(ProblemJobRedisScripts.JOB_STATE_UPDATED).isEqualTo(1L)
+        assertThat(ProblemJobRedisScripts.JOB_LEASE_CONFLICT).isEqualTo(-3L)
+        assertThat(ProblemJobRedisScripts.JOB_LEASE_INVALID).isEqualTo(-4L)
+        assertThat(ProblemJobRedisScripts.JOB_LEASE_DURATION_INVALID).isEqualTo(-6L)
+        assertThat(ProblemJobRedisScripts.MAX_JOB_STATE_RETRIES).isEqualTo(3)
     }
 
     private fun scriptsByName(): Map<String, DefaultRedisScript<*>> {
-        return listOf(
-            "CREATE_JOB_SCRIPT",
-            "COMPARE_AND_SET_JOB_SCRIPT",
-            "CLAIM_JOB_SCRIPT",
-            "OWNED_COMPARE_AND_SET_JOB_SCRIPT",
-            "RENEW_JOB_LEASE_SCRIPT",
-            "RELEASE_JOB_LEASE_SCRIPT"
-        ).associateWith { name -> staticValue(name) as DefaultRedisScript<*> }
-    }
-
-    private fun staticValue(name: String): Any? {
-        val field = ProblemCollectorService::class.java.getDeclaredField(name)
-        field.isAccessible = true
-        return field.get(null)
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun jobStateKeys(jobId: String): List<String> {
-        val service = ProblemCollectorService(
-            solvedAcClient = mockk(),
-            problemRepository = mockk(),
-            bojCrawler = mockk(),
-            redisTemplate = mockk(),
-            objectMapper = mockk(),
-            adminAuditService = mockk(),
-            pacer = mockk(),
-            recoveryState = mockk()
+        return mapOf(
+            "CREATE_JOB_SCRIPT" to ProblemJobRedisScripts.CREATE_JOB_SCRIPT,
+            "COMPARE_AND_SET_JOB_SCRIPT" to ProblemJobRedisScripts.COMPARE_AND_SET_JOB_SCRIPT,
+            "CLAIM_JOB_SCRIPT" to ProblemJobRedisScripts.CLAIM_JOB_SCRIPT,
+            "OWNED_COMPARE_AND_SET_JOB_SCRIPT" to ProblemJobRedisScripts.OWNED_COMPARE_AND_SET_JOB_SCRIPT,
+            "RENEW_JOB_LEASE_SCRIPT" to ProblemJobRedisScripts.RENEW_JOB_LEASE_SCRIPT,
+            "RELEASE_JOB_LEASE_SCRIPT" to ProblemJobRedisScripts.RELEASE_JOB_LEASE_SCRIPT
         )
-        val method = ProblemCollectorService::class.java.getDeclaredMethod("jobStateKeys", String::class.java)
-        method.isAccessible = true
-        return method.invoke(service, jobId) as List<String>
     }
 }
