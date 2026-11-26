@@ -127,6 +127,18 @@ Content-Type: application/json
 }
 ```
 
+**에러 응답 예시 (회원가입 중 Solved.ac 장애):**
+
+Solved.ac가 404를 돌려준 경우만 위 "유효하지 않은 BOJ ID"로 응답합니다. 5xx, 재시도 소진, 빈 응답 같은 외부 장애는 다음처럼 응답하며, BOJ 인증 세션은 소비하지 않으므로 세션이 만료되기 전이면 같은 세션으로 다시 시도할 수 있습니다. 로그인 중 Solved.ac 조회가 실패하면 Rating 동기화만 건너뛰고 로그인은 성공합니다.
+```json
+{
+  "status": 500,
+  "error": "Internal Server Error",
+  "code": "COMMON_INTERNAL_ERROR",
+  "message": "Solved.ac에서 BOJ 사용자 정보를 확인하지 못했습니다. 잠시 후 다시 시도해주세요."
+}
+```
+
 **에러 응답 예시 (가입되지 않은 사용자 로그인):**
 ```json
 {

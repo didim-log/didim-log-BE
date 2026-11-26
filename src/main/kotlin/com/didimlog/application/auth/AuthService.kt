@@ -100,44 +100,10 @@ class AuthService(
         }
         val studentId = requireNotNull(student.id) { "저장된 학생 ID가 없습니다." }
 
-        // Rating 및 Tier 정보 동기화
-        try {
-            val userResponse = solvedAcClient.fetchUser(bojIdVo)
-            val newRating = userResponse.rating
-            val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
-            val updatedStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
-            if (
-                student.rating != updatedStudent.rating ||
-                student.solvedAcTierLevel != updatedStudent.solvedAcTierLevel ||
-                student.currentTier != updatedStudent.currentTier
-            ) {
-                studentRepository.updateSolvedAcProfileById(
-                    studentId = studentId,
-                    expectedBojId = bojIdVo,
-                    rating = updatedStudent.rating,
-                    solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
-                    currentTier = updatedStudent.currentTier
-                ) ?: throw BusinessException(
-                    ErrorCode.STUDENT_NOT_FOUND,
-                    "프로필을 갱신할 학생을 찾을 수 없습니다. bojId=$bojId"
-                )
-                log.info(
-                    "Rating 및 티어 정보 동기화 완료: bojId={}, oldRating={}, newRating={}, oldTierLevel={}, newTierLevel={}",
-                    bojId,
-                    student.rating,
-                    newRating,
-                    student.solvedAcTierLevel.value,
-                    newTierLevel.value
-                )
-            }
-        } catch (e: BusinessException) {
-            throw e
-        } catch (e: IllegalStateException) {
-            log.warn("Solved.ac API 호출 실패로 Rating 동기화 건너뜀: bojId=$bojId, message=${e.message}")
-            // Solved.ac API 호출 실패 시에도 로그인은 진행 (기존 정보 유지)
-        } catch (e: Exception) {
-            log.error("Rating 동기화 중 예상치 못한 예외 발생: bojId=$bojId, exceptionType=${e.javaClass.simpleName}, message=${e.message}", e)
-            // 예외 발생 시에도 로그인은 진행 (기존 정보 유지)
+        // Rating 및 Tier 정보 동기화. solved.ac 조회에 실패하면 기존 정보로 로그인을 진행한다.
+        val userResponse = fetchSolvedAcUserForSyncOrNull(bojIdVo, bojId)
+        if (userResponse != null) {
+            syncSolvedAcProfile(student, studentId, bojIdVo, userResponse)
         }
 
         return credentialSessionCoordinator.executeWithCompletionCheck(studentId) {
@@ -171,6 +137,68 @@ class AuthService(
                 tier = latestStudent.tier(),
                 tierLevel = latestStudent.solvedAcTierLevel.value
             )
+        }
+    }
+
+    /**
+     * 로그인 중 solved.ac 사용자 정보를 조회한다.
+     * SolvedAcWebClient는 404, 5xx·재시도 소진, 빈 응답을 모두 BusinessException으로 던지므로
+     * 예외 타입과 관계없이 조회 실패로 보고 null을 반환한다. 로그인은 기존 정보로 계속 진행한다.
+     */
+    private fun fetchSolvedAcUserForSyncOrNull(bojIdVo: BojId, bojId: String): SolvedAcUserResponse? {
+        try {
+            return solvedAcClient.fetchUser(bojIdVo)
+        } catch (e: Exception) {
+            log.warn(
+                "Solved.ac 사용자 조회 실패로 Rating 동기화 건너뜀: bojId={}, exceptionType={}, message={}",
+                SensitiveDataMasker.maskId(bojId),
+                e.javaClass.simpleName,
+                e.message
+            )
+            return null
+        }
+    }
+
+    private fun syncSolvedAcProfile(
+        student: Student,
+        studentId: String,
+        bojIdVo: BojId,
+        userResponse: SolvedAcUserResponse
+    ) {
+        val bojId = bojIdVo.value
+        try {
+            val newRating = userResponse.rating
+            val newTierLevel = SolvedAcTierLevel.fromRating(newRating)
+            val updatedStudent = student.updateSolvedAcProfile(newRating, newTierLevel)
+            if (
+                student.rating != updatedStudent.rating ||
+                student.solvedAcTierLevel != updatedStudent.solvedAcTierLevel ||
+                student.currentTier != updatedStudent.currentTier
+            ) {
+                studentRepository.updateSolvedAcProfileById(
+                    studentId = studentId,
+                    expectedBojId = bojIdVo,
+                    rating = updatedStudent.rating,
+                    solvedAcTierLevel = updatedStudent.solvedAcTierLevel,
+                    currentTier = updatedStudent.currentTier
+                ) ?: throw BusinessException(
+                    ErrorCode.STUDENT_NOT_FOUND,
+                    "프로필을 갱신할 학생을 찾을 수 없습니다. bojId=$bojId"
+                )
+                log.info(
+                    "Rating 및 티어 정보 동기화 완료: bojId={}, oldRating={}, newRating={}, oldTierLevel={}, newTierLevel={}",
+                    bojId,
+                    student.rating,
+                    newRating,
+                    student.solvedAcTierLevel.value,
+                    newTierLevel.value
+                )
+            }
+        } catch (e: BusinessException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Rating 동기화 중 예상치 못한 예외 발생: bojId=$bojId, exceptionType=${e.javaClass.simpleName}, message=${e.message}", e)
+            // 예외 발생 시에도 로그인은 진행 (기존 정보 유지)
         }
     }
 
@@ -608,22 +636,37 @@ class AuthService(
         }
     }
 
+    /**
+     * 가입할 BOJ ID의 solved.ac 사용자 정보를 조회한다.
+     * solved.ac가 404를 돌려준 경우(COMMON_RESOURCE_NOT_FOUND)만 유효하지 않은 BOJ ID로 보고,
+     * 5xx·재시도 소진·빈 응답 같은 외부 장애는 SolvedAcWebClient와 같은 COMMON_INTERNAL_ERROR로 알린다.
+     */
     private fun fetchSolvedAcUserOrThrow(bojIdVo: BojId, bojId: String): SolvedAcUserResponse {
         try {
             return solvedAcClient.fetchUser(bojIdVo)
-        } catch (e: IllegalStateException) {
+        } catch (e: BusinessException) {
+            if (e.errorCode != ErrorCode.COMMON_RESOURCE_NOT_FOUND) {
+                throw solvedAcUnavailableException(bojId, e)
+            }
             log.warn("Solved.ac 사용자 조회 실패: bojId={}, message={}", SensitiveDataMasker.maskId(bojId), e.message)
             throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "유효하지 않은 BOJ ID입니다. bojId=$bojId")
         } catch (e: Exception) {
-            log.error(
-                "Solved.ac API 호출 중 예상치 못한 예외 발생: bojId={}, exceptionType={}, message={}",
-                SensitiveDataMasker.maskId(bojId),
-                e.javaClass.simpleName,
-                e.message,
-                e
-            )
-            throw BusinessException(ErrorCode.COMMON_RESOURCE_NOT_FOUND, "유효하지 않은 BOJ ID입니다. bojId=$bojId")
+            throw solvedAcUnavailableException(bojId, e)
         }
+    }
+
+    private fun solvedAcUnavailableException(bojId: String, cause: Exception): BusinessException {
+        log.error(
+            "Solved.ac 사용자 조회 중 외부 서비스 오류 발생: bojId={}, exceptionType={}, message={}",
+            SensitiveDataMasker.maskId(bojId),
+            cause.javaClass.simpleName,
+            cause.message,
+            cause
+        )
+        return BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "Solved.ac에서 BOJ 사용자 정보를 확인하지 못했습니다. 잠시 후 다시 시도해주세요."
+        )
     }
 
     private fun createNicknameOrThrow(bojId: String, handle: String): Nickname {

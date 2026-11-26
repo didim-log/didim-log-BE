@@ -301,9 +301,12 @@ class AuthServiceLoginSecurityTest {
         every { studentRepository.findById("student-id") } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
-        // syncUserTier 내부에서 발생하는 예외는 catch되어 로그만 남음
+        // SolvedAcWebClient.fetchUser는 5xx 응답을 BusinessException으로 바꿔 던진다. 로그인은 로그만 남기고 진행한다.
         // value class인 BojId는 any() 매처가 제대로 작동하지 않으므로 구체적인 객체 사용
-        every { solvedAcClient.fetchUser(bojIdVo) } throws IllegalStateException("API 호출 실패")
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "Solved.ac API 호출에 실패했습니다. bojId=$bojId, status=500 INTERNAL_SERVER_ERROR"
+        )
         every {
             jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
         } returns "token"
