@@ -23,6 +23,10 @@ import com.didimlog.problem.application.collector.ProblemJobRedisScripts.MAX_JOB
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.OWNED_COMPARE_AND_SET_JOB_SCRIPT
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.RELEASE_JOB_LEASE_SCRIPT
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.RENEW_JOB_LEASE_SCRIPT
+import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.estimateRemaining
+import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.isTerminal
+import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.normalize
+import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.withQueuePositions
 import com.didimlog.problem.domain.Problem
 import com.didimlog.admin.domain.AdminActionType
 import com.didimlog.problem.domain.repository.ProblemDetailsUpdate
@@ -89,9 +93,6 @@ class ProblemCollectorService(
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
 
     companion object {
-        private const val METADATA_AVG_SECONDS = 1L
-        private const val DETAILS_AVG_SECONDS = 3L
-        private const val LANGUAGE_AVG_SECONDS = 1L
         private const val RESTART_ORPHAN_MESSAGE =
             "서버 재시작으로 실행 주체를 잃었습니다. 작업을 재시도해주세요."
     }
@@ -2247,55 +2248,6 @@ class ProblemCollectorService(
         }
     }
 
-    private fun normalize(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
-        val safeTotal = job.totalCount.coerceAtLeast(0)
-        val safeProcessed = job.processedCount.coerceIn(0, safeTotal)
-        val safeSuccess = job.successCount.coerceIn(0, safeProcessed)
-        val safeFail = job.failCount.coerceIn(0, safeProcessed)
-        val progress = when {
-            safeTotal == 0 && isTerminal(job.status) -> 100
-            safeTotal == 0 -> 0
-            else -> ((safeProcessed * 100) / safeTotal).coerceIn(0, 100)
-        }
-
-        val estimated = estimateRemaining(job.jobType, job.status, safeProcessed, safeTotal)
-
-        return job.copy(
-            totalCount = safeTotal,
-            processedCount = safeProcessed,
-            successCount = safeSuccess,
-            failCount = safeFail,
-            progressPercentage = progress,
-            estimatedRemainingSeconds = estimated,
-            queuePosition = null
-        )
-    }
-
-    private fun estimateRemaining(type: ProblemJobType, status: JobStatus, processed: Int, total: Int): Long? {
-        if (status != JobStatus.RUNNING || total <= 0 || processed <= 0 || processed > total) {
-            return null
-        }
-
-        val avg = when (type) {
-            ProblemJobType.COLLECT_METADATA -> METADATA_AVG_SECONDS
-            ProblemJobType.COLLECT_DETAILS,
-            ProblemJobType.REFRESH_DETAILS -> DETAILS_AVG_SECONDS
-            ProblemJobType.UPDATE_LANGUAGE -> LANGUAGE_AVG_SECONDS
-        }
-        return (total - processed).toLong() * avg
-    }
-
-    private fun withQueuePositions(jobs: List<JobStatusUnifiedResponse>): List<JobStatusUnifiedResponse> {
-        val pending = jobs
-            .filter { it.status == JobStatus.PENDING }
-            .sortedWith(compareBy<JobStatusUnifiedResponse> { it.queuedAt }.thenBy { it.jobId })
-
-        val map = pending.mapIndexed { idx, job -> job.jobId to (idx + 1) }.toMap()
-        return jobs.map { job ->
-            job.copy(queuePosition = map[job.jobId])
-        }
-    }
-
     private fun withQueuePosition(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
         if (job.status != JobStatus.PENDING) {
             return job.copy(queuePosition = null)
@@ -2441,10 +2393,6 @@ class ProblemCollectorService(
                     .thenBy { it.id.value.toIntOrNull() ?: Int.MAX_VALUE }
                     .thenBy { it.id.value }
             )
-    }
-
-    private fun isTerminal(status: JobStatus): Boolean {
-        return status == JobStatus.COMPLETED || status == JobStatus.FAILED || status == JobStatus.CANCELLED
     }
 
     private fun validateRange(start: Int?, end: Int?) {
