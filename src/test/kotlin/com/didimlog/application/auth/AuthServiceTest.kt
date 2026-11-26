@@ -124,7 +124,11 @@ class AuthServiceTest {
         every { PasswordValidator.validate(password) } returns Unit
         every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
         every { studentRepository.findByEmail("test@example.com") } returns Optional.empty()
-        every { solvedAcClient.fetchUser(bojIdVo) } throws IllegalStateException("유효하지 않은 BOJ ID")
+        // SolvedAcWebClient.fetchUser는 404를 COMMON_RESOURCE_NOT_FOUND BusinessException으로 바꿔 던진다.
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_RESOURCE_NOT_FOUND,
+            "Solved.ac에서 사용자를 찾을 수 없습니다. bojId=$bojId"
+        )
 
         // when & then
         val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
@@ -133,6 +137,38 @@ class AuthServiceTest {
         assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_RESOURCE_NOT_FOUND)
         assertThat(exception.message).contains("유효하지 않은 BOJ ID입니다")
         unmockkObject(PasswordValidator)
+    }
+
+    @Test
+    @DisplayName("solved.ac 장애로 회원가입이 실패하면 BOJ ID 오류가 아닌 외부 서비스 오류로 알린다")
+    fun `solved_ac 장애 시 회원가입은 외부 서비스 오류로 실패`() {
+        val bojId = "validuser"
+        val password = "ValidPassword123!"
+        val bojIdVo = BojId(bojId)
+
+        mockkObject(PasswordValidator)
+        every { PasswordValidator.validate(password) } returns Unit
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
+        every { studentRepository.findByEmail("test@example.com") } returns Optional.empty()
+        // SolvedAcWebClient.fetchUser는 5xx·재시도 소진·빈 응답을 모두 COMMON_INTERNAL_ERROR BusinessException으로 바꿔 던진다.
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "Solved.ac API 호출에 실패했습니다. bojId=$bojId, status=503 SERVICE_UNAVAILABLE"
+        )
+
+        try {
+            val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+                authService.signup(bojId, password, "test@example.com", "verification-session")
+            }
+
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INTERNAL_ERROR)
+            assertThat(exception.message).doesNotContain("유효하지 않은 BOJ ID")
+            assertThat(exception.message).doesNotContain("status=503")
+            verify(exactly = 0) { bojOwnershipVerificationService.consumeVerifiedBojId(any(), any()) }
+            verify(exactly = 0) { studentRepository.save(any()) }
+        } finally {
+            unmockkObject(PasswordValidator)
+        }
     }
 
     @Test

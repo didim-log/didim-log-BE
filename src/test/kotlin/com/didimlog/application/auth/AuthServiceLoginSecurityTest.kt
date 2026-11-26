@@ -319,6 +319,58 @@ class AuthServiceLoginSecurityTest {
     }
 
     @Test
+    @DisplayName("login은 solved.ac 장애(재시도 소진 후 BusinessException)에도 기존 정보로 로그인을 진행한다")
+    fun `solved_ac 장애 시에도 로그인 성공`() {
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val password = "ValidPassword123!"
+        val student = createStudent(bojId = bojId, password = "encoded-password")
+
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { passwordEncoder.matches(password, "encoded-password") } returns true
+        // SolvedAcWebClient.fetchUser는 5xx·재시도 소진·빈 응답을 모두 이 예외로 바꿔 던진다.
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "Solved.ac 사용자 정보를 가져오지 못했습니다. bojId=$bojId"
+        )
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        } returns "token"
+
+        val result = authService.login(bojId, password)
+
+        assertThat(result.token).isEqualTo("token")
+        assertThat(result.rating).isEqualTo(student.rating)
+    }
+
+    @Test
+    @DisplayName("login은 solved.ac에서 핸들을 찾지 못해도(404 BusinessException) 기존 정보로 로그인을 진행한다")
+    fun `solved_ac 핸들 미존재 시에도 로그인 성공`() {
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val password = "ValidPassword123!"
+        val student = createStudent(bojId = bojId, password = "encoded-password")
+
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { passwordEncoder.matches(password, "encoded-password") } returns true
+        // 가입 뒤 BOJ 핸들이 바뀌면 SolvedAcWebClient.fetchUser는 404를 이 예외로 바꿔 던진다.
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_RESOURCE_NOT_FOUND,
+            "Solved.ac에서 사용자를 찾을 수 없습니다. bojId=$bojId"
+        )
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        } returns "token"
+
+        val result = authService.login(bojId, password)
+
+        assertThat(result.token).isEqualTo("token")
+        assertThat(result.rating).isEqualTo(student.rating)
+    }
+
+    @Test
     @DisplayName("잠금 대기 중 BOJ ID가 바뀌면 이전 ID 로그인을 거절한다")
     fun `BOJ ID 변경 뒤 이전 ID 로그인 거절`() {
         val oldBojId = "testuser"
