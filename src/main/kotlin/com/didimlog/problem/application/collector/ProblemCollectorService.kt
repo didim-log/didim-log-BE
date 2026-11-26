@@ -41,11 +41,8 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CancellationException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
-import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.ScheduledFuture
 import kotlin.math.min
 
 /**
@@ -89,6 +86,12 @@ class ProblemCollectorService(
         workerIdentity = workerIdentity,
         heartbeatExecutor = heartbeatExecutor
     )
+    private val executionRunner = ProblemJobExecutionRunner(
+        taskExecutor = taskExecutor,
+        workerLeaseProperties = workerLeaseProperties,
+        stateStore = stateStore,
+        workerLeaseCoordinator = workerLeaseCoordinator
+    )
 
     companion object {
         private const val RESTART_ORPHAN_MESSAGE =
@@ -105,8 +108,6 @@ class ProblemCollectorService(
         val successCount: Int,
         val failCount: Int
     )
-
-    private val scheduledJobIds = ConcurrentHashMap.newKeySet<String>()
 
     /**
      * Solved.ac API를 통해 문제 메타데이터를 수집하여 DB에 저장한다 (Upsert).
@@ -812,7 +813,7 @@ class ProblemCollectorService(
             manifestRange = null
         )
         auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
+        executionRunner.executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
 
@@ -833,7 +834,7 @@ class ProblemCollectorService(
         )
         val targetIds = metadataTargetIds(fixedTargetIds, targetRange)
         auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, targetIds) }
+        executionRunner.executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, targetIds) }
         return job
     }
 
@@ -852,7 +853,7 @@ class ProblemCollectorService(
             manifestRange = null
         )
         auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
+        executionRunner.executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
 
@@ -870,7 +871,7 @@ class ProblemCollectorService(
             manifestRange = null
         )
         auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, orderedTargets) }
+        executionRunner.executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
 
@@ -886,7 +887,7 @@ class ProblemCollectorService(
             manifestExplicitIds = emptyList(),
             manifestRange = null
         )
-        runJobLoop(
+        executionRunner.runJobLoop(
             jobId = created.jobId,
             defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
         ) { }
@@ -895,7 +896,7 @@ class ProblemCollectorService(
     }
 
     private fun collectMetadataAsyncInternal(jobId: String, problemIds: Iterable<Int>) {
-        runJobLoop(
+        executionRunner.runJobLoop(
             jobId = jobId,
             defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
         ) { worker ->
@@ -965,7 +966,7 @@ class ProblemCollectorService(
     }
 
     private fun collectDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
-        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
+        executionRunner.runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
             processDetailsTargets(
                 jobId = jobId,
                 worker = worker,
@@ -993,7 +994,7 @@ class ProblemCollectorService(
     }
 
     private fun refreshDetailsBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
-        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
+        executionRunner.runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
             processRefreshDetailsTargets(
                 jobId = jobId,
                 worker = worker,
@@ -1129,7 +1130,7 @@ class ProblemCollectorService(
     }
 
     private fun updateLanguageBatchAsyncInternal(jobId: String, targetProblems: List<Problem>) {
-        runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
+        executionRunner.runJobLoop(jobId = jobId, defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code) { worker ->
             processLanguageTargets(
                 jobId = jobId,
                 worker = worker,
@@ -1230,13 +1231,13 @@ class ProblemCollectorService(
             }
         }
 
-        return executeAsync(job.jobId) {
+        return executionRunner.executeAsync(job.jobId) {
             runManifestJob(job.jobId)
         }
     }
 
     private fun runManifestJob(jobId: String) {
-        runJobLoop(
+        executionRunner.runJobLoop(
             jobId = jobId,
             defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code,
             allowTakeover = true
@@ -1321,77 +1322,6 @@ class ProblemCollectorService(
             .associateBy { problem -> problem.id.value }
         return selection.explicitIds.map { problemId ->
             ProblemTarget(problemId, problemsById[problemId])
-        }
-    }
-
-    private fun executeAsync(jobId: String, block: () -> Unit): Boolean {
-        if (!scheduledJobIds.add(jobId)) {
-            return false
-        }
-
-        val scheduledTask = Runnable {
-            try {
-                block()
-            } finally {
-                scheduledJobIds.remove(jobId)
-            }
-        }
-        val executor = taskExecutor
-        if (executor == null) {
-            scheduledTask.run()
-            return true
-        }
-
-        try {
-            executor.execute(scheduledTask)
-            return true
-        } catch (e: RejectedExecutionException) {
-            scheduledJobIds.remove(jobId)
-            log.error("job submission rejected: jobId=$jobId, error=${e.message}", e)
-            if (!workerLeaseProperties.enabled) {
-                stateStore.markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업 실행을 제출할 수 없습니다.")
-            }
-            return false
-        }
-    }
-
-    private fun runJobLoop(
-        jobId: String,
-        defaultFailureCode: String,
-        allowTakeover: Boolean = false,
-        block: (JobWorkerContext) -> Unit
-    ) {
-        val worker = workerLeaseCoordinator.claimWorker(jobId, allowTakeover) ?: return
-        var heartbeat: ScheduledFuture<*>? = null
-
-        try {
-            heartbeat = workerLeaseCoordinator.startHeartbeat(jobId, worker)
-            block(worker)
-            if (workerLeaseCoordinator.isWorkerRunning(jobId, worker)) {
-                workerLeaseCoordinator.markWorkerCompleted(jobId, worker)
-            }
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            workerLeaseCoordinator.markWorkerFailed(
-                jobId,
-                worker,
-                ErrorCode.WORKER_UNAVAILABLE.code,
-                "작업이 인터럽트되었습니다."
-            )
-        } catch (e: BusinessException) {
-            log.warn("job state validation failed: jobId=$jobId, error=${e.message}")
-            workerLeaseCoordinator.markWorkerFailed(
-                jobId,
-                worker,
-                e.errorCode.code,
-                e.message ?: e.errorCode.message
-            )
-        } catch (e: Exception) {
-            log.error("job failed unexpectedly: jobId=$jobId, error=${e.message}", e)
-            workerLeaseCoordinator.markWorkerFailed(jobId, worker, defaultFailureCode, e.message ?: "unexpected error")
-        } finally {
-            heartbeat?.cancel(false)
-            workerLeaseCoordinator.releaseWorkerLease(jobId, worker)
         }
     }
 
