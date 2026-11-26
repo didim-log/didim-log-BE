@@ -2,20 +2,15 @@ package com.didimlog.problem.application.collector
 
 import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.problem.application.collector.ProblemJobRedisKeys.JOB_INDEX_KEY
-import com.didimlog.problem.application.collector.ProblemJobRedisKeys.leaseKey
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.MAX_JOB_STATE_RETRIES
-import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.estimateRemaining
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.isTerminal
 import com.didimlog.problem.application.collector.ProblemJobTargets.dropManifestTargets
 import com.didimlog.problem.application.collector.ProblemJobTargets.filterProblemsByRange
 import com.didimlog.problem.application.collector.ProblemJobTargets.isAfterCheckpoint
-import com.didimlog.problem.application.collector.ProblemJobTargets.metadataTargetIds
 import com.didimlog.problem.application.collector.ProblemJobTargets.orderProblems
-import com.didimlog.problem.application.collector.ProblemJobTargets.sha256
 import com.didimlog.problem.application.collector.ProblemJobTargets.targetIdAt
 import com.didimlog.problem.application.collector.ProblemJobTargets.targetManifestConflict
 import com.didimlog.problem.application.collector.ProblemJobTargets.targetPosition
-import com.didimlog.problem.application.collector.ProblemJobTargets.validateAndCountTargetManifest
 import com.didimlog.problem.application.collector.ProblemJobTargets.validateRange
 import com.didimlog.problem.domain.Problem
 import com.didimlog.admin.domain.AdminActionType
@@ -27,11 +22,9 @@ import com.didimlog.infra.solvedac.SolvedAcClient
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.data.redis.connection.DataType
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.ScheduledExecutorService
 
@@ -91,6 +84,15 @@ class ProblemCollectorService(
         parallelProblemDetailsFetcher = parallelProblemDetailsFetcher,
         executionRunner = executionRunner,
         workerLeaseCoordinator = workerLeaseCoordinator
+    )
+    private val jobLauncher = ProblemJobLauncher(
+        redisTemplate = redisTemplate,
+        objectMapper = objectMapper,
+        recoveryState = recoveryState,
+        stateStore = stateStore,
+        auditLogger = auditLogger,
+        executionRunner = executionRunner,
+        targetCollector = targetCollector
     )
 
     companion object {
@@ -155,7 +157,7 @@ class ProblemCollectorService(
             throw BusinessException(ErrorCode.INVALID_RANGE, "유효하지 않은 범위입니다. start=$start, end=$end")
         }
 
-        return startCollectMetadataWithManifest(
+        return jobLauncher.startCollectMetadataWithManifest(
             explicitTargetIds = emptyList(),
             targetRange = JobRange(start, end),
             responseRange = JobRange(start, end),
@@ -166,7 +168,7 @@ class ProblemCollectorService(
     }
 
     fun collectDetailsBatchAsync(createdBy: String = "system", ipAddress: String = "unknown"): String {
-        return startCollectDetailsWithTargets(
+        return jobLauncher.startCollectDetailsWithTargets(
             problemRepository.findByDescriptionHtmlIsNull(),
             createdBy,
             ipAddress
@@ -181,7 +183,7 @@ class ProblemCollectorService(
     ): String {
         validateRange(start, end)
 
-        return startRefreshDetailsWithTargets(
+        return jobLauncher.startRefreshDetailsWithTargets(
             filterProblemsByRange(problemRepository.findAll(), start, end),
             createdBy,
             ipAddress,
@@ -190,7 +192,7 @@ class ProblemCollectorService(
     }
 
     fun updateLanguageBatchAsync(createdBy: String = "system", ipAddress: String = "unknown"): String {
-        return startUpdateLanguageWithTargets(
+        return jobLauncher.startUpdateLanguageWithTargets(
             problemRepository.findAll(),
             createdBy,
             ipAddress
@@ -247,7 +249,7 @@ class ProblemCollectorService(
             .filter { job ->
                 job.status == JobStatus.PENDING || job.status == JobStatus.RUNNING
             }
-            .count { job -> submitRecoverableJob(job) }
+            .count { job -> jobLauncher.submitRecoverableJob(job) }
     }
 
     fun getJobs(
@@ -346,7 +348,7 @@ class ProblemCollectorService(
                 }
 
                 when {
-                    usesLegacyRetryFallback -> startCollectMetadataWithManifest(
+                    usesLegacyRetryFallback -> jobLauncher.startCollectMetadataWithManifest(
                         explicitTargetIds = emptyList(),
                         targetRange = JobRange(start, end),
                         responseRange = JobRange(start, end),
@@ -356,13 +358,13 @@ class ProblemCollectorService(
 
                     original.status == JobStatus.COMPLETED -> {
                         if (failedIds.isEmpty()) {
-                            createNoopCompletedJob(
+                            jobLauncher.createNoopCompletedJob(
                                 ProblemJobType.COLLECT_METADATA,
                                 JobRange(start, end),
                                 requestedBy
                             ).jobId
                         } else {
-                            startCollectMetadataWithManifest(
+                            jobLauncher.startCollectMetadataWithManifest(
                                 explicitTargetIds = failedIds,
                                 targetRange = null,
                                 responseRange = JobRange(failedIds.first(), failedIds.last()),
@@ -390,13 +392,13 @@ class ProblemCollectorService(
                             else -> maxOf(start, checkpointExclusive + 1)
                         }
                         if (failedIds.isEmpty() && retryStart == null) {
-                            createNoopCompletedJob(
+                            jobLauncher.createNoopCompletedJob(
                                 ProblemJobType.COLLECT_METADATA,
                                 JobRange(start, end),
                                 requestedBy
                             ).jobId
                         } else {
-                            startCollectMetadataWithManifest(
+                            jobLauncher.startCollectMetadataWithManifest(
                                 explicitTargetIds = failedIds,
                                 targetRange = retryStart?.let { JobRange(it, end) },
                                 responseRange = JobRange(
@@ -424,7 +426,7 @@ class ProblemCollectorService(
                     checkpointExclusive,
                     usesLegacyRetryFallback
                 )
-                startCollectDetailsWithTargets(
+                jobLauncher.startCollectDetailsWithTargets(
                     targets,
                     requestedBy,
                     ipAddress
@@ -445,7 +447,7 @@ class ProblemCollectorService(
                     checkpointExclusive,
                     usesLegacyRetryFallback
                 )
-                startRefreshDetailsWithTargets(
+                jobLauncher.startRefreshDetailsWithTargets(
                     targets,
                     requestedBy,
                     ipAddress,
@@ -466,7 +468,7 @@ class ProblemCollectorService(
                     checkpointExclusive,
                     usesLegacyRetryFallback
                 )
-                startUpdateLanguageWithTargets(
+                jobLauncher.startUpdateLanguageWithTargets(
                     targets,
                     requestedBy,
                     ipAddress
@@ -510,13 +512,13 @@ class ProblemCollectorService(
                         )
                 }
                 if (explicitIds.isEmpty() && selected.range == null) {
-                    createNoopCompletedJob(
+                    jobLauncher.createNoopCompletedJob(
                         type = ProblemJobType.COLLECT_METADATA,
                         range = original.range,
                         createdBy = requestedBy
                     ).jobId
                 } else {
-                    startCollectMetadataWithManifest(
+                    jobLauncher.startCollectMetadataWithManifest(
                         explicitTargetIds = explicitIds,
                         targetRange = selected.range,
                         responseRange = metadataResponseRange(selected),
@@ -534,7 +536,7 @@ class ProblemCollectorService(
                     failedProblemIds.contains(problem.id.value) ||
                         problem.descriptionHtml == null
                 }
-                startCollectDetailsWithTargets(
+                jobLauncher.startCollectDetailsWithTargets(
                     selectedProblems,
                     requestedBy,
                     ipAddress
@@ -546,7 +548,7 @@ class ProblemCollectorService(
                     targetIds = selected.explicitIds,
                     jobId = original.jobId
                 )
-                startRefreshDetailsWithTargets(
+                jobLauncher.startRefreshDetailsWithTargets(
                     selectedProblems,
                     requestedBy,
                     ipAddress,
@@ -559,7 +561,7 @@ class ProblemCollectorService(
                     targetIds = selected.explicitIds,
                     jobId = original.jobId
                 )
-                startUpdateLanguageWithTargets(
+                jobLauncher.startUpdateLanguageWithTargets(
                     selectedProblems,
                     requestedBy,
                     ipAddress
@@ -691,169 +693,6 @@ class ProblemCollectorService(
         size: Int
     ): JobPageResponse<JobAuditResponse> {
         return jobQueries.getJobAudit(type, status, from, to, page, size)
-    }
-
-    private fun startCollectDetailsWithTargets(
-        targets: List<Problem>,
-        createdBy: String,
-        ipAddress: String
-    ): JobStatusUnifiedResponse {
-        val orderedTargets = orderProblems(targets)
-        val job = createJob(
-            type = ProblemJobType.COLLECT_DETAILS,
-            range = null,
-            createdBy = createdBy,
-            manifestExplicitIds = orderedTargets.map { it.id.value },
-            manifestRange = null
-        )
-        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executionRunner.executeAsync(job.jobId) { targetCollector.collectDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
-        return job
-    }
-
-    private fun startCollectMetadataWithManifest(
-        explicitTargetIds: List<Int>,
-        targetRange: JobRange?,
-        responseRange: JobRange,
-        createdBy: String,
-        ipAddress: String
-    ): JobStatusUnifiedResponse {
-        val fixedTargetIds = explicitTargetIds.toList()
-        val job = createJob(
-            type = ProblemJobType.COLLECT_METADATA,
-            range = responseRange,
-            createdBy = createdBy,
-            manifestExplicitIds = fixedTargetIds.map(Int::toString),
-            manifestRange = targetRange
-        )
-        val targetIds = metadataTargetIds(fixedTargetIds, targetRange)
-        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executionRunner.executeAsync(job.jobId) { targetCollector.collectMetadataAsyncInternal(job.jobId, targetIds) }
-        return job
-    }
-
-    private fun startRefreshDetailsWithTargets(
-        targets: List<Problem>,
-        createdBy: String,
-        ipAddress: String,
-        range: JobRange?
-    ): JobStatusUnifiedResponse {
-        val orderedTargets = orderProblems(targets)
-        val job = createJob(
-            type = ProblemJobType.REFRESH_DETAILS,
-            range = range,
-            createdBy = createdBy,
-            manifestExplicitIds = orderedTargets.map { it.id.value },
-            manifestRange = null
-        )
-        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executionRunner.executeAsync(job.jobId) { targetCollector.refreshDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
-        return job
-    }
-
-    private fun startUpdateLanguageWithTargets(
-        targets: List<Problem>,
-        createdBy: String,
-        ipAddress: String
-    ): JobStatusUnifiedResponse {
-        val orderedTargets = orderProblems(targets)
-        val job = createJob(
-            type = ProblemJobType.UPDATE_LANGUAGE,
-            range = null,
-            createdBy = createdBy,
-            manifestExplicitIds = orderedTargets.map { it.id.value },
-            manifestRange = null
-        )
-        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
-        executionRunner.executeAsync(job.jobId) { targetCollector.updateLanguageBatchAsyncInternal(job.jobId, orderedTargets) }
-        return job
-    }
-
-    private fun createNoopCompletedJob(
-        type: ProblemJobType,
-        range: JobRange?,
-        createdBy: String
-    ): JobStatusUnifiedResponse {
-        val created = createJob(
-            type = type,
-            range = range,
-            createdBy = createdBy,
-            manifestExplicitIds = emptyList(),
-            manifestRange = null
-        )
-        executionRunner.runJobLoop(
-            jobId = created.jobId,
-            defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
-        ) { }
-        return stateStore.readJob(created.jobId)
-            ?: throw IllegalStateException("생성한 작업 상태를 찾을 수 없습니다. jobId=${created.jobId}")
-    }
-
-    private fun submitRecoverableJob(job: JobStatusUnifiedResponse): Boolean {
-        if (job.workerAttempt?.attemptNumber == Long.MAX_VALUE) {
-            log.error("recoverable job attempt number is exhausted: jobId={}", job.jobId)
-            return false
-        }
-        when (redisTemplate.type(leaseKey(job.jobId))) {
-            DataType.STRING -> return false
-            DataType.NONE -> Unit
-            else -> {
-                log.error("recoverable job has invalid lease type: jobId={}", job.jobId)
-                return false
-            }
-        }
-
-        return executionRunner.executeAsync(job.jobId) {
-            targetCollector.resumeFromManifest(job.jobId)
-        }
-    }
-
-    private fun createJob(
-        type: ProblemJobType,
-        range: JobRange?,
-        createdBy: String,
-        manifestExplicitIds: List<String>,
-        manifestRange: JobRange?
-    ): JobStatusUnifiedResponse {
-        recoveryState.requireJobCreationReady()
-        val now = stateStore.nowEpochSeconds()
-        val jobId = UUID.randomUUID().toString()
-        val manifest = ProblemJobTargetManifest(
-            version = ProblemJobTargetManifest.CURRENT_VERSION,
-            jobId = jobId,
-            jobType = type,
-            explicitIds = manifestExplicitIds.toList(),
-            range = manifestRange
-        )
-        val totalCount = validateAndCountTargetManifest(manifest)
-        val manifestJson = objectMapper.writeValueAsString(manifest)
-        val created = JobStatusUnifiedResponse(
-            jobId = jobId,
-            jobType = type,
-            status = JobStatus.PENDING,
-            queuedAt = now,
-            startedAt = null,
-            lastHeartbeatAt = now,
-            completedAt = null,
-            totalCount = totalCount.coerceAtLeast(0),
-            processedCount = 0,
-            successCount = 0,
-            failCount = 0,
-            progressPercentage = 0,
-            estimatedRemainingSeconds = estimateRemaining(type, JobStatus.PENDING, 0, totalCount),
-            queuePosition = null,
-            range = range,
-            lastCheckpointId = null,
-            errorCode = null,
-            errorMessage = null,
-            createdBy = createdBy,
-            targetManifest = ProblemJobTargetManifestReference(
-                schemaVersion = manifest.version,
-                sha256 = sha256(manifestJson)
-            )
-        )
-
-        return stateStore.persistNewJob(created, manifestJson)
     }
 
     private fun loadRetryProblemCandidates(
