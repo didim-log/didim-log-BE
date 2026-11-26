@@ -27,6 +27,17 @@ import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.est
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.isTerminal
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.normalize
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.withQueuePositions
+import com.didimlog.problem.application.collector.ProblemJobTargets.dropManifestTargets
+import com.didimlog.problem.application.collector.ProblemJobTargets.filterProblemsByRange
+import com.didimlog.problem.application.collector.ProblemJobTargets.isAfterCheckpoint
+import com.didimlog.problem.application.collector.ProblemJobTargets.metadataTargetIds
+import com.didimlog.problem.application.collector.ProblemJobTargets.orderProblems
+import com.didimlog.problem.application.collector.ProblemJobTargets.sha256
+import com.didimlog.problem.application.collector.ProblemJobTargets.targetIdAt
+import com.didimlog.problem.application.collector.ProblemJobTargets.targetManifestConflict
+import com.didimlog.problem.application.collector.ProblemJobTargets.targetPosition
+import com.didimlog.problem.application.collector.ProblemJobTargets.validateAndCountTargetManifest
+import com.didimlog.problem.application.collector.ProblemJobTargets.validateRange
 import com.didimlog.problem.domain.Problem
 import com.didimlog.admin.domain.AdminActionType
 import com.didimlog.problem.domain.repository.ProblemDetailsUpdate
@@ -46,11 +57,8 @@ import org.springframework.data.redis.connection.DataType
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
-import java.util.HexFormat
 import java.util.UUID
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
@@ -105,11 +113,6 @@ class ProblemCollectorService(
     private data class FailureLedger(
         val exists: Boolean,
         val problemIds: Set<String>
-    )
-
-    private data class ManifestTargetSelection(
-        val explicitIds: List<String>,
-        val range: JobRange?
     )
 
     private data class JobWorkerContext(
@@ -2004,75 +2007,6 @@ class ProblemCollectorService(
         return targetCount
     }
 
-    private fun targetPosition(
-        manifest: ProblemJobTargetManifest,
-        targetId: String
-    ): Int? {
-        val explicitIndex = manifest.explicitIds.indexOf(targetId)
-        if (explicitIndex >= 0) {
-            return explicitIndex
-        }
-
-        val start = manifest.range?.start ?: return null
-        val end = manifest.range.end ?: return null
-        val numericId = targetId.toIntOrNull() ?: return null
-        if (numericId !in start..end) {
-            return null
-        }
-        return manifest.explicitIds.size + (numericId - start)
-    }
-
-    private fun targetIdAt(
-        manifest: ProblemJobTargetManifest,
-        index: Int
-    ): String {
-        if (index < manifest.explicitIds.size) {
-            return manifest.explicitIds[index]
-        }
-        val start = manifest.range?.start
-            ?: targetManifestConflict(manifest.jobId, "manifest 대상 위치가 범위를 벗어났습니다.")
-        val end = manifest.range.end
-            ?: targetManifestConflict(manifest.jobId, "manifest 범위의 end가 없습니다.")
-        val numericId = start.toLong() + index.toLong() - manifest.explicitIds.size.toLong()
-        if (numericId > end.toLong()) {
-            targetManifestConflict(manifest.jobId, "manifest 대상 위치가 범위를 벗어났습니다.")
-        }
-        return numericId.toString()
-    }
-
-    private fun dropManifestTargets(
-        manifest: ProblemJobTargetManifest,
-        processedCount: Int
-    ): ManifestTargetSelection {
-        if (processedCount < manifest.explicitIds.size) {
-            return ManifestTargetSelection(
-                explicitIds = manifest.explicitIds.drop(processedCount),
-                range = manifest.range
-            )
-        }
-
-        val consumedFromRange = processedCount - manifest.explicitIds.size
-        val range = manifest.range ?: return ManifestTargetSelection(emptyList(), null)
-        val start = requireNotNull(range.start)
-        val end = requireNotNull(range.end)
-        val remainingStart = start.toLong() + consumedFromRange.toLong()
-        return if (remainingStart > end.toLong()) {
-            ManifestTargetSelection(emptyList(), null)
-        } else {
-            ManifestTargetSelection(
-                explicitIds = emptyList(),
-                range = JobRange(remainingStart.toInt(), end)
-            )
-        }
-    }
-
-    private fun targetManifestConflict(jobId: String, reason: String): Nothing {
-        throw BusinessException(
-            ErrorCode.RESOURCE_STATE_CONFLICT,
-            "작업 대상 manifest가 올바르지 않습니다. jobId=$jobId, reason=$reason"
-        )
-    }
-
     private fun readJobSnapshot(jobId: String): JobSnapshot? {
         val json = redisTemplate.opsForValue().get(jobKey(jobId)) ?: return null
         return deserializeJob(jobId, json)
@@ -2261,14 +2195,6 @@ class ProblemCollectorService(
         return job.copy(queuePosition = if (index >= 0) index + 1 else null)
     }
 
-    private fun isAfterCheckpoint(problem: Problem, checkpointExclusive: Int?): Boolean {
-        if (checkpointExclusive == null) {
-            return true
-        }
-        val numericId = problem.id.value.toIntOrNull() ?: return true
-        return numericId > checkpointExclusive
-    }
-
     private fun loadRetryProblemCandidates(
         currentCandidates: List<Problem>,
         failedProblemIds: Set<String>,
@@ -2305,128 +2231,8 @@ class ProblemCollectorService(
         )
     }
 
-    private fun metadataTargetIds(
-        explicitTargetIds: List<Int>,
-        targetRange: JobRange?
-    ): Iterable<Int> {
-        return sequence {
-            yieldAll(explicitTargetIds)
-            if (targetRange != null) {
-                val start = requireNotNull(targetRange.start)
-                val end = requireNotNull(targetRange.end)
-                yieldAll(start..end)
-            }
-        }.asIterable()
-    }
-
-    private fun validateAndCountTargetManifest(
-        manifest: ProblemJobTargetManifest
-    ): Int {
-        require(manifest.version == ProblemJobTargetManifest.CURRENT_VERSION) {
-            "지원하지 않는 작업 대상 manifest 버전입니다. version=${manifest.version}"
-        }
-        require(manifest.jobId.isNotBlank()) {
-            "작업 대상 manifest jobId가 비어 있습니다."
-        }
-        require(manifest.explicitIds.none(String::isBlank)) {
-            "작업 대상 manifest에 빈 ID가 있습니다. jobId=${manifest.jobId}"
-        }
-        require(manifest.explicitIds.distinct().size == manifest.explicitIds.size) {
-            "작업 대상 manifest에 중복 ID가 있습니다. jobId=${manifest.jobId}"
-        }
-
-        val targetRange = manifest.range
-        val rangeCount = if (targetRange == null) {
-            0L
-        } else {
-            require(manifest.jobType == ProblemJobType.COLLECT_METADATA) {
-                "메타데이터 작업 외에는 범위 manifest를 사용할 수 없습니다. jobId=${manifest.jobId}"
-            }
-            val start = requireNotNull(targetRange.start) {
-                "작업 대상 manifest 범위의 start가 없습니다. jobId=${manifest.jobId}"
-            }
-            val end = requireNotNull(targetRange.end) {
-                "작업 대상 manifest 범위의 end가 없습니다. jobId=${manifest.jobId}"
-            }
-            require(start > 0 && end > 0 && start <= end) {
-                "작업 대상 manifest 범위가 올바르지 않습니다. jobId=${manifest.jobId}, start=$start, end=$end"
-            }
-            end.toLong() - start.toLong() + 1L
-        }
-
-        if (manifest.jobType == ProblemJobType.COLLECT_METADATA) {
-            val explicitProblemIds = manifest.explicitIds.map { problemId ->
-                requireNotNull(problemId.toIntOrNull()) {
-                    "메타데이터 작업 대상 ID가 숫자가 아닙니다. jobId=${manifest.jobId}, problemId=$problemId"
-                }
-            }
-            require(explicitProblemIds.all { it > 0 }) {
-                "메타데이터 작업 대상 ID는 1 이상이어야 합니다. jobId=${manifest.jobId}"
-            }
-            if (targetRange != null) {
-                val start = requireNotNull(targetRange.start)
-                val end = requireNotNull(targetRange.end)
-                require(explicitProblemIds.none { it in start..end }) {
-                    "작업 대상 manifest의 명시 ID와 범위가 겹칩니다. jobId=${manifest.jobId}"
-                }
-            }
-        }
-
-        val targetCount = manifest.explicitIds.size.toLong() + rangeCount
-        require(targetCount <= Int.MAX_VALUE.toLong()) {
-            "작업 대상 수가 허용 범위를 벗어났습니다. jobId=${manifest.jobId}, count=$targetCount"
-        }
-        return targetCount.toInt()
-    }
-
-    private fun sha256(value: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(StandardCharsets.UTF_8))
-        return HexFormat.of().formatHex(digest)
-    }
-
-    private fun orderProblems(problems: List<Problem>): List<Problem> {
-        return problems
-            .distinctBy { it.id.value }
-            .sortedWith(
-                compareBy<Problem> { it.id.value.toIntOrNull() == null }
-                    .thenBy { it.id.value.toIntOrNull() ?: Int.MAX_VALUE }
-                    .thenBy { it.id.value }
-            )
-    }
-
-    private fun validateRange(start: Int?, end: Int?) {
-        if ((start == null) != (end == null)) {
-            throw BusinessException(ErrorCode.INVALID_RANGE, "start와 end는 함께 제공되어야 합니다.")
-        }
-        if (start != null && end != null && start > end) {
-            throw BusinessException(ErrorCode.INVALID_RANGE, "start는 end보다 클 수 없습니다. start=$start, end=$end")
-        }
-        if (start != null && start <= 0) {
-            throw BusinessException(ErrorCode.INVALID_RANGE, "start는 1 이상이어야 합니다. start=$start")
-        }
-        if (end != null && end <= 0) {
-            throw BusinessException(ErrorCode.INVALID_RANGE, "end는 1 이상이어야 합니다. end=$end")
-        }
-    }
-
     private fun solvedAcProblemUrl(problemId: Int): String {
         return "https://www.acmicpc.net/problem/$problemId"
-    }
-
-    private fun filterProblemsByRange(
-        problems: List<Problem>,
-        start: Int?,
-        end: Int?
-    ): List<Problem> {
-        if (start == null || end == null) {
-            return problems
-        }
-
-        return problems.filter { problem ->
-            val numericProblemId = problem.id.value.toIntOrNull() ?: return@filter false
-            numericProblemId in start..end
-        }
     }
 
     private fun nowEpochSeconds(): Long {
