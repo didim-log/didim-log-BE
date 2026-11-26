@@ -1,6 +1,6 @@
 package com.didimlog.study.domain
 
-import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.problem.domain.ProblemId
 import java.time.LocalDateTime
 
 /**

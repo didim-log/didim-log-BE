@@ -1,14 +1,14 @@
 package com.didimlog.recommendation.application
 
-import com.didimlog.application.utils.AlgorithmHierarchyUtils
-import com.didimlog.application.utils.ProblemLanguageDetector
-import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
-import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.problem.application.category.AlgorithmHierarchyUtils
+import com.didimlog.problem.application.category.ProblemLanguageDetector
+import com.didimlog.problem.domain.Problem
+import com.didimlog.problem.domain.ProblemId
+import com.didimlog.problem.domain.repository.ProblemRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

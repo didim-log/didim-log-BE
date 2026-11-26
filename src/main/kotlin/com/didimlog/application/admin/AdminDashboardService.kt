@@ -78,7 +78,7 @@ class AdminDashboardService(
         // 타임아웃: FAILED 이면서 duration null 또는 30초 이상
         val timeoutQuery = Query(
             Criteria().andOperator(
-                Criteria.where("aiReviewStatus").`is`(com.didimlog.domain.enums.AiReviewStatus.FAILED),
+                Criteria.where("aiReviewStatus").`is`(com.didimlog.log.domain.AiReviewStatus.FAILED),
                 Criteria().orOperator(
                     Criteria.where("aiReviewDurationMillis").isNull(),
                     Criteria.where("aiReviewDurationMillis").gte(30_000)

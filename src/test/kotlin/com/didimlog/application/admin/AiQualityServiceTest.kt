@@ -1,12 +1,12 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.Log
-import com.didimlog.domain.enums.AiFeedbackStatus
-import com.didimlog.domain.repository.LogRepository
-import com.didimlog.domain.valueobject.AiReview
-import com.didimlog.domain.valueobject.LogCode
-import com.didimlog.domain.valueobject.LogContent
-import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.log.domain.Log
+import com.didimlog.log.domain.AiFeedbackStatus
+import com.didimlog.log.domain.repository.LogRepository
+import com.didimlog.log.domain.AiReview
+import com.didimlog.log.domain.LogCode
+import com.didimlog.log.domain.LogContent
+import com.didimlog.log.domain.LogTitle
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot

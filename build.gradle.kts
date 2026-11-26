@@ -26,14 +26,13 @@ val integrationTest by sourceSets.creating {
 val jacocoCoreCoverageIncludes = listOf(
 	"com/didimlog/application/admin/**",
 	"com/didimlog/application/auth/**",
-	"com/didimlog/application/log/**",
 	"com/didimlog/application/member/**",
-	"com/didimlog/application/problem/**",
 	"com/didimlog/application/student/**",
-	"com/didimlog/application/utils/**",
 	"com/didimlog/dashboard/application/**",
 	"com/didimlog/feedback/application/**",
+	"com/didimlog/log/application/**",
 	"com/didimlog/notice/application/**",
+	"com/didimlog/problem/application/**",
 	"com/didimlog/quote/application/**",
 	"com/didimlog/ranking/application/**",
 	"com/didimlog/recommendation/application/**",
@@ -55,7 +54,7 @@ val jacocoCoreCoverageIncludes = listOf(
 )
 
 val jacocoCoreCoverageExcludes = listOf(
-	"com/didimlog/application/problem/collector/**",
+	"com/didimlog/problem/application/collector/**",
 	"**/*Test*"
 )
 

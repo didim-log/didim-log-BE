@@ -1,0 +1,21 @@
+package com.didimlog.log.domain
+
+@JvmInline
+value class LogContent(val value: String) {
+    init {
+        require(value.isNotBlank()) { "로그 내용은 필수입니다." }
+        require(value.length <= 5000) { "로그 내용은 5000자 이하여야 합니다." }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+

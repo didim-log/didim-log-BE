@@ -1,14 +1,14 @@
 package com.didimlog.global.config.mongo
 
-import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.valueobject.AiReview
 import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.LogCode
-import com.didimlog.domain.valueobject.LogContent
-import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
+import com.didimlog.log.domain.AiReview
+import com.didimlog.log.domain.LogCode
+import com.didimlog.log.domain.LogContent
+import com.didimlog.log.domain.LogTitle
+import com.didimlog.problem.domain.ProblemCategory
 import org.springframework.core.convert.converter.Converter
 import org.springframework.data.convert.ReadingConverter
 import org.springframework.data.convert.WritingConverter

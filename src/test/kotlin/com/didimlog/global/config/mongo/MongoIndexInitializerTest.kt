@@ -1,7 +1,7 @@
 package com.didimlog.global.config.mongo
 
 import com.didimlog.feedback.domain.Feedback
-import com.didimlog.domain.Log
+import com.didimlog.log.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.domain.Student

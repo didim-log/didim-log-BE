@@ -1,6 +1,6 @@
 package com.didimlog.study.domain
 
-import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.problem.domain.ProblemId
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test

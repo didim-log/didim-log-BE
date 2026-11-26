@@ -1,8 +1,8 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.Log
-import com.didimlog.domain.enums.AiReviewStatus
-import com.didimlog.domain.repository.LogRepository
+import com.didimlog.log.domain.AiReviewStatus
+import com.didimlog.log.domain.Log
+import com.didimlog.log.domain.repository.LogRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service

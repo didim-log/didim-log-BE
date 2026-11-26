@@ -93,8 +93,8 @@ sequenceDiagram
 - `study/api/StudyController.kt`
 - `study/application/StudyService.kt`
 - `domain/Student.kt`
-- `ui/controller/LogController.kt`
-- `application/log/LogService.kt`
+- `log/api/LogController.kt`
+- `log/application/LogService.kt`
 - `retrospective/api/RetrospectiveController.kt`
 - `retrospective/application/RetrospectiveService.kt`
 - `retrospective/domain/Retrospective.kt`

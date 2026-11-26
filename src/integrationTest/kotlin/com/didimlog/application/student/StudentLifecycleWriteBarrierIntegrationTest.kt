@@ -1,13 +1,10 @@
 package com.didimlog.application.student
 
 import com.didimlog.application.auth.RefreshTokenService
-import com.didimlog.application.problem.ProblemService
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
-import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.feedback.domain.repository.FeedbackRepository
@@ -15,6 +12,9 @@ import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.auth.CredentialSessionLockConfig
 import com.didimlog.infra.auth.RedisCredentialSessionCoordinator
+import com.didimlog.log.domain.repository.LogRepository
+import com.didimlog.problem.application.ProblemService
+import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.retrospective.application.RetrospectiveService
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.template.application.TemplateService

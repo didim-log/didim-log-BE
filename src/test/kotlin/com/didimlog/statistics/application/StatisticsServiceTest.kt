@@ -7,9 +7,9 @@ import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
-import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.problem.domain.ProblemId
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.retrospective.domain.repository.RetrospectiveStatisticsView
 import com.didimlog.study.domain.ProblemResult

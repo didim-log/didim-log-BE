@@ -2,7 +2,7 @@ package com.didimlog.retrospective.domain.repository
 
 import com.didimlog.retrospective.domain.repository.RetrospectiveSearchCondition
 import com.didimlog.retrospective.domain.Retrospective
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.problem.domain.ProblemCategory
 import com.didimlog.study.domain.ProblemResult
 import com.didimlog.ranking.domain.RankingPeriod
 import io.mockk.every

@@ -1,10 +1,10 @@
 package com.didimlog.template.application
 
-import com.didimlog.application.problem.ProblemService
+import com.didimlog.problem.application.ProblemService
 import com.didimlog.application.student.StudentLifecycleCoordinator
-import com.didimlog.domain.Problem
+import com.didimlog.problem.domain.Problem
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.problem.domain.ProblemCategory
 import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.study.domain.ProblemResult
 import com.didimlog.template.domain.TemplateCategory
@@ -15,7 +15,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.template.domain.repository.TemplateRepository
 import com.didimlog.template.domain.repository.TemplateSummaryView
 import com.didimlog.template.domain.Template
-import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.problem.domain.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.slf4j.LoggerFactory

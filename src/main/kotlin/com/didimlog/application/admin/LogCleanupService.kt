@@ -1,7 +1,7 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.enums.AiReviewStatus
-import com.didimlog.domain.repository.LogRepository
+import com.didimlog.log.domain.AiReviewStatus
+import com.didimlog.log.domain.repository.LogRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service

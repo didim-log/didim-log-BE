@@ -1,0 +1,186 @@
+package com.didimlog.problem.api
+
+import com.didimlog.problem.api.dto.ProblemCategoryMetaResponse
+import com.didimlog.problem.api.dto.ProblemDetailResponse
+import com.didimlog.problem.api.dto.ProblemResponse
+import com.didimlog.problem.application.ProblemService
+import com.didimlog.problem.application.category.AlgorithmHierarchyUtils
+import com.didimlog.recommendation.application.CategoryFilterMode
+import com.didimlog.recommendation.application.RecommendationService
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.Positive
+import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
+import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
+
+@Tag(name = "Problem", description = "문제 관련 API")
+@RestController
+@RequestMapping("/api/v1/problems")
+@Validated
+class ProblemController(
+    private val recommendationService: RecommendationService,
+    private val problemService: ProblemService
+) {
+
+    @Operation(
+        summary = "문제 추천",
+        description = "학생의 현재 티어 레벨 -2 ~ +2 범위에서 아직 풀이 기록이 없는 문제를 추천합니다. 카테고리와 필터 모드로 대표 카테고리·확장 태그 범위를 정하며, JWT 토큰에서 사용자 정보를 자동으로 추출합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "추천 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 count 또는 category 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/recommend")
+    fun recommendProblems(
+        authentication: Authentication,
+        @Parameter(description = "추천할 문제 개수 (기본값: 10, 최소: 1, 최대: 50)", required = false)
+        @RequestParam(defaultValue = "10")
+        @Min(value = 1, message = "추천 개수는 최소 1개 이상이어야 합니다.")
+        @Max(value = 50, message = "추천 개수는 최대 50개 이하여야 합니다.")
+        count: Int,
+        @Parameter(description = "문제 카테고리 (선택사항). 축약형 태그(BFS, DFS, DP 등) 또는 공식 전체 이름(Breadth-first Search 등) 또는 Enum 이름(IMPLEMENTATION, GRAPH 등)을 입력할 수 있습니다. 축약형 태그는 자동으로 공식 전체 이름으로 변환됩니다.", required = false)
+        @RequestParam(required = false)
+        category: String?,
+        @Parameter(description = "문제 언어 (선택사항, \"ko\" 또는 \"en\", null이면 모든 언어)", required = false)
+        @RequestParam(required = false)
+        language: String?,
+        @Parameter(description = "카테고리 필터 모드 (EXACT: 대표 카테고리만, HIERARCHY: 하위 태그 확장, RELATED: 연관 카테고리까지 확장)", required = false)
+        @RequestParam(defaultValue = "RELATED")
+        filterMode: CategoryFilterMode
+    ): ResponseEntity<List<ProblemResponse>> {
+        val studentId = authentication.name
+        val recommendation = recommendationService.recommendProblemsDetailed(studentId, count, category, language, filterMode)
+        val response = recommendation.map { item ->
+            ProblemResponse.from(
+                problem = item.problem,
+                matchedByPrimary = if (category != null) item.matchedByPrimary else null,
+                matchedByTags = if (category != null) item.matchedByTags else null,
+                expandedFrom = if (category != null) item.expandedFrom else emptyList()
+            )
+        }
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "카테고리 메타 조회",
+        description = "추천 카테고리의 정규 이름, 별칭, 부모/자식/연관 카테고리 메타 정보를 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공")
+        ]
+    )
+    @GetMapping("/categories/meta")
+    fun getCategoryMeta(): ResponseEntity<List<ProblemCategoryMetaResponse>> {
+        val metadata = AlgorithmHierarchyUtils.getCategoryMetadata().map { ProblemCategoryMetaResponse.from(it) }
+        return ResponseEntity.ok(metadata)
+    }
+
+    @Operation(
+        summary = "문제 상세 조회",
+        description = "문제 ID로 문제 상세 정보를 조회합니다. DB에 상세 정보가 없으면 백준 웹사이트에서 실시간으로 크롤링하여 가져옵니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 problemId 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/{problemId}")
+    fun getProblemDetail(
+        @Parameter(description = "문제 ID", required = true)
+        @PathVariable
+        @Positive(message = "문제 ID는 1 이상이어야 합니다.")
+        problemId: Long
+    ): ResponseEntity<ProblemDetailResponse> {
+        val problem = problemService.getProblemDetail(problemId)
+        val response = ProblemDetailResponse.from(problem)
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "문제 검색",
+        description = "문제 번호로 문제를 검색합니다. DB에 문제가 없으면 Solved.ac API로 메타데이터를 조회하고 크롤링하여 저장한 후 반환합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 problemId 값",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/search")
+    fun searchProblem(
+        @Parameter(description = "문제 번호", required = true)
+        @RequestParam
+        @Positive(message = "문제 번호는 1 이상이어야 합니다.")
+        q: Long
+    ): ResponseEntity<ProblemDetailResponse> {
+        val problem = problemService.getProblemDetail(q)
+        val response = ProblemDetailResponse.from(problem)
+        return ResponseEntity.ok(response)
+    }
+}

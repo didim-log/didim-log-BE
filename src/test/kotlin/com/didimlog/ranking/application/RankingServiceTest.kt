@@ -13,7 +13,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.retrospective.domain.repository.StudentRetrospectiveCount
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
-import com.didimlog.domain.valueobject.ProblemId
+import com.didimlog.problem.domain.ProblemId
 import com.didimlog.study.domain.TimeTakenSeconds
 import io.mockk.every
 import io.mockk.mockk

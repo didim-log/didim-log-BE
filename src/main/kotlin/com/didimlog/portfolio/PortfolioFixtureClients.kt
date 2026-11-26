@@ -4,13 +4,13 @@ import com.didimlog.application.auth.boj.BojProfileStatusMessage
 import com.didimlog.application.auth.boj.BojProfileStatusMessageClient
 import com.didimlog.application.auth.boj.BojProfileStatusMessageFetchResult
 import com.didimlog.domain.valueobject.BojId
-import com.didimlog.infra.crawler.BojCrawler
-import com.didimlog.infra.crawler.ProblemDetails
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
 import com.didimlog.infra.solvedac.SolvedAcTag
 import com.didimlog.infra.solvedac.SolvedAcTagDisplayName
 import com.didimlog.infra.solvedac.SolvedAcUserResponse
+import com.didimlog.problem.infra.crawler.BojCrawler
+import com.didimlog.problem.infra.crawler.ProblemDetails
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 

@@ -1,7 +1,7 @@
 package com.didimlog.retrospective.application
 
 import com.didimlog.retrospective.domain.Retrospective
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.problem.domain.ProblemCategory
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.retrospective.domain.repository.RetrospectiveSearchCondition
 import org.assertj.core.api.Assertions.assertThat

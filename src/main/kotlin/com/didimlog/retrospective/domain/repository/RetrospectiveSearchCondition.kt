@@ -1,6 +1,6 @@
 package com.didimlog.retrospective.domain.repository
 
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.problem.domain.ProblemCategory
 
 /**
  * 회고 검색 조건

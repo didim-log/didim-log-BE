@@ -1,6 +1,6 @@
 package com.didimlog.global.config
 
-import com.didimlog.application.problem.collector.ProblemCollectorParallelProperties
+import com.didimlog.problem.application.collector.ProblemCollectorParallelProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.scheduling.annotation.EnableAsync

@@ -6,7 +6,6 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
@@ -14,6 +13,7 @@ import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.feedback.domain.repository.FeedbackRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.log.domain.repository.LogRepository
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.template.domain.TemplateCategory
 import com.didimlog.template.domain.TemplateOwnershipType

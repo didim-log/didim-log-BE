@@ -112,11 +112,11 @@ main() {
   CRAWLER_DETAILS_BENCHMARK_HARNESS_SHA256="$(
     cd "$ROOT_DIR"
     shasum -a 256 \
-      src/integrationTest/kotlin/com/didimlog/application/problem/collector/ProblemCollectorDetailsParallelBenchmarkIntegrationTest.kt \
-      src/main/kotlin/com/didimlog/application/problem/collector/ParallelProblemDetailsFetcher.kt \
-      src/main/kotlin/com/didimlog/application/problem/collector/ProblemCollectorParallelProperties.kt \
-      src/main/kotlin/com/didimlog/application/problem/collector/ProblemCollectorService.kt \
-      src/main/kotlin/com/didimlog/domain/repository/ProblemRepositoryImpl.kt \
+      src/integrationTest/kotlin/com/didimlog/problem/application/collector/ProblemCollectorDetailsParallelBenchmarkIntegrationTest.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ParallelProblemDetailsFetcher.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemCollectorParallelProperties.kt \
+      src/main/kotlin/com/didimlog/problem/application/collector/ProblemCollectorService.kt \
+      src/main/kotlin/com/didimlog/problem/domain/repository/ProblemRepositoryImpl.kt \
       performance/crawler/run-details-parallel-benchmark.sh |
       shasum -a 256 |
       awk '{print $1}'
@@ -167,7 +167,7 @@ main() {
   export PROBLEM_COLLECTOR_PARALLEL_ENABLED=false
 
   "$ROOT_DIR/gradlew" integrationTest \
-    --tests com.didimlog.application.problem.collector.ProblemCollectorDetailsParallelBenchmarkIntegrationTest \
+    --tests com.didimlog.problem.application.collector.ProblemCollectorDetailsParallelBenchmarkIntegrationTest \
     --rerun-tasks
 
   test -f "$OUTPUT_DIR/sequential.json"

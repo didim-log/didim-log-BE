@@ -1,13 +1,13 @@
 package com.didimlog.retrospective.application
 
 import com.didimlog.application.student.StudentLifecycleCoordinator
-import com.didimlog.domain.Problem
 import com.didimlog.domain.Student
-import com.didimlog.domain.repository.ProblemRepository
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.problem.domain.Problem
+import com.didimlog.problem.domain.ProblemId
+import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.retrospective.domain.repository.RetrospectiveSearchCondition

@@ -1,7 +1,7 @@
 package com.didimlog.ui.controller
 
+import com.didimlog.ai.application.AiUsageService
 import com.didimlog.application.admin.AdminAuditService
-import com.didimlog.application.ai.AiUsageService
 import com.didimlog.domain.enums.AdminActionType
 import com.didimlog.global.system.MaintenanceModeService
 import com.didimlog.global.util.HttpRequestUtil

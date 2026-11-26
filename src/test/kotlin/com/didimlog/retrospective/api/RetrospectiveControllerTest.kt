@@ -3,10 +3,10 @@ package com.didimlog.retrospective.api
 import com.didimlog.retrospective.application.RetrospectiveService
 import com.didimlog.template.application.TemplateService
 import com.didimlog.retrospective.domain.Retrospective
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.problem.domain.ProblemCategory
 import com.didimlog.study.domain.ProblemResult
 import com.didimlog.template.domain.TemplateCategory
-import com.didimlog.domain.repository.ProblemRepository
+import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.template.domain.Template
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException

@@ -44,7 +44,7 @@ class Solutions(
      * @param problemId 제거할 문제 ID
      * @return 제거된 Solution이 있는지 여부
      */
-    fun removeByProblemId(problemId: com.didimlog.domain.valueobject.ProblemId): Boolean {
+    fun removeByProblemId(problemId: com.didimlog.problem.domain.ProblemId): Boolean {
         val initialSize = items.size
         items.removeAll { it.problemId == problemId }
         return items.size < initialSize
@@ -57,7 +57,7 @@ class Solutions(
      * @param problemId 조회할 문제 ID
      * @return 해당 문제 ID의 최신 Solution 또는 null
      */
-    fun findByProblemId(problemId: com.didimlog.domain.valueobject.ProblemId): Solution? {
+    fun findByProblemId(problemId: com.didimlog.problem.domain.ProblemId): Solution? {
         var latest: Solution? = null
         for (solution in items) {
             if (solution.problemId != problemId) {

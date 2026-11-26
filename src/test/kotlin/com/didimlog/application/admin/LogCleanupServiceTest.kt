@@ -1,6 +1,6 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.repository.LogRepository
+import com.didimlog.log.domain.repository.LogRepository
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk

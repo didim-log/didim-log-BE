@@ -1,6 +1,6 @@
 package com.didimlog.ui.dto
 
-import com.didimlog.domain.Log
+import com.didimlog.log.domain.Log
 import java.time.LocalDateTime
 
 /**

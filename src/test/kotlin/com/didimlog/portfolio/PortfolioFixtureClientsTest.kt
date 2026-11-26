@@ -1,7 +1,7 @@
 package com.didimlog.portfolio
 
-import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.infra.solvedac.ProblemCategoryMapper
+import com.didimlog.problem.domain.ProblemCategory
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test

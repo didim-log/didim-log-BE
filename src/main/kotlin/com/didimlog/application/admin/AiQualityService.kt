@@ -1,7 +1,7 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.enums.AiFeedbackStatus
-import com.didimlog.domain.repository.LogRepository
+import com.didimlog.log.domain.AiFeedbackStatus
+import com.didimlog.log.domain.repository.LogRepository
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.aggregation.Aggregation
 import org.springframework.data.mongodb.core.query.Criteria

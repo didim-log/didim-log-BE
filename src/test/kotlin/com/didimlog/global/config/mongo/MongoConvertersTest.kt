@@ -1,12 +1,12 @@
 package com.didimlog.global.config.mongo
 
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.problem.domain.ProblemCategory
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.valueobject.AiReview
+import com.didimlog.log.domain.AiReview
 import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.LogCode
-import com.didimlog.domain.valueobject.LogContent
-import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.log.domain.LogCode
+import com.didimlog.log.domain.LogContent
+import com.didimlog.log.domain.LogTitle
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import org.assertj.core.api.Assertions.assertThat

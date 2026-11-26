@@ -1,7 +1,7 @@
 package com.didimlog.global.config.mongo
 
 import com.didimlog.feedback.domain.Feedback
-import com.didimlog.domain.Log
+import com.didimlog.log.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.domain.Student
@@ -9,11 +9,11 @@ import com.didimlog.template.domain.Template
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.LogRepository
+import com.didimlog.log.domain.repository.LogRepository
 import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.LogCode
-import com.didimlog.domain.valueobject.LogContent
-import com.didimlog.domain.valueobject.LogTitle
+import com.didimlog.log.domain.LogCode
+import com.didimlog.log.domain.LogContent
+import com.didimlog.log.domain.LogTitle
 import com.didimlog.domain.valueobject.Nickname
 import java.time.Duration
 import java.time.LocalDateTime
