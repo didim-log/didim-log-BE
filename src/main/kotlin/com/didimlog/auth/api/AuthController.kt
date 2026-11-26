@@ -49,6 +49,7 @@ import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.security.MessageDigest
 
 @Tag(name = "Auth", description = "인증 관련 API")
 @RestController
@@ -263,8 +264,7 @@ class AuthController(
         @Valid
         request: SuperAdminRequest
     ): ResponseEntity<AuthResponse> {
-        // 관리자 키 검증
-        if (request.adminKey != adminSecretKey) {
+        if (!matchesAdminSecretKey(request.adminKey)) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "관리자 키가 일치하지 않습니다.")
         }
 
@@ -521,5 +521,16 @@ class AuthController(
             tierLevel = result.tierLevel
         )
         return ResponseEntity.ok(response)
+    }
+
+    /**
+     * 관리자 키를 상수 시간으로 비교한다. 일반 문자열 비교는 처음 다른 글자에서 바로 끝나
+     * 응답 시간으로 일치한 접두사 길이를 짐작할 수 있다.
+     */
+    private fun matchesAdminSecretKey(adminKey: String): Boolean {
+        return MessageDigest.isEqual(
+            adminKey.toByteArray(Charsets.UTF_8),
+            adminSecretKey.toByteArray(Charsets.UTF_8)
+        )
     }
 }
