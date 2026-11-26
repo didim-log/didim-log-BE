@@ -92,7 +92,7 @@ sequenceDiagram
 
 - `study/api/StudyController.kt`
 - `study/application/StudyService.kt`
-- `domain/Student.kt`
+- `student/domain/Student.kt`
 - `log/api/LogController.kt`
 - `log/application/LogService.kt`
 - `retrospective/api/RetrospectiveController.kt`

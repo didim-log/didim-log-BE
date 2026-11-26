@@ -772,7 +772,7 @@ class AiReviewServiceTest {
             code = LogCode("0123456789"),
             studentId = "owner-id",
             aiReview = null,
-            bojId = com.didimlog.domain.valueobject.BojId("owner123")
+            bojId = com.didimlog.student.domain.BojId("owner123")
         )
         every { logRepository.findById(logId) } returns Optional.of(log)
 

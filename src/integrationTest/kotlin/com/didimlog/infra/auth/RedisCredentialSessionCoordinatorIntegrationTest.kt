@@ -1,9 +1,9 @@
 package com.didimlog.infra.auth
 
 import com.didimlog.application.auth.CredentialSessionCoordinator
-import com.didimlog.application.student.StudentLifecycleCoordinator
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.student.application.StudentLifecycleCoordinator
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors

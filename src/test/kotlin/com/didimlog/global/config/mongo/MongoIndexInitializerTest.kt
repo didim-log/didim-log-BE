@@ -4,7 +4,7 @@ import com.didimlog.feedback.domain.Feedback
 import com.didimlog.log.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.retrospective.domain.Retrospective
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 import com.didimlog.template.domain.Template
 import com.mongodb.client.result.UpdateResult
 import io.mockk.every

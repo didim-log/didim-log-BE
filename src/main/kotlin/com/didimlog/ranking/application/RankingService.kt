@@ -1,9 +1,9 @@
 package com.didimlog.ranking.application
 
-import com.didimlog.domain.Student
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.ranking.domain.RankingPeriod
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.repository.StudentRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

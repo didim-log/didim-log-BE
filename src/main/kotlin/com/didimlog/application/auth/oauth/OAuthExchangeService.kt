@@ -2,13 +2,13 @@ package com.didimlog.application.auth.oauth
 
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Tier
+import com.didimlog.student.domain.repository.StudentRepository
 import java.security.SecureRandom
 import java.util.Base64
 import org.springframework.beans.factory.annotation.Value

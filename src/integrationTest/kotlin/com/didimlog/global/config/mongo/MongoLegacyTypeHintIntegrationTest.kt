@@ -1,17 +1,10 @@
 package com.didimlog.global.config.mongo
 
-import com.didimlog.domain.AdminAuditLog
+import com.didimlog.admin.domain.AdminActionType
+import com.didimlog.admin.domain.AdminAuditLog
+import com.didimlog.admin.domain.repository.AdminAuditLogRepository
 import com.didimlog.domain.PasswordResetCode
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.AdminActionType
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.AdminAuditLogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.feedback.domain.Feedback
 import com.didimlog.feedback.domain.FeedbackStatus
 import com.didimlog.feedback.domain.FeedbackType
@@ -33,6 +26,13 @@ import com.didimlog.quote.domain.Quote
 import com.didimlog.quote.domain.repository.QuoteRepository
 import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.Nickname
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.Tier
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.study.domain.ProblemResult
 import com.didimlog.study.domain.Solution
 import com.didimlog.study.domain.Solutions

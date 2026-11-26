@@ -1,9 +1,9 @@
 package com.didimlog.global.security
 
 import com.didimlog.application.auth.oauth.OAuthExchangeService
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.repository.StudentRepository
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory

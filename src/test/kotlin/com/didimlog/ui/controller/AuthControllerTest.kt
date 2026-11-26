@@ -5,8 +5,6 @@ import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.application.auth.oauth.OAuthExchangeService
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
@@ -14,6 +12,8 @@ import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.global.ratelimit.RateLimitDecision
 import com.didimlog.global.ratelimit.RateLimitException
 import com.didimlog.global.ratelimit.RateLimitInterceptor
+import com.didimlog.student.domain.Tier
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.ui.dto.FindAccountRequest
 import com.didimlog.ui.dto.LoginRequest
 import com.didimlog.ui.dto.SignupRequest

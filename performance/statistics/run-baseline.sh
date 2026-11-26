@@ -71,8 +71,8 @@ main() {
     cd "$ROOT_DIR"
     shasum -a 256 \
       src/integrationTest/kotlin/com/didimlog/statistics/application/StatisticsQueryBaselineIntegrationTest.kt \
-      src/integrationTest/kotlin/com/didimlog/application/admin/query/MongoQueryPlanExplainer.kt \
-      src/integrationTest/kotlin/com/didimlog/application/admin/query/AdminUserQueryPerformanceIntegrationTest.kt \
+      src/integrationTest/kotlin/com/didimlog/admin/application/query/MongoQueryPlanExplainer.kt \
+      src/integrationTest/kotlin/com/didimlog/admin/application/query/AdminUserQueryPerformanceIntegrationTest.kt \
       performance/statistics/run-baseline.sh |
         shasum -a 256 |
         awk '{print $1}'

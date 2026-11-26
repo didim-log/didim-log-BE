@@ -1,17 +1,17 @@
 package com.didimlog.statistics.application
 
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.problem.domain.ProblemId
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.retrospective.domain.repository.RetrospectiveStatisticsView
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.Nickname
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.Tier
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.study.domain.ProblemResult
 import com.didimlog.study.domain.Solution
 import com.didimlog.study.domain.Solutions

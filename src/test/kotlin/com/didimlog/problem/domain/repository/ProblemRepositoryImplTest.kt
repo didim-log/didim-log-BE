@@ -2,7 +2,7 @@ package com.didimlog.problem.domain.repository
 
 import com.didimlog.problem.domain.Problem
 import com.didimlog.problem.domain.ProblemCategory
-import com.didimlog.domain.enums.Tier
+import com.didimlog.student.domain.Tier
 import com.didimlog.problem.domain.ProblemId
 import com.mongodb.client.result.UpdateResult
 import io.mockk.every

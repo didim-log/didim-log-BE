@@ -1,17 +1,17 @@
 package com.didimlog.log.application
 
-import com.didimlog.application.student.StudentLifecycleCoordinator
+import com.didimlog.student.application.StudentLifecycleCoordinator
 import com.didimlog.log.domain.Log
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Tier
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Tier
 import com.didimlog.log.domain.repository.LogRepository
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
+import com.didimlog.student.domain.repository.StudentRepository
+import com.didimlog.student.domain.BojId
 import com.didimlog.log.domain.LogCode
 import com.didimlog.log.domain.LogContent
 import com.didimlog.log.domain.LogTitle
-import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.student.domain.Nickname
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every

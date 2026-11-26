@@ -1,8 +1,8 @@
 package com.didimlog.study.application
 
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 import com.didimlog.problem.domain.repository.ProblemRepository
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.study.domain.TimeTakenSeconds
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode

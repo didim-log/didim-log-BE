@@ -1,7 +1,7 @@
 package com.didimlog.infra.solvedac
 
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.valueobject.BojId
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.Tier
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 

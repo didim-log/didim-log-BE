@@ -1,6 +1,6 @@
 package com.didimlog.problem.api
 
-import com.didimlog.application.admin.ProblemStatsService
+import com.didimlog.admin.application.ProblemStatsService
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode

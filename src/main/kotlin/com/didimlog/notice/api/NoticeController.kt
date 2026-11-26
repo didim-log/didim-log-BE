@@ -1,7 +1,7 @@
 package com.didimlog.notice.api
 
-import com.didimlog.application.admin.AdminAuditService
-import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.admin.application.AdminAuditService
+import com.didimlog.admin.domain.AdminActionType
 import com.didimlog.global.util.HttpRequestUtil
 import com.didimlog.notice.api.dto.NoticeResponse
 import com.didimlog.notice.api.dto.NoticeUpdateRequest

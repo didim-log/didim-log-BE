@@ -1,0 +1,113 @@
+package com.didimlog.student.domain
+
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+
+@DisplayName("Nickname Value Object 테스트")
+class NicknameTest {
+
+    @Test
+    @DisplayName("유효한 닉네임을 생성할 수 있다")
+    fun `유효한 닉네임 생성`() {
+        // given
+        val validNickname = "testuser"
+
+        // when
+        val nickname = Nickname(validNickname)
+
+        // then
+        assertThat(nickname.value).isEqualTo(validNickname)
+    }
+
+    @Test
+    @DisplayName("최소 길이(2자) 닉네임을 생성할 수 있다")
+    fun `최소 길이 닉네임 생성`() {
+        // given
+        val minLengthNickname = "ab"
+
+        // when
+        val nickname = Nickname(minLengthNickname)
+
+        // then
+        assertThat(nickname.value).isEqualTo(minLengthNickname)
+    }
+
+    @Test
+    @DisplayName("최대 길이(12자) 닉네임을 생성할 수 있다")
+    fun `최대 길이 닉네임 생성`() {
+        // given
+        val maxLengthNickname = "a".repeat(12)
+
+        // when
+        val nickname = Nickname(maxLengthNickname)
+
+        // then
+        assertThat(nickname.value).isEqualTo(maxLengthNickname)
+    }
+
+    @Test
+    @DisplayName("빈 문자열로 닉네임을 생성하면 예외가 발생한다")
+    fun `빈 문자열 예외 발생`() {
+        // given
+        val emptyNickname = ""
+
+        // when & then
+        assertThatThrownBy { Nickname(emptyNickname) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("닉네임은 필수입니다.")
+    }
+
+    @Test
+    @DisplayName("공백만 있는 문자열로 닉네임을 생성하면 예외가 발생한다")
+    fun `공백만 있는 문자열 예외 발생`() {
+        // given
+        val blankNickname = "   "
+
+        // when & then
+        assertThatThrownBy { Nickname(blankNickname) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("닉네임은 필수입니다.")
+    }
+
+    @Test
+    @DisplayName("1자 닉네임을 생성하면 예외가 발생한다")
+    fun `1자 닉네임 예외 발생`() {
+        // given
+        val oneCharNickname = "a"
+
+        // when & then
+        assertThatThrownBy { Nickname(oneCharNickname) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("닉네임은 2자 이상 12자 이하여야 합니다.")
+    }
+
+    @Test
+    @DisplayName("13자 닉네임을 생성하면 예외가 발생한다")
+    fun `13자 닉네임 예외 발생`() {
+        // given
+        val tooLongNickname = "a".repeat(13)
+
+        // when & then
+        assertThatThrownBy { Nickname(tooLongNickname) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("닉네임은 2자 이상 12자 이하여야 합니다.")
+    }
+
+    @Test
+    @DisplayName("예약어(admin)로 닉네임을 생성하면 예외가 발생한다")
+    fun `예약어 닉네임 예외 발생`() {
+        assertThatThrownBy { Nickname("admin") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("사용할 수 없는 닉네임입니다.")
+    }
+
+    @Test
+    @DisplayName("한글 자모(ㄱ)로 닉네임을 생성하면 예외가 발생한다")
+    fun `한글 자모 닉네임 예외 발생`() {
+        assertThatThrownBy { Nickname("ㄱㄱ") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("닉네임 형식이 올바르지 않습니다.")
+    }
+}

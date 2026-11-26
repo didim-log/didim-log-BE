@@ -1,6 +1,6 @@
 package com.didimlog.application.auth
 
-import com.didimlog.application.student.StudentLifecycleCoordinator
+import com.didimlog.student.application.StudentLifecycleCoordinator
 
 /**
  * 같은 학생의 비밀번호 검증·토큰 발급과 비밀번호 변경·세션 폐기를 직렬화한다.

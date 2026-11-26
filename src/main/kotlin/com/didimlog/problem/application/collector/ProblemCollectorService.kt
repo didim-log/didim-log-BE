@@ -1,9 +1,9 @@
 package com.didimlog.problem.application.collector
 
-import com.didimlog.application.admin.AdminAuditService
+import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.problem.application.category.ProblemLanguageDetector
 import com.didimlog.problem.domain.Problem
-import com.didimlog.domain.enums.AdminActionType
+import com.didimlog.admin.domain.AdminActionType
 import com.didimlog.problem.domain.repository.ProblemDetailsUpdate
 import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.problem.domain.ProblemId

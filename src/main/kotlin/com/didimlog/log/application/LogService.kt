@@ -1,8 +1,5 @@
 package com.didimlog.log.application
 
-import com.didimlog.application.student.StudentLifecycleCoordinator
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.log.domain.AiFeedbackStatus
@@ -11,6 +8,9 @@ import com.didimlog.log.domain.LogCode
 import com.didimlog.log.domain.LogContent
 import com.didimlog.log.domain.LogTitle
 import com.didimlog.log.domain.repository.LogRepository
+import com.didimlog.student.application.StudentLifecycleCoordinator
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.repository.StudentRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

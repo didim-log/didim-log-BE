@@ -1,15 +1,15 @@
 package com.didimlog.ranking.api
 
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ranking.application.RankingService
 import com.didimlog.ranking.domain.RankingPeriod
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.Nickname
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.Tier
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.DisplayName

@@ -1,7 +1,6 @@
 package com.didimlog.log.api
 
 import com.didimlog.ai.application.AiUsageService
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.log.api.dto.AiReviewResponse
@@ -10,6 +9,7 @@ import com.didimlog.log.api.dto.LogResponse
 import com.didimlog.log.api.dto.LogTemplateResponse
 import com.didimlog.log.application.AiReviewService
 import com.didimlog.log.application.LogService
+import com.didimlog.student.domain.repository.StudentRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content

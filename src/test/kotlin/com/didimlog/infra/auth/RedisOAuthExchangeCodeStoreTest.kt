@@ -1,7 +1,7 @@
 package com.didimlog.infra.auth
 
 import com.didimlog.application.auth.oauth.OAuthExchangeCodeIdentity
-import com.didimlog.domain.enums.Role
+import com.didimlog.student.domain.Role
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify

@@ -16,7 +16,7 @@ data class LeaderboardResponse(
 ) {
     companion object {
         fun from(
-            student: com.didimlog.domain.Student,
+            student: com.didimlog.student.domain.Student,
             rank: Int,
             retrospectiveCount: Long
         ): LeaderboardResponse {

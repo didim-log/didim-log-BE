@@ -1,9 +1,9 @@
 package com.didimlog.template.api
 
 import com.didimlog.template.application.TemplateService
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 import com.didimlog.template.domain.TemplateCategory
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.template.domain.SectionPreset
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode

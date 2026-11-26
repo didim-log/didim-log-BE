@@ -1,7 +1,6 @@
 package com.didimlog.problem.application.collector
 
-import com.didimlog.application.admin.AdminAuditService
-import com.didimlog.domain.enums.Tier
+import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.solvedac.SolvedAcClient
@@ -10,6 +9,7 @@ import com.didimlog.problem.domain.ProblemCategory
 import com.didimlog.problem.domain.ProblemId
 import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.problem.infra.crawler.BojCrawler
+import com.didimlog.student.domain.Tier
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every

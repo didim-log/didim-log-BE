@@ -2,14 +2,14 @@ package com.didimlog.log.api
 
 import com.didimlog.log.application.AiReviewService
 import com.didimlog.log.application.LogService
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 import com.didimlog.log.domain.AiFeedbackStatus
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Tier
+import com.didimlog.student.domain.repository.StudentRepository
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.Nickname
 import com.didimlog.global.exception.AiGenerationFailedException
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
@@ -66,7 +66,7 @@ class LogControllerErrorTest {
         fun aiUsageService(): com.didimlog.ai.application.AiUsageService = mockk(relaxed = true)
 
         @Bean
-        fun studentRepository(): com.didimlog.domain.repository.StudentRepository = mockk(relaxed = true)
+        fun studentRepository(): com.didimlog.student.domain.repository.StudentRepository = mockk(relaxed = true)
 
         // WebConfig를 제외하기 위해 RateLimitInterceptor 관련 빈을 모킹
         @Bean

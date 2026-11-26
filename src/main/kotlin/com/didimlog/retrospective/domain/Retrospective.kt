@@ -1,7 +1,7 @@
 package com.didimlog.retrospective.domain
 
-import com.didimlog.domain.Student
 import com.didimlog.problem.domain.ProblemCategory
+import com.didimlog.student.domain.Student
 import java.time.LocalDateTime
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.index.CompoundIndex

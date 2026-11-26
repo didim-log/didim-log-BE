@@ -1,6 +1,6 @@
 package com.didimlog.problem.application.collector
 
-import com.didimlog.application.admin.AdminAuditService
+import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.solvedac.SolvedAcClient

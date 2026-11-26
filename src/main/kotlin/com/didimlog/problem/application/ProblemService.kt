@@ -1,7 +1,5 @@
 package com.didimlog.problem.application
 
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.solvedac.ProblemCategoryMapper
@@ -12,6 +10,8 @@ import com.didimlog.problem.domain.ProblemId
 import com.didimlog.problem.domain.repository.ProblemDetailsUpdate
 import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.problem.infra.crawler.BojCrawler
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.repository.StudentRepository
 import org.springframework.stereotype.Service
 
 @Service

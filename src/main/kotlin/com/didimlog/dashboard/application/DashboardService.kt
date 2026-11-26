@@ -3,11 +3,11 @@ package com.didimlog.dashboard.application
 import com.didimlog.quote.application.QuoteService
 import com.didimlog.quote.domain.Quote
 import com.didimlog.retrospective.domain.Retrospective
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.SolvedAcTierStep
-import com.didimlog.domain.enums.Tier
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.SolvedAcTierStep
+import com.didimlog.student.domain.Tier
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service
@@ -117,7 +117,7 @@ data class StudentProfile(
     val currentTier: Tier,
     val solvedAcTierLevel: Int,
     val consecutiveSolveDays: Int,
-    val primaryLanguage: com.didimlog.domain.enums.PrimaryLanguage? = null,
+    val primaryLanguage: com.didimlog.student.domain.PrimaryLanguage? = null,
     val isOnboardingFinished: Boolean = false
 )
 

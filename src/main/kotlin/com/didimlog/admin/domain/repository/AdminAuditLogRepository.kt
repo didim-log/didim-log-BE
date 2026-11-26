@@ -1,0 +1,62 @@
+package com.didimlog.admin.domain.repository
+
+import com.didimlog.admin.domain.AdminAuditLog
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
+import org.springframework.data.mongodb.repository.MongoRepository
+import java.time.LocalDateTime
+
+interface AdminAuditLogRepository : MongoRepository<AdminAuditLog, String> {
+
+    fun findByAdminIdOrderByCreatedAtDesc(adminId: String, pageable: Pageable): Page<AdminAuditLog>
+
+    fun findByActionOrderByCreatedAtDesc(action: com.didimlog.admin.domain.AdminActionType, pageable: Pageable): Page<AdminAuditLog>
+
+    fun findByAdminIdAndActionOrderByCreatedAtDesc(
+        adminId: String,
+        action: com.didimlog.admin.domain.AdminActionType,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findByCreatedAtBetweenOrderByCreatedAtDesc(
+        startDate: LocalDateTime,
+        endDate: LocalDateTime,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findByAdminIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+        adminId: String,
+        startDate: LocalDateTime,
+        endDate: LocalDateTime,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findByActionAndCreatedAtBetweenOrderByCreatedAtDesc(
+        action: com.didimlog.admin.domain.AdminActionType,
+        startDate: LocalDateTime,
+        endDate: LocalDateTime,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findByAdminIdAndActionAndCreatedAtBetweenOrderByCreatedAtDesc(
+        adminId: String,
+        action: com.didimlog.admin.domain.AdminActionType,
+        startDate: LocalDateTime,
+        endDate: LocalDateTime,
+        pageable: Pageable
+    ): Page<AdminAuditLog>
+
+    fun findAllByOrderByCreatedAtDesc(pageable: Pageable): Page<AdminAuditLog>
+}
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,6 +1,6 @@
 package com.didimlog.study.api.dto
 
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 
 /**
  * 문제 풀이 제출 응답 DTO

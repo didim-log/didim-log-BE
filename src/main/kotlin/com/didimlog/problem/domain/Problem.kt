@@ -1,6 +1,6 @@
 package com.didimlog.problem.domain
 
-import com.didimlog.domain.enums.Tier
+import com.didimlog.student.domain.Tier
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document

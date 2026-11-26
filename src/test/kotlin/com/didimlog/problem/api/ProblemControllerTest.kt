@@ -1,6 +1,5 @@
 package com.didimlog.problem.api
 
-import com.didimlog.domain.enums.Tier
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.problem.application.ProblemService
@@ -10,6 +9,7 @@ import com.didimlog.problem.domain.ProblemId
 import com.didimlog.recommendation.application.CategoryFilterMode
 import com.didimlog.recommendation.application.RecommendationProblemMatch
 import com.didimlog.recommendation.application.RecommendationService
+import com.didimlog.student.domain.Tier
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk

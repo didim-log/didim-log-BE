@@ -1,7 +1,6 @@
 package com.didimlog.problem.domain.repository
 
-import com.didimlog.application.admin.AdminAuditService
-import com.didimlog.domain.enums.Tier
+import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.global.config.MongoConfig
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.problem.application.collector.ProblemCollectorPacer
@@ -14,6 +13,7 @@ import com.didimlog.problem.domain.ProblemCategory
 import com.didimlog.problem.domain.ProblemId
 import com.didimlog.problem.infra.crawler.BojCrawler
 import com.didimlog.problem.infra.crawler.ProblemDetails
+import com.didimlog.student.domain.Tier
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Updates

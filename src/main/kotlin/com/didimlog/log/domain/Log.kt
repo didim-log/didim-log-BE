@@ -1,6 +1,6 @@
 package com.didimlog.log.domain
 
-import com.didimlog.domain.valueobject.BojId
+import com.didimlog.student.domain.BojId
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.index.CompoundIndex

@@ -1,8 +1,8 @@
 package com.didimlog.application.auth
 
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.student.domain.repository.StudentRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

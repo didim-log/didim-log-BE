@@ -1,7 +1,7 @@
 package com.didimlog.infra.auth
 
 import com.didimlog.application.auth.oauth.OAuthExchangeCodeIdentity
-import com.didimlog.domain.enums.Role
+import com.didimlog.student.domain.Role
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch

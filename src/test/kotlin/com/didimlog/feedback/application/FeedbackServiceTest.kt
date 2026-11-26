@@ -1,12 +1,12 @@
 package com.didimlog.feedback.application
 
-import com.didimlog.application.student.StudentLifecycleCoordinator
+import com.didimlog.student.application.StudentLifecycleCoordinator
 import com.didimlog.feedback.domain.Feedback
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 import com.didimlog.feedback.domain.FeedbackStatus
 import com.didimlog.feedback.domain.FeedbackType
 import com.didimlog.feedback.domain.repository.FeedbackRepository
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every

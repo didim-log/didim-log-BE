@@ -66,7 +66,7 @@ sequenceDiagram
 - `infra/boj/JsoupBojProfileStatusMessageClient.kt`
 - `infra/boj/RedisBojVerificationCodeStore.kt`
 - `application/auth/AuthService.kt`
-- `domain/Student.kt`
+- `student/domain/Student.kt`
 
 ## 데모 fixture 경계
 

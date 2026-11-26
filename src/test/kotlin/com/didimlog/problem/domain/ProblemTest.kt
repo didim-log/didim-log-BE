@@ -1,6 +1,6 @@
 package com.didimlog.problem.domain
 
-import com.didimlog.domain.enums.Tier
+import com.didimlog.student.domain.Tier
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test

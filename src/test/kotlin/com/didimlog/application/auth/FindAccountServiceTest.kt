@@ -1,10 +1,10 @@
 package com.didimlog.application.auth
 
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Tier
+import com.didimlog.student.domain.repository.StudentRepository
+import com.didimlog.student.domain.Nickname
 import com.didimlog.global.exception.BusinessException
 import io.mockk.every
 import io.mockk.mockk

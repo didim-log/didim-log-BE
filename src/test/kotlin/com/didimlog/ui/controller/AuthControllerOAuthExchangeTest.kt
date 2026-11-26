@@ -5,13 +5,13 @@ import com.didimlog.application.auth.FindAccountService
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.auth.boj.BojOwnershipVerificationService
 import com.didimlog.application.auth.oauth.OAuthExchangeService
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Tier
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.global.ratelimit.RateLimitInterceptor
 import com.didimlog.global.ratelimit.RateLimitService
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Tier
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.clearMocks
 import io.mockk.every

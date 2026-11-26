@@ -2,7 +2,7 @@ package com.didimlog.infra.auth
 
 import com.didimlog.application.auth.oauth.OAuthExchangeCodeStore
 import com.didimlog.application.auth.oauth.OAuthExchangeCodeIdentity
-import com.didimlog.domain.enums.Role
+import com.didimlog.student.domain.Role
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Duration

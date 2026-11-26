@@ -1,6 +1,6 @@
 package com.didimlog.notice.api
 
-import com.didimlog.application.admin.AdminAuditService
+import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.notice.application.NoticeService
 import com.didimlog.notice.domain.Notice
 import com.didimlog.global.exception.BusinessException

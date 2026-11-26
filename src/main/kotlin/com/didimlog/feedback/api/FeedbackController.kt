@@ -1,11 +1,11 @@
 package com.didimlog.feedback.api
 
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.feedback.api.dto.FeedbackCreateRequest
 import com.didimlog.feedback.api.dto.FeedbackResponse
 import com.didimlog.feedback.application.FeedbackService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.student.domain.repository.StudentRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema

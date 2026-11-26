@@ -1,8 +1,5 @@
 package com.didimlog.retrospective.application
 
-import com.didimlog.application.student.StudentLifecycleCoordinator
-import com.didimlog.domain.Student
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.problem.domain.Problem
@@ -11,6 +8,9 @@ import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.retrospective.domain.repository.RetrospectiveSearchCondition
+import com.didimlog.student.application.StudentLifecycleCoordinator
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.repository.StudentRepository
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable

@@ -1,14 +1,14 @@
 package com.didimlog.application.auth
 
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Tier
 import com.didimlog.domain.repository.PasswordResetCodeRepository
-import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.valueobject.BojId
-import com.didimlog.domain.valueobject.Nickname
-import com.didimlog.domain.valueobject.SolvedAcTierLevel
+import com.didimlog.student.domain.repository.StudentRepository
+import com.didimlog.student.domain.BojId
+import com.didimlog.student.domain.Nickname
+import com.didimlog.student.domain.SolvedAcTierLevel
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode

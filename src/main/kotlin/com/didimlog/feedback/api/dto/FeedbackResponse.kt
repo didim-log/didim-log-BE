@@ -1,7 +1,7 @@
 package com.didimlog.feedback.api.dto
 
-import com.didimlog.domain.Student
 import com.didimlog.feedback.domain.Feedback
+import com.didimlog.student.domain.Student
 import java.time.LocalDateTime
 
 /**

@@ -1,17 +1,17 @@
 package com.didimlog.template.application
 
 import com.didimlog.problem.application.ProblemService
-import com.didimlog.application.student.StudentLifecycleCoordinator
+import com.didimlog.student.application.StudentLifecycleCoordinator
 import com.didimlog.problem.domain.Problem
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 import com.didimlog.problem.domain.ProblemCategory
-import com.didimlog.domain.enums.PrimaryLanguage
+import com.didimlog.student.domain.PrimaryLanguage
 import com.didimlog.study.domain.ProblemResult
 import com.didimlog.template.domain.TemplateCategory
 import com.didimlog.template.domain.TemplateOwnershipType
-import com.didimlog.domain.enums.Tier
+import com.didimlog.student.domain.Tier
 import com.didimlog.global.util.CodeLanguageDetector
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.template.domain.repository.TemplateRepository
 import com.didimlog.template.domain.repository.TemplateSummaryView
 import com.didimlog.template.domain.Template

@@ -1,16 +1,16 @@
 package com.didimlog.statistics.application
 
-import com.didimlog.application.admin.query.MongoIndexBaseline
-import com.didimlog.application.admin.query.MongoQueryExecutionBaseline
-import com.didimlog.application.admin.query.MongoQueryPlanExplainer
-import com.didimlog.application.admin.query.ObservedMongoReadCommand
-import com.didimlog.domain.Student
-import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.admin.application.query.MongoIndexBaseline
+import com.didimlog.admin.application.query.MongoQueryExecutionBaseline
+import com.didimlog.admin.application.query.MongoQueryPlanExplainer
+import com.didimlog.admin.application.query.ObservedMongoReadCommand
 import com.didimlog.global.config.mongo.MongoIndexInitializer
 import com.didimlog.retrospective.domain.Retrospective
+import com.didimlog.student.domain.Nickname
+import com.didimlog.student.domain.Provider
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.Tier
 import com.didimlog.study.domain.ProblemResult
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.mongodb.MongoClientSettings

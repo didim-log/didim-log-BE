@@ -1,10 +1,10 @@
 package com.didimlog.statistics.application
 
-import com.didimlog.domain.Student
+import com.didimlog.student.domain.Student
 import com.didimlog.study.domain.ProblemResult
 import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.retrospective.domain.repository.RetrospectiveStatisticsView
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.springframework.stereotype.Service

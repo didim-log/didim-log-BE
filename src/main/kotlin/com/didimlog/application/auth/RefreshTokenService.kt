@@ -1,10 +1,10 @@
 package com.didimlog.application.auth
 
-import com.didimlog.domain.Student
-import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.student.domain.Student
+import com.didimlog.student.domain.repository.StudentRepository
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -29,7 +29,7 @@ class RefreshTokenService(
         val accessToken: String,
         val refreshToken: String,
         val rating: Int,
-        val tier: com.didimlog.domain.enums.Tier,
+        val tier: com.didimlog.student.domain.Tier,
         val tierLevel: Int
     )
 

@@ -1,6 +1,6 @@
 package com.didimlog.problem.api.dto
 
-import com.didimlog.application.admin.ProblemStatsService
+import com.didimlog.admin.application.ProblemStatsService
 
 /**
  * 관리자 문제 통계 응답 DTO

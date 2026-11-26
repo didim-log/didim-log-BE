@@ -94,7 +94,7 @@ class AuthControllerRefreshTest {
             accessToken = newAccessToken,
             refreshToken = newRefreshToken,
             rating = 30,
-            tier = com.didimlog.domain.enums.Tier.BRONZE,
+            tier = com.didimlog.student.domain.Tier.BRONZE,
             tierLevel = 3
         )
 

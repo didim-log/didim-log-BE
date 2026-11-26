@@ -44,7 +44,7 @@ data class StudentProfileResponse(
     val currentTier: String,
     val currentTierLevel: Int,
     val consecutiveSolveDays: Int,
-    val primaryLanguage: com.didimlog.domain.enums.PrimaryLanguage? = null,
+    val primaryLanguage: com.didimlog.student.domain.PrimaryLanguage? = null,
     val isOnboardingFinished: Boolean = false
 ) {
     companion object {
@@ -60,7 +60,7 @@ data class StudentProfileResponse(
             )
         }
 
-        fun from(student: com.didimlog.domain.Student): StudentProfileResponse {
+        fun from(student: com.didimlog.student.domain.Student): StudentProfileResponse {
             val bojIdValue = student.bojId?.value
                 ?: throw IllegalStateException("BOJ ID가 null입니다. BOJ 인증이 완료되지 않은 사용자입니다.")
             return StudentProfileResponse(
