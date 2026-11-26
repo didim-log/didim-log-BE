@@ -1,6 +1,6 @@
 package com.didimlog.quote.api.dto
 
-import com.didimlog.application.dashboard.QuoteInfo
+import com.didimlog.dashboard.application.QuoteInfo
 import com.didimlog.quote.domain.Quote
 
 /**

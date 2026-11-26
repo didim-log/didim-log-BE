@@ -2,9 +2,9 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.ai.AiUsageService
-import com.didimlog.application.storage.StorageManagementService
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.global.system.MaintenanceModeService
+import com.didimlog.storage.application.StorageManagementService
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.clearMocks
 import io.mockk.every

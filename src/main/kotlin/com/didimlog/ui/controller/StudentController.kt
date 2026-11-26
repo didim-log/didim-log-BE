@@ -142,10 +142,10 @@ class StudentController(
     @PostMapping("/sync")
     fun syncBojProfile(
         authentication: Authentication
-    ): ResponseEntity<com.didimlog.ui.dto.StudentProfileResponse> {
+    ): ResponseEntity<com.didimlog.dashboard.api.dto.StudentProfileResponse> {
         val studentId = authentication.name
         val updatedStudent = studentService.syncBojProfile(studentId)
-        val response = com.didimlog.ui.dto.StudentProfileResponse.from(updatedStudent)
+        val response = com.didimlog.dashboard.api.dto.StudentProfileResponse.from(updatedStudent)
         return ResponseEntity.ok(response)
     }
 }

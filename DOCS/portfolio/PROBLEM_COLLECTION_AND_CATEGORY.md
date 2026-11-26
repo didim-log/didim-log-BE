@@ -148,7 +148,7 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 - `ui/controller/ProblemCollectorController.kt`
 - `application/problem/collector/ProblemCollectorService.kt`
 - `infra/solvedac/ProblemCategoryMapper.kt`
-- `application/recommendation/RecommendationService.kt`
+- `recommendation/application/RecommendationService.kt`
 - `application/utils/AlgorithmHierarchyUtils.kt`
 - `domain/repository/ProblemRepositoryImpl.kt`
 

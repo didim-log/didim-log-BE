@@ -1,9 +1,9 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.problem.ProblemService
-import com.didimlog.application.recommendation.CategoryFilterMode
-import com.didimlog.application.recommendation.RecommendationService
 import com.didimlog.application.utils.AlgorithmHierarchyUtils
+import com.didimlog.recommendation.application.CategoryFilterMode
+import com.didimlog.recommendation.application.RecommendationService
 import com.didimlog.ui.dto.ProblemCategoryMetaResponse
 import com.didimlog.ui.dto.ProblemDetailResponse
 import com.didimlog.ui.dto.ProblemResponse

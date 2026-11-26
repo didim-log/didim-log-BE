@@ -70,7 +70,7 @@ main() {
   STATISTICS_QUERY_BASELINE_HARNESS_SHA256="$(
     cd "$ROOT_DIR"
     shasum -a 256 \
-      src/integrationTest/kotlin/com/didimlog/application/statistics/StatisticsQueryBaselineIntegrationTest.kt \
+      src/integrationTest/kotlin/com/didimlog/statistics/application/StatisticsQueryBaselineIntegrationTest.kt \
       src/integrationTest/kotlin/com/didimlog/application/admin/query/MongoQueryPlanExplainer.kt \
       src/integrationTest/kotlin/com/didimlog/application/admin/query/AdminUserQueryPerformanceIntegrationTest.kt \
       performance/statistics/run-baseline.sh |
@@ -105,7 +105,7 @@ main() {
   export TZ=Asia/Seoul
 
   "$ROOT_DIR/gradlew" integrationTest \
-    --tests com.didimlog.application.statistics.StatisticsQueryBaselineIntegrationTest \
+    --tests com.didimlog.statistics.application.StatisticsQueryBaselineIntegrationTest \
     --rerun-tasks \
     --no-daemon
 

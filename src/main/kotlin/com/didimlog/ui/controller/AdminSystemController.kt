@@ -2,10 +2,10 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.ai.AiUsageService
-import com.didimlog.application.storage.StorageManagementService
 import com.didimlog.domain.enums.AdminActionType
 import com.didimlog.global.system.MaintenanceModeService
 import com.didimlog.global.util.HttpRequestUtil
+import com.didimlog.storage.application.StorageManagementService
 import com.didimlog.ui.dto.AiLimitsUpdateRequest
 import com.didimlog.ui.dto.AiReviewPolicyUpdateRequest
 import com.didimlog.ui.dto.AiStatusResponse

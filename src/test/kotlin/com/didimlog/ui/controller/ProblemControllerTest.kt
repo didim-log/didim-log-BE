@@ -1,15 +1,15 @@
 package com.didimlog.ui.controller
 
 import com.didimlog.application.problem.ProblemService
-import com.didimlog.application.recommendation.CategoryFilterMode
-import com.didimlog.application.recommendation.RecommendationProblemMatch
-import com.didimlog.application.recommendation.RecommendationService
 import com.didimlog.domain.Problem
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.global.auth.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
+import com.didimlog.recommendation.application.CategoryFilterMode
+import com.didimlog.recommendation.application.RecommendationProblemMatch
+import com.didimlog.recommendation.application.RecommendationService
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
