@@ -1,5 +1,8 @@
 package com.didimlog.auth.application.boj
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.ratelimit.RateLimitService
@@ -10,6 +13,9 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
+import org.slf4j.LoggerFactory
 
 @DisplayName("BOJ 소유권 인증 실패 처리 테스트")
 class BojOwnershipVerificationFailureTest {
@@ -63,6 +69,28 @@ class BojOwnershipVerificationFailureTest {
         assertThat(exception.message).endsWith("bojId=mekazon")
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("failureResults")
+    @DisplayName("프로필 조회 실패 로그에는 BOJ ID를 마스킹해 남긴다")
+    fun `failure logs mask boj id`(fetchResult: BojProfileStatusMessageFetchResult) {
+        val logger = LoggerFactory.getLogger(BojOwnershipVerificationService::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+
+        try {
+            verifyWith(fetchResult)
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
+
+        val messages = appender.list.map { it.formattedMessage }
+        assertThat(messages).hasSize(1)
+        assertThat(messages.single())
+            .contains("bojId=m***")
+            .doesNotContain("mekazon")
+    }
+
     private fun verifyWith(fetchResult: BojProfileStatusMessageFetchResult): BusinessException {
         every { codeStore.find("session") } returns "DIDIM-LOG-ABC123"
         every { profileStatusMessageClient.fetchStatusMessage("mekazon") } returns fetchResult
@@ -70,5 +98,15 @@ class BojOwnershipVerificationFailureTest {
         return assertThrows<BusinessException> {
             service.verifyOwnership(sessionId = "session", bojId = "mekazon")
         }
+    }
+
+    companion object {
+        @JvmStatic
+        fun failureResults(): List<BojProfileStatusMessageFetchResult> = listOf(
+            BojProfileStatusMessageFetchResult.UserNotFound,
+            BojProfileStatusMessageFetchResult.AccessDenied,
+            BojProfileStatusMessageFetchResult.StatusMessageNotFound,
+            BojProfileStatusMessageFetchResult.Failed("timeout")
+        )
     }
 }
