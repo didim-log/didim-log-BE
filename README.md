@@ -56,7 +56,7 @@ flowchart LR
 
 ### 설계 기준
 
-- `ui → application → domain → infra` 방향으로 유스케이스와 외부 의존성을 분리했습니다.
+- 도메인별 패키지(`auth`, `student`, `problem`, `log`, `retrospective` 등) 아래에 `api`(controller·DTO), `application`(유스케이스·포트), `domain`(엔티티·repository), `infra`(해당 도메인 전용 외부 어댑터)를 두어 유스케이스와 외부 의존성을 분리했습니다. 여러 도메인이 함께 쓰는 외부 어댑터(`infra.solvedac`, `infra.email`)와 공통 설정·보안(`global`)은 최상위에 둡니다.
 - 관리자 문제 수집은 요청과 작업 실행을 분리하고, Redis에 진행 상태·성공/실패 수·checkpoint·실패 문제 ID·실제 대상 manifest를 기록합니다.
 - worker lease 모드에서는 상태의 attempt와 Redis lease가 같은 worker만 heartbeat·진행률·종료 상태를 갱신합니다.
 - lease가 없는 `PENDING`·`RUNNING` 작업은 scanner가 다시 제출하고, 현재 `processedCount` 이후 manifest 대상부터 이어서 실행합니다.
