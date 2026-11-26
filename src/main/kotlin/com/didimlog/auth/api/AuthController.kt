@@ -268,7 +268,7 @@ class AuthController(
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "관리자 키가 일치하지 않습니다.")
         }
 
-        val result = authService.createSuperAdmin(request.bojId, request.password, request.email, request.adminKey)
+        val result = authService.createSuperAdmin(request.bojId, request.password, request.email)
         val response = AuthResponse.signup(
             token = result.token,
             refreshToken = result.refreshToken,

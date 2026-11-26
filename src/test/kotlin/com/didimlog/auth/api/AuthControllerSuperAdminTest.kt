@@ -108,7 +108,7 @@ class AuthControllerSuperAdminTest {
     @DisplayName("관리자 키가 일치하면 슈퍼 관리자 계정을 만들고 토큰을 반환한다")
     fun `관리자 키 일치`() {
         every {
-            authService.createSuperAdmin("admin123", "ValidPassword123!", "admin@example.com", any())
+            authService.createSuperAdmin("admin123", "ValidPassword123!", "admin@example.com")
         } returns AuthService.AuthResult(
             token = "admin-token",
             refreshToken = "admin-refresh-token",
@@ -127,7 +127,7 @@ class AuthControllerSuperAdminTest {
             .andExpect(jsonPath("$.message").value("회원가입이 완료되었습니다."))
 
         verify(exactly = 1) {
-            authService.createSuperAdmin("admin123", "ValidPassword123!", "admin@example.com", any())
+            authService.createSuperAdmin("admin123", "ValidPassword123!", "admin@example.com")
         }
     }
 
@@ -139,7 +139,7 @@ class AuthControllerSuperAdminTest {
             .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
             .andExpect(jsonPath("$.message").value("관리자 키가 일치하지 않습니다."))
 
-        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any(), any()) }
+        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any()) }
     }
 
     @Test
@@ -149,7 +149,7 @@ class AuthControllerSuperAdminTest {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.message").value("관리자 키가 일치하지 않습니다."))
 
-        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any(), any()) }
+        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any()) }
     }
 
     @Test
@@ -158,7 +158,7 @@ class AuthControllerSuperAdminTest {
         mockMvc.postSuperAdmin(objectMapper, superAdminRequest(" "))
             .andExpect(status().isBadRequest)
 
-        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any(), any()) }
+        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any()) }
     }
 }
 
@@ -194,6 +194,6 @@ class AuthControllerSuperAdminWithoutSecretKeyTest {
             .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
             .andExpect(jsonPath("$.message").value("관리자 키가 일치하지 않습니다."))
 
-        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any(), any()) }
+        verify(exactly = 0) { authService.createSuperAdmin(any(), any(), any()) }
     }
 }
