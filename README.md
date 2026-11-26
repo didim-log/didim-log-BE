@@ -13,7 +13,7 @@
 | 담당 | 도메인·API 설계, 인증/인가, 문제 수집, 풀이 기록, 회고, AI 리뷰, 운영 도구 |
 | Backend | [didim-log/didim-log-BE](https://github.com/didim-log/didim-log-BE) |
 | Frontend | [didim-log/didim-log-FE](https://github.com/didim-log/didim-log-FE) |
-| 결과 | 로컬 fixture 기준 문제 상세 수집 55.632초 → 12.226초, 통계 조회 데이터 97.94% 감소 ([7. 로컬 검증 결과](#7-로컬-검증-결과)) |
+| 결과 | 로컬 fixture 기준 문제 상세 수집 시간 단축, 통계 조회 데이터 감소 (자세한 수치는 [7. 로컬 검증 결과](#7-로컬-검증-결과)의 표) |
 
 ## 2. 기술 스택
 
