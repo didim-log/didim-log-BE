@@ -92,6 +92,7 @@ class ProblemCollectorService(
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
     private val stateStore = ProblemJobStateStore(redisTemplate, objectMapper, workerLeaseProperties)
     private val manifestValidator = ProblemJobManifestValidator(redisTemplate, objectMapper, stateStore)
+    private val auditLogger = ProblemJobAuditLogger(adminAuditService)
 
     companion object {
         private const val RESTART_ORPHAN_MESSAGE =
@@ -314,7 +315,7 @@ class ProblemCollectorService(
             )
             val cancelled = stateStore.compareAndSetJob(snapshot, updated)
             if (cancelled != null) {
-                logJobAction(cancelledBy, AdminActionType.PROBLEM_JOB_CANCEL, ipAddress, cancelled)
+                auditLogger.logJobAction(cancelledBy, AdminActionType.PROBLEM_JOB_CANCEL, ipAddress, cancelled)
                 return withQueuePosition(cancelled)
             }
         }
@@ -511,7 +512,7 @@ class ProblemCollectorService(
         val retryJob = getJob(retryJobId)
             ?: throw BusinessException(ErrorCode.JOB_NOT_FOUND, "재시도 작업 생성에 실패했습니다. jobId=$retryJobId")
 
-        logJobAction(
+        auditLogger.logJobAction(
             requestedBy,
             AdminActionType.PROBLEM_JOB_RETRY,
             ipAddress,
@@ -606,7 +607,7 @@ class ProblemCollectorService(
                 ErrorCode.JOB_NOT_FOUND,
                 "재시도 작업 생성에 실패했습니다. jobId=$retryJobId"
             )
-        logJobAction(
+        auditLogger.logJobAction(
             requestedBy,
             AdminActionType.PROBLEM_JOB_RETRY,
             ipAddress,
@@ -814,7 +815,7 @@ class ProblemCollectorService(
             manifestExplicitIds = orderedTargets.map { it.id.value },
             manifestRange = null
         )
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
+        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { collectDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
@@ -835,7 +836,7 @@ class ProblemCollectorService(
             manifestRange = targetRange
         )
         val targetIds = metadataTargetIds(fixedTargetIds, targetRange)
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
+        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { collectMetadataAsyncInternal(job.jobId, targetIds) }
         return job
     }
@@ -854,7 +855,7 @@ class ProblemCollectorService(
             manifestExplicitIds = orderedTargets.map { it.id.value },
             manifestRange = null
         )
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
+        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { refreshDetailsBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
@@ -872,7 +873,7 @@ class ProblemCollectorService(
             manifestExplicitIds = orderedTargets.map { it.id.value },
             manifestRange = null
         )
-        logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
+        auditLogger.logJobAction(createdBy, AdminActionType.PROBLEM_JOB_CREATE, ipAddress, job)
         executeAsync(job.jobId) { updateLanguageBatchAsyncInternal(job.jobId, orderedTargets) }
         return job
     }
@@ -1856,45 +1857,5 @@ class ProblemCollectorService(
 
     private fun solvedAcProblemUrl(problemId: Int): String {
         return "https://www.acmicpc.net/problem/$problemId"
-    }
-
-    private fun logJobAction(
-        actor: String,
-        action: AdminActionType,
-        ipAddress: String,
-        job: JobStatusUnifiedResponse,
-        extra: String? = null
-    ) {
-        val rangeText = if (job.range?.start != null && job.range.end != null) {
-            "${job.range.start}-${job.range.end}"
-        } else {
-            "ALL"
-        }
-
-        val detail = buildString {
-            append("jobId=${job.jobId}")
-            append(", type=${job.jobType}")
-            append(", status=${job.status}")
-            append(", range=$rangeText")
-            append(", total=${job.totalCount}")
-            if (!extra.isNullOrBlank()) {
-                append(", ")
-                append(extra)
-            }
-        }
-
-        try {
-            adminAuditService.logAction(
-                adminId = actor,
-                action = action,
-                details = detail,
-                ipAddress = ipAddress
-            )
-        } catch (e: RejectedExecutionException) {
-            log.error(
-                "admin audit submission rejected: actor=$actor, action=$action, error=${e.message}",
-                e
-            )
-        }
     }
 }
