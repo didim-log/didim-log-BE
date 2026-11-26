@@ -9,7 +9,6 @@ import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.ProblemRepository
@@ -18,6 +17,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.domain.template.Template
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.feedback.domain.repository.FeedbackRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.infra.auth.CredentialSessionLockConfig

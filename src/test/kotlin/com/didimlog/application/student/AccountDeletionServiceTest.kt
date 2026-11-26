@@ -8,7 +8,6 @@ import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
@@ -16,6 +15,7 @@ import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.feedback.domain.repository.FeedbackRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import io.mockk.every

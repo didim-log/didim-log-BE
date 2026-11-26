@@ -1,6 +1,7 @@
 package com.didimlog.ui.dto
 
 import com.didimlog.application.dashboard.DashboardInfo
+import com.didimlog.quote.api.dto.QuoteResponse
 import java.time.LocalDateTime
 
 /**

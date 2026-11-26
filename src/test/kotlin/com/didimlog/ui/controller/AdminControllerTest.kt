@@ -2,13 +2,13 @@ package com.didimlog.ui.controller
 
 import com.didimlog.application.admin.AdminAuditService
 import com.didimlog.application.admin.AdminService
-import com.didimlog.application.feedback.FeedbackService
-import com.didimlog.application.notice.NoticeService
-import com.didimlog.domain.Feedback
-import com.didimlog.domain.Quote
+import com.didimlog.feedback.application.FeedbackService
+import com.didimlog.notice.application.NoticeService
+import com.didimlog.feedback.domain.Feedback
+import com.didimlog.quote.domain.Quote
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.FeedbackStatus
-import com.didimlog.domain.enums.FeedbackType
+import com.didimlog.feedback.domain.FeedbackStatus
+import com.didimlog.feedback.domain.FeedbackType
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier.Companion.fromRating
@@ -20,7 +20,7 @@ import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ui.dto.FeedbackStatusUpdateRequest
-import com.didimlog.ui.dto.NoticeCreateRequest
+import com.didimlog.notice.api.dto.NoticeCreateRequest
 import com.didimlog.ui.dto.QuoteCreateRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every

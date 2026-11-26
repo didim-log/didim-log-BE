@@ -4,7 +4,7 @@ import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.enums.ProblemCategory
 import com.didimlog.domain.enums.ProblemResult
-import com.didimlog.domain.enums.RankingPeriod
+import com.didimlog.ranking.domain.RankingPeriod
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot

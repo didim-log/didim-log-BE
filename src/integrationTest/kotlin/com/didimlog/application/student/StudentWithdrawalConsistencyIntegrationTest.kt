@@ -2,17 +2,14 @@ package com.didimlog.application.student
 
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
-import com.didimlog.domain.Feedback
 import com.didimlog.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.FeedbackType
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.FeedbackRepository
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
@@ -24,6 +21,9 @@ import com.didimlog.domain.valueobject.LogCode
 import com.didimlog.domain.valueobject.LogContent
 import com.didimlog.domain.valueobject.LogTitle
 import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.feedback.domain.Feedback
+import com.didimlog.feedback.domain.FeedbackType
+import com.didimlog.feedback.domain.repository.FeedbackRepository
 import com.didimlog.infra.solvedac.SolvedAcClient
 import io.mockk.mockk
 import io.mockk.verify

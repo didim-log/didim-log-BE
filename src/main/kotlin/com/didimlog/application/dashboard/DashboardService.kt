@@ -1,7 +1,7 @@
 package com.didimlog.application.dashboard
 
-import com.didimlog.application.quote.QuoteService
-import com.didimlog.domain.Quote
+import com.didimlog.quote.application.QuoteService
+import com.didimlog.quote.domain.Quote
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.SolvedAcTierStep

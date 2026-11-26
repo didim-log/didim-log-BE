@@ -1,11 +1,11 @@
 package com.didimlog.global.config.mongo
 
-import com.didimlog.domain.Feedback
 import com.didimlog.domain.Log
 import com.didimlog.domain.PasswordResetCode
 import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.template.Template
+import com.didimlog.feedback.domain.Feedback
 import java.time.Duration
 import org.bson.Document
 import org.springframework.boot.ApplicationArguments

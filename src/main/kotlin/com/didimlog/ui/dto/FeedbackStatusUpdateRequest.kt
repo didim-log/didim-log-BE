@@ -1,6 +1,6 @@
 package com.didimlog.ui.dto
 
-import com.didimlog.domain.enums.FeedbackStatus
+import com.didimlog.feedback.domain.FeedbackStatus
 import jakarta.validation.constraints.NotNull
 
 /**

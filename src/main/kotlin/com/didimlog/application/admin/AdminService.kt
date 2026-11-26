@@ -3,10 +3,10 @@ package com.didimlog.application.admin
 import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.student.AccountDeletionService
-import com.didimlog.domain.Quote
+import com.didimlog.quote.domain.Quote
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Role
-import com.didimlog.domain.repository.QuoteRepository
+import com.didimlog.quote.domain.repository.QuoteRepository
 import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId

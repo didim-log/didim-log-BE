@@ -2,7 +2,7 @@ package com.didimlog.domain.repository
 
 import com.didimlog.application.retrospective.RetrospectiveSearchCondition
 import com.didimlog.domain.Retrospective
-import com.didimlog.domain.enums.RankingPeriod
+import com.didimlog.ranking.domain.RankingPeriod
 import java.time.LocalDateTime
 import org.bson.Document
 import org.springframework.data.domain.Page

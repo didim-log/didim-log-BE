@@ -4,7 +4,7 @@ import com.didimlog.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.Solutions
 import com.didimlog.domain.enums.Provider
-import com.didimlog.domain.enums.RankingPeriod
+import com.didimlog.ranking.domain.RankingPeriod
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
