@@ -342,54 +342,6 @@ data class Student(
     }
 
     /**
-     * 소셜 로그인 후 가입 마무리를 수행한다.
-     * 약관 동의 및 닉네임 설정을 완료하고, GUEST에서 USER로 역할을 변경한다.
-     *
-     * @param nickname 설정할 닉네임
-     * @param termsAgreed 약관 동의 여부
-     * @return 가입 마무리가 완료된 새로운 Student 인스턴스
-     * @throws IllegalArgumentException 약관 동의가 false인 경우
-     */
-    fun finalizeSignup(nickname: String, termsAgreed: Boolean): Student {
-        if (!termsAgreed) {
-            throw IllegalArgumentException("약관 동의는 필수입니다.")
-        }
-        
-        val nicknameVo = Nickname(nickname)
-        
-        return copy(
-            nickname = nicknameVo,
-            termsAgreed = true,
-            role = Role.USER
-        )
-    }
-
-    /**
-     * 소셜 로그인 후 가입 마무리를 수행한다. (BOJ ID 필수)
-     * - 닉네임/약관 동의/권한(USER) 뿐 아니라 BOJ ID 및 이메일까지 확정한다.
-     *
-     * @param nickname 설정할 닉네임
-     * @param bojId BOJ ID (필수)
-     * @param email 이메일 (nullable)
-     * @param termsAgreed 약관 동의 여부
-     */
-    fun finalizeSignup(nickname: String, bojId: BojId, email: String?, termsAgreed: Boolean): Student {
-        if (!termsAgreed) {
-            throw IllegalArgumentException("약관 동의는 필수입니다.")
-        }
-
-        val nicknameVo = Nickname(nickname)
-
-        return copy(
-            nickname = nicknameVo,
-            bojId = bojId,
-            email = email,
-            termsAgreed = true,
-            role = Role.USER
-        )
-    }
-
-    /**
      * 주로 사용하는 프로그래밍 언어를 업데이트한다.
      *
      * @param language 새로운 언어
