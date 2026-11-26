@@ -1,8 +1,8 @@
 package com.didimlog.portfolio
 
-import com.didimlog.application.auth.boj.BojProfileStatusMessage
-import com.didimlog.application.auth.boj.BojProfileStatusMessageClient
-import com.didimlog.application.auth.boj.BojProfileStatusMessageFetchResult
+import com.didimlog.auth.application.boj.BojProfileStatusMessage
+import com.didimlog.auth.application.boj.BojProfileStatusMessageClient
+import com.didimlog.auth.application.boj.BojProfileStatusMessageFetchResult
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
 import com.didimlog.infra.solvedac.SolvedAcTag

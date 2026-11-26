@@ -3,9 +3,9 @@ package com.didimlog.admin.application.query
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.didimlog.admin.application.AdminService
-import com.didimlog.application.auth.CredentialSessionCoordinator
-import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
-import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.auth.application.CredentialSessionCoordinator
+import com.didimlog.auth.application.ImmediateCredentialSessionCoordinator
+import com.didimlog.auth.application.RefreshTokenService
 import com.didimlog.student.application.AccountDeletionService
 import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.student.domain.Student

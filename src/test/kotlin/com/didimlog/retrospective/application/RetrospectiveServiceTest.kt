@@ -1,6 +1,6 @@
 package com.didimlog.retrospective.application
 
-import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
+import com.didimlog.auth.application.ImmediateCredentialSessionCoordinator
 import com.didimlog.student.application.StudentLifecycleCoordinator
 import com.didimlog.problem.domain.Problem
 import com.didimlog.retrospective.domain.Retrospective

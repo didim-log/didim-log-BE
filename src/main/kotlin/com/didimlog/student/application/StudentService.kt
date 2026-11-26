@@ -1,7 +1,7 @@
 package com.didimlog.student.application
 
-import com.didimlog.application.auth.CredentialSessionCoordinator
-import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.auth.application.CredentialSessionCoordinator
+import com.didimlog.auth.application.RefreshTokenService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.util.PasswordValidator

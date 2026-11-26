@@ -1,6 +1,6 @@
 package com.didimlog.global.security
 
-import com.didimlog.application.auth.oauth.OAuthExchangeService
+import com.didimlog.auth.application.oauth.OAuthExchangeService
 import com.didimlog.student.domain.Student
 import com.didimlog.student.domain.Provider
 import com.didimlog.student.domain.Role

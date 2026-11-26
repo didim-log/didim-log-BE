@@ -108,7 +108,7 @@ Access Token 서명·만료·필수 claim 1회 검증
   이 오류는 같은 코드로 재시도할 수 없으며 새 코드 발급이 필요하다.
 
 Refresh Token 전체 폐기는
-[`RefreshTokenService.revokeAllForStudent`](../../../src/main/kotlin/com/didimlog/application/auth/RefreshTokenService.kt)을
+[`RefreshTokenService.revokeAllForStudent`](../../../src/main/kotlin/com/didimlog/auth/application/RefreshTokenService.kt)을
 사용한다. Redis Lua가 `studentId`별 token set에 포함된 token key와 set key를 한
 번에 삭제한다.
 

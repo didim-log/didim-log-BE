@@ -3,8 +3,8 @@ package com.didimlog.global.config.mongo
 import com.didimlog.admin.domain.AdminActionType
 import com.didimlog.admin.domain.AdminAuditLog
 import com.didimlog.admin.domain.repository.AdminAuditLogRepository
-import com.didimlog.domain.PasswordResetCode
-import com.didimlog.domain.repository.PasswordResetCodeRepository
+import com.didimlog.auth.domain.PasswordResetCode
+import com.didimlog.auth.domain.repository.PasswordResetCodeRepository
 import com.didimlog.feedback.domain.Feedback
 import com.didimlog.feedback.domain.FeedbackStatus
 import com.didimlog.feedback.domain.FeedbackType

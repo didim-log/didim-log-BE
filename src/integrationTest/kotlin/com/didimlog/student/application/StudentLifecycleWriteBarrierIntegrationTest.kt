@@ -1,12 +1,12 @@
 package com.didimlog.student.application
 
-import com.didimlog.application.auth.RefreshTokenService
-import com.didimlog.domain.repository.PasswordResetCodeRepository
+import com.didimlog.auth.application.RefreshTokenService
+import com.didimlog.auth.domain.repository.PasswordResetCodeRepository
+import com.didimlog.auth.infra.redis.CredentialSessionLockConfig
+import com.didimlog.auth.infra.redis.RedisCredentialSessionCoordinator
 import com.didimlog.feedback.domain.repository.FeedbackRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
-import com.didimlog.infra.auth.CredentialSessionLockConfig
-import com.didimlog.infra.auth.RedisCredentialSessionCoordinator
 import com.didimlog.log.domain.repository.LogRepository
 import com.didimlog.problem.application.ProblemService
 import com.didimlog.problem.domain.repository.ProblemRepository

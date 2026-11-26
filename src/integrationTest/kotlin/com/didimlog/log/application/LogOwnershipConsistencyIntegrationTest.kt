@@ -1,6 +1,6 @@
 package com.didimlog.log.application
 
-import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
+import com.didimlog.auth.application.ImmediateCredentialSessionCoordinator
 import com.didimlog.log.domain.Log
 import com.didimlog.student.domain.Student
 import com.didimlog.log.domain.AiFeedbackStatus

@@ -1,9 +1,9 @@
 package com.didimlog.admin.application
 
 import com.didimlog.admin.api.dto.AdminUserUpdateDto
-import com.didimlog.application.auth.CredentialSessionCoordinator
-import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
-import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.auth.application.CredentialSessionCoordinator
+import com.didimlog.auth.application.ImmediateCredentialSessionCoordinator
+import com.didimlog.auth.application.RefreshTokenService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.quote.domain.Quote

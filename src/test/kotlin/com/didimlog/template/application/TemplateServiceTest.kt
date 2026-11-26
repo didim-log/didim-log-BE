@@ -1,6 +1,6 @@
 package com.didimlog.template.application
 
-import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
+import com.didimlog.auth.application.ImmediateCredentialSessionCoordinator
 import com.didimlog.problem.application.ProblemService
 import com.didimlog.problem.domain.Problem
 import com.didimlog.student.domain.Student

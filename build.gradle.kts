@@ -24,8 +24,8 @@ val integrationTest by sourceSets.creating {
 }
 
 val jacocoCoreCoverageIncludes = listOf(
-	"com/didimlog/application/auth/**",
 	"com/didimlog/admin/application/**",
+	"com/didimlog/auth/application/**",
 	"com/didimlog/dashboard/application/**",
 	"com/didimlog/feedback/application/**",
 	"com/didimlog/log/application/**",
@@ -40,9 +40,6 @@ val jacocoCoreCoverageIncludes = listOf(
 	"com/didimlog/student/application/**",
 	"com/didimlog/study/application/**",
 	"com/didimlog/*/domain/**",
-	"com/didimlog/domain/*.class",
-	"com/didimlog/domain/*\\$*.class",
-	"com/didimlog/domain/repository/**",
 	"com/didimlog/global/auth/**",
 	"com/didimlog/global/config/**",
 	"com/didimlog/global/config/security/**",

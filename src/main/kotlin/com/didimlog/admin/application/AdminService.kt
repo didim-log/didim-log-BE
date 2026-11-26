@@ -1,7 +1,7 @@
 package com.didimlog.admin.application
 
-import com.didimlog.application.auth.CredentialSessionCoordinator
-import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.auth.application.CredentialSessionCoordinator
+import com.didimlog.auth.application.RefreshTokenService
 import com.didimlog.student.application.AccountDeletionService
 import com.didimlog.quote.domain.Quote
 import com.didimlog.student.domain.Student

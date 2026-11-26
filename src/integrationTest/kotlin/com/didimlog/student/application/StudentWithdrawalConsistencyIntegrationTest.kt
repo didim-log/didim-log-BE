@@ -1,9 +1,9 @@
 package com.didimlog.student.application
 
-import com.didimlog.application.auth.CredentialSessionCoordinator
-import com.didimlog.application.auth.RefreshTokenService
-import com.didimlog.domain.PasswordResetCode
-import com.didimlog.domain.repository.PasswordResetCodeRepository
+import com.didimlog.auth.application.CredentialSessionCoordinator
+import com.didimlog.auth.application.RefreshTokenService
+import com.didimlog.auth.domain.PasswordResetCode
+import com.didimlog.auth.domain.repository.PasswordResetCodeRepository
 import com.didimlog.feedback.domain.Feedback
 import com.didimlog.feedback.domain.FeedbackType
 import com.didimlog.feedback.domain.repository.FeedbackRepository

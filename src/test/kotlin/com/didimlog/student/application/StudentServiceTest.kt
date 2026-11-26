@@ -1,7 +1,7 @@
 package com.didimlog.student.application
 
-import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
-import com.didimlog.application.auth.RefreshTokenService
+import com.didimlog.auth.application.ImmediateCredentialSessionCoordinator
+import com.didimlog.auth.application.RefreshTokenService
 import com.didimlog.student.domain.Student
 import com.didimlog.student.domain.Provider
 import com.didimlog.student.domain.Role
