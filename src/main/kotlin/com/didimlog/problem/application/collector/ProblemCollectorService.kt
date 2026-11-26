@@ -4,14 +4,10 @@ import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.problem.application.category.ProblemLanguageDetector
 import com.didimlog.problem.application.collector.ProblemJobRedisKeys.JOB_INDEX_KEY
 import com.didimlog.problem.application.collector.ProblemJobRedisKeys.JOB_TTL_SECONDS
-import com.didimlog.problem.application.collector.ProblemJobRedisKeys.failureKey
-import com.didimlog.problem.application.collector.ProblemJobRedisKeys.jobKey
 import com.didimlog.problem.application.collector.ProblemJobRedisKeys.jobStateKeys
 import com.didimlog.problem.application.collector.ProblemJobRedisKeys.leaseKey
 import com.didimlog.problem.application.collector.ProblemJobRedisKeys.targetKey
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.CLAIM_JOB_SCRIPT
-import com.didimlog.problem.application.collector.ProblemJobRedisScripts.COMPARE_AND_SET_JOB_SCRIPT
-import com.didimlog.problem.application.collector.ProblemJobRedisScripts.CREATE_JOB_SCRIPT
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_FAILURE_LEDGER_INVALID
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_LEASE_CONFLICT
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_LEASE_DURATION_INVALID
@@ -20,12 +16,10 @@ import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_STA
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_STATE_MISSING
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.JOB_STATE_UPDATED
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.MAX_JOB_STATE_RETRIES
-import com.didimlog.problem.application.collector.ProblemJobRedisScripts.OWNED_COMPARE_AND_SET_JOB_SCRIPT
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.RELEASE_JOB_LEASE_SCRIPT
 import com.didimlog.problem.application.collector.ProblemJobRedisScripts.RENEW_JOB_LEASE_SCRIPT
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.estimateRemaining
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.isTerminal
-import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.normalize
 import com.didimlog.problem.application.collector.ProblemJobStatusCalculator.withQueuePositions
 import com.didimlog.problem.application.collector.ProblemJobTargets.dropManifestTargets
 import com.didimlog.problem.application.collector.ProblemJobTargets.filterProblemsByRange
@@ -58,7 +52,6 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
@@ -67,7 +60,6 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 /**
@@ -99,28 +91,12 @@ class ProblemCollectorService(
 ) {
 
     private val log = LoggerFactory.getLogger(ProblemCollectorService::class.java)
+    private val stateStore = ProblemJobStateStore(redisTemplate, objectMapper, workerLeaseProperties)
 
     companion object {
         private const val RESTART_ORPHAN_MESSAGE =
             "서버 재시작으로 실행 주체를 잃었습니다. 작업을 재시도해주세요."
     }
-
-    private data class JobSnapshot(
-        val rawJson: String,
-        val job: JobStatusUnifiedResponse
-    )
-
-    private data class FailureLedger(
-        val exists: Boolean,
-        val problemIds: Set<String>
-    )
-
-    private data class JobWorkerContext(
-        val attempt: ProblemJobWorkerAttempt?,
-        val leaseValue: String?,
-        val sourceJob: JobStatusUnifiedResponse,
-        val ownershipLost: AtomicBoolean = AtomicBoolean(false)
-    )
 
     private data class ProblemTarget(
         val problemId: String,
@@ -251,7 +227,7 @@ class ProblemCollectorService(
     }
 
     fun getJob(jobId: String): JobStatusUnifiedResponse? {
-        val raw = readJob(jobId) ?: return null
+        val raw = stateStore.readJob(jobId) ?: return null
         return withQueuePosition(raw)
     }
 
@@ -267,7 +243,7 @@ class ProblemCollectorService(
             .orEmpty()
 
         return jobIds.count { jobId ->
-            markFailed(
+            stateStore.markFailed(
                 jobId = jobId,
                 errorCode = ErrorCode.WORKER_UNAVAILABLE.code,
                 message = RESTART_ORPHAN_MESSAGE
@@ -280,7 +256,7 @@ class ProblemCollectorService(
             return 0
         }
 
-        return loadAllJobs()
+        return stateStore.loadAllJobsPruningStaleIndex()
             .asSequence()
             .filter { job ->
                 job.status == JobStatus.PENDING || job.status == JobStatus.RUNNING
@@ -303,7 +279,7 @@ class ProblemCollectorService(
             throw BusinessException(ErrorCode.INVALID_RANGE, "from은 to보다 클 수 없습니다. from=$from, to=$to")
         }
 
-        val filtered = withQueuePositions(loadAllJobs())
+        val filtered = withQueuePositions(stateStore.loadAllJobsPruningStaleIndex())
             .filter { job -> type == null || job.jobType == type }
             .filter { job -> status == null || job.status == status }
             .filter { job -> from == null || job.queuedAt >= from }
@@ -321,14 +297,14 @@ class ProblemCollectorService(
 
     fun cancelJob(jobId: String, cancelledBy: String, ipAddress: String = "unknown"): JobStatusUnifiedResponse {
         repeat(MAX_JOB_STATE_RETRIES + 1) {
-            val snapshot = readJobSnapshot(jobId)
+            val snapshot = stateStore.readJobSnapshot(jobId)
                 ?: throw BusinessException(ErrorCode.JOB_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
             val current = snapshot.job
             if (isTerminal(current.status)) {
                 throw BusinessException(ErrorCode.JOB_ALREADY_TERMINAL, "이미 종료된 작업입니다. jobId=$jobId, status=${current.status}")
             }
 
-            val now = nowEpochSeconds()
+            val now = stateStore.nowEpochSeconds()
             val updated = current.copy(
                 status = JobStatus.CANCELLED,
                 completedAt = now,
@@ -336,7 +312,7 @@ class ProblemCollectorService(
                 errorCode = null,
                 errorMessage = null
             )
-            val cancelled = compareAndSetJob(snapshot, updated)
+            val cancelled = stateStore.compareAndSetJob(snapshot, updated)
             if (cancelled != null) {
                 logJobAction(cancelledBy, AdminActionType.PROBLEM_JOB_CANCEL, ipAddress, cancelled)
                 return withQueuePosition(cancelled)
@@ -350,14 +326,14 @@ class ProblemCollectorService(
     }
 
     fun retryJob(jobId: String, requestedBy: String, ipAddress: String = "unknown"): JobStatusUnifiedResponse {
-        val original = readJob(jobId)
+        val original = stateStore.readJob(jobId)
             ?: throw BusinessException(ErrorCode.JOB_NOT_FOUND, "작업을 찾을 수 없습니다. jobId=$jobId")
 
         if (!isTerminal(original.status)) {
             throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "RUNNING/PENDING 작업은 재시도할 수 없습니다. jobId=$jobId")
         }
 
-        val failureLedger = readFailureLedger(jobId)
+        val failureLedger = stateStore.readFailureLedger(jobId)
         val failedProblemIds = failureLedger.problemIds
         val targetManifest = readTargetManifest(original)
         val interruptedNonMetadataJob = original.jobType != ProblemJobType.COLLECT_METADATA &&
@@ -738,12 +714,12 @@ class ProblemCollectorService(
 
     fun getJobMetrics(window: JobMetricsWindow): JobMetricsResponse {
         val threshold = when (window) {
-            JobMetricsWindow.DAY -> nowEpochSeconds() - Duration.ofDays(1).seconds
-            JobMetricsWindow.WEEK -> nowEpochSeconds() - Duration.ofDays(7).seconds
-            JobMetricsWindow.MONTH -> nowEpochSeconds() - Duration.ofDays(30).seconds
+            JobMetricsWindow.DAY -> stateStore.nowEpochSeconds() - Duration.ofDays(1).seconds
+            JobMetricsWindow.WEEK -> stateStore.nowEpochSeconds() - Duration.ofDays(7).seconds
+            JobMetricsWindow.MONTH -> stateStore.nowEpochSeconds() - Duration.ofDays(30).seconds
         }
 
-        val jobs = loadAllJobs().filter { it.queuedAt >= threshold }
+        val jobs = stateStore.loadAllJobsPruningStaleIndex().filter { it.queuedAt >= threshold }
         val totalJobs = jobs.size.toLong()
         val completedJobs = jobs.count { it.status == JobStatus.COMPLETED }.toLong()
         val failedJobs = jobs.count { it.status == JobStatus.FAILED }.toLong()
@@ -917,7 +893,7 @@ class ProblemCollectorService(
             jobId = created.jobId,
             defaultFailureCode = ErrorCode.WORKER_UNAVAILABLE.code
         ) { }
-        return readJob(created.jobId)
+        return stateStore.readJob(created.jobId)
             ?: throw IllegalStateException("생성한 작업 상태를 찾을 수 없습니다. jobId=${created.jobId}")
     }
 
@@ -1350,7 +1326,7 @@ class ProblemCollectorService(
         jobId: String,
         worker: JobWorkerContext
     ): JobStatusUnifiedResponse? {
-        val current = readJob(jobId) ?: return null
+        val current = stateStore.readJob(jobId) ?: return null
         if (!isWorkerSnapshot(current, worker)) {
             worker.ownershipLost.set(true)
             return null
@@ -1416,7 +1392,7 @@ class ProblemCollectorService(
             scheduledJobIds.remove(jobId)
             log.error("job submission rejected: jobId=$jobId, error=${e.message}", e)
             if (!workerLeaseProperties.enabled) {
-                markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업 실행을 제출할 수 없습니다.")
+                stateStore.markFailed(jobId, ErrorCode.WORKER_UNAVAILABLE.code, "작업 실행을 제출할 수 없습니다.")
             }
             return false
         }
@@ -1470,7 +1446,7 @@ class ProblemCollectorService(
         manifestRange: JobRange?
     ): JobStatusUnifiedResponse {
         recoveryState.requireJobCreationReady()
-        val now = nowEpochSeconds()
+        val now = stateStore.nowEpochSeconds()
         val jobId = UUID.randomUUID().toString()
         val manifest = ProblemJobTargetManifest(
             version = ProblemJobTargetManifest.CURRENT_VERSION,
@@ -1507,7 +1483,7 @@ class ProblemCollectorService(
             )
         )
 
-        return persistNewJob(created, manifestJson)
+        return stateStore.persistNewJob(created, manifestJson)
     }
 
     private fun getTypedJob(jobId: String, type: ProblemJobType): JobStatusUnifiedResponse? {
@@ -1519,7 +1495,7 @@ class ProblemCollectorService(
         jobId: String,
         allowTakeover: Boolean = false
     ): JobWorkerContext? {
-        val snapshot = readJobSnapshot(jobId) ?: return null
+        val snapshot = stateStore.readJobSnapshot(jobId) ?: return null
         val canClaimPending = snapshot.job.status == JobStatus.PENDING
         val canTakeOverRunning = workerLeaseProperties.enabled &&
             allowTakeover &&
@@ -1528,7 +1504,7 @@ class ProblemCollectorService(
             return null
         }
 
-        val now = nowEpochSeconds()
+        val now = stateStore.nowEpochSeconds()
         if (!workerLeaseProperties.enabled) {
             val running = snapshot.job.copy(
                 status = JobStatus.RUNNING,
@@ -1537,7 +1513,7 @@ class ProblemCollectorService(
                 errorCode = null,
                 errorMessage = null
             )
-            return if (compareAndSetJob(snapshot, running) != null) {
+            return if (stateStore.compareAndSetJob(snapshot, running) != null) {
                 JobWorkerContext(
                     attempt = null,
                     leaseValue = null,
@@ -1611,7 +1587,7 @@ class ProblemCollectorService(
 
     private fun markWorkerCompleted(jobId: String, worker: JobWorkerContext) {
         repeat(MAX_JOB_STATE_RETRIES + 1) {
-            val snapshot = readJobSnapshot(jobId) ?: return
+            val snapshot = stateStore.readJobSnapshot(jobId) ?: return
             if (!isWorkerSnapshot(snapshot.job, worker)) {
                 return
             }
@@ -1631,13 +1607,13 @@ class ProblemCollectorService(
                 return
             }
 
-            val now = nowEpochSeconds()
+            val now = stateStore.nowEpochSeconds()
             val completed = snapshot.job.copy(
                 status = JobStatus.COMPLETED,
                 completedAt = now,
                 lastHeartbeatAt = now
             )
-            if (compareAndSetWorkerJob(snapshot, completed, worker) != null) {
+            if (stateStore.compareAndSetWorkerJob(snapshot, completed, worker) != null) {
                 return
             }
         }
@@ -1651,12 +1627,12 @@ class ProblemCollectorService(
         message: String
     ): Boolean {
         repeat(MAX_JOB_STATE_RETRIES + 1) {
-            val snapshot = readJobSnapshot(jobId) ?: return false
+            val snapshot = stateStore.readJobSnapshot(jobId) ?: return false
             if (!isWorkerSnapshot(snapshot.job, worker)) {
                 return false
             }
 
-            val now = nowEpochSeconds()
+            val now = stateStore.nowEpochSeconds()
             val failed = snapshot.job.copy(
                 status = JobStatus.FAILED,
                 completedAt = now,
@@ -1664,34 +1640,11 @@ class ProblemCollectorService(
                 errorCode = errorCode,
                 errorMessage = message
             )
-            if (compareAndSetWorkerJob(snapshot, failed, worker) != null) {
+            if (stateStore.compareAndSetWorkerJob(snapshot, failed, worker) != null) {
                 return true
             }
         }
         log.warn("owned job failure CAS retries exhausted: jobId=$jobId")
-        return false
-    }
-
-    private fun markFailed(jobId: String, errorCode: String, message: String): Boolean {
-        repeat(MAX_JOB_STATE_RETRIES + 1) {
-            val snapshot = readJobSnapshot(jobId) ?: return false
-            if (snapshot.job.status != JobStatus.PENDING && snapshot.job.status != JobStatus.RUNNING) {
-                return false
-            }
-
-            val now = nowEpochSeconds()
-            val failed = snapshot.job.copy(
-                status = JobStatus.FAILED,
-                completedAt = now,
-                lastHeartbeatAt = now,
-                errorCode = errorCode,
-                errorMessage = message
-            )
-            if (compareAndSetJob(snapshot, failed) != null) {
-                return true
-            }
-        }
-        log.warn("job failure CAS retries exhausted: jobId=$jobId")
         return false
     }
 
@@ -1705,7 +1658,7 @@ class ProblemCollectorService(
         failedProblemId: String?
     ): Boolean {
         repeat(MAX_JOB_STATE_RETRIES + 1) {
-            val snapshot = readJobSnapshot(jobId) ?: run {
+            val snapshot = stateStore.readJobSnapshot(jobId) ?: run {
                 worker.ownershipLost.set(true)
                 return false
             }
@@ -1725,7 +1678,7 @@ class ProblemCollectorService(
                 "실패 항목과 실패 수 증가가 일치하지 않습니다. jobId=$jobId"
             }
 
-            val now = nowEpochSeconds()
+            val now = stateStore.nowEpochSeconds()
             val updated = snapshot.job.copy(
                 processedCount = processedCount,
                 successCount = successCount,
@@ -1733,7 +1686,7 @@ class ProblemCollectorService(
                 lastCheckpointId = checkpointId ?: snapshot.job.lastCheckpointId,
                 lastHeartbeatAt = now
             )
-            if (compareAndSetWorkerJob(snapshot, updated, worker, failedProblemId) != null) {
+            if (stateStore.compareAndSetWorkerJob(snapshot, updated, worker, failedProblemId) != null) {
                 return true
             }
         }
@@ -1787,7 +1740,7 @@ class ProblemCollectorService(
         }
 
         repeat(MAX_JOB_STATE_RETRIES + 1) {
-            val snapshot = readJobSnapshot(jobId) ?: run {
+            val snapshot = stateStore.readJobSnapshot(jobId) ?: run {
                 worker.ownershipLost.set(true)
                 return
             }
@@ -1796,8 +1749,8 @@ class ProblemCollectorService(
                 return
             }
 
-            val updated = snapshot.job.copy(lastHeartbeatAt = nowEpochSeconds())
-            if (compareAndSetWorkerJob(snapshot, updated, worker) != null) {
+            val updated = snapshot.job.copy(lastHeartbeatAt = stateStore.nowEpochSeconds())
+            if (stateStore.compareAndSetWorkerJob(snapshot, updated, worker) != null) {
                 return
             }
             if (worker.ownershipLost.get()) {
@@ -1824,7 +1777,7 @@ class ProblemCollectorService(
         if (worker.ownershipLost.get()) {
             return false
         }
-        val current = readJob(jobId) ?: return false
+        val current = stateStore.readJob(jobId) ?: return false
         if (!isWorkerSnapshot(current, worker)) {
             return false
         }
@@ -1849,27 +1802,6 @@ class ProblemCollectorService(
             job.workerAttempt == null
         } else {
             !worker.ownershipLost.get() && job.workerAttempt == attempt
-        }
-    }
-
-    private fun readJob(jobId: String): JobStatusUnifiedResponse? {
-        return readJobSnapshot(jobId)?.job
-    }
-
-    private fun readFailureLedger(jobId: String): FailureLedger {
-        val key = failureKey(jobId)
-        return when (redisTemplate.type(key)) {
-            DataType.NONE -> FailureLedger(exists = false, problemIds = emptySet())
-
-            DataType.SET -> FailureLedger(
-                exists = true,
-                problemIds = redisTemplate.opsForSet().members(key).orEmpty()
-            )
-
-            else -> throw BusinessException(
-                ErrorCode.RESOURCE_STATE_CONFLICT,
-                "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=$jobId"
-            )
         }
     }
 
@@ -1930,7 +1862,7 @@ class ProblemCollectorService(
             }
         }
 
-        val failureLedger = readFailureLedger(job.jobId)
+        val failureLedger = stateStore.readFailureLedger(job.jobId)
         if (failureLedger.problemIds.size != job.failCount) {
             targetManifestConflict(
                 job.jobId,
@@ -2007,187 +1939,12 @@ class ProblemCollectorService(
         return targetCount
     }
 
-    private fun readJobSnapshot(jobId: String): JobSnapshot? {
-        val json = redisTemplate.opsForValue().get(jobKey(jobId)) ?: return null
-        return deserializeJob(jobId, json)
-            ?.let { JobSnapshot(json, it) }
-    }
-
-    private fun deserializeJob(jobId: String, json: String): JobStatusUnifiedResponse? {
-        return runCatching { objectMapper.readValue(json, JobStatusUnifiedResponse::class.java) }
-            .onFailure { e ->
-                log.warn("Failed to deserialize job status: jobId=$jobId, error=${e.message}")
-            }
-            .getOrNull()
-    }
-
-    private fun persistNewJob(
-        job: JobStatusUnifiedResponse,
-        manifestJson: String
-    ): JobStatusUnifiedResponse {
-        val normalized = normalize(job)
-        val key = jobKey(normalized.jobId)
-        val json = objectMapper.writeValueAsString(normalized)
-        val result = redisTemplate.execute(
-            CREATE_JOB_SCRIPT,
-            listOf(key, JOB_INDEX_KEY, targetKey(normalized.jobId)),
-            json,
-            manifestJson,
-            JOB_TTL_SECONDS.toString(),
-            normalized.queuedAt.toString(),
-            normalized.jobId
-        )
-        check(result == JOB_STATE_UPDATED) {
-            "작업 상태 생성에 실패했습니다. jobId=${normalized.jobId}, result=$result"
-        }
-        return normalized
-    }
-
-    private fun compareAndSetJob(
-        snapshot: JobSnapshot,
-        updated: JobStatusUnifiedResponse,
-        failedProblemId: String? = null
-    ): JobStatusUnifiedResponse? {
-        val normalized = normalize(updated)
-        check(normalized.targetManifest == snapshot.job.targetManifest) {
-            "작업 상태 갱신 중 대상 manifest 참조를 변경할 수 없습니다. jobId=${normalized.jobId}"
-        }
-        val result = redisTemplate.execute(
-            COMPARE_AND_SET_JOB_SCRIPT,
-            jobStateKeys(normalized.jobId),
-            snapshot.rawJson,
-            objectMapper.writeValueAsString(normalized),
-            JOB_TTL_SECONDS.toString(),
-            failedProblemId.orEmpty(),
-            normalized.failCount.toString(),
-            normalized.targetManifest?.schemaVersion?.toString().orEmpty(),
-            if (isTerminal(normalized.status)) "1" else "0"
-        )
-        return when (result) {
-            JOB_STATE_UPDATED -> normalized
-            JOB_FAILURE_LEDGER_INVALID -> throw IllegalStateException(
-                "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=${normalized.jobId}"
-            )
-            JOB_STATE_MISSING,
-            JOB_STATE_CONFLICT -> null
-            else -> throw IllegalStateException(
-                "알 수 없는 작업 상태 갱신 결과입니다. jobId=${normalized.jobId}, result=$result"
-            )
-        }
-    }
-
-    private fun compareAndSetWorkerJob(
-        snapshot: JobSnapshot,
-        updated: JobStatusUnifiedResponse,
-        worker: JobWorkerContext,
-        failedProblemId: String? = null
-    ): JobStatusUnifiedResponse? {
-        if (worker.attempt == null) {
-            return compareAndSetJob(snapshot, updated, failedProblemId)
-        }
-        if (worker.ownershipLost.get() || snapshot.job.workerAttempt != worker.attempt) {
-            return null
-        }
-
-        val normalized = normalize(updated)
-        check(normalized.targetManifest == snapshot.job.targetManifest) {
-            "작업 상태 갱신 중 대상 manifest 참조를 변경할 수 없습니다. jobId=${normalized.jobId}"
-        }
-        check(normalized.workerAttempt == worker.attempt) {
-            "worker 상태 갱신 중 attempt를 변경할 수 없습니다. jobId=${normalized.jobId}"
-        }
-        val result = redisTemplate.execute(
-            OWNED_COMPARE_AND_SET_JOB_SCRIPT,
-            jobStateKeys(normalized.jobId),
-            snapshot.rawJson,
-            objectMapper.writeValueAsString(normalized),
-            JOB_TTL_SECONDS.toString(),
-            failedProblemId.orEmpty(),
-            normalized.failCount.toString(),
-            normalized.targetManifest?.schemaVersion?.toString().orEmpty(),
-            requireNotNull(worker.leaseValue),
-            workerLeaseProperties.leaseDuration.toMillis().toString(),
-            if (isTerminal(normalized.status)) "1" else "0"
-        )
-        return when (result) {
-            JOB_STATE_UPDATED -> normalized
-            JOB_FAILURE_LEDGER_INVALID -> throw IllegalStateException(
-                "실패 항목 원장 Redis 타입이 올바르지 않습니다. jobId=${normalized.jobId}"
-            )
-            JOB_LEASE_INVALID -> throw IllegalStateException(
-                "작업 lease Redis 타입이 올바르지 않습니다. jobId=${normalized.jobId}"
-            )
-            JOB_LEASE_DURATION_INVALID -> throw IllegalStateException(
-                "작업 lease 시간이 올바르지 않습니다. jobId=${normalized.jobId}"
-            )
-            JOB_LEASE_CONFLICT -> {
-                worker.ownershipLost.set(true)
-                null
-            }
-            JOB_STATE_MISSING,
-            JOB_STATE_CONFLICT -> null
-            else -> throw IllegalStateException(
-                "알 수 없는 worker 상태 갱신 결과입니다. jobId=${normalized.jobId}, result=$result"
-            )
-        }
-    }
-
-    private fun loadAllJobs(): List<JobStatusUnifiedResponse> {
-        val ids = redisTemplate.opsForZSet()
-            .reverseRange(JOB_INDEX_KEY, 0, -1)
-            .orEmpty()
-            .toList()
-        if (ids.isEmpty()) {
-            return emptyList()
-        }
-
-        val statusKeys = ids.map(::jobKey)
-        val statusValues = redisTemplate.opsForValue().multiGet(statusKeys).orEmpty()
-        val jobs = mutableListOf<JobStatusUnifiedResponse>()
-        val staleIds = mutableListOf<String>()
-
-        ids.forEachIndexed { index, jobId ->
-            val job = readBatchJob(jobId, statusValues.getOrNull(index))
-            if (job == null) {
-                staleIds.add(jobId)
-            } else {
-                jobs.add(job)
-            }
-        }
-
-        if (staleIds.isNotEmpty()) {
-            redisTemplate.opsForZSet().remove(JOB_INDEX_KEY, *staleIds.toTypedArray())
-            redisTemplate.delete(
-                staleIds.flatMap { jobId ->
-                    listOf(failureKey(jobId), targetKey(jobId), leaseKey(jobId))
-                }
-            )
-        }
-
-        return jobs.sortedByDescending { it.queuedAt }
-    }
-
-    private fun readBatchJob(jobId: String, json: String?): JobStatusUnifiedResponse? {
-        if (json != null) {
-            return deserializeJob(jobId, json)
-        }
-
-        return when (redisTemplate.type(jobKey(jobId))) {
-            DataType.NONE -> null
-            DataType.STRING -> readJob(jobId)
-            else -> throw BusinessException(
-                ErrorCode.RESOURCE_STATE_CONFLICT,
-                "작업 상태 Redis 타입이 올바르지 않습니다. jobId=$jobId"
-            )
-        }
-    }
-
     private fun withQueuePosition(job: JobStatusUnifiedResponse): JobStatusUnifiedResponse {
         if (job.status != JobStatus.PENDING) {
             return job.copy(queuePosition = null)
         }
 
-        val pending = loadAllJobs()
+        val pending = stateStore.loadAllJobsPruningStaleIndex()
             .filter { it.status == JobStatus.PENDING }
             .sortedWith(compareBy<JobStatusUnifiedResponse> { it.queuedAt }.thenBy { it.jobId })
 
@@ -2233,10 +1990,6 @@ class ProblemCollectorService(
 
     private fun solvedAcProblemUrl(problemId: Int): String {
         return "https://www.acmicpc.net/problem/$problemId"
-    }
-
-    private fun nowEpochSeconds(): Long {
-        return Instant.now().epochSecond
     }
 
     private fun logJobAction(
