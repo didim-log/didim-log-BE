@@ -25,6 +25,7 @@ import io.mockk.verifyOrder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Duration
+import java.time.Instant
 import java.util.Collections
 import java.util.HexFormat
 import java.util.concurrent.ConcurrentHashMap
@@ -34,6 +35,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.within
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -175,7 +177,7 @@ class ProblemCollectorServiceTest {
         every { zSetOps.remove(any(), *anyVararg()) } answers {
             val key = firstArg<String>()
             val set = zsetStore[key] ?: return@answers 0L
-            val values = args.drop(1)
+            val values = args.drop(1).flatMap { arg -> if (arg is Array<*>) arg.toList() else listOf(arg) }
             var removed = 0L
             values.forEach { value ->
                 val casted = value as? String ?: return@forEach
@@ -1086,11 +1088,281 @@ class ProblemCollectorServiceTest {
         verify(exactly = 0) { problemRepository.save(any<Problem>()) }
     }
 
+    @Test
+    @DisplayName("작업 지표는 기간 안의 작업만 집계하고 평균 소요 시간, 실패율, 상위 오류 코드를 계산한다")
+    fun `job metrics aggregate only jobs in window`() {
+        val now = Instant.now().epochSecond
+        seedJob(
+            sampleJob("job-completed").copy(
+                status = JobStatus.COMPLETED,
+                queuedAt = now - 100,
+                startedAt = now - 90,
+                completedAt = now - 30,
+                totalCount = 10,
+                processedCount = 10,
+                successCount = 8,
+                failCount = 2
+            )
+        )
+        seedJob(
+            sampleJob("job-failed").copy(
+                status = JobStatus.FAILED,
+                queuedAt = now - 60,
+                startedAt = now - 50,
+                completedAt = now - 10,
+                totalCount = 0,
+                errorCode = "WORKER_UNAVAILABLE"
+            )
+        )
+        seedJob(
+            sampleJob("job-cancelled").copy(
+                status = JobStatus.CANCELLED,
+                queuedAt = now - 40,
+                errorCode = "WORKER_UNAVAILABLE"
+            )
+        )
+        seedJob(
+            sampleJob("job-pending").copy(
+                queuedAt = now - 20,
+                totalCount = 0
+            )
+        )
+        seedJob(
+            sampleJob("job-clock-skew").copy(
+                status = JobStatus.RUNNING,
+                queuedAt = now - 15,
+                startedAt = now - 5,
+                completedAt = now - 20,
+                totalCount = 4,
+                processedCount = 1,
+                failCount = 1,
+                errorCode = "SOLVED_AC_ERROR"
+            )
+        )
+        seedJob(
+            sampleJob("job-two-days-ago").copy(
+                status = JobStatus.COMPLETED,
+                queuedAt = now - Duration.ofDays(2).seconds,
+                startedAt = now - Duration.ofDays(2).seconds,
+                completedAt = now - Duration.ofDays(2).seconds + 1000
+            )
+        )
+
+        val daily = service.getJobMetrics(JobMetricsWindow.DAY)
+        val weekly = service.getJobMetrics(JobMetricsWindow.WEEK)
+
+        assertThat(daily.window).isEqualTo(JobMetricsWindow.DAY)
+        assertThat(daily.totalJobs).isEqualTo(5)
+        assertThat(daily.completedJobs).isEqualTo(1)
+        assertThat(daily.failedJobs).isEqualTo(1)
+        assertThat(daily.cancelledJobs).isEqualTo(1)
+        assertThat(daily.averageDurationSeconds).isEqualTo(50)
+        assertThat(daily.averageFailureRate).isCloseTo(0.29, within(1e-9))
+        assertThat(daily.topErrorCodes).containsExactly(
+            JobErrorCodeMetric("WORKER_UNAVAILABLE", 2),
+            JobErrorCodeMetric("SOLVED_AC_ERROR", 1)
+        )
+        assertThat(weekly.totalJobs).isEqualTo(6)
+        assertThat(weekly.completedJobs).isEqualTo(2)
+        assertThat(weekly.averageDurationSeconds).isEqualTo((60 + 40 + 1000) / 3L)
+    }
+
+    @Test
+    @DisplayName("작업이 없으면 작업 지표는 0으로 채워진다")
+    fun `job metrics are zero without jobs`() {
+        val metrics = service.getJobMetrics(JobMetricsWindow.MONTH)
+
+        assertThat(metrics).isEqualTo(
+            JobMetricsResponse(
+                window = JobMetricsWindow.MONTH,
+                totalJobs = 0,
+                completedJobs = 0,
+                failedJobs = 0,
+                cancelledJobs = 0,
+                averageDurationSeconds = 0,
+                averageFailureRate = 0.0,
+                topErrorCodes = emptyList()
+            )
+        )
+    }
+
+    @Test
+    @DisplayName("작업 감사 목록은 타입과 상태로 필터링한 작업을 감사 응답으로 변환한다")
+    fun `job audit filters jobs and maps audit fields`() {
+        val failedDetails = sampleJob("job-details-failed").copy(
+            jobType = ProblemJobType.COLLECT_DETAILS,
+            status = JobStatus.FAILED,
+            queuedAt = 1_700_000_300,
+            startedAt = 1_700_000_301,
+            completedAt = 1_700_000_302,
+            successCount = 3,
+            failCount = 1,
+            errorCode = "CRAWLER_ERROR",
+            errorMessage = "crawler failed",
+            createdBy = "auditor"
+        )
+        seedJob(failedDetails)
+        seedJob(sampleJob("job-details-completed").copy(
+            jobType = ProblemJobType.COLLECT_DETAILS,
+            status = JobStatus.COMPLETED,
+            queuedAt = 1_700_000_200
+        ))
+        seedJob(sampleJob("job-metadata-failed").copy(
+            status = JobStatus.FAILED,
+            queuedAt = 1_700_000_100
+        ))
+
+        val result = service.getJobAudit(
+            type = ProblemJobType.COLLECT_DETAILS,
+            status = JobStatus.FAILED,
+            from = null,
+            to = null,
+            page = 1,
+            size = 10
+        )
+
+        assertThat(result.content).containsExactly(
+            JobAuditResponse(
+                jobId = "job-details-failed",
+                jobType = ProblemJobType.COLLECT_DETAILS,
+                status = JobStatus.FAILED,
+                createdBy = "auditor",
+                queuedAt = 1_700_000_300,
+                startedAt = 1_700_000_301,
+                completedAt = 1_700_000_302,
+                range = JobRange(1, 10),
+                totalCount = 10,
+                successCount = 3,
+                failCount = 1,
+                errorCode = "CRAWLER_ERROR",
+                errorMessage = "crawler failed"
+            )
+        )
+        assertThat(result.totalElements).isEqualTo(1)
+        assertThat(result.totalPages).isEqualTo(1)
+        assertThat(result.hasNext).isFalse()
+        assertThat(result.hasPrevious).isFalse()
+    }
+
+    @Test
+    @DisplayName("작업 목록은 queuedAt 범위로 필터링하고 범위를 넘는 페이지는 빈 목록을 반환한다")
+    fun `job list filters by queued range and handles overflow page`() {
+        seedJob(sampleJob("job-1").copy(queuedAt = 1_700_000_001))
+        seedJob(sampleJob("job-2").copy(queuedAt = 1_700_000_002))
+        seedJob(sampleJob("job-3").copy(queuedAt = 1_700_000_003))
+
+        val ranged = service.getJobs(null, null, 1_700_000_002, 1_700_000_003, 1, 10)
+        val overflow = service.getJobs(null, null, null, null, 3, 2)
+
+        assertThat(ranged.content.map(JobStatusUnifiedResponse::jobId)).containsExactly("job-3", "job-2")
+        assertThat(overflow.content).isEmpty()
+        assertThat(overflow.totalElements).isEqualTo(3)
+        assertThat(overflow.hasPrevious).isTrue()
+    }
+
+    @Test
+    @DisplayName("작업 목록 조회 요청 값이 잘못되면 예외가 발생한다")
+    fun `job list rejects invalid paging and range`() {
+        val invalidPage = assertThrows<BusinessException> { service.getJobs(null, null, null, null, 0, 10) }
+        val invalidSize = assertThrows<BusinessException> { service.getJobs(null, null, null, null, 1, 0) }
+        val invalidRange = assertThrows<BusinessException> { service.getJobs(null, null, 10, 5, 1, 10) }
+
+        assertThat(invalidPage.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        assertThat(invalidSize.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        assertThat(invalidRange.errorCode).isEqualTo(ErrorCode.INVALID_RANGE)
+    }
+
+    @Test
+    @DisplayName("상태가 사라진 index 항목은 목록 조회 시 정리된다")
+    fun `job list removes stale index entries`() {
+        seedJob(sampleJob("job-alive"))
+        zsetStore.getValue(JOB_INDEX_KEY)["job-ghost"] = 1_700_000_010.0
+        val deletedKeys = slot<Collection<String>>()
+        every { redisTemplate.delete(capture(deletedKeys)) } answers { deletedKeys.captured.size.toLong() }
+
+        val result = service.getJobs(null, null, null, null, 1, 10)
+
+        assertThat(result.content.map(JobStatusUnifiedResponse::jobId)).containsExactly("job-alive")
+        assertThat(zsetStore.getValue(JOB_INDEX_KEY)).containsOnlyKeys("job-alive")
+        assertThat(deletedKeys.captured).containsExactlyInAnyOrder(
+            "${JOB_FAILURE_KEY_PREFIX}job-ghost",
+            "${JOB_TARGET_KEY_PREFIX}job-ghost",
+            "${JOB_LEASE_KEY_PREFIX}job-ghost"
+        )
+    }
+
+    @Test
+    @DisplayName("시작 단계 orphan 복구는 진행 중이던 작업만 WORKER_UNAVAILABLE로 실패 처리한다")
+    fun `startup orphan recovery fails only active jobs`() {
+        val recoveringService = createService(
+            recoveryState = ProblemCollectorRecoveryState(
+                ProblemCollectorRecoveryProperties(failOrphanedJobsOnStartup = true)
+            )
+        )
+        seedJob(sampleJob("job-pending").copy(queuedAt = 1_700_000_001))
+        seedJob(sampleJob("job-running").copy(
+            status = JobStatus.RUNNING,
+            queuedAt = 1_700_000_002,
+            startedAt = 1_700_000_002
+        ))
+        val completed = sampleJob("job-completed").copy(
+            status = JobStatus.COMPLETED,
+            queuedAt = 1_700_000_003,
+            completedAt = 1_700_000_004
+        )
+        seedJob(completed)
+        zsetStore.getValue(JOB_INDEX_KEY)["job-missing"] = 1_700_000_005.0
+
+        val failedCount = recoveringService.failOrphanedJobsDuringStartup()
+
+        assertThat(failedCount).isEqualTo(2)
+        listOf("job-pending", "job-running").forEach { jobId ->
+            val stored = objectMapper.readValue(
+                requireNotNull(valueStore["$JOB_KEY_PREFIX$jobId"]),
+                JobStatusUnifiedResponse::class.java
+            )
+            assertThat(stored.status).isEqualTo(JobStatus.FAILED)
+            assertThat(stored.errorCode).isEqualTo(ErrorCode.WORKER_UNAVAILABLE.code)
+            assertThat(stored.errorMessage).contains("서버 재시작")
+            assertThat(stored.completedAt).isNotNull()
+        }
+        assertThat(
+            objectMapper.readValue(
+                requireNotNull(valueStore["${JOB_KEY_PREFIX}job-completed"]),
+                JobStatusUnifiedResponse::class.java
+            )
+        ).isEqualTo(completed)
+    }
+
+    @Test
+    @DisplayName("작업 생성 gate가 열린 뒤나 worker lease 사용 중에는 시작 orphan 복구를 거부한다")
+    fun `startup orphan recovery is guarded`() {
+        val leaseService = createService(
+            recoveryState = ProblemCollectorRecoveryState(
+                ProblemCollectorRecoveryProperties(failOrphanedJobsOnStartup = true)
+            ),
+            workerLeaseProperties = ProblemCollectorWorkerLeaseProperties(enabled = true)
+        )
+
+        assertThrows<IllegalStateException> { service.failOrphanedJobsDuringStartup() }
+        assertThrows<IllegalStateException> { leaseService.failOrphanedJobsDuringStartup() }
+    }
+
+    @Test
+    @DisplayName("worker lease가 꺼져 있으면 복구 가능 작업을 제출하지 않는다")
+    fun `recoverable job submission is disabled without worker lease`() {
+        seedJob(sampleJob("job-pending"))
+
+        assertThat(service.submitRecoverableJobs()).isZero()
+        verify(exactly = 0) { valueOps.multiGet(any()) }
+    }
+
     private fun createService(
         taskExecutor: Executor? = null,
         recoveryState: ProblemCollectorRecoveryState =
             ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties()),
-        parallelProblemDetailsFetcher: ParallelProblemDetailsFetcher? = null
+        parallelProblemDetailsFetcher: ParallelProblemDetailsFetcher? = null,
+        workerLeaseProperties: ProblemCollectorWorkerLeaseProperties = ProblemCollectorWorkerLeaseProperties()
     ): ProblemCollectorService {
         return ProblemCollectorService(
             solvedAcClient = solvedAcClient,
@@ -1102,7 +1374,8 @@ class ProblemCollectorServiceTest {
             taskExecutor = taskExecutor,
             pacer = pacer,
             recoveryState = recoveryState,
-            parallelProblemDetailsFetcher = parallelProblemDetailsFetcher
+            parallelProblemDetailsFetcher = parallelProblemDetailsFetcher,
+            workerLeaseProperties = workerLeaseProperties
         )
     }
 
