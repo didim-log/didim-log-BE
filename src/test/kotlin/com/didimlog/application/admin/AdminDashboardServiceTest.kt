@@ -1,7 +1,7 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify

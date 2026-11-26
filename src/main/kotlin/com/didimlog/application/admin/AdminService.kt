@@ -7,7 +7,7 @@ import com.didimlog.quote.domain.Quote
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Role
 import com.didimlog.quote.domain.repository.QuoteRepository
-import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname

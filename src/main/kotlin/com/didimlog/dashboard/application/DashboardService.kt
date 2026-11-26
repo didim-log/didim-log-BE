@@ -2,11 +2,11 @@ package com.didimlog.dashboard.application
 
 import com.didimlog.quote.application.QuoteService
 import com.didimlog.quote.domain.Quote
-import com.didimlog.domain.Retrospective
+import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.SolvedAcTierStep
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode

@@ -1,6 +1,6 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import org.bson.Document
 import org.springframework.stereotype.Service

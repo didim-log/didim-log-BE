@@ -3,9 +3,9 @@ package com.didimlog.global.config.mongo
 import com.didimlog.feedback.domain.Feedback
 import com.didimlog.domain.Log
 import com.didimlog.domain.PasswordResetCode
-import com.didimlog.domain.Retrospective
+import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.domain.Student
-import com.didimlog.domain.template.Template
+import com.didimlog.template.domain.Template
 import com.mongodb.client.result.UpdateResult
 import io.mockk.every
 import io.mockk.mockk

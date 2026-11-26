@@ -1,0 +1,276 @@
+package com.didimlog.retrospective.domain.repository
+
+import com.didimlog.retrospective.domain.Retrospective
+import com.didimlog.ranking.domain.RankingPeriod
+import java.time.LocalDateTime
+import org.bson.Document
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
+import org.springframework.data.mongodb.core.FindAndModifyOptions
+import org.springframework.data.mongodb.core.MongoTemplate
+import org.springframework.data.mongodb.core.aggregation.Aggregation
+import org.springframework.data.mongodb.core.aggregation.AggregationUpdate
+import org.springframework.data.mongodb.core.aggregation.BooleanOperators
+import org.springframework.data.mongodb.core.aggregation.Aggregation.group
+import org.springframework.data.mongodb.core.aggregation.Aggregation.limit
+import org.springframework.data.mongodb.core.aggregation.Aggregation.lookup
+import org.springframework.data.mongodb.core.aggregation.Aggregation.match
+import org.springframework.data.mongodb.core.aggregation.Aggregation.newAggregation
+import org.springframework.data.mongodb.core.aggregation.Aggregation.project
+import org.springframework.data.mongodb.core.aggregation.Aggregation.skip
+import org.springframework.data.mongodb.core.aggregation.Aggregation.sort
+import org.springframework.data.mongodb.core.aggregation.Aggregation.unwind
+import org.springframework.data.mongodb.core.query.Criteria
+import org.springframework.data.mongodb.core.query.Query
+import org.springframework.data.mongodb.core.query.Update
+import org.springframework.stereotype.Repository
+
+/**
+ * 회고 Repository 구현체
+ * MongoDB의 Criteria를 사용하여 동적 쿼리를 구현한다.
+ */
+@Repository
+class RetrospectiveRepositoryImpl(
+    private val mongoTemplate: MongoTemplate
+) : RetrospectiveRepositoryCustom {
+
+    override fun upsertEditableFieldsByStudentAndProblem(retrospective: Retrospective): Retrospective {
+        val query = Query.query(
+            Criteria.where("studentId").`is`(retrospective.studentId)
+                .and("problemId").`is`(retrospective.problemId)
+        )
+        val update = editableFieldsUpdate(retrospective)
+            .setOnInsert("createdAt", retrospective.createdAt)
+            .setOnInsert("isBookmarked", retrospective.isBookmarked)
+        return requireNotNull(
+            mongoTemplate.findAndModify(
+                query,
+                update,
+                FindAndModifyOptions.options().returnNew(true).upsert(true),
+                Retrospective::class.java
+            )
+        )
+    }
+
+    override fun updateEditableFieldsByIdAndStudent(retrospective: Retrospective): Retrospective? {
+        val query = ownedRetrospectiveQuery(
+            retrospectiveId = requireNotNull(retrospective.id),
+            studentId = retrospective.studentId
+        )
+        return mongoTemplate.findAndModify(
+            query,
+            editableFieldsUpdate(retrospective),
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Retrospective::class.java
+        )
+    }
+
+    override fun toggleBookmarkByIdAndStudentId(
+        retrospectiveId: String,
+        studentId: String
+    ): Retrospective? {
+        val update = AggregationUpdate.update()
+            .set("isBookmarked")
+            .toValue(BooleanOperators.Not.not("isBookmarked"))
+        return mongoTemplate.findAndModify(
+            ownedRetrospectiveQuery(retrospectiveId, studentId),
+            update,
+            FindAndModifyOptions.options().returnNew(true).upsert(false),
+            Retrospective::class.java
+        )
+    }
+
+    override fun findAndRemoveByIdAndStudentId(
+        retrospectiveId: String,
+        studentId: String
+    ): Retrospective? {
+        return mongoTemplate.findAndRemove(
+            ownedRetrospectiveQuery(retrospectiveId, studentId),
+            Retrospective::class.java
+        )
+    }
+
+    private fun editableFieldsUpdate(retrospective: Retrospective): Update {
+        return Update()
+            .set("content", retrospective.content)
+            .set("summary", retrospective.summary)
+            .set("mainCategory", retrospective.mainCategory?.englishName)
+            .set("solutionResult", retrospective.solutionResult?.name)
+            .set("solvedCategory", retrospective.solvedCategory)
+            .set("solveTime", retrospective.solveTime)
+    }
+
+    private fun ownedRetrospectiveQuery(
+        retrospectiveId: String,
+        studentId: String
+    ): Query {
+        return Query.query(
+            Criteria.where("_id").`is`(retrospectiveId)
+                .and("studentId").`is`(studentId)
+        )
+    }
+
+    override fun countByStudentIds(studentIds: Set<String>): Map<String, Long> {
+        if (studentIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        val aggregation = newAggregation(
+            match(Criteria.where("studentId").`in`(studentIds)),
+            group("studentId").count().`as`("retrospectiveCount"),
+            project("retrospectiveCount").and("_id").`as`("studentId")
+        )
+
+        return mongoTemplate.aggregate(
+            aggregation,
+            "retrospectives",
+            StudentRetrospectiveCount::class.java
+        ).mappedResults.associate { result ->
+            result.studentId to result.retrospectiveCount
+        }
+    }
+
+    override fun findTopStudentsByRetrospectiveCount(
+        period: RankingPeriod,
+        pageable: Pageable
+    ): Page<StudentRetrospectiveCount> {
+        val criteria = buildPeriodCriteria(period)
+
+        val basePipeline = mutableListOf(
+            match(criteria),
+            group("studentId").count().`as`("retrospectiveCount"),
+            project("retrospectiveCount").and("_id").`as`("studentId"),
+            lookup("students", "studentId", "_id", "student"),
+            unwind("student", true),
+            sort(
+                Sort.by(
+                    Sort.Order.desc("retrospectiveCount"),
+                    Sort.Order.desc("student.rating"),
+                    Sort.Order.asc("studentId")
+                )
+            )
+        )
+
+        val dataPipeline = basePipeline.toMutableList().apply {
+            add(skip(pageable.offset))
+            add(limit(pageable.pageSize.toLong()))
+            add(project("studentId", "retrospectiveCount"))
+        }
+
+        val totalPipeline = listOf(
+            match(criteria),
+            group("studentId"),
+            group().count().`as`("total")
+        )
+
+        val aggregation = newAggregation(
+            Aggregation.facet(*dataPipeline.toTypedArray()).`as`("data")
+                .and(*totalPipeline.toTypedArray()).`as`("total")
+        )
+
+        val result = mongoTemplate.aggregate(aggregation, "retrospectives", Document::class.java).uniqueMappedResult
+            ?: return PageImpl(emptyList(), pageable, 0)
+
+        val content = (result["data"] as? List<*>)?.mapNotNull { raw ->
+            val doc = raw as? Document ?: return@mapNotNull null
+            StudentRetrospectiveCount(
+                studentId = doc.getString("studentId"),
+                retrospectiveCount = (doc.get("retrospectiveCount") as Number).toLong()
+            )
+        }.orEmpty()
+
+        val total = (result["total"] as? List<*>)?.firstOrNull()?.let { raw ->
+            val doc = raw as? Document ?: return@let 0L
+            (doc.get("total") as Number).toLong()
+        } ?: 0L
+
+        return PageImpl(content, pageable, total)
+    }
+
+    override fun search(condition: RetrospectiveSearchCondition, pageable: Pageable): Page<Retrospective> {
+        val criteria = buildCriteria(condition)
+        val query = Query(criteria)
+
+        // 정렬 적용
+        applySort(query, pageable.sort)
+
+        // 전체 개수 조회
+        val total = mongoTemplate.count(query, Retrospective::class.java)
+
+        // 페이징 적용
+        query.with(pageable)
+
+        // 데이터 조회
+        val content = mongoTemplate.find(query, Retrospective::class.java)
+
+        return PageImpl(content, pageable, total)
+    }
+
+    private fun buildCriteria(condition: RetrospectiveSearchCondition): Criteria {
+        val criteriaList = mutableListOf<Criteria>()
+
+        // 학생 ID 필터
+        if (condition.studentId != null) {
+            criteriaList.add(Criteria("studentId").`is`(condition.studentId))
+        }
+
+        // 키워드 검색 (내용 또는 문제 ID)
+        if (!condition.keyword.isNullOrBlank()) {
+            val escapedKeyword = Regex.escape(condition.keyword.trim())
+            criteriaList.add(
+                Criteria().orOperator(
+                    Criteria("content").regex(escapedKeyword, "i"),
+                    Criteria("problemId").regex(escapedKeyword, "i")
+                )
+            )
+        }
+
+        // 카테고리 필터
+        if (condition.category != null) {
+            criteriaList.add(Criteria("mainCategory").`is`(condition.category))
+        }
+
+        // 풀이 전략 태그 필터 (부분 일치 검색)
+        if (!condition.solvedCategory.isNullOrBlank()) {
+            // solvedCategory 필드에 검색어가 포함되어 있는지 확인 (대소문자 구분 없음)
+            val escapedSolvedCategory = Regex.escape(condition.solvedCategory.trim())
+            criteriaList.add(Criteria("solvedCategory").regex(escapedSolvedCategory, "i"))
+        }
+
+        // 북마크 필터
+        if (condition.isBookmarked == true) {
+            criteriaList.add(Criteria("isBookmarked").`is`(true))
+        }
+
+        if (criteriaList.isEmpty()) {
+            return Criteria()
+        }
+        return Criteria().andOperator(*criteriaList.toTypedArray())
+    }
+
+    private fun buildPeriodCriteria(period: RankingPeriod): Criteria {
+        if (period == RankingPeriod.TOTAL) {
+            return Criteria()
+        }
+
+        val now = LocalDateTime.now()
+        val from = when (period) {
+            RankingPeriod.DAILY -> now.minusDays(1)
+            RankingPeriod.WEEKLY -> now.minusDays(7)
+            RankingPeriod.MONTHLY -> now.minusMonths(1)
+            RankingPeriod.TOTAL -> now
+        }
+        return Criteria("createdAt").gte(from)
+    }
+
+    private fun applySort(query: Query, sort: Sort) {
+        if (sort.isSorted) {
+            query.with(sort)
+            return
+        }
+        // 기본 정렬: createdAt DESC
+        query.with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+    }
+}

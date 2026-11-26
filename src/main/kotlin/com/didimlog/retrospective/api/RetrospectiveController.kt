@@ -1,0 +1,595 @@
+package com.didimlog.retrospective.api
+
+import com.didimlog.retrospective.domain.repository.RetrospectiveSearchCondition
+import com.didimlog.retrospective.application.RetrospectiveService
+import com.didimlog.template.application.TemplateService
+import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.study.domain.ProblemResult
+import com.didimlog.template.domain.TemplateCategory
+import com.didimlog.domain.repository.ProblemRepository
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
+import com.didimlog.retrospective.api.dto.BookmarkToggleResponse
+import com.didimlog.retrospective.api.dto.RetrospectivePageResponse
+import com.didimlog.retrospective.api.dto.RetrospectiveRequest
+import com.didimlog.retrospective.api.dto.RetrospectiveResponse
+import com.didimlog.retrospective.api.dto.RetrospectiveTemplateResponse
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
+import org.springframework.http.ResponseEntity
+import org.springframework.http.HttpStatus
+import org.springframework.security.core.Authentication
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+
+@Tag(name = "Retrospective", description = "회고 작성 및 조회 관련 API")
+@RestController
+@RequestMapping("/api/v1/retrospectives")
+@org.springframework.validation.annotation.Validated
+class RetrospectiveController(
+    private val retrospectiveService: RetrospectiveService,
+    private val problemRepository: ProblemRepository,
+    private val templateService: TemplateService,
+    @Value("\${app.template.render-timeout-millis:4000}")
+    private val templateRenderTimeoutMillis: Long,
+    @Value("\${app.template.timeout-fallback-enabled:true}")
+    private val templateTimeoutFallbackEnabled: Boolean
+) {
+    companion object {
+        private val ALLOWED_SORT_FIELDS = setOf("createdAt", "problemId", "isBookmarked")
+    }
+
+    @Operation(
+        summary = "회고 작성",
+        description = "학생이 문제 풀이 후 회고를 작성합니다. 이미 작성한 회고가 있으면 수정됩니다. JWT 토큰에서 사용자 정보를 자동으로 추출합니다. " +
+                "요청 본문에 content(필수, 10자 이상), summary(필수, 200자 이하), " +
+                "resultType(선택, SUCCESS/FAIL/TIME_OVER), solvedCategory(선택, 50자 이하)를 포함할 수 있습니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "작성/수정 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패 또는 잘못된 입력",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생 또는 문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping
+    fun writeRetrospective(
+        authentication: Authentication,
+        @Parameter(description = "문제 ID", required = true)
+        @RequestParam problemId: String,
+
+        @Parameter(description = "회고 내용", required = true)
+        @RequestBody
+        @Valid
+        request: RetrospectiveRequest
+    ): ResponseEntity<RetrospectiveResponse> {
+        val studentId = authentication.name
+
+        val retrospective = retrospectiveService.writeRetrospective(
+            studentId = studentId,
+            problemId = problemId,
+            content = request.content,
+            summary = request.summary,
+            solutionResult = request.resultType,
+            solvedCategory = request.solvedCategory,
+            solveTime = request.solveTime
+        )
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "회고 목록 조회",
+        description = "검색 조건에 따라 회고 목록을 조회합니다. 키워드, 카테고리, 북마크 여부로 필터링할 수 있으며, 페이징을 지원합니다. " +
+                "인증된 사용자의 경우, studentId 파라미터를 무시하고 자신의 회고만 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "유효하지 않은 요청 파라미터(페이지/정렬/카테고리 등)",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping
+    fun getRetrospectives(
+        authentication: Authentication,
+        @Parameter(description = "검색 키워드 (제목 또는 내용)", required = false)
+        @RequestParam(required = false)
+        keyword: String?,
+
+        @Parameter(description = "카테고리 필터", required = false)
+        @RequestParam(required = false)
+        category: String?,
+
+        @Parameter(description = "풀이 전략 태그 필터 (부분 일치 검색, 예: DFS, DP)", required = false)
+        @RequestParam(required = false)
+        solvedCategory: String?,
+
+        @Parameter(description = "북마크 여부 (true인 경우만 필터링)", required = false)
+        @RequestParam(required = false)
+        isBookmarked: Boolean?,
+
+        @Parameter(description = "페이지 번호 (1부터 시작, 기본값: 1)", required = false)
+        @RequestParam(defaultValue = "1")
+        @Min(value = 1, message = "페이지 번호는 1 이상이어야 합니다.")
+        page: Int,
+
+        @Parameter(description = "페이지 크기", required = false)
+        @RequestParam(defaultValue = "10")
+        @Min(value = 1, message = "페이지 크기는 1 이상이어야 합니다.")
+        @Max(value = 100, message = "페이지 크기는 100 이하여야 합니다.")
+        size: Int,
+
+        @Parameter(description = "정렬 기준 (예: createdAt,desc 또는 createdAt,asc)", required = false)
+        @RequestParam(required = false)
+        sort: String?
+    ): ResponseEntity<RetrospectivePageResponse> {
+        val studentId = authentication.name
+        val response = searchRetrospectives(keyword, category, solvedCategory, isBookmarked, studentId, page, size, sort)
+        return ResponseEntity.ok(response)
+    }
+
+    private fun searchRetrospectives(
+        keyword: String?,
+        category: String?,
+        solvedCategory: String?,
+        isBookmarked: Boolean?,
+        studentId: String,
+        page: Int,
+        size: Int,
+        sort: String?
+    ): RetrospectivePageResponse {
+        val pageable = createPageable(page, size, sort)
+        val condition = RetrospectiveSearchCondition(
+            keyword = keyword,
+            category = category?.let { parseProblemCategory(it) },
+            solvedCategory = solvedCategory?.trim()?.takeIf { it.isNotBlank() },
+            isBookmarked = isBookmarked,
+            studentId = studentId
+        )
+        val pageResult = retrospectiveService.searchRetrospectives(condition, pageable)
+        val problemTitles = resolveProblemTitleMap(pageResult.content.map { it.problemId })
+        return RetrospectivePageResponse.from(pageResult, studentId, problemTitles)
+    }
+
+    @Operation(
+        summary = "회고 조회",
+        description = "회고 ID로 회고를 조회합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/{retrospectiveId}")
+    fun getRetrospective(
+        authentication: Authentication,
+        @Parameter(description = "회고 ID", required = true)
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String
+    ): ResponseEntity<RetrospectiveResponse> {
+        val studentId = authentication.name
+
+        val retrospective = retrospectiveService.getRetrospective(retrospectiveId, studentId)
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "회고 기본 템플릿 조회",
+        description = "요청한 결과 타입(SUCCESS/FAIL/TIME_OVER)에 맞는 기본 템플릿을 렌더링하여 반환합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "조회 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 파라미터",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "학생/템플릿/문제를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "504",
+                description = "템플릿 렌더링 시간 초과",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @GetMapping("/template")
+    fun getRetrospectiveTemplate(
+        authentication: Authentication,
+        @RequestParam
+        @Positive(message = "문제 ID는 1 이상이어야 합니다.")
+        problemId: Long,
+        @RequestParam
+        resultType: ProblemResult
+    ): ResponseEntity<RetrospectiveTemplateResponse> {
+        val studentId = authentication.name
+
+        val templateCategory = if (resultType == ProblemResult.SUCCESS) {
+            TemplateCategory.SUCCESS
+        } else {
+            TemplateCategory.FAIL
+        }
+        val defaultTemplate = templateService.getDefaultTemplate(templateCategory, studentId)
+        val templateId = defaultTemplate.id
+            ?: throw BusinessException(ErrorCode.TEMPLATE_NOT_FOUND, "기본 템플릿 ID를 찾을 수 없습니다.")
+        val response = renderRetrospectiveTemplateWithFallback(
+            templateId = templateId,
+            problemId = problemId,
+            studentId = studentId,
+            resultType = resultType
+        )
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "북마크 토글",
+        description = "회고의 북마크 상태를 토글합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "토글 성공"),
+            ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PostMapping("/{retrospectiveId}/bookmark")
+    fun toggleBookmark(
+        authentication: Authentication,
+        @Parameter(description = "회고 ID", required = true)
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String
+    ): ResponseEntity<BookmarkToggleResponse> {
+        val studentId = authentication.name
+
+        val isBookmarked = retrospectiveService.toggleBookmark(retrospectiveId, studentId)
+        val response = BookmarkToggleResponse(isBookmarked = isBookmarked)
+        return ResponseEntity.ok(response)
+    }
+
+    private fun createPageable(page: Int, size: Int, sort: String?): Pageable {
+        if (sort == null) {
+            return PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        }
+
+        val parts = sort.split(",")
+        if (parts.size != 2) {
+            return PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        }
+
+        val direction = resolveSortDirection(parts[1])
+        val field = resolveSortField(parts[0])
+        val sortObj = Sort.by(direction, field)
+        return PageRequest.of(page - 1, size, sortObj)
+    }
+
+    private fun resolveSortDirection(raw: String): Sort.Direction {
+        if (raw.lowercase() == "asc") {
+            return Sort.Direction.ASC
+        }
+        return Sort.Direction.DESC
+    }
+
+    private fun resolveSortField(raw: String): String {
+        val field = raw.trim()
+        if (field in ALLOWED_SORT_FIELDS) {
+            return field
+        }
+        return "createdAt"
+    }
+
+    private fun renderTemplateWithTimeout(renderAction: () -> String): String {
+        val renderFuture = CompletableFuture.supplyAsync { renderAction() }
+        return try {
+            renderFuture.get(templateRenderTimeoutMillis, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            renderFuture.cancel(true)
+            throw BusinessException(
+                ErrorCode.TEMPLATE_RENDER_TIMEOUT,
+                "템플릿 렌더링 시간이 초과되었습니다. timeoutMillis=$templateRenderTimeoutMillis"
+            )
+        } catch (e: ExecutionException) {
+            val cause = e.cause
+            when (cause) {
+                is BusinessException -> throw cause
+                is RuntimeException -> throw cause
+                else -> throw BusinessException(
+                    ErrorCode.COMMON_INTERNAL_ERROR,
+                    "템플릿 렌더링 중 알 수 없는 오류가 발생했습니다."
+                )
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw BusinessException(
+                ErrorCode.COMMON_INTERNAL_ERROR,
+                "템플릿 렌더링 작업이 중단되었습니다."
+            )
+        }
+    }
+
+    private fun renderRetrospectiveTemplateWithFallback(
+        templateId: String,
+        problemId: Long,
+        studentId: String,
+        resultType: ProblemResult
+    ): RetrospectiveTemplateResponse {
+        return try {
+            val renderedTemplate = renderTemplateWithTimeout {
+                templateService.renderTemplate(
+                    templateId = templateId,
+                    problemId = problemId,
+                    studentId = studentId,
+                    resultTypeHint = resultType
+                )
+            }
+            RetrospectiveTemplateResponse(template = renderedTemplate)
+        } catch (e: BusinessException) {
+            if (e.errorCode != ErrorCode.TEMPLATE_RENDER_TIMEOUT || !templateTimeoutFallbackEnabled) {
+                throw e
+            }
+            val fallbackTemplate = templateService.renderFallbackTemplate(
+                problemId = problemId,
+                studentId = studentId,
+                resultTypeHint = resultType
+            )
+            RetrospectiveTemplateResponse(
+                template = fallbackTemplate,
+                fallbackUsed = true,
+                fallbackReason = ErrorCode.TEMPLATE_RENDER_TIMEOUT.code
+            )
+        }
+    }
+
+    private fun parseProblemCategory(raw: String): ProblemCategory {
+        val normalized = raw.trim()
+        if (normalized.isBlank()) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "category는 공백일 수 없습니다.")
+        }
+        return try {
+            ProblemCategory.valueOf(normalized.uppercase())
+        } catch (e: IllegalArgumentException) {
+            throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "유효하지 않은 category 입니다. category=$raw")
+        }
+    }
+
+    private fun resolveProblemTitle(problemId: String): String? {
+        return problemRepository.findById(problemId)
+            .map { it.title }
+            .orElse(null)
+    }
+
+    private fun resolveProblemTitleMap(problemIds: List<String>): Map<String, String> {
+        if (problemIds.isEmpty()) {
+            return emptyMap()
+        }
+        return problemRepository.findAllById(problemIds.distinct())
+            .associate { it.id.value to it.title }
+    }
+
+
+    @Operation(
+        summary = "회고 삭제",
+        description = "회고 ID로 회고를 삭제합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "삭제 성공 (응답 본문 없음)"),
+            ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @DeleteMapping("/{retrospectiveId}")
+    fun deleteRetrospective(
+        authentication: Authentication,
+        @Parameter(description = "회고 ID", required = true)
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String
+    ): ResponseEntity<Void> {
+        val studentId = authentication.name
+
+        // 소유권 검증 포함된 삭제
+        retrospectiveService.deleteRetrospective(retrospectiveId, studentId)
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
+    }
+
+    @Operation(
+        summary = "회고 수정",
+        description = "작성된 회고를 수정합니다. 제목, 내용, 풀이 시간, 결과 등을 수정할 수 있습니다. JWT 토큰에서 사용자 정보를 자동으로 추출하여 소유권을 검증합니다.",
+        security = [SecurityRequirement(name = "Authorization")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "수정 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "요청 값 검증 실패 또는 잘못된 입력",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "회고 소유자가 아님",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "회고를 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "같은 계정의 다른 작업과 충돌했거나 동시 요청으로 회고 상태가 변경됨",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "학생 상태 변경 잠금 저장소(Redis)를 사용할 수 없음",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            )
+        ]
+    )
+    @PatchMapping("/{retrospectiveId}")
+    fun updateRetrospective(
+        authentication: Authentication,
+        @Parameter(description = "회고 ID", required = true)
+        @PathVariable
+        @NotBlank(message = "회고 ID는 필수입니다.")
+        retrospectiveId: String,
+        @RequestBody
+        @Valid
+        request: RetrospectiveRequest
+    ): ResponseEntity<RetrospectiveResponse> {
+        val studentId = authentication.name
+
+        val retrospective = retrospectiveService.updateRetrospective(
+            retrospectiveId = retrospectiveId,
+            studentId = studentId,
+            content = request.content,
+            summary = request.summary,
+            solutionResult = request.resultType,
+            solvedCategory = request.solvedCategory,
+            solveTime = request.solveTime
+        )
+        val response = RetrospectiveResponse.from(
+            retrospective = retrospective,
+            requesterStudentId = studentId,
+            problemTitle = resolveProblemTitle(retrospective.problemId)
+        )
+        return ResponseEntity.ok(response)
+    }
+}

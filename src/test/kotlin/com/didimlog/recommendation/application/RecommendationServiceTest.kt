@@ -1,11 +1,11 @@
 package com.didimlog.recommendation.application
 
 import com.didimlog.domain.Problem
-import com.didimlog.domain.Solution
-import com.didimlog.domain.Solutions
+import com.didimlog.study.domain.Solution
+import com.didimlog.study.domain.Solutions
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.ProblemCategory
-import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.study.domain.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
@@ -15,7 +15,7 @@ import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
-import com.didimlog.domain.valueobject.TimeTakenSeconds
+import com.didimlog.study.domain.TimeTakenSeconds
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify

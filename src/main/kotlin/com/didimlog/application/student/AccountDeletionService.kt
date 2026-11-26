@@ -2,15 +2,15 @@ package com.didimlog.application.student
 
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.TemplateOwnershipType
 import com.didimlog.domain.repository.LogRepository
 import com.didimlog.domain.repository.PasswordResetCodeRepository
-import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
-import com.didimlog.domain.repository.TemplateRepository
 import com.didimlog.feedback.domain.repository.FeedbackRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
+import com.didimlog.template.domain.TemplateOwnershipType
+import com.didimlog.template.domain.repository.TemplateRepository
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service

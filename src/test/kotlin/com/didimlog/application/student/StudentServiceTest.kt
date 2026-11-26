@@ -415,7 +415,7 @@ class StudentServiceTest {
             currentTier = Tier.BRONZE,
             role = Role.USER,
             termsAgreed = true,
-            solutions = com.didimlog.domain.Solutions(),
+            solutions = com.didimlog.study.domain.Solutions(),
             consecutiveSolveDays = 0,
             lastSolvedAt = null
         )

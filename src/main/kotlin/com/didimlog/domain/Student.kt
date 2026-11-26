@@ -1,16 +1,18 @@
 package com.didimlog.domain
 
 import com.didimlog.domain.enums.PrimaryLanguage
-import com.didimlog.domain.enums.ProblemResult
+import com.didimlog.study.domain.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.TemplateCategory
+import com.didimlog.study.domain.Solution
+import com.didimlog.study.domain.Solutions
+import com.didimlog.template.domain.TemplateCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
-import com.didimlog.domain.valueobject.TimeTakenSeconds
+import com.didimlog.study.domain.TimeTakenSeconds
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.PersistenceCreator
 import org.springframework.data.annotation.Version

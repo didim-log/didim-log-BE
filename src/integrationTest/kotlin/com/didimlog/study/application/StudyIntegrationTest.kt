@@ -1,0 +1,389 @@
+package com.didimlog.study.application
+
+import com.didimlog.domain.Problem
+import com.didimlog.domain.Student
+import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.domain.enums.Provider
+import com.didimlog.domain.enums.Role
+import com.didimlog.domain.enums.Tier
+import com.didimlog.domain.repository.ProblemRepository
+import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.domain.valueobject.BojId
+import com.didimlog.domain.valueobject.Nickname
+import com.didimlog.domain.valueobject.ProblemId
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import java.util.*
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+
+@SpringBootTest
+@DisplayName("StudyService 통합 테스트")
+class StudyIntegrationTest {
+
+    @Autowired
+    private lateinit var studyService: StudyService
+
+    @Autowired
+    private lateinit var studentRepository: StudentRepository
+
+    @Autowired
+    private lateinit var problemRepository: ProblemRepository
+
+    private lateinit var student: Student
+    private lateinit var problem: Problem
+    private var testId: String = ""
+
+    @BeforeEach
+    fun setUp() {
+        // 각 테스트마다 고유한 ID 생성
+        testId = UUID.randomUUID().toString().substring(0, 8)
+        
+        student = Student(
+            nickname = Nickname("tu$testId"),
+            provider = Provider.BOJ,
+            providerId = "test$testId",
+            bojId = BojId("test$testId"),
+            password = "test-password",
+            currentTier = Tier.BRONZE,
+            role = Role.USER
+        )
+        student = studentRepository.save(student)
+
+        problem = Problem(
+            id = ProblemId("1000-$testId"),
+            title = "A+B",
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/1000-$testId"
+        )
+        problem = problemRepository.save(problem)
+    }
+
+    @AfterEach
+    fun tearDown() {
+        // 테스트 데이터 정리
+        try {
+            student.id?.let(studentRepository::deleteById)
+            problemRepository.findById("1000-$testId").ifPresent { problemRepository.delete(it) }
+            // 동적으로 생성된 문제들도 정리
+            problemRepository.findAll().forEach { p ->
+                if (p.id.value.contains(testId)) {
+                    problemRepository.delete(p)
+                }
+            }
+        } catch (e: Exception) {
+            // 정리 실패해도 테스트는 계속 진행
+        }
+    }
+
+    @Test
+    @DisplayName("문제 풀이 후 티어는 자동으로 승급되지 않는다 (Solved.ac 동기화 방식)")
+    fun `문제 풀이 후 티어 자동 승급 없음`() {
+        // given: 최근 10문제 중 8문제 성공 상태
+        val baseTime = System.currentTimeMillis()
+        val successProblems = (1..8).map { index ->
+            val problemId = "success-$testId-$baseTime-$index"
+            problemRepository.save(
+                Problem(
+                    id = ProblemId(problemId),
+                    title = "Success Problem $index",
+                    category = ProblemCategory.IMPLEMENTATION,
+                    difficulty = Tier.BRONZE,
+                    level = 3,
+                    url = "https://www.acmicpc.net/problem/$problemId"
+                )
+            )
+        }
+
+        successProblems.forEach { p ->
+            studyService.submitSolution(
+                studentId = requireNotNull(student.id),
+                problemId = p.id.value,
+                timeTaken = 100L,
+                isSuccess = true
+            )
+        }
+
+        // when: 추가 문제를 성공적으로 풀어도
+        studyService.submitSolution(
+            studentId = requireNotNull(student.id),
+            problemId = problem.id.value,
+            timeTaken = 120L,
+            isSuccess = true
+        )
+
+        // then: 티어는 그대로 유지됨 (Solved.ac API를 통한 외부 동기화만 가능)
+        val updatedStudent = studentRepository.findById(student.id!!).orElseThrow()
+        assertThat(updatedStudent.tier()).isEqualTo(Tier.BRONZE)
+    }
+
+    @Test
+    @DisplayName("updateInfo를 통해 외부에서 Rating 점수로 티어를 업데이트할 수 있다")
+    fun `외부에서 티어 업데이트 가능`() {
+        // given
+        assertThat(student.tier()).isEqualTo(Tier.BRONZE)
+
+        // when: Solved.ac API에서 가져온 Rating 점수로 업데이트 (GOLD 티어는 800점 이상)
+        val updatedStudent = student.updateInfo(800)
+        studentRepository.save(updatedStudent)
+
+        // then: 티어가 업데이트됨
+        val savedStudent = studentRepository.findById(student.id!!).orElseThrow()
+        assertThat(savedStudent.tier()).isEqualTo(Tier.GOLD)
+    }
+
+    @Test
+    @DisplayName("문제 풀이 결과가 Solutions에 정상적으로 저장된다")
+    fun `문제 풀이 결과 저장`() {
+        // given
+        val timestamp = System.currentTimeMillis()
+        val problem1 = problemRepository.save(
+            Problem(
+                id = ProblemId("p1-$testId-$timestamp"),
+                title = "Problem 1",
+                category = ProblemCategory.UNKNOWN,
+                difficulty = Tier.BRONZE,
+                level = 3,
+                url = "https://www.acmicpc.net/problem/p1-$testId-$timestamp"
+            )
+        )
+        val problem2 = problemRepository.save(
+            Problem(
+                id = ProblemId("p2-$testId-$timestamp"),
+                title = "Problem 2",
+                category = ProblemCategory.UNKNOWN,
+                difficulty = Tier.BRONZE,
+                level = 4,
+                url = "https://www.acmicpc.net/problem/p2-$testId-$timestamp"
+            )
+        )
+
+        // when
+        studyService.submitSolution(
+            studentId = requireNotNull(student.id),
+            problemId = problem1.id.value,
+            timeTaken = 100L,
+            isSuccess = true
+        )
+        studyService.submitSolution(
+            studentId = requireNotNull(student.id),
+            problemId = problem2.id.value,
+            timeTaken = 120L,
+            isSuccess = false
+        )
+
+        // then: 풀이 기록이 저장되고, 티어는 변경되지 않음
+        val updatedStudent = studentRepository.findById(student.id!!).orElseThrow()
+        val solvedProblemIds = updatedStudent.getSolvedProblemIds()
+        assertThat(solvedProblemIds).containsExactlyInAnyOrder(ProblemId("p1-$testId-$timestamp"), ProblemId("p2-$testId-$timestamp"))
+        assertThat(updatedStudent.tier()).isEqualTo(Tier.BRONZE)
+    }
+
+    @Test
+    @DisplayName("서로 다른 두 풀이를 동시에 제출해도 두 기록을 모두 저장한다")
+    fun `동시 풀이 제출 기록 유실 없음`() {
+        val firstProblem = problemRepository.save(
+            Problem(
+                id = ProblemId("concurrent-1-$testId"),
+                title = "Concurrent Problem 1",
+                category = ProblemCategory.IMPLEMENTATION,
+                difficulty = Tier.BRONZE,
+                level = 3,
+                url = "https://www.acmicpc.net/problem/concurrent-1-$testId"
+            )
+        )
+        val secondProblem = problemRepository.save(
+            Problem(
+                id = ProblemId("concurrent-2-$testId"),
+                title = "Concurrent Problem 2",
+                category = ProblemCategory.IMPLEMENTATION,
+                difficulty = Tier.BRONZE,
+                level = 4,
+                url = "https://www.acmicpc.net/problem/concurrent-2-$testId"
+            )
+        )
+        val studentId = requireNotNull(student.id)
+        val readBarrier = CyclicBarrier(2)
+        val barrierRepository = FirstReadBarrierStudentRepository(
+            delegate = studentRepository,
+            targetStudentId = studentId,
+            readBarrier = readBarrier
+        )
+        val concurrentStudyService = StudyService(barrierRepository, problemRepository)
+        val executor = Executors.newFixedThreadPool(2)
+
+        val failures = try {
+            listOf(firstProblem, secondProblem).map { submittedProblem ->
+                executor.submit<Throwable?> {
+                    runCatching {
+                        concurrentStudyService.submitSolution(
+                            studentId = studentId,
+                            problemId = submittedProblem.id.value,
+                            timeTaken = 100L,
+                            isSuccess = true
+                        )
+                    }.exceptionOrNull()
+                }
+            }.map { future -> future.get(10, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue()
+        }
+
+        assertThat(failures).containsOnlyNulls()
+        val updatedStudent = studentRepository.findById(studentId).orElseThrow()
+        assertThat(updatedStudent.getSolvedProblemIds()).containsExactlyInAnyOrder(
+            firstProblem.id,
+            secondProblem.id
+        )
+        assertThat(updatedStudent.solutions.getAll()).hasSize(2)
+        assertThat(updatedStudent.documentVersion)
+            .isEqualTo(requireNotNull(student.documentVersion) + 2)
+        assertThat(updatedStudent.consecutiveSolveDays).isEqualTo(1)
+        assertThat(updatedStudent.nickname).isEqualTo(student.nickname)
+        assertThat(updatedStudent.rating).isEqualTo(student.rating)
+        assertThat(barrierRepository.targetReadCount).isEqualTo(3)
+    }
+
+    @Test
+    @DisplayName("같은 문제를 동시에 제출하면 오늘 풀이 기록 한 건으로 수렴한다")
+    fun `같은 문제 동시 제출 중복 없음`() {
+        val studentId = requireNotNull(student.id)
+        val readBarrier = CyclicBarrier(2)
+        val barrierRepository = FirstReadBarrierStudentRepository(
+            delegate = studentRepository,
+            targetStudentId = studentId,
+            readBarrier = readBarrier
+        )
+        val concurrentStudyService = StudyService(barrierRepository, problemRepository)
+        val executor = Executors.newFixedThreadPool(2)
+
+        val responses = try {
+            listOf(100L to true, 200L to false).map { (timeTaken, isSuccess) ->
+                executor.submit<Student> {
+                    concurrentStudyService.submitSolution(
+                        studentId = studentId,
+                        problemId = problem.id.value,
+                        timeTaken = timeTaken,
+                        isSuccess = isSuccess
+                    )
+                }
+            }.map { future -> future.get(10, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue()
+        }
+
+        val updatedStudent = studentRepository.findById(studentId).orElseThrow()
+        val sameDaySolutions = updatedStudent.solutions.getAll()
+            .filter { solution -> solution.problemId == problem.id }
+        val latestSubmittedSolution = responses
+            .flatMap { response -> response.solutions.getAll() }
+            .filter { solution -> solution.problemId == problem.id }
+            .maxByOrNull { solution -> solution.solvedAt }
+        assertThat(sameDaySolutions).hasSize(1)
+        assertThat(sameDaySolutions.single().solvedAt)
+            .isEqualTo(latestSubmittedSolution?.solvedAt)
+        assertThat(
+            responses.flatMap { response -> response.solutions.getAll() }
+        ).contains(sameDaySolutions.single())
+        assertThat(sameDaySolutions.single().timeTaken.value).isIn(100L, 200L)
+        assertThat(updatedStudent.documentVersion)
+            .isEqualTo(requireNotNull(student.documentVersion) + 2)
+        assertThat(updatedStudent.consecutiveSolveDays).isEqualTo(1)
+        assertThat(barrierRepository.targetReadCount).isEqualTo(3)
+    }
+
+    @Test
+    @DisplayName("비밀번호 변경과 경합한 풀이 제출은 최신 자격 증명을 보존한다")
+    fun `풀이 제출은 최신 자격 증명 보존`() {
+        val studentId = requireNotNull(student.id)
+        val changedPassword = "changed-password"
+        val interleavingRepository = PasswordUpdateAfterFirstReadRepository(
+            delegate = studentRepository,
+            targetStudentId = studentId,
+            encodedPassword = changedPassword,
+            expectedBojId = requireNotNull(student.bojId)
+        )
+        val interleavingStudyService = StudyService(interleavingRepository, problemRepository)
+
+        val result = interleavingStudyService.submitSolution(
+            studentId = studentId,
+            problemId = problem.id.value,
+            timeTaken = 100,
+            isSuccess = true
+        )
+
+        assertThat(result.password).isEqualTo(changedPassword)
+        assertThat(result.credentialVersion).isEqualTo(student.credentialVersion + 1)
+        assertThat(result.documentVersion)
+            .isEqualTo(requireNotNull(student.documentVersion) + 2)
+        assertThat(result.getSolvedProblemIds()).containsExactly(problem.id)
+
+        val persisted = studentRepository.findById(studentId).orElseThrow()
+        assertThat(persisted.password).isEqualTo(changedPassword)
+        assertThat(persisted.credentialVersion).isEqualTo(student.credentialVersion + 1)
+        assertThat(persisted.getSolvedProblemIds()).containsExactly(problem.id)
+        assertThat(interleavingRepository.targetReadCount).isEqualTo(2)
+    }
+
+    private class FirstReadBarrierStudentRepository(
+        private val delegate: StudentRepository,
+        private val targetStudentId: String,
+        private val readBarrier: CyclicBarrier
+    ) : StudentRepository by delegate {
+        private val readCount = AtomicInteger()
+
+        val targetReadCount: Int
+            get() = readCount.get()
+
+        override fun findById(id: String): Optional<Student> {
+            val student = delegate.findById(id)
+            if (id == targetStudentId && readCount.incrementAndGet() <= 2) {
+                readBarrier.await(10, TimeUnit.SECONDS)
+            }
+            return student
+        }
+    }
+
+    private class PasswordUpdateAfterFirstReadRepository(
+        private val delegate: StudentRepository,
+        private val targetStudentId: String,
+        private val encodedPassword: String,
+        private val expectedBojId: BojId
+    ) : StudentRepository by delegate {
+        private val passwordUpdated = AtomicBoolean()
+        private val readCount = AtomicInteger()
+
+        val targetReadCount: Int
+            get() = readCount.get()
+
+        override fun findById(id: String): Optional<Student> {
+            val snapshot = delegate.findById(id)
+            if (id == targetStudentId) {
+                readCount.incrementAndGet()
+                if (passwordUpdated.compareAndSet(false, true)) {
+                    check(
+                        delegate.updatePasswordById(
+                            studentId = id,
+                            encodedPassword = encodedPassword,
+                            expectedCredentialVersion = snapshot.orElseThrow().credentialVersion,
+                            expectedBojId = expectedBojId
+                        )
+                    )
+                }
+            }
+            return snapshot
+        }
+    }
+}

@@ -1,18 +1,18 @@
 package com.didimlog.application.admin
 
-import com.didimlog.domain.Retrospective
-import com.didimlog.domain.Solution
-import com.didimlog.domain.Solutions
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.ProblemResult
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.ProblemId
-import com.didimlog.domain.valueobject.TimeTakenSeconds
+import com.didimlog.retrospective.domain.Retrospective
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
+import com.didimlog.study.domain.ProblemResult
+import com.didimlog.study.domain.Solution
+import com.didimlog.study.domain.Solutions
+import com.didimlog.study.domain.TimeTakenSeconds
 import com.mongodb.MongoClientSettings
 import com.mongodb.event.CommandListener
 import com.mongodb.event.CommandStartedEvent

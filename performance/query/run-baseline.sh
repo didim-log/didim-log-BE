@@ -92,7 +92,7 @@ main() {
   "$ROOT_DIR/gradlew" integrationTest \
     --tests com.didimlog.application.admin.query.AdminUserQueryPerformanceIntegrationTest \
     --tests com.didimlog.application.admin.query.AdminUserDbPaginationPerformanceIntegrationTest \
-    --tests com.didimlog.domain.repository.RetrospectiveRankingIntegrationTest \
+    --tests com.didimlog.retrospective.domain.repository.RetrospectiveRankingIntegrationTest \
     --rerun-tasks \
     --no-daemon
 

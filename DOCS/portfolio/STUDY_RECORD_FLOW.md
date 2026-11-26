@@ -90,14 +90,14 @@ sequenceDiagram
 
 주요 구현 파일:
 
-- `ui/controller/StudyController.kt`
-- `application/study/StudyService.kt`
+- `study/api/StudyController.kt`
+- `study/application/StudyService.kt`
 - `domain/Student.kt`
 - `ui/controller/LogController.kt`
 - `application/log/LogService.kt`
-- `ui/controller/RetrospectiveController.kt`
-- `application/retrospective/RetrospectiveService.kt`
-- `domain/Retrospective.kt`
+- `retrospective/api/RetrospectiveController.kt`
+- `retrospective/application/RetrospectiveService.kt`
+- `retrospective/domain/Retrospective.kt`
 
 ## 데모 fixture 경계
 

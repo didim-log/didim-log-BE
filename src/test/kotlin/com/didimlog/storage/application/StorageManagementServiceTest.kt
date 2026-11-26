@@ -1,7 +1,7 @@
 package com.didimlog.storage.application
 
-import com.didimlog.domain.Retrospective
-import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.retrospective.domain.Retrospective
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.mongodb.client.result.DeleteResult
 import io.mockk.every
 import io.mockk.mockk

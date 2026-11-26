@@ -1,6 +1,6 @@
 package com.didimlog.storage.application
 
-import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
@@ -45,7 +45,7 @@ class StorageManagementService(
             Query.query(Criteria.where("createdAt").exists(true))
                 .with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.ASC, "createdAt"))
                 .limit(1),
-            com.didimlog.domain.Retrospective::class.java
+            com.didimlog.retrospective.domain.Retrospective::class.java
         )
         return oldestRecord?.createdAt?.toLocalDate() ?: LocalDate.now()
     }
@@ -63,7 +63,7 @@ class StorageManagementService(
         val cutoffDate = LocalDateTime.now().minusDays(olderThanDays.toLong())
 
         val query = Query.query(Criteria.where("createdAt").lt(cutoffDate))
-        val deletedCount = mongoTemplate.remove(query, com.didimlog.domain.Retrospective::class.java).deletedCount
+        val deletedCount = mongoTemplate.remove(query, com.didimlog.retrospective.domain.Retrospective::class.java).deletedCount
 
         return deletedCount
     }

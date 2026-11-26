@@ -7,12 +7,12 @@ import com.didimlog.application.auth.CredentialSessionCoordinator
 import com.didimlog.application.auth.ImmediateCredentialSessionCoordinator
 import com.didimlog.application.auth.RefreshTokenService
 import com.didimlog.application.student.AccountDeletionService
-import com.didimlog.domain.Retrospective
+import com.didimlog.retrospective.domain.Retrospective
 import com.didimlog.domain.Student
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
 import com.didimlog.domain.enums.Tier
-import com.didimlog.domain.repository.RetrospectiveRepository
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname

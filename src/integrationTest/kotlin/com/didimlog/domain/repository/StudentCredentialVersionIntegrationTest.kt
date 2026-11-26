@@ -4,12 +4,12 @@ import com.didimlog.domain.Student
 import com.didimlog.domain.enums.PrimaryLanguage
 import com.didimlog.domain.enums.Provider
 import com.didimlog.domain.enums.Role
-import com.didimlog.domain.enums.TemplateCategory
 import com.didimlog.domain.enums.Tier
 import com.didimlog.domain.valueobject.BojId
 import com.didimlog.domain.valueobject.Nickname
 import com.didimlog.domain.valueobject.SolvedAcTierLevel
 import com.didimlog.global.config.mongo.MongoIndexInitializer
+import com.didimlog.template.domain.TemplateCategory
 import java.util.UUID
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy

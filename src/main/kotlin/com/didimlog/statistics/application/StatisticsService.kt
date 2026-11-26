@@ -1,9 +1,9 @@
 package com.didimlog.statistics.application
 
 import com.didimlog.domain.Student
-import com.didimlog.domain.enums.ProblemResult
-import com.didimlog.domain.repository.RetrospectiveRepository
-import com.didimlog.domain.repository.RetrospectiveStatisticsView
+import com.didimlog.study.domain.ProblemResult
+import com.didimlog.retrospective.domain.repository.RetrospectiveRepository
+import com.didimlog.retrospective.domain.repository.RetrospectiveStatisticsView
 import com.didimlog.domain.repository.StudentRepository
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
