@@ -1,0 +1,1477 @@
+package com.didimlog.problem.application.collector
+
+import com.didimlog.admin.application.AdminAuditService
+import com.didimlog.global.exception.BusinessException
+import com.didimlog.global.exception.ErrorCode
+import com.didimlog.infra.solvedac.SolvedAcClient
+import com.didimlog.infra.solvedac.SolvedAcProblemResponse
+import com.didimlog.problem.domain.Problem
+import com.didimlog.problem.domain.ProblemCategory
+import com.didimlog.problem.domain.ProblemId
+import com.didimlog.problem.domain.repository.ProblemDetailsUpdate
+import com.didimlog.problem.domain.repository.ProblemRepository
+import com.didimlog.problem.infra.crawler.BojCrawler
+import com.didimlog.problem.infra.crawler.ProblemDetails
+import com.didimlog.student.domain.Tier
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.runs
+import io.mockk.slot
+import io.mockk.verify
+import io.mockk.verifyOrder
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.time.Duration
+import java.time.Instant
+import java.util.Collections
+import java.util.HexFormat
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.within
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.springframework.data.redis.connection.DataType
+import org.springframework.data.redis.core.SetOperations
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.ValueOperations
+import org.springframework.data.redis.core.ZSetOperations
+import org.springframework.data.redis.core.script.RedisScript
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
+
+@DisplayName("ProblemCollectorService 테스트")
+class ProblemCollectorServiceTest {
+
+    private val solvedAcClient: SolvedAcClient = mockk()
+    private val problemRepository: ProblemRepository = mockk()
+    private val bojCrawler: BojCrawler = mockk()
+    private val redisTemplate: StringRedisTemplate = mockk()
+    private val valueOps: ValueOperations<String, String> = mockk()
+    private val setOps: SetOperations<String, String> = mockk()
+    private val zSetOps: ZSetOperations<String, String> = mockk()
+    private val adminAuditService: AdminAuditService = mockk(relaxed = true)
+    private val pacer: ProblemCollectorPacer = mockk(relaxed = true)
+
+    private val objectMapper = ObjectMapper().registerKotlinModule()
+
+    private lateinit var service: ProblemCollectorService
+
+    private val valueStore = ConcurrentHashMap<String, String>()
+    private val failureStore = ConcurrentHashMap<String, MutableSet<String>>()
+    private val zsetStore = ConcurrentHashMap<String, MutableMap<String, Double>>()
+
+    companion object {
+        private const val JOB_KEY_PREFIX = "problem:job:status:"
+        private const val JOB_FAILURE_KEY_PREFIX = "problem:job:failures:"
+        private const val JOB_TARGET_KEY_PREFIX = "problem:job:targets:"
+        private const val JOB_LEASE_KEY_PREFIX = "problem:job:lease:"
+        private const val JOB_INDEX_KEY = "problem:job:index"
+    }
+
+    @BeforeEach
+    fun setUp() {
+        every { redisTemplate.opsForValue() } returns valueOps
+        every { redisTemplate.opsForSet() } returns setOps
+        every { redisTemplate.opsForZSet() } returns zSetOps
+        every { redisTemplate.type(any()) } answers {
+            val key = firstArg<String>()
+            when {
+                failureStore.containsKey(key) -> DataType.SET
+                valueStore.containsKey(key) -> DataType.STRING
+                else -> DataType.NONE
+            }
+        }
+        every { setOps.members(any()) } answers {
+            failureStore[firstArg()].orEmpty().toSet()
+        }
+        every {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                any<List<String>>(),
+                *anyVararg()
+            )
+        } answers {
+            val keys = secondArg<List<String>>()
+            val scriptArguments = thirdArg<Array<out Any>>()
+            synchronized(valueStore) {
+                when {
+                    keys.size == 3 && keys[1] == JOB_INDEX_KEY -> {
+                        val jobKey = keys[0]
+                        val targetKey = keys[2]
+                        if (valueStore.containsKey(jobKey) || valueStore.containsKey(targetKey)) {
+                            0L
+                        } else {
+                            val jobId = scriptArguments[4].toString()
+                            valueStore[jobKey] = scriptArguments[0].toString()
+                            valueStore[targetKey] = scriptArguments[1].toString()
+                            zsetStore.computeIfAbsent(keys[1]) { mutableMapOf() }[jobId] =
+                                scriptArguments[3].toString().toDouble()
+                            1L
+                        }
+                    }
+
+                    keys.size == 4 -> {
+                        val current = valueStore[keys[0]]
+                        when {
+                            current == null -> -1L
+                            current != scriptArguments[0].toString() -> 0L
+                            else -> {
+                                valueStore[keys[0]] = scriptArguments[1].toString()
+                                val failedProblemId = scriptArguments[3].toString()
+                                if (failedProblemId.isNotEmpty()) {
+                                    failureStore.computeIfAbsent(keys[1]) { mutableSetOf() }
+                                        .add(failedProblemId)
+                                }
+                                if (scriptArguments[6].toString() == "1") {
+                                    valueStore.remove(keys[3])
+                                }
+                                1L
+                            }
+                        }
+                    }
+
+                    else -> error("Unexpected Redis script keys: $keys")
+                }
+            }
+        }
+
+        every { valueOps.set(any(), any(), any<Duration>()) } answers {
+            val key = firstArg<String>()
+            val value = secondArg<String>()
+            valueStore[key] = value
+        }
+        every { valueOps.get(any()) } answers {
+            valueStore[firstArg<String>()]
+        }
+        every { valueOps.multiGet(any()) } answers {
+            firstArg<Collection<String>>().map(valueStore::get)
+        }
+
+        every { zSetOps.add(any(), any(), any<Double>()) } answers {
+            val key = firstArg<String>()
+            val value = secondArg<String>()
+            val score = thirdArg<Double>()
+            val set = zsetStore.computeIfAbsent(key) { mutableMapOf() }
+            set[value] = score
+            true
+        }
+
+        every { zSetOps.reverseRange(any(), any(), any()) } answers {
+            val key = firstArg<String>()
+            val set = zsetStore[key].orEmpty()
+            val sorted = set.entries
+                .sortedByDescending { it.value }
+                .map { it.key }
+            LinkedHashSet(sorted)
+        }
+
+        every { zSetOps.remove(any(), *anyVararg()) } answers {
+            val key = firstArg<String>()
+            val set = zsetStore[key] ?: return@answers 0L
+            val values = args.drop(1).flatMap { arg -> if (arg is Array<*>) arg.toList() else listOf(arg) }
+            var removed = 0L
+            values.forEach { value ->
+                val casted = value as? String ?: return@forEach
+                if (set.remove(casted) != null) {
+                    removed++
+                }
+            }
+            removed
+        }
+
+        every { adminAuditService.logAction(any(), any(), any(), any()) } just runs
+
+        service = createService()
+    }
+
+    @Test
+    @DisplayName("재시작 복구 중에는 새 작업 상태를 Redis에 만들지 않는다")
+    fun `job creation is blocked until restart recovery is ready`() {
+        val properties = ProblemCollectorRecoveryProperties(
+            failOrphanedJobsOnStartup = true
+        )
+        val recoveryState = ProblemCollectorRecoveryState(properties)
+        val recoveringService = createService(recoveryState = recoveryState)
+
+        val exception = assertThrows<BusinessException> {
+            recoveringService.collectMetadataAsync(
+                start = 1,
+                end = 1,
+                createdBy = "admin",
+                ipAddress = "127.0.0.1"
+            )
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.WORKER_UNAVAILABLE)
+        assertThat(valueStore).isEmpty()
+        assertThat(zsetStore[JOB_INDEX_KEY].orEmpty()).isEmpty()
+        verify(exactly = 0) {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                any<List<String>>(),
+                *anyVararg()
+            )
+        }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(any()) }
+        verify(exactly = 0) { adminAuditService.logAction(any(), any(), any(), any()) }
+    }
+
+    @Test
+    @DisplayName("감사 로그 실행기가 요청을 거부해도 생성한 작업은 계속 실행한다")
+    fun `audit rejection does not prevent worker execution`() {
+        every { adminAuditService.logAction(any(), any(), any(), any()) } throws
+            RejectedExecutionException("audit executor rejected")
+        every { solvedAcClient.fetchProblem(1) } returns
+            SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { problemRepository.upsertMetadata(any<Problem>()) } just runs
+        val workerService = createService(taskExecutor = Executor { task -> task.run() })
+
+        val jobId = workerService.collectMetadataAsync(
+            start = 1,
+            end = 1,
+            createdBy = "admin",
+            ipAddress = "127.0.0.1"
+        )
+
+        val stored = objectMapper.readValue(
+            requireNotNull(valueStore["$JOB_KEY_PREFIX$jobId"]),
+            JobStatusUnifiedResponse::class.java
+        )
+        assertThat(stored.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(stored.processedCount).isEqualTo(1)
+        assertThat(stored.successCount).isEqualTo(1)
+        verify(exactly = 1) { adminAuditService.logAction(any(), any(), any(), any()) }
+        verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
+        verify(exactly = 1) { problemRepository.upsertMetadata(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("작업 목록 상태를 index 순서의 키로 한 번에 조회한다")
+    fun `job list loads indexed statuses in one batch`() {
+        val oldestPending = sampleJob("job-oldest").copy(
+            queuedAt = 1_700_000_001
+        )
+        val newestRunning = sampleJob("job-newest").copy(
+            status = JobStatus.RUNNING,
+            queuedAt = 1_700_000_003,
+            startedAt = 1_700_000_004
+        )
+        val middlePending = sampleJob("job-middle").copy(
+            queuedAt = 1_700_000_002
+        )
+        listOf(oldestPending, newestRunning, middlePending).forEach(::seedJob)
+
+        val result = service.getJobs(
+            type = null,
+            status = null,
+            from = null,
+            to = null,
+            page = 1,
+            size = 2
+        )
+
+        assertThat(result.content.map(JobStatusUnifiedResponse::jobId))
+            .containsExactly("job-newest", "job-middle")
+        assertThat(result.content.map(JobStatusUnifiedResponse::queuePosition))
+            .containsExactly(null, 2)
+        assertThat(result.totalElements).isEqualTo(3)
+        assertThat(result.totalPages).isEqualTo(2)
+        assertThat(result.hasNext).isTrue()
+        assertThat(result.hasPrevious).isFalse()
+        verify(exactly = 1) {
+            valueOps.multiGet(
+                listOf(
+                    "$JOB_KEY_PREFIX${newestRunning.jobId}",
+                    "$JOB_KEY_PREFIX${middlePending.jobId}",
+                    "$JOB_KEY_PREFIX${oldestPending.jobId}"
+                )
+            )
+        }
+        verify(exactly = 0) { valueOps.get(any()) }
+    }
+
+    @Test
+    @DisplayName("일괄 조회 직후 생성된 String 상태는 단건 조회로 다시 확인한다")
+    fun `job list rechecks string status created after batch read`() {
+        val job = sampleJob("job-created-after-batch")
+        val key = "$JOB_KEY_PREFIX${job.jobId}"
+        seedJob(job)
+        every { valueOps.multiGet(listOf(key)) } returns listOf(null)
+        every { redisTemplate.type(key) } returns DataType.STRING
+
+        val result = service.getJobs(
+            type = null,
+            status = null,
+            from = null,
+            to = null,
+            page = 1,
+            size = 20
+        )
+
+        assertThat(result.content).containsExactly(job.copy(queuePosition = 1))
+        verify(exactly = 1) { valueOps.get(key) }
+    }
+
+    @Test
+    @DisplayName("메타데이터 수집 작업은 COMPLETED 상태로 종료되며 공통 상태 응답을 반환한다")
+    fun `collect metadata status transition`() {
+        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { solvedAcClient.fetchProblem(2) } returns SolvedAcProblemResponse(2, "B", 1, emptyList())
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val jobId = service.collectMetadataAsync(1, 2, "admin", "127.0.0.1")
+        val status = service.getMetadataCollectJobStatus(jobId)
+
+        assertThat(status).isNotNull
+        assertThat(status!!.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status.totalCount).isEqualTo(2)
+        assertThat(status.processedCount).isEqualTo(2)
+        assertThat(status.progressPercentage).isEqualTo(100)
+        assertThat(status.lastCheckpointId).isEqualTo("2")
+        assertThat(status.startedAt).isNotNull
+        assertThat(status.completedAt).isNotNull
+        verify(exactly = 1) {
+            problemRepository.upsertMetadata(
+                match<Problem> { problem ->
+                    problem.id.value == "1" &&
+                        problem.title == "A" &&
+                        problem.url == "https://www.acmicpc.net/problem/1"
+                }
+            )
+        }
+        verify(exactly = 1) {
+            problemRepository.upsertMetadata(
+                match<Problem> { problem ->
+                    problem.id.value == "2" &&
+                        problem.title == "B" &&
+                        problem.url == "https://www.acmicpc.net/problem/2"
+                }
+            )
+        }
+        verify(exactly = 0) { problemRepository.findById(any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("메타데이터 수집 요청은 작업을 executor에 제출하고 즉시 PENDING 상태를 반환한다")
+    fun `collect metadata submits work to executor`() {
+        var submittedTask: Runnable? = null
+        service = createService(Executor { task -> submittedTask = task })
+        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
+
+        assertThat(service.getMetadataCollectJobStatus(jobId)?.status).isEqualTo(JobStatus.PENDING)
+        assertThat(submittedTask).isNotNull
+
+        submittedTask!!.run()
+
+        assertThat(service.getMetadataCollectJobStatus(jobId)?.status).isEqualTo(JobStatus.COMPLETED)
+    }
+
+    @Test
+    @DisplayName("동일한 메타데이터 수집 작업은 두 번 실행돼도 한 번만 처리한다")
+    fun `same metadata task runs only once`() {
+        var submittedTask: Runnable? = null
+        service = createService(Executor { task -> submittedTask = task })
+        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
+        val capturedTask = requireNotNull(submittedTask)
+
+        capturedTask.run()
+        capturedTask.run()
+
+        assertThat(service.getMetadataCollectJobStatus(jobId)?.status).isEqualTo(JobStatus.COMPLETED)
+        verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
+        verify(exactly = 1) { problemRepository.upsertMetadata(any()) }
+    }
+
+    @Test
+    @DisplayName("진행률 CAS가 계속 충돌하면 처리되지 않은 작업을 완료하지 않는다")
+    fun `progress conflicts do not produce an incomplete completed job`() {
+        var submittedTask: Runnable? = null
+        service = createService(Executor { task -> submittedTask = task })
+        every { solvedAcClient.fetchProblem(1) } returns SolvedAcProblemResponse(1, "A", 1, emptyList())
+        every { solvedAcClient.fetchProblem(2) } returns SolvedAcProblemResponse(2, "B", 1, emptyList())
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val jobId = service.collectMetadataAsync(1, 2, "admin", "127.0.0.1")
+        val stateKeys = listOf(
+            "$JOB_KEY_PREFIX$jobId",
+            "$JOB_FAILURE_KEY_PREFIX$jobId",
+            "$JOB_TARGET_KEY_PREFIX$jobId",
+            "$JOB_LEASE_KEY_PREFIX$jobId"
+        )
+        every {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                stateKeys,
+                *anyVararg()
+            )
+        } answers {
+            val scriptArguments = thirdArg<Array<out Any>>()
+            synchronized(valueStore) {
+                val current = valueStore[stateKeys[0]]
+                when {
+                    current == null -> -1L
+                    current != scriptArguments[0].toString() -> 0L
+                    objectMapper.readValue(
+                        scriptArguments[1].toString(),
+                        JobStatusUnifiedResponse::class.java
+                    ).processedCount > 0 -> 0L
+                    else -> {
+                        valueStore[stateKeys[0]] = scriptArguments[1].toString()
+                        1L
+                    }
+                }
+            }
+        }
+
+        requireNotNull(submittedTask).run()
+
+        val stored = service.getMetadataCollectJobStatus(jobId)
+        assertThat(stored?.status).isEqualTo(JobStatus.RUNNING)
+        assertThat(stored?.processedCount).isZero()
+        assertThat(stored?.completedAt).isNull()
+        verify(exactly = 1) { solvedAcClient.fetchProblem(1) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(2) }
+    }
+
+    @Test
+    @DisplayName("executor가 작업을 거부하면 수집 작업을 FAILED로 전환한다")
+    fun `collect metadata marks job failed when executor rejects`() {
+        service = createService(Executor { throw RejectedExecutionException("queue full") })
+
+        val jobId = service.collectMetadataAsync(1, 1, "admin", "127.0.0.1")
+        val status = service.getMetadataCollectJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.FAILED)
+        assertThat(status?.errorCode).isEqualTo(ErrorCode.WORKER_UNAVAILABLE.code)
+        assertThat(status?.errorMessage).isEqualTo("작업 실행을 제출할 수 없습니다.")
+        verify(exactly = 0) { solvedAcClient.fetchProblem(any()) }
+    }
+
+    @Test
+    @DisplayName("작업 취소는 RUNNING에서 CANCELLED로 전이되며 이후 재취소는 409를 반환한다")
+    fun `cancel transition and terminal conflict`() {
+        val jobId = "job-cancel-1"
+        seedJob(
+            sampleJob(jobId).copy(
+                status = JobStatus.RUNNING,
+                startedAt = 1700000001,
+                lastHeartbeatAt = 1700000002
+            )
+        )
+
+        val cancelled = service.cancelJob(jobId, "admin", "127.0.0.1")
+        assertThat(cancelled.status).isEqualTo(JobStatus.CANCELLED)
+        assertThat(cancelled.completedAt).isNotNull
+
+        val ex = assertThrows<BusinessException> {
+            service.cancelJob(jobId, "admin", "127.0.0.1")
+        }
+        assertThat(ex.errorCode).isEqualTo(ErrorCode.JOB_ALREADY_TERMINAL)
+    }
+
+    @Test
+    @DisplayName("실패 작업 재시도는 체크포인트 이후 범위만 재실행한다")
+    fun `retry uses checkpoint`() {
+        val sourceJobId = "job-failed-1"
+        seedJob(
+            sampleJob(sourceJobId).copy(
+                jobType = ProblemJobType.COLLECT_METADATA,
+                status = JobStatus.FAILED,
+                range = JobRange(1, 5),
+                totalCount = 5,
+                processedCount = 3,
+                successCount = 3,
+                failCount = 0,
+                lastCheckpointId = "3",
+                errorCode = ErrorCode.WORKER_UNAVAILABLE.code,
+                completedAt = 1700001000
+            )
+        )
+
+        every { solvedAcClient.fetchProblem(4) } returns SolvedAcProblemResponse(4, "P4", 1, emptyList())
+        every { solvedAcClient.fetchProblem(5) } returns SolvedAcProblemResponse(5, "P5", 1, emptyList())
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.jobType).isEqualTo(ProblemJobType.COLLECT_METADATA)
+        assertThat(retryJob.range).isEqualTo(JobRange(4, 5))
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+
+        verify(exactly = 1) { solvedAcClient.fetchProblem(4) }
+        verify(exactly = 1) { solvedAcClient.fetchProblem(5) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(1) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(2) }
+        verify(exactly = 0) { solvedAcClient.fetchProblem(3) }
+    }
+
+    @Test
+    @DisplayName("부분 실패한 완료 작업은 실패 문제만 다시 수집한다")
+    fun `retry reprocesses only failed metadata items`() {
+        var problemTwoAttempts = 0
+        every { solvedAcClient.fetchProblem(any()) } answers {
+            val problemId = firstArg<Int>()
+            if (problemId == 2 && problemTwoAttempts++ == 0) {
+                throw IllegalStateException("temporary failure")
+            }
+            SolvedAcProblemResponse(problemId, "P$problemId", 1, emptyList())
+        }
+        every { problemRepository.upsertMetadata(any()) } just runs
+
+        val sourceJobId = service.collectMetadataAsync(1, 5, "admin", "127.0.0.1")
+        val sourceJob = requireNotNull(service.getMetadataCollectJobStatus(sourceJobId))
+
+        assertThat(sourceJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(sourceJob.failCount).isEqualTo(1)
+        assertThat(sourceJob.lastCheckpointId).isEqualTo("5")
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(1)
+        assertThat(retryJob.range).isEqualTo(JobRange(2, 2))
+        assertThat(retryJob.successCount).isEqualTo(1)
+        assertThat(retryJob.failCount).isZero()
+        verify(exactly = 2) { solvedAcClient.fetchProblem(2) }
+        listOf(1, 3, 4, 5).forEach { problemId ->
+            verify(exactly = 1) { solvedAcClient.fetchProblem(problemId) }
+        }
+    }
+
+    @Test
+    @DisplayName("상세 새로고침 대상은 숫자 문제 ID 순서로 처리한다")
+    fun `detail refresh orders targets by numeric problem id`() {
+        val problem1005 = sampleProblem("1005")
+        val problem1001 = sampleProblem("1001")
+        val problem1003 = sampleProblem("1003")
+        every { problemRepository.findAll() } returns listOf(problem1005, problem1001, problem1003)
+        every { bojCrawler.crawlProblemDetails(any()) } returns sampleDetails()
+        every { problemRepository.updateDetails(any(), any()) } answers {
+            sampleProblem(firstArg())
+        }
+
+        service.refreshDetailsBatchAsync(createdBy = "admin", ipAddress = "127.0.0.1")
+
+        verifyOrder {
+            bojCrawler.crawlProblemDetails("1001")
+            bojCrawler.crawlProblemDetails("1003")
+            bojCrawler.crawlProblemDetails("1005")
+        }
+    }
+
+    @Test
+    @DisplayName("실패 원장이 없는 이전 상세 작업은 체크포인트와 관계없이 현재 대상을 다시 처리한다")
+    fun `legacy interrupted detail job retries all current targets in numeric order`() {
+        val sourceJobId = "job-legacy-unsorted-details"
+        val problem1005 = sampleProblem("1005")
+        val problem1001 = sampleProblem("1001")
+        val problem1003 = sampleProblem("1003")
+        seedJob(
+            sampleJob(sourceJobId).copy(
+                jobType = ProblemJobType.REFRESH_DETAILS,
+                status = JobStatus.CANCELLED,
+                totalCount = 3,
+                processedCount = 1,
+                successCount = 1,
+                progressPercentage = 33,
+                range = JobRange(1001, 1005),
+                lastCheckpointId = "1005",
+                completedAt = 1700001000
+            )
+        )
+        every {
+            problemRepository.findAll()
+        } returns listOf(problem1005, problem1001, problem1003)
+        every { bojCrawler.crawlProblemDetails(any()) } returns sampleDetails()
+        every { problemRepository.updateDetails(any(), any()) } answers {
+            sampleProblem(firstArg())
+        }
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(3)
+        verifyOrder {
+            bojCrawler.crawlProblemDetails("1001")
+            bojCrawler.crawlProblemDetails("1003")
+            bojCrawler.crawlProblemDetails("1005")
+        }
+    }
+
+    @Test
+    @DisplayName("manifest 기반 언어 재시도는 미처리 ID만 조회하고 현재 DB 대상을 섞지 않는다")
+    fun `manifest language retry loads only unprocessed target ids`() {
+        val sourceJobId = "job-manifest-language"
+        val manifest = ProblemJobTargetManifest(
+            version = ProblemJobTargetManifest.CURRENT_VERSION,
+            jobId = sourceJobId,
+            jobType = ProblemJobType.UPDATE_LANGUAGE,
+            explicitIds = listOf("1001", "1003", "1005"),
+            range = null
+        )
+        seedManifestJob(
+            sampleJob(sourceJobId).copy(
+                jobType = ProblemJobType.UPDATE_LANGUAGE,
+                status = JobStatus.CANCELLED,
+                totalCount = 3,
+                processedCount = 1,
+                successCount = 1,
+                progressPercentage = 33,
+                range = null,
+                lastCheckpointId = "1001",
+                completedAt = 1700001000
+            ),
+            manifest
+        )
+        val problem1003 = sampleProblem("1003", title = "English problem title")
+        val problem1005 = sampleProblem("1005", title = "English problem title")
+        every {
+            problemRepository.findAllById(setOf("1003", "1005"))
+        } returns listOf(problem1005, problem1003)
+        every { problemRepository.updateLanguage(any(), "en") } returns true
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(2)
+        verify(exactly = 1) {
+            problemRepository.findAllById(setOf("1003", "1005"))
+        }
+        verify(exactly = 0) { problemRepository.findAll() }
+        verifyOrder {
+            problemRepository.updateLanguage("1003", "en")
+            problemRepository.updateLanguage("1005", "en")
+        }
+        val childManifest = objectMapper.readValue(
+            requireNotNull(valueStore["$JOB_TARGET_KEY_PREFIX${retryJob.jobId}"]),
+            ProblemJobTargetManifest::class.java
+        )
+        assertThat(childManifest.explicitIds).containsExactly("1003", "1005")
+        assertThat(childManifest.range).isNull()
+    }
+
+    @Test
+    @DisplayName("삭제된 실패 문제는 제외하고 남아 있는 상세 수집 실패 문제를 재시도한다")
+    fun `detail retry skips deleted failed item and continues remaining failures`() {
+        val sourceJobId = "job-deleted-failed-item"
+        val remainingProblem = sampleProblem("1003")
+        seedJob(
+            sampleJob(sourceJobId).copy(
+                jobType = ProblemJobType.COLLECT_DETAILS,
+                status = JobStatus.COMPLETED,
+                totalCount = 2,
+                processedCount = 2,
+                failCount = 2,
+                progressPercentage = 100,
+                range = null,
+                lastCheckpointId = "1003",
+                completedAt = 1700001000
+            )
+        )
+        failureStore["$JOB_FAILURE_KEY_PREFIX$sourceJobId"] = mutableSetOf("1002", "1003")
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns emptyList()
+        every {
+            problemRepository.findAllById(setOf("1002", "1003"))
+        } returns listOf(remainingProblem)
+        every { bojCrawler.crawlProblemDetails("1003") } returns sampleDetails()
+        every { problemRepository.updateDetails("1003", any()) } returns remainingProblem
+
+        val retryJob = service.retryJob(sourceJobId, "admin", "127.0.0.1")
+
+        assertThat(retryJob.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(retryJob.totalCount).isEqualTo(1)
+        assertThat(retryJob.successCount).isEqualTo(1)
+        verify(exactly = 1) { bojCrawler.crawlProblemDetails("1003") }
+        verify(exactly = 0) { bojCrawler.crawlProblemDetails("1002") }
+    }
+
+    @Test
+    @DisplayName("동시 취소 요청 경쟁 상황에서 1건만 성공하고 나머지는 terminal 충돌이 난다")
+    fun `cancel race condition`() {
+        val jobId = "job-race-1"
+        seedJob(sampleJob(jobId).copy(status = JobStatus.RUNNING, startedAt = 1700000001))
+
+        val startLatch = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        val outcomes = Collections.synchronizedList(mutableListOf<String>())
+
+        repeat(2) {
+            pool.submit {
+                startLatch.await()
+                try {
+                    service.cancelJob(jobId, "admin", "127.0.0.1")
+                    outcomes.add("OK")
+                } catch (e: BusinessException) {
+                    outcomes.add(e.errorCode.code)
+                }
+            }
+        }
+
+        startLatch.countDown()
+        pool.shutdown()
+        pool.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertThat(outcomes.count { it == "OK" }).isEqualTo(1)
+        assertThat(outcomes.count { it == ErrorCode.JOB_ALREADY_TERMINAL.code }).isEqualTo(1)
+    }
+
+    @Test
+    @DisplayName("작업 취소 CAS 충돌이 계속되면 재시도 가능한 409를 반환한다")
+    fun `cancel returns conflict after CAS retries are exhausted`() {
+        val jobId = "job-cas-conflict"
+        seedJob(sampleJob(jobId).copy(status = JobStatus.RUNNING, startedAt = 1700000001))
+        every {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                match<List<String>> {
+                    it == listOf(
+                        "$JOB_KEY_PREFIX$jobId",
+                        "$JOB_FAILURE_KEY_PREFIX$jobId",
+                        "$JOB_TARGET_KEY_PREFIX$jobId",
+                        "$JOB_LEASE_KEY_PREFIX$jobId"
+                    )
+                },
+                *anyVararg()
+            )
+        } returns 0L
+
+        val exception = assertThrows<BusinessException> {
+            service.cancelJob(jobId, "admin", "127.0.0.1")
+        }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.RESOURCE_STATE_CONFLICT)
+        assertThat(service.getJob(jobId)?.status).isEqualTo(JobStatus.RUNNING)
+        verify(exactly = 4) {
+            redisTemplate.execute(
+                any<RedisScript<Long>>(),
+                listOf(
+                    "$JOB_KEY_PREFIX$jobId",
+                    "$JOB_FAILURE_KEY_PREFIX$jobId",
+                    "$JOB_TARGET_KEY_PREFIX$jobId",
+                    "$JOB_LEASE_KEY_PREFIX$jobId"
+                ),
+                *anyVararg()
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("동기 상세 수집은 현재 상세 필드만 부분 갱신한다")
+    fun `collect details updates only detail fields`() {
+        val problem = sampleProblem("1000")
+        val details = sampleDetails()
+        val detailsSlot = slot<ProblemDetailsUpdate>()
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every {
+            problemRepository.updateDetails(problem.id.value, capture(detailsSlot))
+        } returns problem.copy(descriptionHtml = details.descriptionHtml)
+
+        service.collectDetailsBatch()
+
+        assertThat(detailsSlot.captured.descriptionHtml).isEqualTo(details.descriptionHtml)
+        assertThat(detailsSlot.captured.sampleInputs).isEqualTo(details.sampleInputs)
+        assertThat(detailsSlot.captured.language).isNull()
+        verify(exactly = 1) { problemRepository.updateDetails(problem.id.value, any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("동기 상세 수집 중 문제가 삭제돼도 외부 요청 간격을 유지한다")
+    fun `collect details preserves pacing when the target was deleted`() {
+        val problem = sampleProblem("1006")
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns sampleDetails()
+        every { problemRepository.updateDetails(problem.id.value, any()) } returns null
+
+        service.collectDetailsBatch()
+
+        verify(exactly = 1) { pacer.pauseDetails() }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("비동기 상세 수집은 부분 갱신 결과가 있을 때 성공 처리한다")
+    fun `async detail collection uses partial update`() {
+        val problem = sampleProblem("1001")
+        val details = sampleDetails()
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every {
+            problemRepository.updateDetails(problem.id.value, any())
+        } returns problem.copy(descriptionHtml = details.descriptionHtml)
+
+        val jobId = service.collectDetailsBatchAsync("admin", "127.0.0.1")
+        val status = service.getDetailsCollectJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isEqualTo(1)
+        assertThat(status?.failCount).isZero()
+        verify(exactly = 1) { problemRepository.updateDetails(problem.id.value, any()) }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("비동기 상세 수집 중 문제가 삭제되면 실패 건수로 기록한다")
+    fun `async detail collection counts a deleted target as failure`() {
+        val problem = sampleProblem("1004")
+        val details = sampleDetails()
+        every { problemRepository.findByDescriptionHtmlIsNull() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every { problemRepository.updateDetails(problem.id.value, any()) } returns null
+
+        val jobId = service.collectDetailsBatchAsync("admin", "127.0.0.1")
+        val status = service.getDetailsCollectJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isZero()
+        assertThat(status?.failCount).isEqualTo(1)
+        assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).containsExactly(problem.id.value)
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("상세 새로고침은 감지한 언어와 상세 필드만 함께 갱신한다")
+    fun `detail refresh updates details and detected language`() {
+        val problem = sampleProblem("1002", title = "English problem title").copy(language = "ko")
+        val details = sampleDetails(descriptionHtml = "<p>English problem description</p>")
+        val detailsSlot = slot<ProblemDetailsUpdate>()
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns details
+        every {
+            problemRepository.updateDetails(problem.id.value, capture(detailsSlot))
+        } returns problem.copy(
+            descriptionHtml = details.descriptionHtml,
+            language = "en"
+        )
+
+        val jobId = service.refreshDetailsBatchAsync(createdBy = "admin", ipAddress = "127.0.0.1")
+        val status = service.getDetailsRefreshJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isEqualTo(1)
+        assertThat(detailsSlot.captured.language).isEqualTo("en")
+        assertThat(detailsSlot.captured.descriptionHtml).isEqualTo(details.descriptionHtml)
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("상세 새로고침 중 문제가 삭제되면 실패 문제를 원장에 기록한다")
+    fun `detail refresh records a deleted target in failure ledger`() {
+        val problem = sampleProblem("1007", title = "English problem title")
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { bojCrawler.crawlProblemDetails(problem.id.value) } returns sampleDetails()
+        every { problemRepository.updateDetails(problem.id.value, any()) } returns null
+
+        val jobId = service.refreshDetailsBatchAsync(createdBy = "admin", ipAddress = "127.0.0.1")
+        val status = service.getDetailsRefreshJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isZero()
+        assertThat(status?.failCount).isEqualTo(1)
+        assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).containsExactly(problem.id.value)
+    }
+
+    @Test
+    @DisplayName("병렬 상세 조회가 뒤섞여 완료돼도 저장과 체크포인트는 대상 순서를 유지한다")
+    fun `parallel detail fetch commits results in manifest order`() {
+        val problems = listOf("1001", "1002", "1003").map(::sampleProblem)
+        val laterTargetsStarted = CountDownLatch(2)
+        val storedProblemIds = Collections.synchronizedList(mutableListOf<String>())
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 3)
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails(any()) } answers {
+                val problemId = firstArg<String>()
+                if (problemId == "1001") {
+                    check(laterTargetsStarted.await(1, TimeUnit.SECONDS))
+                } else {
+                    laterTargetsStarted.countDown()
+                }
+                sampleDetails(descriptionHtml = "<p>$problemId</p>")
+            }
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                firstArg<String>().also(storedProblemIds::add).let(::sampleProblem)
+            }
+            val parallelService = createService(
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 3)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            val status = parallelService.getDetailsCollectJobStatus(jobId)
+
+            assertThat(storedProblemIds).containsExactly("1001", "1002", "1003")
+            assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+            assertThat(status?.processedCount).isEqualTo(3)
+            assertThat(status?.successCount).isEqualTo(3)
+            assertThat(status?.lastCheckpointId).isEqualTo("1003")
+            verify(exactly = 3) { pacer.pauseDetails() }
+        } finally {
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
+    @DisplayName("병렬 상세 조회 중 한 건이 실패해도 실패 ID를 남기고 연속 체크포인트를 완료한다")
+    fun `parallel detail fetch records failure without breaking contiguous progress`() {
+        val problems = listOf("1001", "1002", "1003").map(::sampleProblem)
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 2)
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails(any()) } answers {
+                val problemId = firstArg<String>()
+                if (problemId == "1002") {
+                    error("fixture crawl failure")
+                }
+                sampleDetails(descriptionHtml = "<p>$problemId</p>")
+            }
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                sampleProblem(firstArg())
+            }
+            val parallelService = createService(
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 2)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            val status = parallelService.getDetailsCollectJobStatus(jobId)
+
+            assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+            assertThat(status?.processedCount).isEqualTo(3)
+            assertThat(status?.successCount).isEqualTo(2)
+            assertThat(status?.failCount).isEqualTo(1)
+            assertThat(status?.lastCheckpointId).isEqualTo("1003")
+            assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty())
+                .containsExactly("1002")
+            verify(exactly = 0) { problemRepository.updateDetails("1002", any()) }
+        } finally {
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
+    @DisplayName("병렬 상세 조회가 interrupt되면 항목 실패로 소비하지 않고 작업을 중단한다")
+    fun `parallel detail interruption stops the job without advancing progress`() {
+        val problems = listOf("1001", "1002").map(::sampleProblem)
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 2)
+        val jobExecutor = Executors.newSingleThreadExecutor()
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails("1001") } throws
+                InterruptedException("crawler interrupted")
+            every { bojCrawler.crawlProblemDetails("1002") } returns sampleDetails()
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                sampleProblem(firstArg())
+            }
+            val parallelService = createService(
+                taskExecutor = jobExecutor,
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 2)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            jobExecutor.shutdown()
+            assertThat(jobExecutor.awaitTermination(2, TimeUnit.SECONDS)).isTrue()
+            val status = parallelService.getDetailsCollectJobStatus(jobId)
+
+            assertThat(status?.status).isEqualTo(JobStatus.FAILED)
+            assertThat(status?.processedCount).isZero()
+            assertThat(status?.successCount).isZero()
+            assertThat(status?.failCount).isZero()
+            assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).isEmpty()
+            verify(exactly = 0) { problemRepository.updateDetails(any(), any()) }
+        } finally {
+            jobExecutor.shutdownNow()
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
+    @DisplayName("병렬 상세 작업을 취소하면 완료 대기 결과를 저장하지 않고 남은 창을 취소한다")
+    fun `parallel detail cancellation prevents buffered results from being stored`() {
+        val problems = (1001..1005).map { sampleProblem(it.toString()) }
+        val firstWindowStarted = CountDownLatch(3)
+        val releaseFirstTarget = CountDownLatch(1)
+        val neverRelease = CountDownLatch(1)
+        val crawlerExecutor = parallelCrawlerExecutor(maxConcurrency = 3)
+        val jobExecutor = Executors.newSingleThreadExecutor()
+
+        try {
+            every { problemRepository.findByDescriptionHtmlIsNull() } returns problems
+            every { bojCrawler.crawlProblemDetails(any()) } answers {
+                val problemId = firstArg<String>()
+                firstWindowStarted.countDown()
+                if (problemId == "1001") {
+                    check(releaseFirstTarget.await(1, TimeUnit.SECONDS))
+                    sampleDetails()
+                } else {
+                    neverRelease.await()
+                    sampleDetails()
+                }
+            }
+            every { problemRepository.updateDetails(any(), any()) } answers {
+                sampleProblem(firstArg())
+            }
+            val parallelService = createService(
+                taskExecutor = jobExecutor,
+                parallelProblemDetailsFetcher = parallelFetcher(crawlerExecutor, 3)
+            )
+
+            val jobId = parallelService.collectDetailsBatchAsync("admin", "127.0.0.1")
+            assertThat(firstWindowStarted.await(1, TimeUnit.SECONDS)).isTrue()
+
+            val cancelled = parallelService.cancelJob(jobId, "admin", "127.0.0.1")
+            releaseFirstTarget.countDown()
+            jobExecutor.shutdown()
+
+            assertThat(jobExecutor.awaitTermination(2, TimeUnit.SECONDS)).isTrue()
+            assertThat(cancelled.status).isEqualTo(JobStatus.CANCELLED)
+            assertThat(parallelService.getDetailsCollectJobStatus(jobId)?.status)
+                .isEqualTo(JobStatus.CANCELLED)
+            verify(exactly = 0) { problemRepository.updateDetails(any(), any()) }
+            verify(exactly = 0) { bojCrawler.crawlProblemDetails("1004") }
+            verify(exactly = 0) { bojCrawler.crawlProblemDetails("1005") }
+        } finally {
+            releaseFirstTarget.countDown()
+            jobExecutor.shutdownNow()
+            crawlerExecutor.shutdown()
+        }
+    }
+
+    @Test
+    @DisplayName("언어 수집은 언어 필드만 부분 갱신한다")
+    fun `language collection updates only language`() {
+        val problem = sampleProblem("1003", title = "English problem title").copy(language = "ko")
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { problemRepository.updateLanguage(problem.id.value, "en") } returns true
+
+        val jobId = service.updateLanguageBatchAsync("admin", "127.0.0.1")
+        val status = service.getLanguageUpdateJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isEqualTo(1)
+        verify(exactly = 1) { problemRepository.updateLanguage(problem.id.value, "en") }
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("언어 수집 중 문제가 삭제되면 실패 건수로 기록한다")
+    fun `language collection counts a deleted target as failure`() {
+        val problem = sampleProblem("1005", title = "English problem title").copy(language = "ko")
+        every { problemRepository.findAll() } returns listOf(problem)
+        every { problemRepository.updateLanguage(problem.id.value, "en") } returns false
+
+        val jobId = service.updateLanguageBatchAsync("admin", "127.0.0.1")
+        val status = service.getLanguageUpdateJobStatus(jobId)
+
+        assertThat(status?.status).isEqualTo(JobStatus.COMPLETED)
+        assertThat(status?.successCount).isZero()
+        assertThat(status?.failCount).isEqualTo(1)
+        assertThat(failureStore["$JOB_FAILURE_KEY_PREFIX$jobId"].orEmpty()).containsExactly(problem.id.value)
+        verify(exactly = 0) { problemRepository.save(any<Problem>()) }
+    }
+
+    @Test
+    @DisplayName("작업 지표는 기간 안의 작업만 집계하고 평균 소요 시간, 실패율, 상위 오류 코드를 계산한다")
+    fun `job metrics aggregate only jobs in window`() {
+        val now = Instant.now().epochSecond
+        seedJob(
+            sampleJob("job-completed").copy(
+                status = JobStatus.COMPLETED,
+                queuedAt = now - 100,
+                startedAt = now - 90,
+                completedAt = now - 30,
+                totalCount = 10,
+                processedCount = 10,
+                successCount = 8,
+                failCount = 2
+            )
+        )
+        seedJob(
+            sampleJob("job-failed").copy(
+                status = JobStatus.FAILED,
+                queuedAt = now - 60,
+                startedAt = now - 50,
+                completedAt = now - 10,
+                totalCount = 0,
+                errorCode = "WORKER_UNAVAILABLE"
+            )
+        )
+        seedJob(
+            sampleJob("job-cancelled").copy(
+                status = JobStatus.CANCELLED,
+                queuedAt = now - 40,
+                errorCode = "WORKER_UNAVAILABLE"
+            )
+        )
+        seedJob(
+            sampleJob("job-pending").copy(
+                queuedAt = now - 20,
+                totalCount = 0
+            )
+        )
+        seedJob(
+            sampleJob("job-clock-skew").copy(
+                status = JobStatus.RUNNING,
+                queuedAt = now - 15,
+                startedAt = now - 5,
+                completedAt = now - 20,
+                totalCount = 4,
+                processedCount = 1,
+                failCount = 1,
+                errorCode = "SOLVED_AC_ERROR"
+            )
+        )
+        seedJob(
+            sampleJob("job-two-days-ago").copy(
+                status = JobStatus.COMPLETED,
+                queuedAt = now - Duration.ofDays(2).seconds,
+                startedAt = now - Duration.ofDays(2).seconds,
+                completedAt = now - Duration.ofDays(2).seconds + 1000
+            )
+        )
+
+        val daily = service.getJobMetrics(JobMetricsWindow.DAY)
+        val weekly = service.getJobMetrics(JobMetricsWindow.WEEK)
+
+        assertThat(daily.window).isEqualTo(JobMetricsWindow.DAY)
+        assertThat(daily.totalJobs).isEqualTo(5)
+        assertThat(daily.completedJobs).isEqualTo(1)
+        assertThat(daily.failedJobs).isEqualTo(1)
+        assertThat(daily.cancelledJobs).isEqualTo(1)
+        assertThat(daily.averageDurationSeconds).isEqualTo(50)
+        assertThat(daily.averageFailureRate).isCloseTo(0.29, within(1e-9))
+        assertThat(daily.topErrorCodes).containsExactly(
+            JobErrorCodeMetric("WORKER_UNAVAILABLE", 2),
+            JobErrorCodeMetric("SOLVED_AC_ERROR", 1)
+        )
+        assertThat(weekly.totalJobs).isEqualTo(6)
+        assertThat(weekly.completedJobs).isEqualTo(2)
+        assertThat(weekly.averageDurationSeconds).isEqualTo((60 + 40 + 1000) / 3L)
+    }
+
+    @Test
+    @DisplayName("작업이 없으면 작업 지표는 0으로 채워진다")
+    fun `job metrics are zero without jobs`() {
+        val metrics = service.getJobMetrics(JobMetricsWindow.MONTH)
+
+        assertThat(metrics).isEqualTo(
+            JobMetricsResponse(
+                window = JobMetricsWindow.MONTH,
+                totalJobs = 0,
+                completedJobs = 0,
+                failedJobs = 0,
+                cancelledJobs = 0,
+                averageDurationSeconds = 0,
+                averageFailureRate = 0.0,
+                topErrorCodes = emptyList()
+            )
+        )
+    }
+
+    @Test
+    @DisplayName("작업 감사 목록은 타입과 상태로 필터링한 작업을 감사 응답으로 변환한다")
+    fun `job audit filters jobs and maps audit fields`() {
+        val failedDetails = sampleJob("job-details-failed").copy(
+            jobType = ProblemJobType.COLLECT_DETAILS,
+            status = JobStatus.FAILED,
+            queuedAt = 1_700_000_300,
+            startedAt = 1_700_000_301,
+            completedAt = 1_700_000_302,
+            successCount = 3,
+            failCount = 1,
+            errorCode = "CRAWLER_ERROR",
+            errorMessage = "crawler failed",
+            createdBy = "auditor"
+        )
+        seedJob(failedDetails)
+        seedJob(sampleJob("job-details-completed").copy(
+            jobType = ProblemJobType.COLLECT_DETAILS,
+            status = JobStatus.COMPLETED,
+            queuedAt = 1_700_000_200
+        ))
+        seedJob(sampleJob("job-metadata-failed").copy(
+            status = JobStatus.FAILED,
+            queuedAt = 1_700_000_100
+        ))
+
+        val result = service.getJobAudit(
+            type = ProblemJobType.COLLECT_DETAILS,
+            status = JobStatus.FAILED,
+            from = null,
+            to = null,
+            page = 1,
+            size = 10
+        )
+
+        assertThat(result.content).containsExactly(
+            JobAuditResponse(
+                jobId = "job-details-failed",
+                jobType = ProblemJobType.COLLECT_DETAILS,
+                status = JobStatus.FAILED,
+                createdBy = "auditor",
+                queuedAt = 1_700_000_300,
+                startedAt = 1_700_000_301,
+                completedAt = 1_700_000_302,
+                range = JobRange(1, 10),
+                totalCount = 10,
+                successCount = 3,
+                failCount = 1,
+                errorCode = "CRAWLER_ERROR",
+                errorMessage = "crawler failed"
+            )
+        )
+        assertThat(result.totalElements).isEqualTo(1)
+        assertThat(result.totalPages).isEqualTo(1)
+        assertThat(result.hasNext).isFalse()
+        assertThat(result.hasPrevious).isFalse()
+    }
+
+    @Test
+    @DisplayName("작업 목록은 queuedAt 범위로 필터링하고 범위를 넘는 페이지는 빈 목록을 반환한다")
+    fun `job list filters by queued range and handles overflow page`() {
+        seedJob(sampleJob("job-1").copy(queuedAt = 1_700_000_001))
+        seedJob(sampleJob("job-2").copy(queuedAt = 1_700_000_002))
+        seedJob(sampleJob("job-3").copy(queuedAt = 1_700_000_003))
+
+        val ranged = service.getJobs(null, null, 1_700_000_002, 1_700_000_003, 1, 10)
+        val overflow = service.getJobs(null, null, null, null, 3, 2)
+
+        assertThat(ranged.content.map(JobStatusUnifiedResponse::jobId)).containsExactly("job-3", "job-2")
+        assertThat(overflow.content).isEmpty()
+        assertThat(overflow.totalElements).isEqualTo(3)
+        assertThat(overflow.hasPrevious).isTrue()
+    }
+
+    @Test
+    @DisplayName("작업 목록 조회 요청 값이 잘못되면 예외가 발생한다")
+    fun `job list rejects invalid paging and range`() {
+        val invalidPage = assertThrows<BusinessException> { service.getJobs(null, null, null, null, 0, 10) }
+        val invalidSize = assertThrows<BusinessException> { service.getJobs(null, null, null, null, 1, 0) }
+        val invalidRange = assertThrows<BusinessException> { service.getJobs(null, null, 10, 5, 1, 10) }
+
+        assertThat(invalidPage.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        assertThat(invalidSize.errorCode).isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+        assertThat(invalidRange.errorCode).isEqualTo(ErrorCode.INVALID_RANGE)
+    }
+
+    @Test
+    @DisplayName("상태가 사라진 index 항목은 목록 조회 시 정리된다")
+    fun `job list removes stale index entries`() {
+        seedJob(sampleJob("job-alive"))
+        zsetStore.getValue(JOB_INDEX_KEY)["job-ghost"] = 1_700_000_010.0
+        val deletedKeys = slot<Collection<String>>()
+        every { redisTemplate.delete(capture(deletedKeys)) } answers { deletedKeys.captured.size.toLong() }
+
+        val result = service.getJobs(null, null, null, null, 1, 10)
+
+        assertThat(result.content.map(JobStatusUnifiedResponse::jobId)).containsExactly("job-alive")
+        assertThat(zsetStore.getValue(JOB_INDEX_KEY)).containsOnlyKeys("job-alive")
+        assertThat(deletedKeys.captured).containsExactlyInAnyOrder(
+            "${JOB_FAILURE_KEY_PREFIX}job-ghost",
+            "${JOB_TARGET_KEY_PREFIX}job-ghost",
+            "${JOB_LEASE_KEY_PREFIX}job-ghost"
+        )
+    }
+
+    @Test
+    @DisplayName("시작 단계 orphan 복구는 진행 중이던 작업만 WORKER_UNAVAILABLE로 실패 처리한다")
+    fun `startup orphan recovery fails only active jobs`() {
+        val recoveringService = createService(
+            recoveryState = ProblemCollectorRecoveryState(
+                ProblemCollectorRecoveryProperties(failOrphanedJobsOnStartup = true)
+            )
+        )
+        seedJob(sampleJob("job-pending").copy(queuedAt = 1_700_000_001))
+        seedJob(sampleJob("job-running").copy(
+            status = JobStatus.RUNNING,
+            queuedAt = 1_700_000_002,
+            startedAt = 1_700_000_002
+        ))
+        val completed = sampleJob("job-completed").copy(
+            status = JobStatus.COMPLETED,
+            queuedAt = 1_700_000_003,
+            completedAt = 1_700_000_004
+        )
+        seedJob(completed)
+        zsetStore.getValue(JOB_INDEX_KEY)["job-missing"] = 1_700_000_005.0
+
+        val failedCount = recoveringService.failOrphanedJobsDuringStartup()
+
+        assertThat(failedCount).isEqualTo(2)
+        listOf("job-pending", "job-running").forEach { jobId ->
+            val stored = objectMapper.readValue(
+                requireNotNull(valueStore["$JOB_KEY_PREFIX$jobId"]),
+                JobStatusUnifiedResponse::class.java
+            )
+            assertThat(stored.status).isEqualTo(JobStatus.FAILED)
+            assertThat(stored.errorCode).isEqualTo(ErrorCode.WORKER_UNAVAILABLE.code)
+            assertThat(stored.errorMessage).contains("서버 재시작")
+            assertThat(stored.completedAt).isNotNull()
+        }
+        assertThat(
+            objectMapper.readValue(
+                requireNotNull(valueStore["${JOB_KEY_PREFIX}job-completed"]),
+                JobStatusUnifiedResponse::class.java
+            )
+        ).isEqualTo(completed)
+    }
+
+    @Test
+    @DisplayName("작업 생성 gate가 열린 뒤나 worker lease 사용 중에는 시작 orphan 복구를 거부한다")
+    fun `startup orphan recovery is guarded`() {
+        val leaseService = createService(
+            recoveryState = ProblemCollectorRecoveryState(
+                ProblemCollectorRecoveryProperties(failOrphanedJobsOnStartup = true)
+            ),
+            workerLeaseProperties = ProblemCollectorWorkerLeaseProperties(enabled = true)
+        )
+
+        assertThrows<IllegalStateException> { service.failOrphanedJobsDuringStartup() }
+        assertThrows<IllegalStateException> { leaseService.failOrphanedJobsDuringStartup() }
+    }
+
+    @Test
+    @DisplayName("worker lease가 꺼져 있으면 복구 가능 작업을 제출하지 않는다")
+    fun `recoverable job submission is disabled without worker lease`() {
+        seedJob(sampleJob("job-pending"))
+
+        assertThat(service.submitRecoverableJobs()).isZero()
+        verify(exactly = 0) { valueOps.multiGet(any()) }
+    }
+
+    private fun createService(
+        taskExecutor: Executor? = null,
+        recoveryState: ProblemCollectorRecoveryState =
+            ProblemCollectorRecoveryState(ProblemCollectorRecoveryProperties()),
+        parallelProblemDetailsFetcher: ParallelProblemDetailsFetcher? = null,
+        workerLeaseProperties: ProblemCollectorWorkerLeaseProperties = ProblemCollectorWorkerLeaseProperties()
+    ): ProblemCollectorService {
+        return ProblemCollectorService(
+            solvedAcClient = solvedAcClient,
+            problemRepository = problemRepository,
+            bojCrawler = bojCrawler,
+            redisTemplate = redisTemplate,
+            objectMapper = objectMapper,
+            adminAuditService = adminAuditService,
+            taskExecutor = taskExecutor,
+            pacer = pacer,
+            recoveryState = recoveryState,
+            parallelProblemDetailsFetcher = parallelProblemDetailsFetcher,
+            workerLeaseProperties = workerLeaseProperties
+        )
+    }
+
+    private fun parallelCrawlerExecutor(maxConcurrency: Int): ThreadPoolTaskExecutor =
+        ThreadPoolTaskExecutor().apply {
+            corePoolSize = maxConcurrency
+            maxPoolSize = maxConcurrency
+            queueCapacity = maxConcurrency * 2
+            setThreadNamePrefix("problem-service-test-")
+            initialize()
+        }
+
+    private fun parallelFetcher(
+        executor: ThreadPoolTaskExecutor,
+        maxConcurrency: Int
+    ): ParallelProblemDetailsFetcher =
+        ParallelProblemDetailsFetcher(
+            problemCrawlerExecutor = executor,
+            properties = ProblemCollectorParallelProperties(
+                enabled = true,
+                maxConcurrency = maxConcurrency
+            )
+        )
+
+    private fun sampleProblem(id: String, title: String = "기존 문제"): Problem {
+        return Problem(
+            id = ProblemId(id),
+            title = title,
+            category = ProblemCategory.IMPLEMENTATION,
+            difficulty = Tier.BRONZE,
+            level = 3,
+            url = "https://www.acmicpc.net/problem/$id"
+        )
+    }
+
+    private fun sampleDetails(
+        descriptionHtml: String = "<p>상세 설명</p>"
+    ): ProblemDetails {
+        return ProblemDetails(
+            descriptionHtml = descriptionHtml,
+            inputDescriptionHtml = "<p>입력 설명</p>",
+            outputDescriptionHtml = "<p>출력 설명</p>",
+            sampleInputs = listOf("1"),
+            sampleOutputs = listOf("2")
+        )
+    }
+
+    private fun seedJob(job: JobStatusUnifiedResponse) {
+        valueStore["$JOB_KEY_PREFIX${job.jobId}"] = objectMapper.writeValueAsString(job)
+        val set = zsetStore.computeIfAbsent(JOB_INDEX_KEY) { mutableMapOf() }
+        set[job.jobId] = job.queuedAt.toDouble()
+    }
+
+    private fun seedManifestJob(
+        job: JobStatusUnifiedResponse,
+        manifest: ProblemJobTargetManifest
+    ) {
+        val manifestJson = objectMapper.writeValueAsString(manifest)
+        seedJob(
+            job.copy(
+                targetManifest = ProblemJobTargetManifestReference(
+                    schemaVersion = manifest.version,
+                    sha256 = sha256(manifestJson)
+                )
+            )
+        )
+        valueStore["$JOB_TARGET_KEY_PREFIX${job.jobId}"] = manifestJson
+    }
+
+    private fun sha256(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(StandardCharsets.UTF_8))
+        return HexFormat.of().formatHex(digest)
+    }
+
+    private fun sampleJob(jobId: String): JobStatusUnifiedResponse {
+        return JobStatusUnifiedResponse(
+            jobId = jobId,
+            jobType = ProblemJobType.COLLECT_METADATA,
+            status = JobStatus.PENDING,
+            queuedAt = 1700000000,
+            startedAt = null,
+            lastHeartbeatAt = 1700000000,
+            completedAt = null,
+            totalCount = 10,
+            processedCount = 0,
+            successCount = 0,
+            failCount = 0,
+            progressPercentage = 0,
+            estimatedRemainingSeconds = null,
+            queuePosition = null,
+            range = JobRange(1, 10),
+            lastCheckpointId = null,
+            errorCode = null,
+            errorMessage = null,
+            createdBy = "admin"
+        )
+    }
+}

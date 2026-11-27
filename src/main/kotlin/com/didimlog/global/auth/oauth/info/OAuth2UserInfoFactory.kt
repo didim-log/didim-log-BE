@@ -1,6 +1,6 @@
 package com.didimlog.global.auth.oauth.info
 
-import com.didimlog.domain.enums.Provider
+import com.didimlog.student.domain.Provider
 import org.springframework.security.oauth2.core.user.OAuth2User
 
 /**

@@ -106,7 +106,7 @@ main() {
   CRAWLER_BASELINE_HARNESS_SHA256="$(
     cd "$ROOT_DIR"
     shasum -a 256 \
-      src/integrationTest/kotlin/com/didimlog/application/problem/collector/ProblemCollectorBaselineIntegrationTest.kt \
+      src/integrationTest/kotlin/com/didimlog/problem/application/collector/ProblemCollectorBaselineIntegrationTest.kt \
       src/main/kotlin/com/didimlog/portfolio/PortfolioFixtureClients.kt \
       src/main/resources/application-portfolio-fixture.yaml \
       src/test/resources/application-test.yml \
@@ -162,7 +162,7 @@ main() {
     export CRAWLER_BASELINE_OUTPUT_DIR="$OUTPUT_DIR/$iteration_name"
 
     "$ROOT_DIR/gradlew" integrationTest \
-      --tests com.didimlog.application.problem.collector.ProblemCollectorBaselineIntegrationTest \
+      --tests com.didimlog.problem.application.collector.ProblemCollectorBaselineIntegrationTest \
       --rerun-tasks
 
     test -f "$CRAWLER_BASELINE_OUTPUT_DIR/metadata-cold.json"

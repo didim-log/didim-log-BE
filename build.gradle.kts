@@ -24,29 +24,22 @@ val integrationTest by sourceSets.creating {
 }
 
 val jacocoCoreCoverageIncludes = listOf(
-	"com/didimlog/application/admin/**",
-	"com/didimlog/application/auth/**",
-	"com/didimlog/application/dashboard/**",
-	"com/didimlog/application/feedback/**",
-	"com/didimlog/application/log/**",
-	"com/didimlog/application/member/**",
-	"com/didimlog/application/notice/**",
-	"com/didimlog/application/problem/**",
-	"com/didimlog/application/quote/**",
-	"com/didimlog/application/ranking/**",
-	"com/didimlog/application/recommendation/**",
-	"com/didimlog/application/retrospective/**",
-	"com/didimlog/application/storage/**",
-	"com/didimlog/application/student/**",
-	"com/didimlog/application/study/**",
-	"com/didimlog/application/utils/**",
-	"com/didimlog/domain/*.class",
-	"com/didimlog/domain/*\\$*.class",
-	"com/didimlog/domain/enums/**",
-	"com/didimlog/domain/repository/**",
-	"com/didimlog/domain/template/**",
-	"com/didimlog/domain/validation/**",
-	"com/didimlog/domain/valueobject/**",
+	"com/didimlog/admin/application/**",
+	"com/didimlog/auth/application/**",
+	"com/didimlog/dashboard/application/**",
+	"com/didimlog/feedback/application/**",
+	"com/didimlog/log/application/**",
+	"com/didimlog/member/application/**",
+	"com/didimlog/notice/application/**",
+	"com/didimlog/problem/application/**",
+	"com/didimlog/quote/application/**",
+	"com/didimlog/ranking/application/**",
+	"com/didimlog/recommendation/application/**",
+	"com/didimlog/retrospective/application/**",
+	"com/didimlog/storage/application/**",
+	"com/didimlog/student/application/**",
+	"com/didimlog/study/application/**",
+	"com/didimlog/*/domain/**",
 	"com/didimlog/global/auth/**",
 	"com/didimlog/global/config/**",
 	"com/didimlog/global/config/security/**",
@@ -55,7 +48,7 @@ val jacocoCoreCoverageIncludes = listOf(
 )
 
 val jacocoCoreCoverageExcludes = listOf(
-	"com/didimlog/application/problem/collector/**",
+	"com/didimlog/problem/application/collector/**",
 	"**/*Test*"
 )
 

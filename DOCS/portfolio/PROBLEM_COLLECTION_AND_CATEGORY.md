@@ -145,12 +145,12 @@ sorted index는 작업을 만들 때 한 번만 기록한다.
 
 주요 구현 파일:
 
-- `ui/controller/ProblemCollectorController.kt`
-- `application/problem/collector/ProblemCollectorService.kt`
+- `problem/api/ProblemCollectorController.kt`
+- `problem/application/collector/ProblemCollectorService.kt`
 - `infra/solvedac/ProblemCategoryMapper.kt`
-- `application/recommendation/RecommendationService.kt`
-- `application/utils/AlgorithmHierarchyUtils.kt`
-- `domain/repository/ProblemRepositoryImpl.kt`
+- `recommendation/application/RecommendationService.kt`
+- `problem/application/category/AlgorithmHierarchyUtils.kt`
+- `problem/domain/repository/ProblemRepositoryImpl.kt`
 
 ## 데모 fixture 경계
 

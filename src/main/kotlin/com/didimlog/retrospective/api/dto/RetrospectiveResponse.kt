@@ -1,0 +1,47 @@
+package com.didimlog.retrospective.api.dto
+
+import com.didimlog.retrospective.domain.Retrospective
+import java.time.LocalDateTime
+
+/**
+ * 회고 응답 DTO
+ */
+data class RetrospectiveResponse(
+    val id: String, // Retrospective 엔티티의 DB ID (@Id 필드)
+    val studentId: String, // Student 엔티티의 DB ID (@Id 필드)
+    val isOwner: Boolean,
+    val problemId: String,
+    val problemTitle: String?,
+    val content: String,
+    val summary: String?, // 한 줄 요약
+    val createdAt: LocalDateTime,
+    val isBookmarked: Boolean,
+    val mainCategory: String?,
+    val solutionResult: String?, // 풀이 결과 (SUCCESS/FAIL)
+    val solvedCategory: String?, // 사용자가 선택한 풀이 전략 태그
+    val solveTime: String? // 풀이 소요 시간
+) {
+    companion object {
+        fun from(
+            retrospective: Retrospective,
+            requesterStudentId: String? = null,
+            problemTitle: String? = null
+        ): RetrospectiveResponse {
+            return RetrospectiveResponse(
+                id = retrospective.id ?: "",
+                studentId = retrospective.studentId,
+                isOwner = requesterStudentId != null && retrospective.studentId == requesterStudentId,
+                problemId = retrospective.problemId,
+                problemTitle = problemTitle,
+                content = retrospective.content,
+                summary = retrospective.summary,
+                createdAt = retrospective.createdAt,
+                isBookmarked = retrospective.isBookmarked,
+                mainCategory = retrospective.mainCategory?.name,
+                solutionResult = retrospective.solutionResult?.name,
+                solvedCategory = retrospective.solvedCategory,
+                solveTime = retrospective.solveTime
+            )
+        }
+    }
+}

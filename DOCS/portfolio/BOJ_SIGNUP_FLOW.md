@@ -61,12 +61,12 @@ sequenceDiagram
 
 주요 구현 파일:
 
-- `ui/controller/AuthController.kt`
-- `application/auth/boj/BojOwnershipVerificationService.kt`
-- `infra/boj/JsoupBojProfileStatusMessageClient.kt`
-- `infra/boj/RedisBojVerificationCodeStore.kt`
-- `application/auth/AuthService.kt`
-- `domain/Student.kt`
+- `auth/api/AuthController.kt`
+- `auth/application/boj/BojOwnershipVerificationService.kt`
+- `auth/infra/boj/JsoupBojProfileStatusMessageClient.kt`
+- `auth/infra/boj/RedisBojVerificationCodeStore.kt`
+- `auth/application/AuthService.kt`
+- `student/domain/Student.kt`
 
 ## 데모 fixture 경계
 

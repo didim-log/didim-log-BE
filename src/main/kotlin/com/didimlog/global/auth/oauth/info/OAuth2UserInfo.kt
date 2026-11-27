@@ -1,6 +1,6 @@
 package com.didimlog.global.auth.oauth.info
 
-import com.didimlog.domain.enums.Provider
+import com.didimlog.student.domain.Provider
 
 /**
  * OAuth2 소셜 로그인 제공자별 사용자 정보를 표준화하는 인터페이스

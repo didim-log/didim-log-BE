@@ -1,6 +1,6 @@
 package com.didimlog.infra.solvedac
 
-import com.didimlog.domain.enums.ProblemCategory
+import com.didimlog.problem.domain.ProblemCategory
 
 /**
  * Solved.ac API 응답의 태그를 ProblemCategory Enum으로 변환하는 유틸리티

@@ -90,9 +90,9 @@ main() {
   export SPRING_DATA_MONGODB_URI="mongodb://127.0.0.1:$MONGO_PORT/didimlog-admin-query-baseline"
 
   "$ROOT_DIR/gradlew" integrationTest \
-    --tests com.didimlog.application.admin.query.AdminUserQueryPerformanceIntegrationTest \
-    --tests com.didimlog.application.admin.query.AdminUserDbPaginationPerformanceIntegrationTest \
-    --tests com.didimlog.domain.repository.RetrospectiveRankingIntegrationTest \
+    --tests com.didimlog.admin.application.query.AdminUserQueryPerformanceIntegrationTest \
+    --tests com.didimlog.admin.application.query.AdminUserDbPaginationPerformanceIntegrationTest \
+    --tests com.didimlog.retrospective.domain.repository.RetrospectiveRankingIntegrationTest \
     --rerun-tasks \
     --no-daemon
 

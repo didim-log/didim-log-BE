@@ -1,6 +1,6 @@
 package com.didimlog.infra.solvedac
 
-import com.didimlog.domain.valueobject.BojId
+import com.didimlog.student.domain.BojId
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import org.slf4j.LoggerFactory

@@ -1,6 +1,6 @@
 package com.didimlog.global.util
 
-import com.didimlog.domain.enums.PrimaryLanguage
+import com.didimlog.student.domain.PrimaryLanguage
 
 /**
  * 코드에서 프로그래밍 언어를 자동 감지하는 유틸리티

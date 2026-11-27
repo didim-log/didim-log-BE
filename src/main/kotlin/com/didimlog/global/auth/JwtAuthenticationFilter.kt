@@ -1,7 +1,7 @@
 package com.didimlog.global.auth
 
-import com.didimlog.domain.enums.Role
-import com.didimlog.domain.repository.StudentRepository
+import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.repository.StudentRepository
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse

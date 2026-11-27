@@ -1,8 +1,8 @@
 package com.didimlog.global.auth.oauth.info
 
-import com.didimlog.domain.enums.Provider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
+import com.didimlog.student.domain.Provider
 
 /**
  * Google OAuth2 사용자 정보를 파싱하는 구현체

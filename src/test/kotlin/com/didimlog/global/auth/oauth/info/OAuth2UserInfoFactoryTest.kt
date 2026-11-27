@@ -1,7 +1,7 @@
 package com.didimlog.global.auth.oauth.info
 
-import com.didimlog.domain.enums.Provider
 import com.didimlog.global.exception.BusinessException
+import com.didimlog.student.domain.Provider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.DisplayName
