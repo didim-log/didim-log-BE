@@ -1,5 +1,6 @@
-package com.didimlog.log.application
+package com.didimlog.log.infra
 
+import com.didimlog.log.application.AiReviewLock
 import com.didimlog.log.domain.Log
 import com.didimlog.log.domain.AiReviewStatus
 import com.didimlog.log.domain.AiReview

@@ -7,6 +7,7 @@ import com.didimlog.log.domain.LogCode
 import com.didimlog.log.domain.LogContent
 import com.didimlog.log.domain.LogTitle
 import com.didimlog.global.config.MongoConfig
+import com.didimlog.log.infra.MongoLogAiReviewLockRepository
 import java.time.LocalDateTime
 import java.util.UUID
 import org.bson.Document

@@ -1,5 +1,6 @@
-package com.didimlog.log.application
+package com.didimlog.log.infra
 
+import com.didimlog.log.application.LogFeedbackRepository
 import com.didimlog.log.domain.AiFeedbackStatus
 import com.didimlog.log.domain.Log
 import org.springframework.data.mongodb.core.FindAndModifyOptions

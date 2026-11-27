@@ -2,6 +2,7 @@ package com.didimlog.log.application
 
 import com.didimlog.auth.application.ImmediateCredentialSessionCoordinator
 import com.didimlog.log.domain.Log
+import com.didimlog.log.infra.MongoLogFeedbackRepository
 import com.didimlog.student.domain.Student
 import com.didimlog.log.domain.AiFeedbackStatus
 import com.didimlog.log.domain.AiReviewStatus
