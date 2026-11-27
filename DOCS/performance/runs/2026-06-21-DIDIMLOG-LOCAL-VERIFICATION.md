@@ -1,50 +1,48 @@
-# DidimLog Local Performance Verification - 2026-06-21
+# 로컬 동시성·요청 제한 검증 기록 (2026-06-21)
 
-## Scope
+같은 로그에 AI 리뷰를 50건 동시에 요청해도 Gemini 호출과 저장이 1건씩만 일어나는지, 인증 요청 제한이 한도대로 막는지를 로컬에서 확인한 기록입니다. 한 번 측정한 결과라 변경 전 값은 없고, 기대 동작과 실제 결과를 비교합니다.
 
-- Local synthetic verification.
-- 운영 처리량 또는 최대 성능 주장이 아니다.
-- Gemini는 Node local mock으로 격리했고 실제 Gemini를 호출하지 않았다.
-- Solved.ac, OAuth Provider, SMTP 서버를 호출하지 않았다.
-- 개선율과 AI 비용 절감률은 계산하지 않았다.
+## 결과 요약
 
-## Environment
+| 항목 | 기대 | 결과 |
+| --- | --- | --- |
+| 같은 로그 50건 동시 AI 리뷰 (10회) | 회차마다 Gemini 호출 1회, 리뷰 1건 | 10회 모두 호출 1회·리뷰 1건·중복 0건, 최종 `COMPLETED`, 잠금 잔존 0건 |
+| AI 리뷰 실패 뒤 재요청 | 실패 상태로 잠금 해제, 재요청 시 완료 | 첫 호출 실패 → 잠금 해제 → 재요청 완료, Gemini 호출 2회·리뷰 1건 |
+| 회원가입 요청 제한 | 5건 허용 | 허용 5건, 429 2건 |
+| 로그인 요청 제한 | 10건 허용 | 허용 10건, 429 2건 |
+| 비밀번호 재설정 요청 제한 | 3건 허용 | 허용 3건, 429 2건 |
+| 조회 부하 (10 VUs, 1분) | 오류 없음 | 5,431건, 실패 0건, p95 13.894ms |
 
-| Item | Value |
+429 응답에는 모두 미래 시각의 해제 시각(ISO-8601)이 들어 있었습니다.
+
+## 측정 조건
+
+| 항목 | 값 |
 | --- | --- |
-| Measurement Target SHA | `677069bb5b31fb87ba9b4d8ee4c72f4d7df375bf` |
-| Git Dirty | `false` |
-| k6 Version | `v2.0.0` official binary, `commit/8c3be52cc1` |
-| App JVM | Java 17.0.14 from `bootRun` log |
-| Shell Java | openjdk 21.0.6 |
-| Kotlin Plugin | 1.9.25 |
-| JVM Heap | NOT_CAPTURED |
-| CPU | Apple M5 Pro |
-| Memory | 51,539,607,552 bytes |
-| MongoDB | local `didimlog-performance`, MongoDB 7.0.16 |
-| Redis | local Redis 7.2.5 |
-| Mock Mode | `node` |
-| Mock Gemini Delay | 500 ms |
-| Fixture Count | 100 retrospectives |
+| 실행 | `./gradlew bootRun`, Java 17.0.14, JVM 힙 기록 안 함 |
+| 저장소 | 로컬 MongoDB 7.0.16, Redis 7.2.5 |
+| Gemini | 로컬 Node mock, 응답 지연 500ms |
+| 테스트 데이터 | 회고 100건 |
+| 부하 도구 | k6 v2.0.0 |
+| 장비 | Apple M5 Pro, 메모리 48GiB |
 
-## Commands
+solved.ac, OAuth 제공자, SMTP, 실제 Gemini는 호출하지 않았습니다. 운영 처리량이나 최대 성능이 아니며, 이 기록은 이후 [관리자 회원 조회 최적화](../../refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md)의 변경 전후 비교에는 쓰지 않습니다.
+
+## 조회 부하 상세
+
+| API | 요청 | p50 | p95 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| 대시보드 | 1,668 | 9.48ms | 14.14ms | 15.78ms |
+| 통계 | 1,340 | 9.57ms | 13.46ms | 15.38ms |
+| 회고 목록 | 1,609 | 9.70ms | 14.05ms | 15.90ms |
+| 회고 상세 | 813 | 9.12ms | 13.67ms | 14.84ms |
+| 전체 | 5,431 (초당 90.4건) | 9.52ms | 13.89ms | 15.54ms |
+
+## 확인한 방법
 
 ```bash
-./gradlew clean test
-./gradlew integrationTest
-./gradlew jacocoMergedReport
-bash -n performance/k6/run-local.sh
-bash -n performance/verify/verify_ai_call_count.sh
-node --check performance/mock-external/gemini/node-mock/server.js
-find performance/k6 -name '*.js' -print0 | xargs -0 -n1 node --check
-docker compose -f performance/mock-external/docker-compose.performance.yml config
-k6 inspect performance/k6/smoke.js
-k6 inspect performance/k6/read-workload.js
-k6 inspect performance/k6/ai-review-concurrency.js
-k6 inspect performance/k6/auth-rate-limit.js
 performance/k6/run-local.sh seed
 performance/k6/run-local.sh preflight
-performance/k6/run-local.sh smoke
 performance/k6/run-local.sh read
 AI_CONCURRENCY=50 AI_REPEAT_COUNT=10 performance/k6/run-local.sh ai-review
 performance/k6/run-local.sh ai-retry
@@ -52,77 +50,10 @@ performance/k6/run-local.sh rate-limit
 performance/k6/run-local.sh cleanup
 ```
 
-## Read Workload
+측정 전에 `./gradlew clean test`, `./gradlew integrationTest`, k6 스크립트 문법 검사, compose 설정 검사를 통과했습니다.
 
-| Metric | Value |
-| --- | ---: |
-| VUs | 10 |
-| Duration | 1m |
-| Requests | 5,431 |
-| RPS | 90.40698039769916 |
-| HTTP Failure Rate | 0 |
-| Check Success Rate | 1 |
-| P50 | 9.515 ms |
-| P90 | 13.006 ms |
-| P95 | 13.894 ms |
-| P99 | 15.5371 ms |
+## 남은 한계
 
-| Endpoint | Requests | P50 | P95 | P99 | Success Rate |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Dashboard | 1,668 | 9.48 ms | 14.139 ms | 15.7773 ms | 1 |
-| Statistics | 1,340 | 9.565 ms | 13.4622 ms | 15.37883 ms | 1 |
-| Retrospective List | 1,609 | 9.699 ms | 14.045 ms | 15.90012 ms | 1 |
-| Retrospective Detail | 813 | 9.121 ms | 13.6746 ms | 14.84144 ms | 1 |
-
-## AI Concurrency
-
-| Run | Concurrent Requests | Classified Responses | Gemini Calls | Matching Logs | Final Reviews | Duplicate Reviews | Final Status | Lock Present | Unexpected 5xx | Result |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | --- |
-| 1 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 2 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 3 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 4 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 5 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 6 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 7 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 8 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 9 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-| 10 | 50 | 50 | 1 | 1 | 1 | 0 | COMPLETED | false | 0 | PASS |
-
-## AI Failed Retry
-
-- First call 202: PASS
-- Intermediate FAILED: PASS
-- Intermediate Lock removed: PASS
-- Second call 202: PASS
-- Final COMPLETED: PASS
-- Final cached 200: PASS
-- Gemini Calls: 2
-- Final Reviews: 1
-- Duplicate Reviews: 0
-- Lock Present: false
-
-## Rate Limit
-
-| Endpoint | Allowed | Rejected 429 | Unexpected | Unlock Time | Result |
-| --- | ---: | ---: | ---: | --- | --- |
-| Signup | 5 | 2 | 0 | valid future ISO-8601 checked | PASS |
-| Login | 10 | 2 | 0 | valid future ISO-8601 checked | PASS |
-| Reset Password | 3 | 2 | 0 | valid future ISO-8601 checked | PASS |
-
-## Resume-Ready Evidence
-
-동일 로그에 대한 동시 요청 50건을 10회 반복하고, 모든 회차에서 Gemini 호출 1회, AI Review 최종 저장 1건, 중복 저장 0건, 최종 COMPLETED 상태 및 Lock 잔존 0건을 확인했다.
-
-## Not Executed
-
-- WireMock container runtime measurement: NOT_EXECUTED. Docker Compose config는 검증했지만, 로컬 측정은 Node mock 모드로 수행했다.
-- 운영 환경 또는 staging 부하: NOT_EXECUTED. 운영/원격 fixture seed와 AI 검증은 금지되어 있다.
-
-## README Check
-
-```bash
-git diff HEAD -- README.md
-```
-
-Expected and observed: empty output.
+- WireMock 컨테이너가 아닌 Node mock으로 측정했습니다.
+- JVM 힙을 기록하지 않았고 한 번만 실행해, 변경 전후 비교 기준으로는 쓰지 않습니다.
+- 운영·스테이징 부하는 측정하지 않았습니다.

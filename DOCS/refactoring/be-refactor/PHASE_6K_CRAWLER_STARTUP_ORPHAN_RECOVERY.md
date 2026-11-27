@@ -1,181 +1,86 @@
-# Phase 6K — 문제 수집 재시작 고아 작업 정리
+# 문제 수집 재시작 고아 작업 정리
+
+서버가 수집 도중 재시작되면 실행 주체 없이 "진행 중"으로 남던 작업을, 다음 시작 때 실패로 정리하고 재시도할 수 있게 바꿨습니다.
+
+## 이전과 현재
+
+| 상황 | 이전 | 현재 |
+| --- | --- | --- |
+| 수집 중 서버 재시작 뒤 작업 상태 | `PENDING`·`RUNNING`으로 24시간 남음 | 시작 시 `FAILED`(`WORKER_UNAVAILABLE`)로 정리 |
+| 남은 작업 재시도 | 종료 상태가 아니라 불가 | 기존 재시도 API로 새 작업 생성 |
+| 정리 중 새 수집 요청 | 받음 | 정리가 끝날 때까지 503 |
+| 정리 뒤 늦게 끝난 worker의 완료 덮어쓰기 | 막는 장치 없음 | 0건 |
+| 진행 수치·checkpoint·실패 기록 | - | 그대로 보존 |
 
 ## 문제
 
-문제 수집 작업 상태는 Redis에 24시간 남지만 실제 실행 코드는 BE 프로세스의
-`TaskExecutor`에 등록된 `Runnable`이다. 단일 BE가 작업 중 재시작되면 실행 주체는
-사라지고 Redis에는 `PENDING` 또는 `RUNNING` 상태만 남을 수 있었다.
+작업 상태는 Redis에 24시간 남지만, 실제로 실행하는 코드는 서버 프로세스 안의 `TaskExecutor`에 있습니다. 서버가 하나뿐인 환경에서 작업 중 재시작하면 실행 주체는 사라지고 Redis에는 `PENDING`이나 `RUNNING`만 남았습니다. 이 작업은 스스로 진행되지도 끝나지도 않아서 재시도 API도 쓸 수 없었고, 관리자 화면에는 멈춘 작업으로 남았습니다.
 
-이 상태는 스스로 진행되지 않고 종료 상태도 아니어서 재시도 API도 사용할 수
-없었다. 작업 상태가 만료될 때까지 관리자 화면에는 멈춘 작업으로 남는 경로였다.
+## 바꾼 내용
 
-## 적용 범위
+### 적용 범위
 
-이번 단계는 **단일 BE 인스턴스의 전체 재시작**만 다룬다.
+서버 한 대가 통째로 재시작하는 경우만 다룹니다. 어떤 문제를 처리했는지와 어느 서버가 작업을 가졌는지 저장하지 않은 상태에서 자동으로 이어 실행하면, 이미 처리한 문제를 다시 실행하거나 다른 서버의 정상 작업을 실패로 만들 수 있습니다. 그래서 이어 실행하지 않고 안전하게 끝내는 쪽을 골랐습니다.
 
-- 애플리케이션 기본값은 복구 비활성화다.
-- BE가 하나인 기본 Docker Compose에서만 복구를 명시적으로 활성화한다.
-- 시작 시 이전 `PENDING`·`RUNNING` 작업을 이어서 실행하지 않고 `FAILED`로
-  종료한다.
-- 원본 작업은 다시 `RUNNING`으로 바꾸지 않는다. 관리자가 기존 재시도 API를
-  호출하면 별도 작업을 만든다.
-- 여러 BE 인스턴스나 순차 교체 배포에서는 설정을 켜지 않는다.
+| 위치 | 설정 | 이유 |
+| --- | --- | --- |
+| 애플리케이션 기본값 | 끔 | 서버가 몇 대인지 알 수 없음 |
+| 서버 한 대인 Docker Compose | 켬 | 시작 시 이전 진행 작업 정리 |
+| 서버 여러 대·순차 배포 | 끔 | 다른 서버의 작업 보호 |
 
-정확한 대상 목록과 worker 소유권을 저장하지 않은 상태에서 자동 재개하면 이미
-처리한 문제를 중복 실행하거나 다른 인스턴스의 정상 작업을 실패 처리할 수 있다.
-따라서 이 단계에서는 재개보다 안전한 종료를 선택했다.
+환경 변수는 `PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP`입니다.
 
-## 시작 순서
+### 시작 순서
 
 ```mermaid
 sequenceDiagram
-    participant Boot as "BE 시작"
+    participant Boot as "서버 시작"
     participant Gate as "작업 생성 gate"
     participant Redis as "Redis 작업 상태"
     participant API as "수집 API"
 
-    Boot->>Gate: 복구 활성화 시 닫힌 상태로 생성
-    API->>Gate: 새 작업 생성 확인
+    Boot->>Gate: 닫힌 상태로 생성
+    API->>Gate: 새 작업 생성 요청
     Gate-->>API: 503 WORKER_UNAVAILABLE
-    Boot->>Redis: ZREVRANGE 작업 index
-    loop index의 각 작업
-        Boot->>Redis: 상태 GET
+    Boot->>Redis: 작업 목록 읽기
+    loop 각 작업
         alt PENDING 또는 RUNNING
-            Boot->>Redis: 원본 JSON 기대값으로 FAILED CAS
-        else 종료 상태
+            Boot->>Redis: 읽은 원문과 같을 때만 FAILED로 변경
+        else 이미 끝난 작업
             Boot->>Redis: 변경하지 않음
         end
     end
-    Redis-->>Boot: 복구 완료
     Boot->>Gate: 작업 생성 허용
 ```
 
-`ApplicationRunner`가 복구를 끝낸 뒤에만 gate를 연다. Redis 연결 오류나 잘못된
-자료형처럼 복구 자체를 신뢰할 수 없는 오류가 발생하면 예외를 전파해 애플리케이션
-시작을 실패시키고 gate도 닫힌 상태로 둔다.
+정리가 끝난 뒤에만 새 작업을 받습니다. Redis 연결 오류처럼 정리 자체를 믿을 수 없으면 서버 시작을 실패시키고 gate도 닫아 둡니다. 정리 메서드는 시작 단계에서만 실행되므로, 운영 중에 다시 불러 정상 작업을 한꺼번에 끝낼 수 없습니다.
 
-## 상태 변경
+### 늦게 끝나는 worker 막기
 
-작업 index를 읽은 뒤 각 상태를 기존 Lua CAS로 변경한다.
+worker는 다음 항목을 시작하기 전과 완료를 저장하기 전에 상태가 `RUNNING`인지 확인합니다. 정리가 작업을 `FAILED`로 바꾸면 다음 항목 처리와 완료 덮어쓰기가 멈춥니다. 이미 시작한 외부 호출 한 건과 그 저장은 끝날 수 있습니다.
 
-```text
-PENDING ─┐
-         ├─> FAILED
-RUNNING ─┘    errorCode = WORKER_UNAVAILABLE
+## 확인한 방법
 
-COMPLETED / FAILED / CANCELLED -> 변경 없음
-```
-
-복구 시 다음 값은 유지한다.
-
-- `totalCount`, `processedCount`, `successCount`, `failCount`
-- `range`, `lastCheckpointId`
-- 실패 문제 ID 원장
-- 작업 index membership
-
-상태를 `FAILED`로 바꾸고 `completedAt`, `lastHeartbeatAt`, `errorCode`,
-`errorMessage`를 종료 시점에 맞게 갱신한다. 종료 상태이므로
-`estimatedRemainingSeconds`는 `null`이 된다. 상태와 실패 원장의 TTL은 다시
-24시간으로 맞춘다. 손상된 JSON은 해당 작업만 건너뛰고 다른 작업을 계속
-처리한다.
-
-복구 메서드는 작업 생성 gate가 닫힌 시작 단계에서만 실행할 수 있다. 시작 완료
-뒤 다시 호출하면 Redis를 읽기 전에 실패하므로 정상 실행 중인 작업을 일괄 종료할
-수 없다.
-
-## 늦은 worker 차단
-
-worker는 각 항목을 시작하기 전과 전체 완료 처리 전에 상태가 정확히 `RUNNING`인지
-확인한다. 복구가 작업을 `FAILED`로 바꾸면 다음 항목과 `COMPLETED` 덮어쓰기는
-중단된다.
-
-이미 시작한 외부 요청이나 MongoDB 쓰기까지 취소하거나 되돌리지는 않는다. 검증
-fixture에서도 첫 번째 외부 호출과 그 결과의 MongoDB 저장 한 건은 끝날 수
-있었지만 다음 문제 호출, 진행률 갱신과 완료 상태 덮어쓰기는 발생하지 않았다.
-이번 단계는 exactly-once 처리나 side effect fencing을 보장하지 않는다.
-
-감사 로그용 비동기 실행기가 작업 생성 로그 제출을 거절해도 수집 worker 제출은
-계속한다. 작업 상태만 `PENDING`으로 만든 뒤 실행이 끊기는 별도 경로를 막기 위한
-처리다.
-
-## 설정
-
-| 위치 | 값 | 의미 |
-| --- | --- | --- |
-| 애플리케이션 기본값 | `false` | 다중 인스턴스 여부를 알 수 없으므로 복구하지 않음 |
-| 단일 BE Docker Compose | `true` | 시작 시 이전 진행 작업을 `FAILED` 처리 |
-| 다중 BE·순차 교체 배포 | `false` 유지 | lease·fencing 도입 전 다른 인스턴스 작업 보호 |
-
-환경 변수:
-
-```text
-PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP
-```
-
-## 실제 Redis 검증
-
-Redis 7.2.5의 별도 DB를 사용해 다음 경계를 확인했다.
+로컬 Redis 7.2.5의 별도 DB에서 확인했습니다.
 
 | 조건 | 결과 |
 | --- | --- |
-| `PENDING` 1건·`RUNNING` 1건·종료 상태 3건 | 진행 작업 2건만 `FAILED`, 종료 상태 JSON 3건 원문 유지 |
-| 두 서비스·고아 작업 12건 동시 복구 | 첫 상태 읽기를 맞춘 CAS 경합에서 작업별 성공 전이 1회 |
-| 상태·실패 원장 TTL 60초 | 복구 뒤 둘 다 86,400초 ±5초 |
-| 손상된 상태 JSON 1건·정상 고아 작업 1건 | 손상 작업을 건너뛰고 정상 작업 복구 |
-| 상태 key가 Redis List | 시작 실패, 작업 생성 gate 닫힘 유지 |
-| 복구 완료 뒤 재실행 | 시작 단계 검사에서 거절, Redis 원문 유지 |
-| 첫 문제 처리 중 복구 | 첫 저장은 끝날 수 있으나 두 번째 외부 호출 0건·완료 덮어쓰기 0건 |
+| 진행 중 2건과 종료 3건 | 진행 중 2건만 `FAILED`, 종료 3건은 원문 그대로 |
+| 서버 두 개가 고아 작업 12건을 동시에 정리 | 작업마다 한 번만 바뀜 |
+| 손상된 JSON 1건과 정상 1건 | 손상된 것은 건너뛰고 정상 작업 정리 |
+| 상태 키 자료형이 잘못됨 | 시작 실패, gate 닫힌 채 유지 |
+| 첫 문제 처리 중 정리 | 두 번째 외부 호출 0건, 완료 덮어쓰기 0건 |
 
-## 전체 검증과 커버리지
-
-- Before main SHA: `499b628cb0c08a18337390464bb878ec2fe96346`
-- Phase 6K 코드 SHA: `271cb689146d24248670022eb26fa52e0c9acb1b`
-- MongoDB: 7.0.16
-- Redis: 7.2.5
-
-전용 MongoDB와 Redis에 연결해 `clean check`를 실행했다.
-
-| 범위 | 직전 main | Phase 6K | 변화 |
-| --- | ---: | ---: | ---: |
-| 단위 테스트 | 738개 통과 | 744개 통과 | 6개 증가 |
-| 통합 테스트 | 224개 중 215개 통과, 조건부 9개 제외 | 230개 중 221개 통과, 조건부 9개 제외 | 통과 6개 증가 |
-| core-v1 Line / Branch / Method | 88.99% / 66.78% / 87.65% | 88.99% / 66.78% / 87.65% | 변화 없음 |
-| full-v1 Line / Branch / Method | 78.71% / 60.60% / 78.63% | 78.84% / 60.88% / 78.72% | +0.13%p / +0.28%p / +0.09%p |
-
-이 표는 복구 경계의 테스트 범위와 전체 회귀 검사 결과다. 시작 시간, 처리량이나
-운영 성능 개선율을 뜻하지 않는다.
-
-재현 명령:
+전용 MongoDB 7.0.16·Redis 7.2.5에 연결한 `./gradlew clean check`가 통과했습니다. 단위 테스트는 738개에서 744개로, 통과한 통합 테스트는 215개에서 221개로 늘었습니다.
 
 ```bash
-TEST_REDIS_PORT=6398 \
-SPRING_DATA_REDIS_HOST=127.0.0.1 \
-SPRING_DATA_REDIS_PORT=6398 \
 ./gradlew integrationTest \
-  --tests 'com.didimlog.application.problem.collector.ProblemCollectorOrphanRecoveryIntegrationTest' \
-  --tests 'com.didimlog.application.problem.collector.ProblemCollectorJobStateIntegrationTest'
+  --tests '*ProblemCollectorOrphanRecoveryIntegrationTest' \
+  --tests '*ProblemCollectorJobStateIntegrationTest'
 ```
 
-## 남은 범위
+## 남은 한계
 
-- 작업을 자동으로 이어서 실행하지 않는다. 원본은 `FAILED`로 남고 재시도는 새
-  작업을 만든다.
-- Phase 6K 시점에는 비메타데이터 작업과 떨어진 문제 ID 재시도의 정확한 대상
-  manifest가 없었다. 후속
-  [Phase 6L](./PHASE_6L_CRAWLER_TARGET_MANIFEST.md)에서 대상 ID와 순서를 저장했다.
-- 여러 BE에서 사용할 worker owner, lease, heartbeat 기반 인계와 fencing token이
-  없다.
-- 이미 시작한 외부 호출과 MongoDB 쓰기는 한 건까지 끝날 수 있다.
-- 시작 스캔은 index의 모든 ID를 읽고 상태를 확인한다. index가 커질 때의 시작
-  시간 최적화와 선제 정리는 별도 단계다.
-- 손상된 JSON은 시작 복구에서 삭제하지 않는다. 작업 목록 조회의 stale 정리는
-  index membership과 실패 원장을 제거한다. Phase 6L 이후에는 대상 manifest도
-  함께 제거하지만 손상된 상태 key는 TTL이 끝날 때까지 남는다.
-- 상태와 실패 원장은 24시간 뒤 만료된다. Phase 6L의 대상 manifest도 같은 TTL을
-  사용한다. 장기 운영 메트릭 보존 정책은 별도 단계다.
-- Docker Compose 전체 환경 해석은 배포용 `.env`가 있는 환경에서 다시 확인해야
-  한다. 현재 검증에서는 Compose 구조와 YAML 문법을 확인했다.
-
-> Phase 6L 이후 시작 복구 CAS는 대상 manifest 참조를 보존하고 String manifest의
-> TTL도 상태·실패 원장과 함께 갱신한다. Phase 6K의 복구 기준선과 결과는 변경하지
-> 않는다.
+- 작업을 이어서 실행하지 않습니다. 원래 작업은 `FAILED`로 남고, 재시도는 새 작업을 만듭니다.
+- 서버 여러 대에서 쓰는 소유권과 인계는 이 단계에 없습니다. 이후 [worker lease](./PHASE_6M_A_CRAWLER_WORKER_LEASE.md)와 [만료 작업 자동 인계](./PHASE_6M_B_CRAWLER_WORKER_TAKEOVER.md)에서 더했습니다.
+- 시작할 때 모든 작업을 확인하므로 작업이 많으면 시작이 늦어질 수 있습니다.
