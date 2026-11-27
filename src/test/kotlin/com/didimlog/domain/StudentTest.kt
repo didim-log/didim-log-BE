@@ -448,31 +448,6 @@ class StudentTest {
     }
 
     @Test
-    @DisplayName("소셜 가입 마무리는 약관 동의 시 닉네임을 설정하고 USER로 승격한다")
-    fun `소셜 가입 마무리`() {
-        val guest = Student(
-            nickname = Nickname("guest"),
-            provider = Provider.GITHUB,
-            providerId = "gh-1",
-            currentTier = Tier.BRONZE
-        )
-
-        val finalized = guest.finalizeSignup("member", termsAgreed = true)
-
-        assertThat(finalized.nickname).isEqualTo(Nickname("member"))
-        assertThat(finalized.role).isEqualTo(Role.USER)
-        assertThat(finalized.termsAgreed).isTrue()
-        assertThatThrownBy { guest.finalizeSignup("member", termsAgreed = false) }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessage("약관 동의는 필수입니다.")
-        assertThatThrownBy { guest.finalizeSignup("member", BojId("boj1"), "a@b.c", termsAgreed = false) }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessage("약관 동의는 필수입니다.")
-        assertThatThrownBy { guest.finalizeSignup("x", termsAgreed = true) }
-            .isInstanceOf(IllegalArgumentException::class.java)
-    }
-
-    @Test
     @DisplayName("닉네임 변경은 닉네임 정책을 적용하고 비밀번호 변경은 빈 값을 거부한다")
     fun `닉네임과 비밀번호 검증`() {
         val student = Student(

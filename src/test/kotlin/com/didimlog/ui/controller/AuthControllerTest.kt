@@ -222,9 +222,7 @@ class AuthControllerTest {
         )
             .andExpect(status().isGone)
 
-        verify(exactly = 0) {
-            authService.finalizeSignup(any(), any(), any(), any(), any(), any())
-        }
+        verify { authService wasNot Called }
     }
 
     @Test

@@ -315,67 +315,6 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("소셜 가입 완료는 저장된 학생을 잠금 안에서 다시 읽고 토큰을 발급한다")
-    fun `소셜 가입 완료 후 최신 학생으로 토큰 발급`() {
-        val email = "social@example.com"
-        val providerId = "github-provider"
-        val bojId = "social_boj"
-        val bojIdVo = BojId(bojId)
-        val existingStudent = Student(
-            id = "social-student",
-            nickname = Nickname("beforeuser"),
-            provider = Provider.GITHUB,
-            providerId = providerId,
-            email = email,
-            bojId = null,
-            password = null,
-            currentTier = Tier.BRONZE,
-            role = Role.GUEST
-        )
-        val savedStudent = slot<Student>()
-        every { solvedAcClient.fetchUser(bojIdVo) } returns SolvedAcUserResponse(
-            handle = bojId,
-            rating = 1_500,
-            tier = 13
-        )
-        every {
-            studentRepository.findByProviderAndProviderId(Provider.GITHUB, providerId)
-        } returns Optional.of(existingStudent)
-        every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
-        every { studentRepository.findByEmail(email) } returns Optional.of(existingStudent)
-        every { studentRepository.existsByNickname(Nickname("social-user")) } returns false
-        every {
-            studentRepository.save(capture(savedStudent))
-        } answers { firstArg<Student>() }
-        every {
-            studentRepository.findById("social-student")
-        } answers { Optional.of(savedStudent.captured) }
-        every {
-            jwtTokenProvider.createToken(bojId, "social-student", 0, Role.USER.value)
-        } returns "social-token"
-        every { refreshTokenService.generateAndSave(any<Student>()) } returns "social-refresh"
-
-        val result = authService.finalizeSignup(
-            email = email,
-            provider = "github",
-            providerId = providerId,
-            nickname = "social-user",
-            bojId = bojId,
-            termsAgreed = true
-        )
-
-        assertThat(result.token).isEqualTo("social-token")
-        assertThat(result.refreshToken).isEqualTo("social-refresh")
-        assertThat(credentialSessionCoordinator.strictStudentIds)
-            .containsExactly("social-student")
-        verify(exactly = 1) {
-            refreshTokenService.generateAndSave(
-                match { it.id == "social-student" && it.role == Role.USER }
-            )
-        }
-    }
-
-    @Test
     @DisplayName("계정 저장이 실패해도 소비한 BOJ 인증 세션은 복구하지 않는다")
     fun `회원가입 저장 실패 시 인증 세션 소비 유지`() {
         val bojId = "newuser"
