@@ -4,7 +4,7 @@
 
 ## 1. 프로젝트 소개
 
-DidimLog는 문제를 풀고 끝내는 대신 풀이 결과, 소요 시간, 코드, 회고를 하나의 학습 기록으로 남길 수 있도록 설계했습니다. 문제 메타데이터와 본문은 별도의 수집 파이프라인으로 관리하고, 사용자 기록은 MongoDB 문서로 저장해 통계와 검색에 활용합니다.
+풀이 결과, 소요 시간, 코드, 회고를 하나의 학습 기록으로 남깁니다. 문제 메타데이터와 본문은 별도 수집 파이프라인으로 관리하고, 사용자 기록은 MongoDB 문서로 저장해 통계와 검색에 사용합니다.
 
 | 항목 | 내용 |
 | --- | --- |
@@ -13,8 +13,7 @@ DidimLog는 문제를 풀고 끝내는 대신 풀이 결과, 소요 시간, 코�
 | 담당 | 도메인·API 설계, 인증/인가, 문제 수집, 풀이 기록, 회고, AI 리뷰, 운영 도구 |
 | Backend | [didim-log/didim-log-BE](https://github.com/didim-log/didim-log-BE) |
 | Frontend | [didim-log/didim-log-FE](https://github.com/didim-log/didim-log-FE) |
-
-DidimLog 자체에서 코드를 컴파일하거나 온라인 채점을 수행하지는 않습니다. 사용자가 입력한 성공 여부와 소요 시간을 풀이 기록으로 저장하고, 이후 로그와 회고 작성 흐름으로 연결합니다.
+| 결과 | 로컬 fixture 기준 문제 상세 수집 시간 단축, 통계 조회 데이터 감소 (자세한 수치는 [7. 로컬 검증 결과](#7-로컬-검증-결과)의 표) |
 
 ## 2. 기술 스택
 
@@ -65,30 +64,12 @@ flowchart LR
 
 ## 4. 담당 기능과 핵심 구현
 
-### 문제 데이터 수집과 운영 제어
-
-- solved.ac 문제 메타데이터 수집과 MongoDB upsert
-- BOJ 문제 본문·입력·출력·예제 HTML 수집
-- BOJ 상세 조회 최대 `K`개 제한 병렬 처리와 manifest 순서 저장
-- Redis 기반 작업 상태의 Lua CAS 전이, TTL, sorted index, 진행률, heartbeat, checkpoint, 실패 항목 원장·대상 manifest
-- 관리자 작업 목록·취소·재시도·감사 로그·운영 메트릭 API
-
-### 학습 기록
-
-- 풀이 성공 여부와 소요 시간을 사용자 문서에 누적
-- 제목·본문·코드를 포함한 코딩 로그 저장
-- 학생·문제 기준 기존 회고 조회 후 생성·수정
-- 카테고리·풀이 전략·북마크 기반 회고 검색
-
-### 인증과 운영 안정성
-
-- BOJ 프로필 상태 메시지를 이용한 계정 소유권 인증
-- Access/Refresh Token에 변경되지 않는 학생 ID와 자격 상태 변경 버전을 서명
-- 보호 API는 최신 학생의 BOJ ID·자격 상태 버전·권한이 모두 같은 Access Token만 인증
-- Refresh Token은 학생 ID를 소유자로 Redis에 저장하고 한 번씩 원자적으로 교체
-- 기존 연결 계정의 OAuth2 로그인과 USER / ADMIN 권한 분리
-- 인증 API별 Redis 고정 구간 Rate Limit과 동시 요청 원자 처리
-- AI 리뷰 잠금, 실패 상태 전환, 재시도 흐름
+| 영역 | 구현 |
+| --- | --- |
+| 문제 수집·운영 제어 | solved.ac 메타데이터 수집과 MongoDB upsert, BOJ 본문·입력·출력·예제 HTML 수집, 상세 조회 최대 `K`개 제한 병렬 처리, Redis 작업 상태(Lua CAS 전이·TTL·sorted index·heartbeat·checkpoint·실패 원장·대상 manifest), 관리자 작업 목록·취소·재시도·감사 로그·운영 메트릭 API |
+| 학습 기록 | 풀이 성공 여부·소요 시간 누적, 제목·본문·코드를 포함한 코딩 로그, 학생·문제 기준 회고 생성·수정, 카테고리·풀이 전략·북마크 기반 회고 검색 |
+| 인증 | BOJ 프로필 상태 메시지로 계정 소유권 인증, 불변 학생 ID와 자격 상태 버전을 서명한 Access/Refresh Token(최신 BOJ ID·버전·권한이 모두 같아야 인증), Refresh Token 원자 교체, 기존 연결 계정 OAuth2 로그인, USER / ADMIN 권한 분리 |
+| 운영 안정성 | 인증 API Rate Limit, AI 리뷰 잠금·실패 상태 전환·재시도 ([8. 트러블 슈팅](#8-트러블-슈팅)) |
 
 ## 5. 핵심 데이터 흐름
 
@@ -267,34 +248,15 @@ flowchart LR
 
 - 문제: 동일 로그에 짧은 시간 동안 요청이 집중되면 AI API 호출과 최종 저장이 중복될 수 있었습니다.
 - 해결: MongoDB `findAndModify`로 `IN_PROGRESS` 잠금을 원자적으로 획득하고, 완료·실패 상태와 잠금 만료 시각을 함께 관리했습니다.
-- 검증: 동일 로그 50건 동시 요청을 10회 반복했을 때 각 회차의 Gemini 호출과 최종 저장이 각각 1건으로 수렴했습니다.
+- 검증: 동일 로그 동시 요청에서 각 회차의 Gemini 호출과 최종 저장이 1건으로 수렴했습니다([7. 로컬 검증 결과](#7-로컬-검증-결과)).
 
 ### 문제 수집 작업의 비동기 실행
 
 - 문제: 같은 클래스의 `private` 메서드에 `@Async`를 적용하면 Spring 프록시를 거치지 않아 수집이 요청 스레드에서 실행되고 응답이 지연될 수 있습니다.
 - 해결: 명시적으로 주입한 `TaskExecutor`에 수집 작업을 제출하고, API는 Redis job 생성 후 `jobId`를 반환하도록 분리했습니다.
-- 상태 갱신은 Redis 원본 JSON을 기대값으로 비교하는 Lua CAS로 처리하며 종료 상태는 다시 변경하지 않습니다.
-- 항목 실패 ID는 진행 상태와 같은 Lua CAS에서 기록하고, 완료 작업은 실패 항목만 다시 실행합니다.
-- 신규 작업은 상태·대상 manifest·index를 같은 Lua에서 만들고, 재시도는 manifest의
-  처리 위치와 실패 원장을 함께 검증합니다. 참조가 있는데 manifest가 없거나
-  손상됐다면 새 작업을 만들지 않고 409를 반환합니다.
-- worker lease 모드는 상태의 `workerAttempt`와 lease 원문을 함께 비교합니다.
-  heartbeat는 항목 처리와 분리하고, 현재 worker만 진행률·실패 원장·종료 상태를
-  갱신합니다.
-- 단일 BE Docker 구성은 시작할 때 작업 생성 gate를 닫고, 실행 주체를 잃은
-  `PENDING`·`RUNNING` 작업만 `WORKER_UNAVAILABLE`로 실패 처리한 뒤 gate를 엽니다.
-- worker lease 모드는 10초마다 lease가 없는 작업을 실행기에 다시 제출합니다.
-  claim은 Runnable이 시작된 뒤에만 수행하므로 큐 대기 중에는 lease가 생기지
-  않으며, 실행기 거부 시 다음 scan에서 다시 제출합니다.
-- 만료된 `RUNNING` 작업은 기존 카운터와 checkpoint를 유지하고 manifest suffix만
-  처리합니다. manifest가 없거나 손상된 작업은 외부 호출 없이 현재 worker의
-  소유권으로 `FAILED` 처리합니다.
-- 상세 외부 조회만 전용 executor에서 최대 `K`개씩 실행하고,
-  MongoDB·Redis는 coordinator가 manifest 순서로 반영해 연속 checkpoint를
-  유지합니다. 기본은 병렬 비활성화·`K=1`입니다.
-- 시작 실패 복구와 worker lease는 동시에 켤 수 없습니다. worker lease는 Redis
-  상태·실패 원장만 보호하며 MongoDB 쓰기 fencing은 포함하지 않으므로 운영 기본값은
-  `false`입니다.
+- 상태 전이: Redis 원본 JSON을 기대값으로 비교하는 Lua CAS로 처리하고, 종료 상태는 다시 변경하지 않습니다. 신규 작업의 상태·대상 manifest·index와 항목 실패 ID도 같은 Lua에서 기록하며, 완료 작업은 실패 항목만 다시 실행합니다. 참조된 manifest가 없거나 손상됐다면 409를 반환합니다.
+- 복구: 단일 BE Docker 구성은 시작할 때 작업 생성 gate를 닫고, 실행 주체를 잃은 `PENDING`·`RUNNING` 작업만 `WORKER_UNAVAILABLE`로 실패 처리한 뒤 gate를 엽니다. worker lease 모드는 10초마다 lease가 없는 작업을 다시 제출하고(claim은 Runnable 시작 후 수행), 만료된 `RUNNING` 작업은 기존 카운터와 checkpoint를 유지한 채 manifest suffix만 처리합니다. manifest가 없거나 손상된 작업은 외부 호출 없이 `FAILED` 처리합니다.
+- 병렬 처리: 상세 외부 조회만 전용 executor에서 최대 `K`개씩 실행하고, MongoDB·Redis는 coordinator가 manifest 순서로 반영해 연속 checkpoint를 유지합니다. 기본은 병렬 비활성화·`K=1`입니다.
 - 결과: 관리자 화면은 상태 API를 폴링하며 진행률과 checkpoint를 갱신하고, 같은 작업의 중복 실행과 취소 뒤 상태 덮어쓰기를 막습니다.
 
 ### 인증 API 남용 방지
@@ -307,9 +269,7 @@ flowchart LR
 
 ### 로컬 실행
 
-MongoDB와 Redis 연결 정보, JWT Secret, OAuth·메일의 로컬 설정과 Swagger 전용
-계정을 환경 변수로 준비한 뒤 실행합니다. Swagger 계정에는 기본값이 없으므로
-`SWAGGER_USERNAME`, `SWAGGER_PASSWORD`를 반드시 지정해야 합니다.
+MongoDB·Redis 연결 정보, JWT Secret, OAuth·메일 설정과 Swagger 전용 계정을 환경 변수로 준비합니다. Swagger 계정은 기본값이 없으므로 `SWAGGER_USERNAME`, `SWAGGER_PASSWORD`를 지정해야 합니다.
 
 ```bash
 export SWAGGER_USERNAME=local-swagger
@@ -317,14 +277,10 @@ export SWAGGER_PASSWORD='replace-with-a-long-local-password'
 ./gradlew bootRun
 ```
 
-`PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP`의 기본값은 `false`입니다.
-BE가 하나인 기본 Docker Compose에서만 `true`로 지정합니다. 여러 BE를 함께
-실행하거나 순차 교체할 때는 `false`를 유지해야 합니다.
-
-`PROBLEM_COLLECTOR_WORKER_LEASE_ENABLED`도 기본값은 `false`입니다. Redis 상태
-소유권 검증과 만료 작업 자동 인계는 포함하지만 이미 시작한 MongoDB 쓰기를
-차단하지 않으므로, 같은 항목의 중복 쓰기를 허용할 수 있는 환경에서만
-활성화합니다.
+| 환경 변수 | 기본값 | 사용 기준 |
+| --- | --- | --- |
+| `PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP` | `false` | BE가 하나인 기본 Docker Compose에서만 `true`. 여러 BE를 함께 실행하거나 순차 교체할 때는 `false` 유지 |
+| `PROBLEM_COLLECTOR_WORKER_LEASE_ENABLED` | `false` | Redis 상태·실패 원장만 보호하고 이미 시작한 MongoDB 쓰기는 차단하지 않으므로, 같은 항목의 중복 쓰기를 허용할 수 있는 환경에서만 활성화. 위 시작 실패 복구와 동시에 켤 수 없음 |
 
 외부 BOJ·solved.ac 응답을 사용하지 않는 포트폴리오 촬영 환경에서는 로컬 전용 프로필을 활성화합니다.
 
@@ -347,52 +303,21 @@ SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 
 - DidimLog는 온라인 채점 시스템이 아닙니다. 풀이 성공 여부와 소요 시간은 사용자가 제출한 값을 기록합니다.
 - BOJ 계정 인증은 공개 프로필의 상태 메시지 조회에 의존합니다. BOJ HTML 구조가 변경되면 파서를 갱신해야 합니다.
-- 카테고리는 solved.ac 메타데이터의 태그를 정규화한 값이며, 부모·자식·연관 관계는 애플리케이션 코드로 관리합니다.
 - OAuth2 로그인은 기존 연결 계정에만 제공하며 신규 소셜 가입은 지원하지 않습니다.
 - 데모의 외부 BOJ·solved.ac 응답은 고정 fixture이므로 실제 외부 연동 성공을 증명하지 않습니다.
 - 문제 수집 대상 manifest는 문제 ID와 순서만 고정하며 당시 문제 문서 내용의 snapshot이나 exactly-once 실행을 보장하지 않습니다.
 - 문제 수집 worker lease와 자동 인계는 Redis 상태·실패 원장만 보호합니다. lease 만료 전에 시작한 외부 호출과 MongoDB 쓰기 한 건은 새 worker의 같은 항목 처리와 겹칠 수 있습니다.
-- 문제 상세 요청 시작 간격은 하나의 JVM에서만 공유하며, 여러 BE
-  인스턴스의 합산 요청률을 제한하지는 않습니다.
-- 취소는 결과 반영을 막지만 이미 시작된 최대 `K`개의 HTTP 요청을
-  즉시 종료한다고 보장하지 않습니다.
-- 성능 수치는 로컬 합성 환경의 결과이며 운영 성능이나 일반화된 개선율로 해석할 수 없습니다.
+- 문제 상세 요청 시작 간격은 하나의 JVM에서만 공유하며, 여러 BE 인스턴스의 합산 요청률을 제한하지는 않습니다.
+- 취소는 결과 반영을 막지만 이미 시작된 최대 `K`개의 HTTP 요청을 즉시 종료한다고 보장하지 않습니다.
 - 외부 API 계약이 변경되면 클라이언트와 응답 모델을 갱신해야 할 수 있습니다.
 
 ## 11. 문서
 
-- [BOJ 인증과 회원가입 흐름](./DOCS/portfolio/BOJ_SIGNUP_FLOW.md)
-- [문제 수집과 카테고리 처리](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md)
-- [풀이 결과·로그·회고 저장 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md)
-- [API 명세](./DOCS/API_SPECIFICATION.md)
-- [로컬 검증 결과 상세](./DOCS/LOCAL_VERIFICATION.md)
-- [로컬 동시성·요청 제한 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md)
-- [관리자 회원 조회 최적화](./DOCS/refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md)
-- [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md)
-- [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md)
-- [회고 원자 갱신과 풀이 기록 삭제 정합성](./DOCS/refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md)
-- [계정 삭제 경로 통합과 연관 데이터 정리](./DOCS/refactoring/be-refactor/PHASE_3C_ACCOUNT_DELETION_CONSISTENCY.md)
-- [계정 삭제와 사용자 데이터 쓰기 경합 차단](./DOCS/refactoring/be-refactor/PHASE_3D_ACCOUNT_WRITE_BARRIER.md)
-- [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md)
-- [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md)
-- [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md)
-- [AI 사용량 원자적 예약](./DOCS/refactoring/be-refactor/PHASE_5A_AI_USAGE_ATOMIC_RESERVATION.md)
-- [문제 상세·언어 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_5B_CRAWLER_DETAIL_PARTIAL_UPDATE.md)
-- [고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md)
-- [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md)
-- [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md)
-- [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md)
-- [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md)
-- [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md)
-- [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md)
-- [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md)
-- [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md)
-- [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md)
-- [문제 수집 재시작 고아 작업 정리](./DOCS/refactoring/be-refactor/PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md)
-- [문제 수집 대상 manifest](./DOCS/refactoring/be-refactor/PHASE_6L_CRAWLER_TARGET_MANIFEST.md)
-- [문제 수집 worker lease](./DOCS/refactoring/be-refactor/PHASE_6M_A_CRAWLER_WORKER_LEASE.md)
-- [문제 수집 만료 작업 자동 인계](./DOCS/refactoring/be-refactor/PHASE_6M_B_CRAWLER_WORKER_TAKEOVER.md)
-- [문제 상세 제한 병렬 수집](./DOCS/refactoring/be-refactor/PHASE_6N_CRAWLER_DETAILS_BOUNDED_PARALLEL.md)
-- [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md)
-- [PR 가이드](./DOCS/PR_GUIDE.md)
-- [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md)
+| 분류 | 문서 |
+| --- | --- |
+| 흐름·검증 | [BOJ 인증과 회원가입 흐름](./DOCS/portfolio/BOJ_SIGNUP_FLOW.md) · [문제 수집과 카테고리 처리](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md) · [풀이 결과·로그·회고 저장 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md) · [API 명세](./DOCS/API_SPECIFICATION.md) · [로컬 검증 결과 상세](./DOCS/LOCAL_VERIFICATION.md) · [로컬 동시성·요청 제한 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md) |
+| 조회 최적화 | [관리자 회원 조회 최적화](./DOCS/refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md) · [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md) · [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md) · [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md) · [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md) · [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md) |
+| 인증·AI 원자성 | [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md) · [AI 사용량 원자적 예약](./DOCS/refactoring/be-refactor/PHASE_5A_AI_USAGE_ATOMIC_RESERVATION.md) · [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md) · [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md) · [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md) |
+| 데이터 정합성 | [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md) · [회고 원자 갱신과 풀이 기록 삭제 정합성](./DOCS/refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md) · [계정 삭제 경로 통합과 연관 데이터 정리](./DOCS/refactoring/be-refactor/PHASE_3C_ACCOUNT_DELETION_CONSISTENCY.md) · [계정 삭제와 사용자 데이터 쓰기 경합 차단](./DOCS/refactoring/be-refactor/PHASE_3D_ACCOUNT_WRITE_BARRIER.md) · [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md) · [고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md) |
+| 문제 수집 | [문제 메타데이터 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_4B_CRAWLER_METADATA_UPSERT.md) · [문제 상세·언어 부분 갱신](./DOCS/refactoring/be-refactor/PHASE_5B_CRAWLER_DETAIL_PARTIAL_UPDATE.md) · [문제 수집 작업 상태 원자 전이](./DOCS/refactoring/be-refactor/PHASE_6E_CRAWLER_JOB_STATE_CAS.md) · [문제 수집 실패 항목 재시도](./DOCS/refactoring/be-refactor/PHASE_6H_CRAWLER_FAILED_ITEM_RETRY.md) · [문제 수집 재시작 고아 작업 정리](./DOCS/refactoring/be-refactor/PHASE_6K_CRAWLER_STARTUP_ORPHAN_RECOVERY.md) · [문제 수집 대상 manifest](./DOCS/refactoring/be-refactor/PHASE_6L_CRAWLER_TARGET_MANIFEST.md) · [문제 수집 worker lease](./DOCS/refactoring/be-refactor/PHASE_6M_A_CRAWLER_WORKER_LEASE.md) · [문제 수집 만료 작업 자동 인계](./DOCS/refactoring/be-refactor/PHASE_6M_B_CRAWLER_WORKER_TAKEOVER.md) · [문제 상세 제한 병렬 수집](./DOCS/refactoring/be-refactor/PHASE_6N_CRAWLER_DETAILS_BOUNDED_PARALLEL.md) |
+| 개발 규칙 | [Clean Code 원칙](./DOCS/CLEAN_CODE_PRINCIPLES.md) · [PR 가이드](./DOCS/PR_GUIDE.md) · [커밋 컨벤션](./DOCS/COMMIT_CONVENTION.md) |
