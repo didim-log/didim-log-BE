@@ -29,21 +29,18 @@ val jacocoCoreCoverageIncludes = listOf(
 	"com/didimlog/dashboard/application/**",
 	"com/didimlog/feedback/application/**",
 	"com/didimlog/log/application/**",
-	"com/didimlog/member/application/**",
 	"com/didimlog/notice/application/**",
 	"com/didimlog/problem/application/**",
 	"com/didimlog/quote/application/**",
 	"com/didimlog/ranking/application/**",
 	"com/didimlog/recommendation/application/**",
 	"com/didimlog/retrospective/application/**",
-	"com/didimlog/storage/application/**",
 	"com/didimlog/student/application/**",
 	"com/didimlog/study/application/**",
 	"com/didimlog/*/domain/**",
-	"com/didimlog/global/auth/**",
+	"com/didimlog/global/security/**",
 	"com/didimlog/global/config/**",
-	"com/didimlog/global/config/security/**",
-	"com/didimlog/global/system/**",
+	"com/didimlog/system/application/**",
 	"com/didimlog/global/util/**"
 )
 

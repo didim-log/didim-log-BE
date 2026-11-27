@@ -1,6 +1,6 @@
 package com.didimlog.study.api
 
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.student.domain.BojId
 import com.didimlog.student.domain.Nickname

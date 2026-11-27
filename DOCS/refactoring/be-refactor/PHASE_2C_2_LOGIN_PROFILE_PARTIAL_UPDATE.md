@@ -1,98 +1,48 @@
-# Phase 2C-2 — 로그인 프로필 부분 갱신
+# 로그인 프로필 부분 갱신
+
+로그인할 때 solved.ac rating을 반영하면서 회원 문서 전체를 다시 저장하던 것을, rating과 티어 세 필드만 갱신하도록 바꿨습니다. 로그인 중에 바뀐 비밀번호가 예전 값으로 돌아가지 않습니다.
+
+## 이전과 현재
+
+| 상황 | 이전 | 현재 |
+| --- | --- | --- |
+| 로그인이 solved.ac를 기다리는 사이 비밀번호 재설정 | 새 비밀번호가 예전 값으로 되돌아감 | 새 비밀번호 유지 |
+| 프로필 저장 범위 | 비밀번호·닉네임·풀이 기록 포함 문서 전체 | `rating`, `solvedAcTierLevel`, `currentTier`만 |
+| 갱신 중 회원이 삭제됨 | 전체 저장으로 문서가 다시 생길 수 있음 | 생성 0건, 토큰 발급 안 함 |
+| solved.ac만 장애 | - | 기존 프로필로 로그인 계속 |
+
+로컬 MongoDB에서 래치로 순서를 고정해 재현했습니다. 응답 시간이 아니라 동시 실행 뒤 최종 필드 상태를 바로잡은 변경입니다.
 
 ## 문제
 
-로그인은 비밀번호를 확인한 뒤 solved.ac에서 최신 rating을 조회하고, 처음 조회한
-`Student`를 복사해 전체 문서를 다시 저장했다.
+로그인은 비밀번호를 확인한 뒤 solved.ac에서 rating을 받아, 처음 조회한 회원 객체를 복사해 문서 전체를 저장했습니다.
 
 ```text
-Student 조회·비밀번호 확인
-→ solved.ac 응답 대기
-→ 다른 요청이 비밀번호 재설정
-→ 로그인 요청이 이전 Student 전체 저장
-→ 새 비밀번호가 이전 값으로 되돌아감
+회원 조회·비밀번호 확인 → solved.ac 응답 대기 → 다른 요청이 비밀번호 재설정
+→ 로그인 요청이 예전 회원 문서 전체 저장 → 새 비밀번호가 예전 값으로 돌아감
 ```
 
-로그인 외에도 BOJ 프로필 수동 동기화와 문제 서비스의 티어 동기화가 같은 방식으로
-전체 문서를 저장했다. 프로필 동기화에 필요하지 않은 비밀번호, 닉네임, 풀이 기록까지
-이전 조회 값으로 덮어쓸 수 있었다.
+BOJ 프로필 수동 동기화와 문제 서비스의 티어 동기화도 같은 방식이었습니다.
 
-## 변경
+## 바꾼 내용
 
-프로필 갱신은 학생 `_id`를 조건으로 다음 세 필드만 한 번에 `$set`한다.
+세 곳 모두 같은 저장 메서드를 씁니다. 학생 `_id`를 조건으로 세 필드만 `$set` 하는 `findAndModify(returnNew=true, upsert=false)`입니다.
 
 | 필드 | 값 |
 | --- | --- |
 | `rating` | solved.ac 최신 rating |
-| `solvedAcTierLevel` | rating에서 계산한 solved.ac 단계 |
-| `currentTier` | rating에서 계산한 서비스 티어 |
+| `solvedAcTierLevel` | rating으로 계산한 solved.ac 단계 |
+| `currentTier` | rating으로 계산한 서비스 티어 |
 
-MongoDB `findAndModify`에 `returnNew=true`, `upsert=false`를 적용했다. 성공 시 갱신 뒤
-문서를 반환하므로 API 응답도 저장된 프로필을 기준으로 만든다. 갱신 도중 학생이
-삭제되면 새 문서를 만들지 않는다. 로그인과 수동 동기화는 `STUDENT_NOT_FOUND`로
-중단하며, 반환값이 없는 문제 서비스의 동기화는 기존 계약대로 조용히 종료한다.
+갱신된 문서를 그대로 응답에 씁니다. 회원이 그사이 지워졌으면 로그인과 수동 동기화는 `STUDENT_NOT_FOUND`로 멈추고 토큰을 발급하지 않습니다. solved.ac 호출만 실패하면 기존 프로필로 로그인을 계속합니다.
 
-solved.ac 호출 장애는 계정 삭제와 구분한다. 외부 API만 실패한 경우에는 기존 프로필로
-로그인을 계속하지만, MongoDB에서 계정 부재가 확인된 경우에는 Access Token과 Refresh
-Token을 발급하지 않는다.
+## 확인한 방법
 
-로그인, BOJ 프로필 수동 동기화, 문제 서비스 티어 동기화가 같은 저장 메서드를
-사용한다. rating이 같더라도 두 파생 티어 필드가 맞지 않으면 세 필드를 함께 바로잡는다.
+- 실제 MongoDB에서 "비밀번호 확인, solved.ac 직전 대기, 재설정 완료, 로그인 재개" 순서를 고정했습니다. 변경 전에는 새 비밀번호 유지 검사가 실패했고, 변경 뒤에는 새 비밀번호와 최신 rating·티어가 함께 남습니다.
+- 없는 ID로 갱신하면 `null`을 돌려주고 문서를 만들지 않는 것도 확인했습니다.
+- `./gradlew clean check`가 통과했습니다(단위 525개, 통합 88개 중 81개 통과·조건부 7개 제외).
 
-비밀번호 재설정은 이미 password 필드만 부분 갱신한다. 반대 방향의 변경과 실패 경계는
-[비밀번호 재설정 코드 원자적 소비](./PHASE_2B_2_PASSWORD_RESET_ATOMIC_CONSUME.md)에
-정리했다.
+## 남은 한계
 
-## 경합 검증
-
-실제 MongoDB에서 다음 순서를 래치로 고정했다.
-
-```text
-로그인 요청이 기존 비밀번호 확인
-→ solved.ac 응답 직전에 대기
-→ 비밀번호 재설정 완료
-→ 로그인 요청의 프로필 갱신 재개
-```
-
-수정 전에는 마지막 전체 저장이 재설정된 비밀번호를 되돌려 테스트가 실패했다. 수정
-후에는 새 비밀번호가 유지되고 rating과 두 티어 필드만 최신 값으로 바뀐다. 닉네임과
-학생 문서 수는 변하지 않는다.
-
-없는 학생 ID에 부분 갱신을 요청했을 때 반환값이 `null`이고 새 문서가 만들어지지 않는
-것도 별도로 확인했다.
-
-## 검증
-
-```bash
-./gradlew test \
-  --tests 'com.didimlog.application.auth.AuthServiceTest' \
-  --tests 'com.didimlog.application.auth.AuthServiceLoginSecurityTest' \
-  --tests 'com.didimlog.application.student.StudentServiceTest' \
-  --tests 'com.didimlog.application.problem.ProblemServiceTest' \
-  --no-daemon
-
-./gradlew integrationTest \
-  --tests 'com.didimlog.application.auth.PasswordResetConsistencyIntegrationTest' \
-  --no-daemon
-```
-
-| 항목 | 결과 |
-| --- | --- |
-| 관련 단위 테스트 | 40개 통과 |
-| 비밀번호 재설정 정합성 통합 테스트 | 8개 통과 |
-| 전체 단위 테스트 | 525개 통과 |
-| 전체 통합 테스트 | 88개 중 81개 통과, 조건부 테스트 7개 제외 |
-| JaCoCo gate | core-v1, full-v1 모두 통과 |
-| 수정 전 경합 재현 | 새 비밀번호 유지 검증 실패 |
-| 수정 후 최종 상태 | 새 비밀번호와 최신 rating·tier 동시 유지 |
-| 없는 ID 갱신 | `null` 반환, 문서 생성 없음 |
-
-이 단계는 처리량을 높인 작업이 아니라 동시 실행 뒤 최종 필드 상태를 바로잡은 작업이다.
-따라서 응답 시간이나 성능 향상률은 기록하지 않는다.
-
-## 남은 범위
-
-- 완료: [Study 풀이 결과 부분 갱신](./PHASE_3A_STUDY_SOLUTION_CAS.md)
-- Member·Template·회고 삭제 등 남은 `Student` 전체 저장 경로의 경합 여부 점검
-- 동시에 도착한 여러 solved.ac 응답의 저장 순서 정책
-- 완료: [Phase 2E — 비밀번호 변경과 토큰 소유자 고정](./PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md)
+- 여러 solved.ac 응답이 동시에 도착하면 마지막에 저장된 값이 남습니다. 순서 정책은 정하지 않았습니다.
+- 다른 회원 전체 저장 경로는 [풀이 결과 부분 갱신](./PHASE_3A_STUDY_SOLUTION_CAS.md)과 [회고 원자 갱신](./PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md)에서 이어서 고쳤습니다.

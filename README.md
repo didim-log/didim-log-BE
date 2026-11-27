@@ -1,203 +1,162 @@
-# DidimLog Backend API Server
+<div align="center">
 
-> 알고리즘 문제 풀이 결과와 코드를 기록하고, 회고·통계·AI 피드백으로 학습 과정을 연결하는 백엔드 서비스입니다.
+# DidimLog Backend
 
-## 1. 프로젝트 소개
+알고리즘 풀이 기록·회고·통계를 한곳에 남기는 학습 기록 API
 
-풀이 결과, 소요 시간, 코드, 회고를 하나의 학습 기록으로 남깁니다. 문제 메타데이터와 본문은 별도 수집 파이프라인으로 관리하고, 사용자 기록은 MongoDB 문서로 저장해 통계와 검색에 사용합니다.
+</div>
+
+> 풀이 결과, 소요 시간, 코드, 회고를 하나의 학습 기록으로 저장합니다. 문제 메타데이터와 본문은 solved.ac·BOJ에서 별도 수집 작업으로 가져오고, 사용자 기록은 MongoDB 문서로 저장해 통계와 검색에 씁니다.
 
 | 항목 | 내용 |
-| --- | --- |
-| 개발 기간 | 2026.02 ~ 진행 중 |
-| 개발 인원 | 백엔드 1명 |
+| :-- | :-- |
+| 기간·인원 | 2026.02 ~ 진행 중, 백엔드 1명 |
 | 담당 | 도메인·API 설계, 인증/인가, 문제 수집, 풀이 기록, 회고, AI 리뷰, 운영 도구 |
-| Backend | [didim-log/didim-log-BE](https://github.com/didim-log/didim-log-BE) |
+| 결과 | 단위 테스트 1,027개·통합 테스트 278개. 로컬 fixture 기준 문제 상세 수집 55.6초 → 12.2초 ([측정 결과](#측정-결과)) |
 | Frontend | [didim-log/didim-log-FE](https://github.com/didim-log/didim-log-FE) |
-| 결과 | 로컬 fixture 기준 문제 상세 수집 시간 단축, 통계 조회 데이터 감소 (자세한 수치는 [7. 로컬 검증 결과](#7-로컬-검증-결과)의 표) |
 
-## 2. 기술 스택
+## 전체 구조
 
-| Category | Tech Stack | Version | Decision Reason |
-| --- | --- | --- | --- |
-| Language | Kotlin | 1.9.25 | Null Safety와 도메인 모델 표현력을 활용해 비즈니스 규칙을 명시적으로 표현 |
-| Framework | Spring Boot, Spring MVC, WebClient, Spring Security | 3.3.5 | MVC API, 외부 HTTP 호출, JWT 인증·인가 구성 |
-| Database | MongoDB | - | 문제·사용자 풀이·로그·회고처럼 형태가 다른 문서를 유연하게 저장 |
-| Cache / State | Redis | - | Refresh Token, Rate Limit, 수집 작업 상태와 TTL 데이터 관리 |
-| External | solved.ac, BOJ, Gemini, OAuth2 | - | 문제 메타데이터·본문 수집, AI 피드백, 기존 연결 계정 로그인 |
-| Infra | Docker, Docker Compose, AWS EC2, Nginx | - | 실행 환경 표준화와 배포 구성 관리 |
+![DidimLog 전체 구조](./architecture/architecture.png)
 
-## 3. 시스템 아키텍처
+EC2 한 대의 Docker Compose에서 Nginx, Spring Boot API, MongoDB, Redis가 함께 실행됩니다. 문제 수집 작업은 API가 Redis에 작업 상태를 만들고(①) solved.ac 메타데이터(②)와 BOJ 본문(③)을 가져와 MongoDB에 저장합니다(④). `main`에 push하면 GitHub Actions가 Docker Hub 이미지를 만들고 SSH로 EC2에 배포합니다. 근거와 확인하지 못한 부분은 [아키텍처 문서](./architecture/architecture.md)에 있습니다.
 
-```mermaid
-flowchart LR
-    FE["React Web Client"]
-    SECURITY["Spring Security<br/>JWT Filter"]
-    API["Spring Boot API"]
-    COLLECTOR["Problem Collector<br/>TaskExecutor"]
-    MONGO[("MongoDB")]
-    REDIS[("Redis")]
-    SOLVED["solved.ac API"]
-    BOJ["BOJ Problem Page"]
-    GEMINI["Gemini API"]
-    OAUTH["OAuth Providers"]
+| 도메인 | 맡은 일 |
+| :-- | :-- |
+| `auth` | BOJ 프로필 상태 메시지로 계정 소유권 확인, JWT 발급·교체, 기존 연결 계정 OAuth 로그인, 요청 제한 |
+| `problem` | solved.ac 메타데이터·BOJ 본문 수집 작업, 카테고리 정규화와 계층 검색, 문제 추천 |
+| `study` · `log` · `retrospective` | 풀이 결과 누적, 코드를 포함한 코딩 로그, 문제별 회고 작성·검색 |
+| `ai` | Gemini 기반 코드 리뷰, 호출 제한과 사용량 예약 |
+| `student` · `statistics` · `ranking` | 회원 정보·닉네임·온보딩, 풀이 통계와 히트맵, 랭킹 |
+| `admin` · `system` | 회원·피드백 관리, 대시보드 차트, 점검 모드 |
+| `global` | 보안 설정과 JWT 필터, 공통 예외 응답, 요청 제한 인터셉터 |
 
-    FE --> SECURITY --> API
-    API --> MONGO
-    API --> REDIS
-    API --> COLLECTOR
-    COLLECTOR --> SOLVED
-    COLLECTOR --> BOJ
-    COLLECTOR --> MONGO
-    COLLECTOR --> REDIS
-    API --> GEMINI
-    API --> OAUTH
-```
+## BOJ 계정 인증과 회원가입
 
-### 설계 기준
-
-- 도메인별 패키지(`auth`, `student`, `problem`, `log`, `retrospective` 등) 아래에 `api`(controller·DTO), `application`(유스케이스·포트), `domain`(엔티티·repository), `infra`(해당 도메인 전용 외부 어댑터)를 두어 유스케이스와 외부 의존성을 분리했습니다. 여러 도메인이 함께 쓰는 외부 어댑터(`infra.solvedac`, `infra.email`)와 공통 설정·보안(`global`)은 최상위에 둡니다.
-- 관리자 문제 수집은 요청과 작업 실행을 분리하고, Redis에 진행 상태·성공/실패 수·checkpoint·실패 문제 ID·실제 대상 manifest를 기록합니다.
-- worker lease 모드에서는 상태의 attempt와 Redis lease가 같은 worker만 heartbeat·진행률·종료 상태를 갱신합니다.
-- lease가 없는 `PENDING`·`RUNNING` 작업은 scanner가 다시 제출하고, 현재 `processedCount` 이후 manifest 대상부터 이어서 실행합니다.
-- 문제, 사용자 풀이, 로그, 회고는 목적이 다른 MongoDB 문서로 관리합니다.
-- AI 리뷰는 MongoDB `findAndModify` 기반 잠금으로 동일 로그의 중복 생성을 제어합니다.
-
-## 4. 담당 기능과 핵심 구현
-
-| 영역 | 구현 |
-| --- | --- |
-| 문제 수집·운영 제어 | solved.ac 메타데이터 수집과 MongoDB upsert, BOJ 본문·입력·출력·예제 HTML 수집, 상세 조회 최대 `K`개 제한 병렬 처리, Redis 작업 상태(Lua CAS 전이·TTL·sorted index·heartbeat·checkpoint·실패 원장·대상 manifest), 관리자 작업 목록·취소·재시도·감사 로그·운영 메트릭 API |
-| 학습 기록 | 풀이 성공 여부·소요 시간 누적, 제목·본문·코드를 포함한 코딩 로그, 학생·문제 기준 회고 생성·수정, 카테고리·풀이 전략·북마크 기반 회고 검색 |
-| 인증 | BOJ 프로필 상태 메시지로 계정 소유권 인증, 불변 학생 ID와 자격 상태 버전을 서명한 Access/Refresh Token(최신 BOJ ID·버전·권한이 모두 같아야 인증), Refresh Token 원자 교체, 기존 연결 계정 OAuth2 로그인, USER / ADMIN 권한 분리 |
-| 운영 안정성 | 인증 API Rate Limit, AI 리뷰 잠금·실패 상태 전환·재시도 ([8. 트러블 슈팅](#8-트러블-슈팅)) |
-
-## 5. 핵심 데이터 흐름
-
-<p align="center">
-  <img src="./DOCS/assets/portfolio/didimlog-core-flow.svg" width="900" alt="BOJ 계정 소유권 인증과 문제 상세 제한 병렬 수집의 검증 경계" />
-</p>
-
-### 5-1. BOJ 계정 인증과 회원가입
-
-회원가입 전에 서버가 발급한 코드를 BOJ 프로필 상태 메시지에서 확인합니다. 인증된 BOJ ID는 가입 요청에서 한 번만 사용할 수 있는 세션에 연결합니다.
+회원가입 전에 서버가 발급한 코드를 BOJ 프로필 상태 메시지에서 확인합니다. 확인한 BOJ ID는 가입 요청에서 한 번만 쓸 수 있습니다.
 
 ```mermaid
 sequenceDiagram
-    participant User as 사용자
+    autonumber
+    actor User as 사용자
     participant FE as React FE
     participant API as Auth API
     participant Redis
     participant BOJ as BOJ 프로필
-    participant Mongo
+    participant Mongo as MongoDB
 
     User->>FE: BOJ ID 입력
     FE->>API: POST /api/v1/auth/boj/code
-    API->>Redis: 인증 코드·세션 저장
+    API->>Redis: 인증 코드 · 세션 저장
     API-->>FE: sessionId, code
     User->>BOJ: 상태 메시지에 code 저장
     FE->>API: POST /api/v1/auth/boj/verify
     API->>BOJ: 상태 메시지 조회
-    API->>Redis: 인증된 BOJ ID 저장
+    API->>Redis: 코드 소비, 인증된 BOJ ID 저장
     FE->>API: POST /api/v1/auth/signup
-    API->>Redis: 인증 세션 소비
+    API->>Redis: 인증된 BOJ ID 소비
     API->>Mongo: 사용자 저장
     API-->>FE: Access Token, Refresh Token
 ```
 
 [BOJ 인증과 회원가입 상세 흐름](./DOCS/portfolio/BOJ_SIGNUP_FLOW.md)
 
-### 5-2. 문제 메타데이터·본문 수집
+## 문제 수집 작업
 
-메타데이터와 본문은 별도 작업으로 수집합니다. 카테고리는 독립된 크롤러의 결과가 아니라 solved.ac 태그를 수집할 때 함께 정규화한 값입니다.
+관리자가 수집을 요청하면 API는 작업만 만들고 바로 `jobId`를 돌려줍니다. 실제 수집은 별도 executor에서 실행되고, 진행률·checkpoint·실패한 문제 ID는 Redis에 남습니다.
 
 ```mermaid
 sequenceDiagram
-    participant Admin as 관리자 FE
+    autonumber
+    actor Admin as 관리자 FE
     participant API as ProblemCollector API
     participant Redis
-    participant Worker as TaskExecutor Worker
+    participant Worker as 수집 Worker
     participant Source as solved.ac / BOJ
-    participant Mapper as Category Mapper
-    participant Mongo
+    participant Mongo as MongoDB
 
     Admin->>API: POST /api/v1/admin/problems/collect-metadata
-    Note over Admin,API: 상세 본문은 POST /api/v1/admin/problems/collect-details
-    API->>Redis: PENDING 상태·대상 manifest·작업 index 원자 저장
+    API->>Redis: PENDING 상태 · 대상 manifest · 작업 index 저장 (Lua 한 번)
     API-)Worker: 수집 작업 제출
     API-->>Admin: jobId
-    Worker->>Source: 문제 메타데이터 조회
-    Worker->>Mapper: 태그 정규화
-    Mapper-->>Worker: category + tags
-    Worker->>Mongo: problems upsert
-    Worker->>Redis: CAS로 진행률·checkpoint·실패 ID 갱신
-    Admin->>API: 작업 상태 조회
-    API-->>Admin: PENDING / RUNNING / COMPLETED / FAILED / CANCELLED
+    loop 대상 문제
+        Worker->>Source: 메타데이터 · 본문 조회
+        Worker->>Mongo: problems upsert (태그 → category 정규화)
+        Worker->>Redis: CAS로 진행률 · checkpoint · 실패 ID 갱신
+    end
+    Admin->>API: 작업 상태 조회 (폴링)
+    API-->>Admin: RUNNING / COMPLETED / FAILED / CANCELLED
 ```
 
-정규화 단계에서는 한국어 `displayName`을 `ProblemCategory`의 영문 표준명으로 변환합니다. 첫 번째 정규화 태그는 대표 `category`, 전체 태그는 `tags` 배열에 저장합니다.
+본문 수집(`collect-details`)도 같은 구조입니다. 끝난 작업은 실패한 항목만 다시 실행할 수 있고, 서버가 다시 시작되면 실행 주체를 잃은 작업을 정리합니다. [문제 수집과 카테고리 처리 상세 흐름](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md)
 
-[문제 수집과 카테고리 처리 상세 흐름](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md)
+풀이 결과·코딩 로그·회고 저장은 [풀이 기록 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md)에 있습니다.
 
-### 5-3. 풀이 결과·로그·회고 저장
+## 핵심 코드
 
-```mermaid
-flowchart LR
-    USER["사용자"]
-    STUDY["풀이 결과 제출<br/>POST /api/v1/study/submit"]
-    STUDENT[("students<br/>solutions 누적")]
-    LOG_API["코딩 로그 작성<br/>POST /api/v1/logs"]
-    LOGS[("logs")]
-    RETRO_API["회고 작성<br/>POST /api/v1/retrospectives"]
-    RETROS[("retrospectives")]
-    PROBLEMS[("problems")]
+### 1. 인증 코드와 BOJ ID를 한 번만 쓰기
 
-    USER --> STUDY --> STUDENT
-    USER --> LOG_API --> LOGS
-    USER --> RETRO_API --> RETROS
-    STUDENT -. 사용자 존재 확인 .-> RETRO_API
-    PROBLEMS -. 문제 존재 확인 .-> RETRO_API
+[`auth/application/boj/BojOwnershipVerificationService.kt`](./src/main/kotlin/com/didimlog/auth/application/boj/BojOwnershipVerificationService.kt#L90-L119)
+
+```kotlin
+val statusMessage = fetchStatusMessageOrThrow(bojIdVo)
+if (!codeMatcher.matches(statusMessage, verificationCode)) {
+    throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, /* ... */)
+}
+
+val claimedCode = codeStore.consume(sessionId)
+if (claimedCode != storedCode) {
+    throw BusinessException(ErrorCode.COMMON_INVALID_INPUT, "인증 코드가 만료되었거나 이미 사용되었습니다.")
+}
+codeStore.save(VERIFIED_BOJ_ID_KEY_PREFIX + sessionId, bojIdVo.value, DEFAULT_TTL_SECONDS)
 ```
 
-- 풀이 제출 시 인증 principal의 불변 `studentId`로 사용자를 찾고, 문제 존재 여부를 확인한 뒤 성공 여부와 소요 시간을 사용자 문서에 저장합니다.
-- 같은 학생의 동시 제출은 `documentVersion` 조건부 갱신과 최대 3회 재시도로 최신 풀이 기록에 합칩니다.
-- 코딩 로그는 불변 `studentId`를 소유자로 두고 제목, 내용, 코드, 생성 시점 BOJ ID, 성공 여부를 별도 문서로 저장합니다.
-- AI 리뷰 조회·피드백은 캐시 반환 전에도 인증 principal의 `studentId`와 로그 소유자가 일치하는지 확인합니다.
-- 회고는 사용자·문제를 검증한 뒤 문제 카테고리를 함께 저장하고, 원자 upsert 또는 소유자 조건 부분 갱신으로 생성·수정합니다.
+상태 메시지에 코드가 있어도 Redis에서 코드를 꺼내 지운 요청만 통과합니다. 같은 코드로 두 번 인증하거나, 다른 사람이 인증한 BOJ ID로 가입할 수 없습니다. 가입 때도 인증된 BOJ ID를 같은 방식으로 한 번만 소비합니다.
 
-[풀이 결과·로그·회고 상세 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md)
+### 2. AI 리뷰 중복 생성 막기
 
-로그 피드백의 소유권 검증과 거부 조건은 [로그 피드백 소유권 검증](./DOCS/refactoring/be-refactor/PHASE_2C_3_LOG_FEEDBACK_OWNERSHIP.md)에 정리했습니다.
+[`log/infra/MongoLogAiReviewLockRepository.kt`](./src/main/kotlin/com/didimlog/log/infra/MongoLogAiReviewLockRepository.kt#L21-L39)
 
-### 5-4. 카테고리 계층 확장 검색
+```kotlin
+query.addCriteria(Criteria.where(ID_FIELD).`is`(logId))
+query.addCriteria(Criteria.where(AI_REVIEW_FIELD).`is`(null))
+query.addCriteria(lockAvailableCriteria(now))
 
-카테고리 계층은 외부 사이트에서 다시 수집하지 않고 애플리케이션에 정의한 부모·자식·연관 관계를 사용합니다.
+val update = Update()
+    .set(AI_REVIEW_STATUS_FIELD, AiReviewStatus.IN_PROGRESS)
+    .set(AI_REVIEW_LOCK_EXPIRES_AT_FIELD, expiresAt)
+    .inc(AI_REVIEW_LOCK_VERSION_FIELD, 1)
 
-```mermaid
-flowchart LR
-    CODE["ProblemCategory<br/>계층·별칭"]
-    META["GET /api/v1/problems/categories/meta"]
-    FE["문제 탐색 화면"]
-    RECOMMEND["GET /api/v1/problems/recommend"]
-    MODE["EXACT / HIERARCHY / RELATED"]
-    MONGO[("problems<br/>category + tags")]
-
-    CODE --> META --> FE
-    FE --> RECOMMEND --> MODE
-    CODE --> MODE
-    MODE --> MONGO --> FE
+val updated = mongoTemplate.findAndModify(query, update, options, Log::class.java)
 ```
 
-1. `GET /api/v1/problems/categories/meta`가 정규 이름, 별칭, 부모·자식·연관 카테고리를 제공합니다.
-2. `EXACT`는 대표 카테고리를 정확히 비교합니다.
-3. `HIERARCHY`는 선택 카테고리와 하위 태그를 확장합니다.
-4. `RELATED`는 계층 결과에 부모·형제 관계를 더합니다.
-5. MongoDB의 `category`와 `tags`를 조회해 추천 후보를 구성합니다.
+리뷰가 없고 잠금이 비었거나 만료된 로그만 `IN_PROGRESS`로 바꿉니다. MongoDB가 한 문서에 대해 조건 확인과 갱신을 한 번에 하므로 동시에 50건이 와도 Gemini 호출은 1번입니다. 잠금 버전을 올려 두어, 만료 뒤 늦게 끝난 요청이 새 요청의 결과를 덮어쓰지 못합니다.
 
-[문제 수집과 카테고리 처리 상세 흐름](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md)
+### 3. 수집 작업 상태를 비교 후 갱신
 
-## 6. 화면으로 확인하기
+[`problem/application/collector/ProblemJobStateStore.kt`](./src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobStateStore.kt#L147-L178) · [Lua 스크립트](./src/main/kotlin/com/didimlog/problem/application/collector/ProblemJobRedisScripts.kt#L44)
 
-대표 이미지를 선택하면 각 원본 GIF가 열립니다.
+```lua
+local current = redis.call('GET', KEYS[1])
+if not current then
+    return -1
+end
+if current ~= ARGV[1] then
+    return 0
+end
+```
+
+worker가 읽은 상태 JSON이 Redis의 현재 값과 같을 때만 새 상태를 씁니다. 관리자가 취소한 뒤 worker가 진행률을 덮어쓰거나, 끝난 작업이 다시 `RUNNING`이 되는 경우를 막습니다. 실패한 문제 ID 기록과 TTL 갱신도 같은 스크립트 안에서 처리합니다.
+
+### 4. 제한 병렬 수집과 순서 유지
+
+[`problem/application/collector/ParallelProblemDetailsFetcher.kt`](./src/main/kotlin/com/didimlog/problem/application/collector/ParallelProblemDetailsFetcher.kt#L48-L114)
+
+BOJ 본문 조회만 전용 executor에서 최대 `K`개씩 실행하고, 결과는 대상 순서대로 하나씩 꺼내 MongoDB와 Redis에 반영합니다. 순서대로 반영하므로 checkpoint 앞의 문제는 모두 처리된 상태입니다. 기본값은 병렬 끔(`K=1`)입니다.
+
+## 화면
+
+대표 이미지를 누르면 원본 GIF가 열립니다. 외부 BOJ·solved.ac 응답은 `portfolio-fixture` 고정값이고, 화면은 React FE가 로컬 API·Redis·MongoDB를 호출한 결과입니다.
 
 <table>
   <tr>
@@ -217,105 +176,92 @@ flowchart LR
 </table>
 
 <details>
-<summary>원본 화면 흐름 4개 보기</summary>
+<summary>나머지 화면 2개</summary>
 
-- [BOJ 상태 메시지 인증 → 회원가입 → 대시보드](./DOCS/assets/portfolio/01-boj-signup_demo.gif)
-- [관리자 비동기 수집 → Redis 작업 상태 → MongoDB 저장](./DOCS/assets/portfolio/02-crawler-pipeline_demo.gif)
 - [풀이 결과 → 코드 로그 → 회고 저장·조회](./DOCS/assets/portfolio/03-problem-solve-save_demo.gif)
-- [solved.ac 태그 정규화 → 카테고리 계층 확장 검색](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
+- [solved.ac 태그 정규화 → 카테고리 계층 검색](./DOCS/assets/portfolio/04-category-metadata-pipeline_demo.gif)
 
 </details>
 
-> 외부 BOJ·solved.ac 응답과 BOJ 인증 코드 생성에는 `portfolio-fixture`의 고정값을 사용했습니다. 화면은 React FE가 로컬 Spring Boot API를 호출하고 Redis와 MongoDB에 저장한 결과입니다.
+## 측정 결과
 
-## 7. 로컬 검증 결과
+로컬 MongoDB 7.0.16·Redis 7.2.5 fixture에서 같은 조건으로 변경 전·후를 비교한 값입니다. 운영 처리량이나 응답 시간 개선율이 아닙니다. 조건 전체는 [로컬 검증 결과 상세](./DOCS/LOCAL_VERIFICATION.md)에 있습니다.
 
-대표 결과만 남겼습니다. 모든 표와 측정 조건은 [로컬 검증 결과 상세](./DOCS/LOCAL_VERIFICATION.md)에 있습니다.
-수치는 로컬 MongoDB 7.0.16·Redis 7.2.5 fixture에서 Before·After를 같은 조건으로 비교한 값이며, 운영 처리량이나 응답 시간 개선율이 아닙니다.
+| 항목 | 고정 조건 | 이전 | 현재 |
+| :-- | :-- | --: | --: |
+| 문제 상세 제한 병렬 수집 | 3,400건·10ms 고정 지연·3회 중앙값 | 55.632초 | 12.226초 (누락·중복 0건) |
+| 관리자 회원 조회 N+1 제거 | 회원 12명·페이지 크기 10 | 읽기 명령 11 | 2 |
+| 통계 조회 데이터 축소 | 회고 1,200건 | 5,230,680 B | 107,790 B |
+| 추천 카테고리 조회 단일화 | BFS·RELATED | `problems` find 31 | 1 |
+| 수집 작업 목록 일괄 조회 | index 작업 20건 | Redis 명령 21 | 2 |
+| AI 리뷰 중복 생성 | 동일 로그 50건 동시 요청·10회 | - | Gemini 호출 1회·저장 1건 |
 
-| 항목 | 고정 조건 | Before | After | 변화 |
-| --- | --- | ---: | ---: | ---: |
-| 문제 상세 제한 병렬 수집 | 3,400건·10ms 고정 지연·3회 중앙값 | 55.632초 | 12.226초 | 77.96% 단축, 누락·중복 0건 |
-| 관리자 회원 조회 N+1 제거 | 회원 12명·페이지 크기 10 | 읽기 명령 11 | 2 | 81.8% 감소 |
-| 통계 조회 데이터 축소 | 회고 1,200건 | 5,230,680 B | 107,790 B | 97.94% 감소 |
-| 추천 카테고리 조회 단일화 | BFS·RELATED | `problems` find 31 | 1 | 96.77% 감소 |
-| 수집 작업 목록 일괄 조회 | index 작업 20건 | Redis 명령 21 | 2 | 90.48% 감소 |
-| AI 리뷰 중복 생성 | 동일 로그 50건 동시 요청·10회 | - | Gemini 호출 1회·저장 1건 | 중복 0건 |
+## 패키지 구조 정리
 
-## 8. 트러블 슈팅
+![패키지 구조 정리 전후](./DOCS/assets/refactoring/package-structure.png)
 
-### AI 리뷰 중복 생성 및 동시성 제어
+처음에는 `ui`·`application`·`domain`처럼 계층별로 폴더를 나눠, 기능 하나를 고치려면 여러 폴더를 오가야 했습니다. 2026-11-27에 도메인별 `api`·`application`·`domain`·`infra`로 옮긴 뒤, `global`과 최상위에 남은 OAuth 로그인·점검 모드·회원 API·fixture 코드를 각 도메인으로 옮겼습니다. 클래스 이름, API 경로, 동작은 그대로이고 전체 범위 커버리지 숫자도 이동 전과 같습니다. 이동 내용과 남겨둔 의존은 [패키지 구조 정리](./DOCS/refactoring/PACKAGE_STRUCTURE.md)에 있습니다.
 
-- 문제: 동일 로그에 짧은 시간 동안 요청이 집중되면 AI API 호출과 최종 저장이 중복될 수 있었습니다.
-- 해결: MongoDB `findAndModify`로 `IN_PROGRESS` 잠금을 원자적으로 획득하고, 완료·실패 상태와 잠금 만료 시각을 함께 관리했습니다.
-- 검증: 동일 로그 동시 요청에서 각 회차의 Gemini 호출과 최종 저장이 1건으로 수렴했습니다([7. 로컬 검증 결과](#7-로컬-검증-결과)).
+## 테스트
 
-### 문제 수집 작업의 비동기 실행
+```bash
+./gradlew test integrationTest
+./gradlew jacocoTestReport jacocoIntegrationTestReport jacocoMergedReport
+```
 
-- 문제: 같은 클래스의 `private` 메서드에 `@Async`를 적용하면 Spring 프록시를 거치지 않아 수집이 요청 스레드에서 실행되고 응답이 지연될 수 있습니다.
-- 해결: 명시적으로 주입한 `TaskExecutor`에 수집 작업을 제출하고, API는 Redis job 생성 후 `jobId`를 반환하도록 분리했습니다.
-- 상태 전이: Redis 원본 JSON을 기대값으로 비교하는 Lua CAS로 처리하고, 종료 상태는 다시 변경하지 않습니다. 신규 작업의 상태·대상 manifest·index와 항목 실패 ID도 같은 Lua에서 기록하며, 완료 작업은 실패 항목만 다시 실행합니다. 참조된 manifest가 없거나 손상됐다면 409를 반환합니다.
-- 복구: 단일 BE Docker 구성은 시작할 때 작업 생성 gate를 닫고, 실행 주체를 잃은 `PENDING`·`RUNNING` 작업만 `WORKER_UNAVAILABLE`로 실패 처리한 뒤 gate를 엽니다. worker lease 모드는 10초마다 lease가 없는 작업을 다시 제출하고(claim은 Runnable 시작 후 수행), 만료된 `RUNNING` 작업은 기존 카운터와 checkpoint를 유지한 채 manifest suffix만 처리합니다. manifest가 없거나 손상된 작업은 외부 호출 없이 `FAILED` 처리합니다.
-- 병렬 처리: 상세 외부 조회만 전용 executor에서 최대 `K`개씩 실행하고, MongoDB·Redis는 coordinator가 manifest 순서로 반영해 연속 checkpoint를 유지합니다. 기본은 병렬 비활성화·`K=1`입니다.
-- 결과: 관리자 화면은 상태 API를 폴링하며 진행률과 checkpoint를 갱신하고, 같은 작업의 중복 실행과 취소 뒤 상태 덮어쓰기를 막습니다.
+| 항목 | 값 (2026-11-27) |
+| :-- | :-- |
+| 단위 테스트 | 1,027 passed |
+| 통합 테스트 | 278 passed, 10 skipped (로컬 MongoDB·Redis 필요) |
+| 전체 범위 커버리지 (단위 테스트) | LINE 83.44% (9,202 / 11,028) · BRANCH 67.06% |
+| core 범위 커버리지 (단위 테스트) | LINE 92.05% · BRANCH 76.79% |
 
-### 인증 API 남용 방지
+PR에서는 GitHub Actions가 MongoDB 7.0.16·Redis 서비스 컨테이너를 띄우고 단위 테스트와 `check`(통합 테스트·커버리지)를 실행합니다.
 
-- Redis Lua 한 번으로 카운터와 최초 만료 시간을 처리해 동시 요청에서도 한도를 넘기지 않습니다.
-- Tomcat이 내부 프록시에서 받은 주소만 반영하고 BE 포트는 로컬에만 열며, 로그인 성공으로 제한 횟수를 초기화하지 않습니다.
-- 제한 초과 시 남은 횟수, 재시도 대기 시간과 해제 예정 시각을 반환합니다.
+## 실행
 
-## 9. 실행 및 테스트
-
-### 로컬 실행
-
-MongoDB·Redis 연결 정보, JWT Secret, OAuth·메일 설정과 Swagger 전용 계정을 환경 변수로 준비합니다. Swagger 계정은 기본값이 없으므로 `SWAGGER_USERNAME`, `SWAGGER_PASSWORD`를 지정해야 합니다.
+MongoDB·Redis 연결 정보, JWT Secret, OAuth·메일 설정, Swagger 계정을 환경 변수로 준비합니다. Swagger 계정은 기본값이 없습니다.
 
 ```bash
 export SWAGGER_USERNAME=local-swagger
 export SWAGGER_PASSWORD='replace-with-a-long-local-password'
 ./gradlew bootRun
-```
 
-| 환경 변수 | 기본값 | 사용 기준 |
-| --- | --- | --- |
-| `PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP` | `false` | BE가 하나인 기본 Docker Compose에서만 `true`. 여러 BE를 함께 실행하거나 순차 교체할 때는 `false` 유지 |
-| `PROBLEM_COLLECTOR_WORKER_LEASE_ENABLED` | `false` | Redis 상태·실패 원장만 보호하고 이미 시작한 MongoDB 쓰기는 차단하지 않으므로, 같은 항목의 중복 쓰기를 허용할 수 있는 환경에서만 활성화. 위 시작 실패 복구와 동시에 켤 수 없음 |
-
-외부 BOJ·solved.ac 응답을 사용하지 않는 포트폴리오 촬영 환경에서는 로컬 전용 프로필을 활성화합니다.
-
-```bash
+# 외부 BOJ·solved.ac 대신 고정 응답을 쓰는 촬영용 프로필 (prod와 함께 켜지지 않음)
 SPRING_PROFILES_ACTIVE=portfolio-fixture ./gradlew bootRun
 ```
 
-`portfolio-fixture` 구성은 `prod`와 동시에 활성화될 경우 고정 인증 코드와 외부 fixture 클라이언트가 동작하지 않도록 제한했습니다.
+| 환경 변수 | 기본값 | 사용 기준 |
+| :-- | :-- | :-- |
+| `PROBLEM_COLLECTOR_FAIL_ORPHANED_JOBS_ON_STARTUP` | `false` | BE가 하나인 기본 Docker Compose에서만 `true` |
+| `PROBLEM_COLLECTOR_WORKER_LEASE_ENABLED` | `false` | 같은 항목의 중복 MongoDB 쓰기를 허용할 수 있는 환경에서만 켬. 위 설정과 동시에 켤 수 없음 |
 
-### 테스트
+## 한계
 
-```bash
-./gradlew test
-./gradlew integrationTest
-./gradlew check
-./gradlew jacocoTestReport jacocoIntegrationTestReport jacocoMergedReport
-```
+| 항목 | 현재 상태 |
+| :-- | :-- |
+| 채점 | 온라인 채점 시스템이 아님. 풀이 성공 여부와 소요 시간은 사용자가 제출한 값 |
+| BOJ 인증 | 공개 프로필 HTML에 의존. BOJ 구조가 바뀌면 파서를 고쳐야 함 |
+| OAuth | 이미 연결한 계정의 로그인만 지원, 신규 소셜 가입은 없음 |
+| 데모 데이터 | 화면의 외부 응답은 고정 fixture라 실제 외부 연동 성공을 증명하지 않음 |
+| 수집 작업 | manifest는 문제 ID와 순서만 고정. worker lease는 Redis 상태만 보호하고, 요청 간격 제한은 JVM 하나 안에서만 공유. 취소해도 이미 시작한 최대 `K`개 요청은 끝까지 갈 수 있음 |
 
-## 10. 한계와 검증 범위
+## 기술 스택
 
-- DidimLog는 온라인 채점 시스템이 아닙니다. 풀이 성공 여부와 소요 시간은 사용자가 제출한 값을 기록합니다.
-- BOJ 계정 인증은 공개 프로필의 상태 메시지 조회에 의존합니다. BOJ HTML 구조가 변경되면 파서를 갱신해야 합니다.
-- OAuth2 로그인은 기존 연결 계정에만 제공하며 신규 소셜 가입은 지원하지 않습니다.
-- 데모의 외부 BOJ·solved.ac 응답은 고정 fixture이므로 실제 외부 연동 성공을 증명하지 않습니다.
-- 문제 수집 대상 manifest는 문제 ID와 순서만 고정하며 당시 문제 문서 내용의 snapshot이나 exactly-once 실행을 보장하지 않습니다.
-- 문제 수집 worker lease와 자동 인계는 Redis 상태·실패 원장만 보호합니다. lease 만료 전에 시작한 외부 호출과 MongoDB 쓰기 한 건은 새 worker의 같은 항목 처리와 겹칠 수 있습니다.
-- 문제 상세 요청 시작 간격은 하나의 JVM에서만 공유하며, 여러 BE 인스턴스의 합산 요청률을 제한하지는 않습니다.
-- 취소는 결과 반영을 막지만 이미 시작된 최대 `K`개의 HTTP 요청을 즉시 종료한다고 보장하지 않습니다.
-- 외부 API 계약이 변경되면 클라이언트와 응답 모델을 갱신해야 할 수 있습니다.
+| 영역 | 기술 |
+| :-- | :-- |
+| Language·Framework | Kotlin 1.9.25, Java 17, Spring Boot 3.3.5 (MVC, Security, WebClient) |
+| Data | MongoDB, Redis (토큰·요청 제한·수집 작업 상태) |
+| External | solved.ac API, BOJ, Google Gemini, OAuth2 (Google·GitHub·Naver), Gmail SMTP |
+| Infra | Docker Compose, Nginx, Certbot, GitHub Actions, Docker Hub, AWS EC2 |
+| Test | JUnit 5, MockK, JaCoCo |
 
-## 11. 문서
+## 문서
 
 | 분류 | 문서 |
 | --- | --- |
 | 흐름·검증 | [BOJ 인증과 회원가입 흐름](./DOCS/portfolio/BOJ_SIGNUP_FLOW.md) · [문제 수집과 카테고리 처리](./DOCS/portfolio/PROBLEM_COLLECTION_AND_CATEGORY.md) · [풀이 결과·로그·회고 저장 흐름](./DOCS/portfolio/STUDY_RECORD_FLOW.md) · [API 명세](./DOCS/API_SPECIFICATION.md) · [로컬 검증 결과 상세](./DOCS/LOCAL_VERIFICATION.md) · [로컬 동시성·요청 제한 검증 기록](./DOCS/performance/runs/2026-06-21-DIDIMLOG-LOCAL-VERIFICATION.md) |
+| 구조 | [아키텍처와 근거](./architecture/architecture.md) · [패키지 구조 정리](./DOCS/refactoring/PACKAGE_STRUCTURE.md) |
 | 조회 최적화 | [관리자 회원 조회 최적화](./DOCS/refactoring/be-refactor/ADMIN_QUERY_OPTIMIZATION_OVERVIEW.md) · [통계 조회 데이터 축소](./DOCS/refactoring/be-refactor/PHASE_4A_STATISTICS_QUERY_OPTIMIZATION.md) · [관리자 대시보드 차트 집계](./DOCS/refactoring/be-refactor/PHASE_6F_ADMIN_DASHBOARD_CHART_AGGREGATION.md) · [추천 카테고리 단일 조회](./DOCS/refactoring/be-refactor/PHASE_6G_RECOMMENDATION_SINGLE_QUERY.md) · [관리자 피드백 작성자 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6I_ADMIN_FEEDBACK_BATCH_LOOKUP.md) · [문제 수집 작업 목록 일괄 조회](./DOCS/refactoring/be-refactor/PHASE_6J_CRAWLER_JOB_LIST_BATCH_READ.md) |
 | 인증·AI 원자성 | [인증 요청 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_2D_AUTH_RATE_LIMIT_ATOMICITY.md) · [AI 사용량 원자적 예약](./DOCS/refactoring/be-refactor/PHASE_5A_AI_USAGE_ATOMIC_RESERVATION.md) · [유지보수 설정 원자화](./DOCS/refactoring/be-refactor/PHASE_6B_MAINTENANCE_CONFIG_ATOMICITY.md) · [AI 리뷰 잠금 소유권 분리](./DOCS/refactoring/be-refactor/PHASE_6C_AI_REVIEW_LOCK_OWNERSHIP.md) · [Gemini 호출 제한 원자화](./DOCS/refactoring/be-refactor/PHASE_6D_GEMINI_RATE_LIMIT_ATOMICITY.md) |
 | 데이터 정합성 | [풀이 결과 부분 갱신과 충돌 재시도](./DOCS/refactoring/be-refactor/PHASE_3A_STUDY_SOLUTION_CAS.md) · [회고 원자 갱신과 풀이 기록 삭제 정합성](./DOCS/refactoring/be-refactor/PHASE_3B_RETROSPECTIVE_ATOMIC_UPDATES.md) · [계정 삭제 경로 통합과 연관 데이터 정리](./DOCS/refactoring/be-refactor/PHASE_3C_ACCOUNT_DELETION_CONSISTENCY.md) · [계정 삭제와 사용자 데이터 쓰기 경합 차단](./DOCS/refactoring/be-refactor/PHASE_3D_ACCOUNT_WRITE_BARRIER.md) · [기본 템플릿 참조 정합성](./DOCS/refactoring/be-refactor/PHASE_3E_TEMPLATE_REFERENCE_CONSISTENCY.md) · [고아 데이터 읽기 전용 점검](./DOCS/refactoring/be-refactor/PHASE_5C_ORPHAN_DATA_READ_ONLY_DRY_RUN.md) |

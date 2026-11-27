@@ -4,8 +4,8 @@ import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.infra.solvedac.SolvedAcClient
 import com.didimlog.infra.solvedac.SolvedAcProblemResponse
 import com.didimlog.infra.solvedac.SolvedAcUserResponse
-import com.didimlog.portfolio.PortfolioBojCrawler
-import com.didimlog.portfolio.PortfolioSolvedAcClient
+import com.didimlog.infra.fixture.PortfolioBojCrawler
+import com.didimlog.infra.fixture.PortfolioSolvedAcClient
 import com.didimlog.problem.domain.Example
 import com.didimlog.problem.domain.Problem
 import com.didimlog.problem.domain.ProblemCategory

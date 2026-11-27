@@ -1,4 +1,4 @@
-# Didim-Log System Architecture
+# 디딤로그 아키텍처
 
 ![시스템 아키텍처](./architecture.png)
 
@@ -17,13 +17,12 @@
 | --- | --- |
 | 분석일 | 2026-11-26 |
 | 저장소 | [didim-log/didim-log-BE](https://github.com/didim-log/didim-log-BE) |
-| 확인한 커밋 | `main` [`876ad9c`](https://github.com/didim-log/didim-log-BE/commit/876ad9c3028f85941425ae30d9d1980a185873d6) |
+| 확인한 브랜치 | 2026-11-26 시점 `main` |
 | 대상 환경 | `deploy.yml`이 배포하는 운영 구성 (저장소 설정 기준) |
 | 운영 서버 | 직접 확인하지 않음 |
+| 경로 변경 | 근거 링크는 2026-11-26 시점 `main`의 경로입니다. 이후 패키지 정리로 `infra/crawler`·`infra/boj`·`infra/ai`는 `problem/infra/crawler`·`auth/infra/boj`·`ai/infra`로 옮겼고, 구성요소와 연결은 같습니다. 이동 내용은 [패키지 구조 정리](../DOCS/refactoring/PACKAGE_STRUCTURE.md)에 있습니다. |
 
 ## 근거표
-
-`B` = `https://github.com/didim-log/didim-log-BE/blob/876ad9c3028f85941425ae30d9d1980a185873d6`
 
 | 도면의 구성요소·연결·경계 | 의미 | 근거 | 환경 | 확인 상태 |
 | --- | --- | --- | --- | --- |
@@ -45,13 +44,13 @@
 
 ## 로고 출처
 
-| 기술·제품 | 사용 파일 | 공식 출처 페이지 | 실제 다운로드 URL·패키지 내 경로 | 확인일 | 원본 SHA-256 |
-| --- | --- | --- | --- | --- | --- |
-| Amazon EC2 | `assets/logos/aws-ec2.svg` | https://aws.amazon.com/architecture/icons/ | https://d1.awsstatic.com/onedam/marketing-channels/website/public/shared/architecture-icon-release/Icon-package_07312026.5846e92413caa21490223536cc97f1269e44fa92.zip: Architecture-Service-Icons_07312026/Arch_Compute/64/Arch_Amazon-EC2_64.svg | 2026-11-26 | `5a7a0cef7a9f44ccdd544564ce9076abec3024090be0d6454504c49d149ce9ec` |
-| NGINX (open source) | `assets/logos/nginx.svg` | https://nginx.org/ | https://nginx.org/img/nginx_logo.svg | 2026-11-26 | `9bd543826050ee506dd234f03fbbe972444bb20d9d4854ba7b0e1cf71ef28f07` |
-| Certbot (EFF) | `assets/logos/certbot.svg` | https://certbot.eff.org/ | https://certbot.eff.org/assets/Certbot-solid-c4e500f9953fc8ee1d38cb0b22778163602a82cb2b39a5bc89211315c5c877c9.svg | 2026-11-26 | `e636d2d8e663f880ee5a86a1f43a5f54734e649c65e95430e2e3c57614cb07d2` |
-| MongoDB | `assets/logos/mongodb.svg` | https://www.mongodb.com/company/newsroom/brand-resources | https://brandfolder.com/mongodb/press-kit (linked as 'Download our Media Kit') -> asset mpb3hfbgpkksmnh3bfvb6m3w 'Evergreen - Logomark', attachment 'Evergreen - Logomark.svg' (original fetched via signed storage-us-gcs.bfldr.com URL, which expires) | 2026-11-26 | `4cffb92805e9ad93459b5ba1d7baa7753e23247a78b4091a1079b1f39562009c` |
-| GitHub (also for GHCR) | `assets/logos/github.svg` | https://brand.github.com/foundations/logo | https://brand.github.com/GitHub_Logos.zip: GitHub Logos/SVG/GitHub_Invertocat_Black.svg | 2026-11-26 | `693d7abe6f899646cc2e96856723b45e95f71885a54910b2749f6decdf7e1ee1` |
+| 기술·제품 | 사용 파일 | 공식 출처 | 확인일 |
+| --- | --- | --- | --- |
+| Amazon EC2 | `assets/logos/aws-ec2.svg` | [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/) | 2026-11-26 |
+| NGINX | `assets/logos/nginx.svg` | [nginx.org](https://nginx.org/) | 2026-11-26 |
+| Certbot | `assets/logos/certbot.svg` | [certbot.eff.org](https://certbot.eff.org/) | 2026-11-26 |
+| MongoDB | `assets/logos/mongodb.svg` | [MongoDB Brand Resources](https://www.mongodb.com/company/newsroom/brand-resources) | 2026-11-26 |
+| GitHub | `assets/logos/github.svg` | [GitHub Logos](https://brand.github.com/foundations/logo) | 2026-11-26 |
 
 ## 확인 필요 사항
 

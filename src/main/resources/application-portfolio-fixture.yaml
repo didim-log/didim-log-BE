@@ -4,4 +4,4 @@ portfolio:
 
 logging:
   level:
-    com.didimlog.portfolio: INFO
+    com.didimlog.infra.fixture: INFO

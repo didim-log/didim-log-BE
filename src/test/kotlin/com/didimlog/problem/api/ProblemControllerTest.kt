@@ -1,6 +1,6 @@
 package com.didimlog.problem.api
 
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.problem.application.ProblemService
 import com.didimlog.problem.domain.Problem

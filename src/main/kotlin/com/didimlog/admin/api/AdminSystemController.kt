@@ -11,9 +11,9 @@ import com.didimlog.admin.api.dto.StorageStatsResponse
 import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.admin.domain.AdminActionType
 import com.didimlog.ai.application.AiUsageService
-import com.didimlog.global.system.MaintenanceModeService
+import com.didimlog.system.application.MaintenanceModeService
 import com.didimlog.global.util.HttpRequestUtil
-import com.didimlog.storage.application.StorageManagementService
+import com.didimlog.retrospective.application.StorageManagementService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content

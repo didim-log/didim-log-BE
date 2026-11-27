@@ -1,6 +1,6 @@
 package com.didimlog.system.api
 
-import com.didimlog.global.system.MaintenanceModeService
+import com.didimlog.system.application.MaintenanceModeService
 import com.didimlog.system.api.dto.SystemStatusResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -41,7 +41,7 @@ class PublicSystemController(
         return ResponseEntity.ok(response)
     }
 
-    private fun getMaintenanceMessage(config: com.didimlog.global.system.MaintenanceModeService.MaintenanceConfig): String? {
+    private fun getMaintenanceMessage(config: com.didimlog.system.application.MaintenanceModeService.MaintenanceConfig): String? {
         if (!config.enabled) {
             return null
         }

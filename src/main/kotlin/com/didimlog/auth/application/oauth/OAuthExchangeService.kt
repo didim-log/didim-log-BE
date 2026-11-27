@@ -2,7 +2,7 @@ package com.didimlog.auth.application.oauth
 
 import com.didimlog.auth.application.CredentialSessionCoordinator
 import com.didimlog.auth.application.RefreshTokenService
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.student.domain.Provider

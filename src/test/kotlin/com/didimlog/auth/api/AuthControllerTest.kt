@@ -8,7 +8,7 @@ import com.didimlog.auth.application.FindAccountService
 import com.didimlog.auth.application.RefreshTokenService
 import com.didimlog.auth.application.boj.BojOwnershipVerificationService
 import com.didimlog.auth.application.oauth.OAuthExchangeService
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler

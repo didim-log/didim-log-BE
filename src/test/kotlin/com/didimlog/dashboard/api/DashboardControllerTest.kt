@@ -2,7 +2,7 @@ package com.didimlog.dashboard.api
 
 import com.didimlog.dashboard.application.DashboardInfo
 import com.didimlog.dashboard.application.DashboardService
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.student.domain.Tier
 import io.mockk.every

@@ -1,94 +1,50 @@
-# Phase 0A — 테스트·커버리지 기준선
+# 테스트·커버리지 기준선
 
-## 목적
+리팩터링 전후를 같은 범위로 비교하려고, 일부 패키지만 보던 커버리지 측정에 전체 코드 범위를 추가하고 CI에서 하락을 막는 기준을 걸었습니다. 이 문서의 수치는 성능 결과가 아니라 출발점입니다.
 
-BE 리팩터링 전후를 같은 JaCoCo 범위로 비교하기 위한 기준선을 고정한다.
-이 문서의 수치는 성능 개선 결과가 아니며, 리팩터링 전 측정 범위와 품질 하한을 기록한 것이다.
+## 이전과 현재
 
-## 소스 기준
+| 항목 | 이전 | 현재 |
+| --- | --- | --- |
+| 측정 범위 | core-v1만 (collector·UI·infra 일부 제외) | core-v1 + 전체 프로덕션 코드 full-v1 |
+| 전체 코드 Line 커버리지 | 보이지 않음 | 61.95% (5,282 / 8,526) |
+| 커버리지 하락 | 막는 장치 없음 | CI `clean check`에서 기준 미달 시 실패 |
+| 테스트·리포트 산출물 | 보존 안 함 | GitHub Actions artifact로 14일 보존 |
 
-- Application baseline SHA: `74f7941d8d28275b9abe38877f32c4216955350b`
-- Baseline branch: `develop-be-refactor-baseline`
-- Java toolchain: 17
-- JaCoCo: 0.8.12
-- 테스트 실행 전 `clean` 필수
+full-v1이 core-v1보다 낮은 것은 테스트가 적은 collector, UI, infra, security, AI, statistics 영역을 숨기지 않았기 때문입니다. 같은 full-v1 기준으로 [비밀번호 변경과 토큰 소유자 고정](./PHASE_2E_PASSWORD_CHANGE_SESSION_REVOCATION.md) 시점에는 Line 68.41%, Branch 50.52%가 됐습니다.
 
-기존 `main` 작업 트리와 기준선 작업 트리를 분리했다. 기준선 측정에는 수정 중인 DTO와 미추적 성능 파일을 포함하지 않는다.
+## 최초 측정
 
-## 고정 범위
+Java 17, JaCoCo 0.8.12에서 `clean` 뒤 측정했습니다. 단위 테스트 482개와 통합 테스트 27개(스킵 5개)가 모두 통과한 상태입니다.
 
-### core-v1
+| 범위 | Line | Branch | Class |
+| --- | --- | --- | --- |
+| core-v1 | 78.79% (3,184 / 4,041) | 55.52% (779 / 1,403) | 90.71% (166 / 183) |
+| full-v1 | 61.95% (5,282 / 8,526) | 42.20% (1,125 / 2,666) | 74.72% (334 / 447) |
+| collector 패키지 | 46.00% (328 / 713) | 26.98% (75 / 278) | - |
 
-기존 `jacocoMergedReport` allowlist를 그대로 보존한다. 과거 측정과의 연속성을 위한 범위이며 다음 제한이 있다.
+## 바꾼 내용
 
-- `application/problem/collector` 제외
-- 일부 application 패키지 제외
-- 전체 UI와 infra 패키지 제외
+- core-v1은 기존 `jacocoMergedReport` 범위를 그대로 둬서 과거 수치와 이어 볼 수 있게 했습니다. 전체 서비스 커버리지는 아닙니다.
+- full-v1은 `com/didimlog/**` 아래 프로덕션 클래스 전체를 포함하고, 이후 전후 비교의 기본 범위로 씁니다.
+- 하락 방지 기준은 최초 값을 정수로 내림해 걸었습니다. 반올림 때문에 기준선이 흔들리지 않게 하려는 것입니다.
 
-따라서 core-v1 수치는 전체 서비스 커버리지가 아니다.
+| 범위 | Line | Branch | Class |
+| --- | --- | --- | --- |
+| core-v1 | 78% | 55% | 90% |
+| full-v1 | 61% | 42% | 74% |
 
-### full-v1
+- 측정 데이터는 `test.exec`, `integrationTest.exec` 두 파일만 씁니다. 이름이 겹친 예전 산출물(`* 2.exec`, `* 2.class`)은 넣지 않습니다.
 
-`com/didimlog/**` 아래의 전체 프로덕션 클래스를 포함한다. 테스트 클래스만 제외한다.
-앞으로 BE 전체 리팩터링 전후 비교에는 full-v1을 기본 범위로 사용한다.
-
-## 최초 clean 측정
-
-- 단위 테스트: 482개, 실패 0
-- 통합 테스트: 27개, 실패 0, 스킵 5
-- core-v1 Line: 3,184 / 4,041, 78.79%
-- core-v1 Branch: 779 / 1,403, 55.52%
-- core-v1 Class: 166 / 183, 90.71%
-- full-v1 Line: 5,282 / 8,526, 61.95%
-- full-v1 Branch: 1,125 / 2,666, 42.20%
-- full-v1 Class: 334 / 447, 74.72%
-- collector 패키지 Line: 328 / 713, 46.00%
-- collector 패키지 Branch: 75 / 278, 26.98%
-
-full-v1 최초 값이 core-v1보다 낮은 이유는 테스트가 부족한 collector, UI, infra, security, AI, statistics 영역을 숨기지 않고 포함했기 때문이다.
-
-## 하락 방지 기준
-
-부동소수점 반올림으로 기준선이 불안정해지지 않도록 최초 값의 소수 둘째 자리 아래를 내림한 값으로 gate를 설정한다.
-
-- core-v1: Line 78%, Branch 55%, Class 90%
-- full-v1: Line 61%, Branch 42%, Class 74%
-
-이 기준은 최종 목표가 아니라 시작점이다. Phase 1부터 전체 커버리지 하락 금지와 변경 코드 중심의 상향식 ratchet을 적용한다.
-
-## 재현 명령
+## 확인한 방법
 
 ```bash
 ./gradlew clean check --no-daemon
 ```
 
-예상 산출물:
+리포트는 `build/reports/jacoco/jacocoMergedReport/`와 `build/reports/jacoco/jacocoFullMergedReport/`에 생깁니다.
 
-```text
-build/jacoco/test.exec
-build/jacoco/integrationTest.exec
-build/reports/jacoco/jacocoMergedReport/
-build/reports/jacoco/jacocoFullMergedReport/
-build/reports/tests/test/
-build/reports/tests/integrationTest/
-```
+## 남은 한계
 
-JaCoCo execution data는 `test.exec`, `integrationTest.exec` 두 파일만 사용한다. 과거 산출물과 이름이 겹친 `* 2.exec`, `* 2.class`는 측정 대상에 포함하지 않는다.
-
-## CI
-
-PR의 integration-test job에서 `clean check`를 실행한다. 테스트와 두 JaCoCo 보고서는 성공 여부와 관계없이 14일 동안 GitHub Actions artifact로 보존한다.
-
-## 다음 단계에 포함하지 않은 항목
-
-다음 항목은 Phase 0B에서 별도로 고정한다.
-
-- MongoDB, Redis, WireMock image digest
-- JVM heap, GC, CPU와 메모리 제한
-- 결정적 fixture와 시간 기준
-- 크롤러 Mongo·Redis command 계측
-- 관리자 조회 command count와 query plan
-- k6 workload, warm-up, 반복 순서
-- 성능 raw JSON과 환경 manifest
-
-Phase 0B가 끝나기 전에는 처리량, 지연시간 또는 개선율을 README와 이력서에 기록하지 않는다.
+- 기준은 최종 목표가 아니라 시작점입니다. 이후 작업마다 전체 커버리지가 내려가지 않게 하고, 바꾼 코드 중심으로 올립니다.
+- 처리량과 지연 시간은 [성능 측정 환경](./PHASE_0B_PERFORMANCE_ENVIRONMENT.md)을 고정한 뒤에만 기록합니다.

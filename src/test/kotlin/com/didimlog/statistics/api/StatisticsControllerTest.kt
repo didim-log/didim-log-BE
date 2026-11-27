@@ -2,7 +2,7 @@ package com.didimlog.statistics.api
 
 import com.didimlog.statistics.application.StatisticsService
 import com.didimlog.statistics.application.StatisticsInfo
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import io.mockk.every
 import io.mockk.mockk
