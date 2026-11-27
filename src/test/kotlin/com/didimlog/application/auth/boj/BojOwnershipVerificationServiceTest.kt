@@ -157,6 +157,33 @@ class BojOwnershipVerificationServiceTest {
     }
 
     @Test
+    @DisplayName("BOJ 프로필 접근이 거부되면 프로필 공개 여부를 안내하며 COMMON_INVALID_INPUT를 던진다")
+    fun `verifyOwnership throws when boj profile access denied`() {
+        every { codeStore.find(any()) } returns "DIDIM-LOG-ABC123"
+        every { profileStatusMessageClient.fetchStatusMessage(any()) } returns BojProfileStatusMessageFetchResult.AccessDenied
+
+        assertThatThrownBy { service.verifyOwnership(sessionId = "session", bojId = "mekazon") }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageContaining("프로필이 공개되어 있는지")
+            .extracting("errorCode")
+            .isEqualTo(ErrorCode.COMMON_INVALID_INPUT)
+    }
+
+    @Test
+    @DisplayName("BOJ 프로필 조회가 실패하면 실패 사유를 노출하지 않고 COMMON_INTERNAL_ERROR를 던진다")
+    fun `verifyOwnership throws when boj profile fetch failed`() {
+        every { codeStore.find(any()) } returns "DIDIM-LOG-ABC123"
+        every { profileStatusMessageClient.fetchStatusMessage(any()) } returns
+            BojProfileStatusMessageFetchResult.Failed("connect timed out")
+
+        assertThatThrownBy { service.verifyOwnership(sessionId = "session", bojId = "mekazon") }
+            .isInstanceOf(BusinessException::class.java)
+            .hasMessageNotContaining("connect timed out")
+            .extracting("errorCode")
+            .isEqualTo(ErrorCode.COMMON_INTERNAL_ERROR)
+    }
+
+    @Test
     @DisplayName("상태 메시지에 코드가 없으면 COMMON_INVALID_INPUT를 던진다")
     fun `verifyOwnership throws when code not present`() {
         every { codeStore.find(any()) } returns "DIDIM-LOG-ABC123"

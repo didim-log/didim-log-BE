@@ -1128,4 +1128,173 @@ class TemplateServiceTest {
         assertThat(result).contains("```text")
         verify { problemService.getProblemMetaIfExists(problemId) }
     }
+
+    private val systemSuccess = Template(
+        id = "system-success",
+        title = "Simple(요약)",
+        content = "성공 회고 {{problemTitle}} {{timeTaken}} {{result}}",
+        type = TemplateOwnershipType.SYSTEM,
+        isDefaultSuccess = true
+    )
+    private val systemFail = Template(
+        id = "system-fail",
+        title = "Detail(상세)",
+        content = "실패 회고 {{problemTitle}} {{timeTaken}} {{result}}",
+        type = TemplateOwnershipType.SYSTEM,
+        isDefaultFail = true
+    )
+    private val sampleProblem = Problem(
+        id = ProblemId("1000"),
+        title = "A+B",
+        category = ProblemCategory.IMPLEMENTATION,
+        difficulty = Tier.BRONZE,
+        level = 3,
+        url = "https://www.acmicpc.net/problem/1000",
+        language = "ko"
+    )
+
+    private fun studentWithSolution(result: ProblemResult, seconds: Long) = existingStudent.copy(
+        solutions = Solutions().apply {
+            add(Solution(problemId = ProblemId("1000"), timeTaken = TimeTakenSeconds(seconds), result = result))
+        }
+    )
+
+    @Test
+    @DisplayName("템플릿 요약 목록은 본문 없이 ID, 소유자, 타입 이름을 변환한다")
+    fun `템플릿 요약 목록 조회`() {
+        val createdAt = java.time.LocalDateTime.of(2026, 1, 1, 0, 0)
+        every {
+            templateRepository.findSummaryByStudentIdOrType(studentId, TemplateOwnershipType.SYSTEM)
+        } returns listOf(
+            com.didimlog.domain.repository.TemplateSummaryView(
+                id = null,
+                studentId = null,
+                title = "시스템",
+                type = TemplateOwnershipType.SYSTEM,
+                createdAt = createdAt,
+                updatedAt = createdAt
+            ),
+            com.didimlog.domain.repository.TemplateSummaryView(
+                id = "custom1",
+                studentId = studentId,
+                title = "내 템플릿",
+                type = TemplateOwnershipType.CUSTOM,
+                createdAt = createdAt,
+                updatedAt = createdAt.plusDays(1)
+            )
+        )
+
+        val result = service.getTemplateSummaries(studentId)
+
+        assertThat(result).containsExactly(
+            TemplateService.TemplateSummaryProjection("", null, "시스템", "SYSTEM", createdAt, createdAt),
+            TemplateService.TemplateSummaryProjection(
+                "custom1", studentId, "내 템플릿", "CUSTOM", createdAt, createdAt.plusDays(1)
+            )
+        )
+    }
+
+    @Test
+    @DisplayName("fallback 렌더링은 학생의 실패 풀이 기록이면 실패 기본 템플릿을 사용한다")
+    fun `fallback 렌더링 실패 기록`() {
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(studentWithSolution(ProblemResult.FAIL, 120L))
+        every { problemService.getProblemMetaIfExists(1000L) } returns sampleProblem
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns listOf(systemSuccess, systemFail)
+
+        val result = service.renderFallbackTemplate(problemId = 1000L, studentId = studentId)
+
+        assertThat(result).isEqualTo("실패 회고 A+B 2분 미해결")
+    }
+
+    @Test
+    @DisplayName("fallback 렌더링은 결과 힌트를 학생 풀이 기록보다 우선한다")
+    fun `fallback 렌더링 결과 힌트 우선`() {
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(studentWithSolution(ProblemResult.TIME_OVER, 45L))
+        every { problemService.getProblemMetaIfExists(1000L) } returns sampleProblem
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns listOf(systemSuccess, systemFail)
+
+        val result = service.renderFallbackTemplate(
+            problemId = 1000L,
+            studentId = studentId,
+            programmingLanguage = "KOTLIN",
+            resultTypeHint = ProblemResult.SUCCESS
+        )
+
+        assertThat(result).startsWith("성공 회고 A+B 45초")
+    }
+
+    @Test
+    @DisplayName("문제 메타 조회가 실패해도 fallback 문제 정보로 렌더링한다")
+    fun `문제 메타 조회 예외 fallback`() {
+        every { problemService.getProblemMetaIfExists(2000L) } throws IllegalStateException("db down")
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns listOf(systemSuccess, systemFail)
+
+        val result = service.renderFallbackTemplate(problemId = 2000L, studentId = studentId)
+
+        assertThat(result).isEqualTo("성공 회고 문제 2000 - 해결/미해결")
+    }
+
+    @Test
+    @DisplayName("학생이 지정한 실패 기본 템플릿이 타인 소유면 시스템 실패 템플릿으로 대체한다")
+    fun `타인 소유 실패 기본 템플릿 fallback`() {
+        val othersTemplate = Template(
+            id = "others",
+            studentId = "other-student",
+            title = "타인 템플릿",
+            content = "내용",
+            type = TemplateOwnershipType.CUSTOM
+        )
+        every { studentRepository.findById(studentId) } returns
+            Optional.of(existingStudent.copy(defaultFailTemplateId = "others"))
+        every { templateRepository.findById("others") } returns Optional.of(othersTemplate)
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns listOf(systemSuccess, systemFail)
+
+        val result = service.getDefaultTemplate(TemplateCategory.FAIL, studentId)
+
+        assertThat(result).isEqualTo(systemFail)
+    }
+
+    @Test
+    @DisplayName("기본 플래그가 없는 시스템 템플릿은 반대 용도로 지정되지 않은 템플릿을 기본값으로 사용한다")
+    fun `시스템 기본 템플릿 플래그 없음`() {
+        val plain = systemSuccess.copy(id = "plain", isDefaultSuccess = false)
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns listOf(plain)
+
+        assertThat(service.getDefaultTemplate(TemplateCategory.SUCCESS, studentId)).isEqualTo(plain)
+        assertThat(service.getDefaultTemplate(TemplateCategory.FAIL, studentId)).isEqualTo(plain)
+    }
+
+    @Test
+    @DisplayName("시스템 템플릿이 없으면 기본 템플릿 조회가 실패한다")
+    fun `시스템 기본 템플릿 없음`() {
+        every { templateRepository.findByType(TemplateOwnershipType.SYSTEM) } returns emptyList()
+
+        assertThatThrownBy { service.getDefaultTemplate(TemplateCategory.SUCCESS, studentId) }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TEMPLATE_NOT_FOUND)
+        assertThatThrownBy { service.getDefaultTemplate(TemplateCategory.FAIL, studentId) }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TEMPLATE_NOT_FOUND)
+    }
+
+    @Test
+    @DisplayName("목록에 포함된 사용자 기본 템플릿 ID는 추가 조회 없이 그대로 사용한다")
+    fun `목록 기본 템플릿 ID 그대로 사용`() {
+        val student = existingStudent.copy(defaultSuccessTemplateId = "mine-s", defaultFailTemplateId = "mine-f")
+
+        val result = service.resolveDefaultTemplateIds(student, setOf("mine-s", "mine-f"))
+
+        assertThat(result).isEqualTo("mine-s" to "mine-f")
+        verify(exactly = 0) { templateRepository.findByType(any()) }
+    }
+
+    @Test
+    @DisplayName("ID가 없는 학생은 기본 템플릿 ID를 결정할 수 없다")
+    fun `학생 ID 없음`() {
+        assertThatThrownBy { service.resolveDefaultTemplateIds(existingStudent.copy(id = null), emptySet()) }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.STUDENT_NOT_FOUND)
+    }
 }

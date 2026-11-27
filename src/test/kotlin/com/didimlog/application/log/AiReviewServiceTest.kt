@@ -836,4 +836,254 @@ class AiReviewServiceTest {
         verify(exactly = 0) { lockRepository.tryAcquireLock(any(), any(), any()) }
         verify { aiApiClient wasNot Called }
     }
+
+    private fun reviewableLog(
+        logId: String,
+        code: String = "public class Main { public static void main(String[] args) { System.out.println(1); } }",
+        isSuccess: Boolean? = null,
+        studentId: String? = "user123",
+        aiReview: AiReview? = null
+    ) = Log(
+        id = logId,
+        title = LogTitle("제목"),
+        content = LogContent("내용"),
+        code = LogCode(code),
+        studentId = studentId,
+        isSuccess = isSuccess,
+        aiReview = aiReview
+    )
+
+    private fun stubLockLifecycle() {
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns acquiredLock
+        every { lockRepository.markCompleted(any(), any(), any(), any(), any()) } returns true
+        every { lockRepository.markFailed(any(), any(), any()) } returns true
+    }
+
+    private fun capturePrompt(logId: String, log: Log): String {
+        every { logRepository.findById(logId) } returns Optional.of(log)
+        stubLockLifecycle()
+        var prompt = ""
+        every { aiApiClient.requestOneLineReview(any(), any()) } answers {
+            prompt = firstArg()
+            AiApiResponse(rawJson = """{"review":"ok"}""", review = "ok")
+        }
+        aiReviewService.requestOneLineReview(logId)
+        return prompt
+    }
+
+    @Test
+    @DisplayName("성공한 풀이의 프롬프트는 품질 개선에 초점을 맞추고 감지한 언어 태그를 지정한다")
+    fun `success prompt uses detected language tag`() {
+        val prompt = capturePrompt(
+            "log-prompt-success",
+            reviewableLog(
+                "log-prompt-success",
+                code = "def solve():\n    return sum(range(10))\nprint(solve())",
+                isSuccess = true
+            )
+        )
+
+        assertThat(prompt).startsWith("이 코드는 성공적으로 실행되었습니다. 이 PYTHON 코드를 분석하고")
+        assertThat(prompt).contains("코드 품질 향상")
+        assertThat(prompt).contains("```python")
+    }
+
+    @Test
+    @DisplayName("실패한 풀이의 프롬프트는 실패 원인 분석을 요청한다")
+    fun `failure prompt asks for failure analysis`() {
+        val prompt = capturePrompt("log-prompt-fail", reviewableLog("log-prompt-fail", isSuccess = false))
+
+        assertThat(prompt).startsWith("이 코드는 실행에 실패했습니다. 이 JAVA 코드를 분석하고")
+        assertThat(prompt).contains("실패 원인 분석")
+        assertThat(prompt).contains("```java")
+    }
+
+    @Test
+    @DisplayName("결과를 모르면 결과 문맥 없이 일반 리뷰를 요청하고 감지 불가 언어는 소문자 태그로 지정한다")
+    fun `unknown result prompt has no result context`() {
+        val prompt = capturePrompt(
+            "log-prompt-unknown",
+            reviewableLog("log-prompt-unknown", code = "그냥 설명만 있는 긴 텍스트입니다", isSuccess = null)
+        )
+
+        assertThat(prompt).startsWith("이 TEXT 코드를 분석하고")
+        assertThat(prompt).contains("클린 코드 원칙")
+        assertThat(prompt).contains("```text")
+    }
+
+    @Test
+    @DisplayName("AI 호출 시간 초과는 시간 초과 예외로 변환하고 잠금을 실패 처리한다")
+    fun `provider timeout maps to timeout exception`() {
+        every { logRepository.findById("log-timeout") } returns Optional.of(reviewableLog("log-timeout"))
+        stubLockLifecycle()
+        every { aiApiClient.requestOneLineReview(any(), any()) } throws java.util.concurrent.TimeoutException("slow")
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview("log-timeout") }
+            .isInstanceOf(com.didimlog.global.exception.AiGenerationTimeoutException::class.java)
+        verify(exactly = 1) { lockRepository.markFailed("log-timeout", acquiredLock, any()) }
+        verify(exactly = 1) { aiUsageService.releaseUsage(usageReservation) }
+        verify(exactly = 0) { aiUsageService.emergencyStop() }
+    }
+
+    @Test
+    @DisplayName("AI 제공자가 429를 반환하면 AI 서비스를 긴급 중지한다")
+    fun `provider 429 triggers emergency stop`() {
+        every { logRepository.findById("log-429") } returns Optional.of(reviewableLog("log-429"))
+        stubLockLifecycle()
+        every { aiApiClient.requestOneLineReview(any(), any()) } throws
+            org.springframework.web.client.HttpClientErrorException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS)
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview("log-429") }
+            .isInstanceOf(AiGenerationFailedException::class.java)
+        verify(exactly = 1) { aiUsageService.emergencyStop() }
+    }
+
+    @Test
+    @DisplayName("429가 아닌 클라이언트 오류는 긴급 중지하지 않는다")
+    fun `provider 400 does not trigger emergency stop`() {
+        every { logRepository.findById("log-400") } returns Optional.of(reviewableLog("log-400"))
+        stubLockLifecycle()
+        every { aiApiClient.requestOneLineReview(any(), any()) } throws
+            org.springframework.web.client.HttpClientErrorException(org.springframework.http.HttpStatus.BAD_REQUEST)
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview("log-400") }
+            .isInstanceOf(AiGenerationFailedException::class.java)
+        verify(exactly = 0) { aiUsageService.emergencyStop() }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["QuotaExceeded for model", "upstream returned 429"])
+    @DisplayName("기타 예외라도 Quota 초과 메시지면 AI 서비스를 긴급 중지한다")
+    fun `quota message triggers emergency stop`(message: String) {
+        every { logRepository.findById("log-quota") } returns Optional.of(reviewableLog("log-quota"))
+        stubLockLifecycle()
+        every { aiApiClient.requestOneLineReview(any(), any()) } throws IllegalStateException(message)
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview("log-quota") }
+            .isInstanceOf(AiGenerationFailedException::class.java)
+            .hasCauseInstanceOf(IllegalStateException::class.java)
+        verify(exactly = 1) { aiUsageService.emergencyStop() }
+    }
+
+    @Test
+    @DisplayName("Quota와 무관한 기타 예외는 긴급 중지 없이 생성 실패로 변환한다")
+    fun `generic provider error does not trigger emergency stop`() {
+        every { logRepository.findById("log-generic") } returns Optional.of(reviewableLog("log-generic"))
+        stubLockLifecycle()
+        every { aiApiClient.requestOneLineReview(any(), any()) } throws IllegalStateException("connection reset")
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview("log-generic") }
+            .isInstanceOf(AiGenerationFailedException::class.java)
+        verify(exactly = 0) { aiUsageService.emergencyStop() }
+    }
+
+    @Test
+    @DisplayName("예약 해제 중 예외가 나도 원래 AI 실패 예외를 전파한다")
+    fun `release failure does not hide provider failure`() {
+        every { logRepository.findById("log-release") } returns Optional.of(reviewableLog("log-release"))
+        stubLockLifecycle()
+        every { aiUsageService.releaseUsage(any()) } throws IllegalStateException("redis down")
+        every { aiApiClient.requestOneLineReview(any(), any()) } throws IllegalStateException("provider down")
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview("log-release") }
+            .isInstanceOf(AiGenerationFailedException::class.java)
+            .hasRootCauseMessage("provider down")
+    }
+
+    @Test
+    @DisplayName("잠금 획득에 실패했지만 그사이 리뷰가 저장되었으면 저장된 리뷰를 반환한다")
+    fun `lock not acquired returns review saved meanwhile`() {
+        every { logRepository.findById("log-race") } returnsMany listOf(
+            Optional.of(reviewableLog("log-race")),
+            Optional.of(reviewableLog("log-race", aiReview = AiReview("방금 저장된 리뷰")))
+        )
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns null
+
+        val result = aiReviewService.requestOneLineReview("log-race")
+
+        assertThat(result.review).isEqualTo("방금 저장된 리뷰")
+        assertThat(result.cached).isTrue()
+        verify { aiApiClient wasNot Called }
+    }
+
+    @Test
+    @DisplayName("잠금 획득에 실패했지만 그사이 같은 코드 캐시가 생겼으면 캐시를 반환한다")
+    fun `lock not acquired returns code cache filled meanwhile`() {
+        val log = reviewableLog("log-race-cache")
+        every { logRepository.findById("log-race-cache") } returns Optional.of(log)
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns null
+        every { aiReviewCodeCacheService.getCachedReview(log.code.value, null) } returnsMany listOf(null, "캐시 리뷰")
+
+        val result = aiReviewService.requestOneLineReview("log-race-cache")
+
+        assertThat(result.review).isEqualTo("캐시 리뷰")
+        assertThat(result.cached).isTrue()
+    }
+
+    @Test
+    @DisplayName("작성자가 없는 로그는 사용량 예약 없이 리뷰를 생성한다")
+    fun `anonymous log skips usage reservation`() {
+        every { logRepository.findById("log-anon") } returns Optional.of(reviewableLog("log-anon", studentId = null))
+        stubLockLifecycle()
+        every { aiApiClient.requestOneLineReview(any(), any()) } returns AiApiResponse(rawJson = "{}", review = "ok")
+
+        val result = aiReviewService.requestOneLineReview("log-anon")
+
+        assertThat(result.review).isEqualTo("ok")
+        verify(exactly = 0) { aiUsageService.reserveUsage(any()) }
+        verify(exactly = 1) { aiReviewCodeCacheService.cacheReview(any(), null, "ok") }
+    }
+
+    @Test
+    @DisplayName("로그가 없으면 리뷰를 요청할 수 없다")
+    fun `missing log`() {
+        every { logRepository.findById("missing") } returns Optional.empty()
+
+        assertThatThrownBy { aiReviewService.requestOneLineReview("missing") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("로그를 찾을 수 없습니다. logId=missing")
+    }
+
+    @Test
+    @DisplayName("비동기 요청은 인증되지 않은 요청을 거부한다")
+    fun `async request requires requester`() {
+        every { logRepository.findById("log-auth") } returns Optional.of(reviewableLog("log-auth"))
+
+        assertThatThrownBy { aiReviewService.requestOneLineReviewAsync("log-auth", " ") }
+            .isInstanceOf(BusinessException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.UNAUTHORIZED)
+    }
+
+    @Test
+    @DisplayName("비동기 요청도 저장된 리뷰, 짧은 코드, 코드 캐시를 작업 등록 전에 처리한다")
+    fun `async request short circuits before scheduling`() {
+        every { logRepository.findById("log-saved") } returns
+            Optional.of(reviewableLog("log-saved", aiReview = AiReview("저장된 리뷰")))
+        every { logRepository.findById("log-short") } returns Optional.of(reviewableLog("log-short", code = "x = 1"))
+        val cachedLog = reviewableLog("log-cached")
+        every { logRepository.findById("log-cached") } returns Optional.of(cachedLog)
+        every { aiReviewCodeCacheService.getCachedReview(cachedLog.code.value, null) } returns "코드 캐시"
+
+        val saved = aiReviewService.requestOneLineReviewAsync("log-saved", "user123")
+        val short = aiReviewService.requestOneLineReviewAsync("log-short", "user123")
+        val cached = aiReviewService.requestOneLineReviewAsync("log-cached", "user123")
+
+        assertThat(saved).isEqualTo(AiReviewResult(review = "저장된 리뷰", cached = true))
+        assertThat(short).isEqualTo(AiReviewResult(review = "코드가 너무 짧아 분석할 수 없습니다", cached = false))
+        assertThat(cached).isEqualTo(AiReviewResult(review = "코드 캐시", cached = true))
+        verify(exactly = 0) { lockRepository.tryAcquireLock(any(), any(), any()) }
+        verify { aiApiClient wasNot Called }
+    }
+
+    @Test
+    @DisplayName("비동기 요청에서 잠금을 얻지 못하면 진행 중 결과를 반환한다")
+    fun `async request without lock returns in progress`() {
+        every { logRepository.findById("log-busy") } returns Optional.of(reviewableLog("log-busy"))
+        every { lockRepository.tryAcquireLock(any(), any(), any()) } returns null
+
+        val result = aiReviewService.requestOneLineReviewAsync("log-busy", "user123")
+
+        assertThat(result.inProgress).isTrue()
+        verify(exactly = 0) { aiUsageService.reserveUsage(any()) }
+    }
 }
