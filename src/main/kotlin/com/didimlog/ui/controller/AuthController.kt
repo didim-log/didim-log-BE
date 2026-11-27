@@ -121,6 +121,11 @@ class AuthController(
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(
+                responseCode = "500",
+                description = "Solved.ac API 호출 실패 또는 서버 내부 오류",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
                 responseCode = "409",
                 description = "같은 계정의 다른 작업과 충돌",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
@@ -233,6 +238,11 @@ class AuthController(
             ApiResponse(
                 responseCode = "404",
                 description = "유효하지 않은 BOJ ID",
+                content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
+            ),
+            ApiResponse(
+                responseCode = "500",
+                description = "Solved.ac API 호출 실패 또는 서버 내부 오류",
                 content = [Content(schema = Schema(implementation = com.didimlog.global.exception.ErrorResponse::class))]
             ),
             ApiResponse(

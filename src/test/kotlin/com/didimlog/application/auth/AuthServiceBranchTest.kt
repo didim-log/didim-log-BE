@@ -214,7 +214,7 @@ class AuthServiceBranchTest {
         }
 
         @Test
-        @DisplayName("Solved.ac 조회 중 예상치 못한 예외는 유효하지 않은 BOJ ID로 변환한다")
+        @DisplayName("Solved.ac 조회 중 예상치 못한 예외는 외부 서비스 오류로 알린다")
         fun `Solved ac 예상치 못한 예외`() {
             every { studentRepository.findByBojId(bojIdVo) } returns Optional.empty()
             every { studentRepository.findByEmail(email) } returns Optional.empty()
@@ -222,8 +222,8 @@ class AuthServiceBranchTest {
 
             val exception = assertThrows<BusinessException> { authService.signup(bojId, password, email, "session") }
 
-            assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_RESOURCE_NOT_FOUND)
-            assertThat(exception.message).contains("유효하지 않은 BOJ ID입니다")
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.COMMON_INTERNAL_ERROR)
+            assertThat(exception.message).doesNotContain("유효하지 않은 BOJ ID")
         }
 
         @Test

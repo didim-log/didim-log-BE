@@ -301,9 +301,12 @@ class AuthServiceLoginSecurityTest {
         every { studentRepository.findById("student-id") } returns Optional.of(student)
         // Student.matchPassword() 내부에서 passwordEncoder.matches()를 호출
         every { passwordEncoder.matches(any(), any()) } returns true
-        // syncUserTier 내부에서 발생하는 예외는 catch되어 로그만 남음
+        // SolvedAcWebClient.fetchUser는 5xx 응답을 BusinessException으로 바꿔 던진다. 로그인은 로그만 남기고 진행한다.
         // value class인 BojId는 any() 매처가 제대로 작동하지 않으므로 구체적인 객체 사용
-        every { solvedAcClient.fetchUser(bojIdVo) } throws IllegalStateException("API 호출 실패")
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "Solved.ac API 호출에 실패했습니다. bojId=$bojId, status=500 INTERNAL_SERVER_ERROR"
+        )
         every {
             jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
         } returns "token"
@@ -316,6 +319,58 @@ class AuthServiceLoginSecurityTest {
         verify(exactly = 1) {
             jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
         }
+    }
+
+    @Test
+    @DisplayName("login은 solved.ac 장애(재시도 소진 후 BusinessException)에도 기존 정보로 로그인을 진행한다")
+    fun `solved_ac 장애 시에도 로그인 성공`() {
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val password = "ValidPassword123!"
+        val student = createStudent(bojId = bojId, password = "encoded-password")
+
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { passwordEncoder.matches(password, "encoded-password") } returns true
+        // SolvedAcWebClient.fetchUser는 5xx·재시도 소진·빈 응답을 모두 이 예외로 바꿔 던진다.
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_INTERNAL_ERROR,
+            "Solved.ac 사용자 정보를 가져오지 못했습니다. bojId=$bojId"
+        )
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        } returns "token"
+
+        val result = authService.login(bojId, password)
+
+        assertThat(result.token).isEqualTo("token")
+        assertThat(result.rating).isEqualTo(student.rating)
+    }
+
+    @Test
+    @DisplayName("login은 solved.ac에서 핸들을 찾지 못해도(404 BusinessException) 기존 정보로 로그인을 진행한다")
+    fun `solved_ac 핸들 미존재 시에도 로그인 성공`() {
+        val bojId = "testuser"
+        val bojIdVo = BojId(bojId)
+        val password = "ValidPassword123!"
+        val student = createStudent(bojId = bojId, password = "encoded-password")
+
+        every { studentRepository.findByBojId(bojIdVo) } returns Optional.of(student)
+        every { studentRepository.findById("student-id") } returns Optional.of(student)
+        every { passwordEncoder.matches(password, "encoded-password") } returns true
+        // 가입 뒤 BOJ 핸들이 바뀌면 SolvedAcWebClient.fetchUser는 404를 이 예외로 바꿔 던진다.
+        every { solvedAcClient.fetchUser(bojIdVo) } throws BusinessException(
+            ErrorCode.COMMON_RESOURCE_NOT_FOUND,
+            "Solved.ac에서 사용자를 찾을 수 없습니다. bojId=$bojId"
+        )
+        every {
+            jwtTokenProvider.createToken(bojId, "student-id", student.credentialVersion, student.role.value)
+        } returns "token"
+
+        val result = authService.login(bojId, password)
+
+        assertThat(result.token).isEqualTo("token")
+        assertThat(result.rating).isEqualTo(student.rating)
     }
 
     @Test
