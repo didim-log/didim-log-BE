@@ -20,6 +20,7 @@
 | 확인한 커밋 | `main` [`876ad9c`](https://github.com/didim-log/didim-log-BE/commit/876ad9c3028f85941425ae30d9d1980a185873d6) |
 | 대상 환경 | `deploy.yml`이 배포하는 운영 구성 (저장소 설정 기준) |
 | 운영 서버 | 직접 확인하지 않음 |
+| 경로 변경 | 근거 링크는 `876ad9c` 시점 경로입니다. 이후 패키지 정리로 `infra/crawler`·`infra/boj`·`infra/ai`는 `problem/infra/crawler`·`auth/infra/boj`·`ai/infra`로 옮겼고, 구성요소와 연결은 같습니다. 이동 내용은 [패키지 구조 정리](../DOCS/refactoring/PACKAGE_STRUCTURE.md)에 있습니다. |
 
 ## 근거표
 
