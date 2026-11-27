@@ -11,7 +11,7 @@ import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.student.domain.BojId
 import com.didimlog.student.domain.Nickname
 import com.didimlog.student.domain.SolvedAcTierLevel
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.config.mongo.MongoIndexInitializer
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode

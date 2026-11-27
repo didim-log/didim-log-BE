@@ -1,6 +1,6 @@
 package com.didimlog.student.api
 
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.student.application.StudentService
 import com.fasterxml.jackson.databind.ObjectMapper

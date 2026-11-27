@@ -1,6 +1,6 @@
 package com.didimlog.quote.api
 
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.quote.application.QuoteService
 import com.didimlog.quote.domain.Quote

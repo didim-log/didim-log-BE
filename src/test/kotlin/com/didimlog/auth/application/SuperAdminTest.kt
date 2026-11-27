@@ -1,7 +1,7 @@
 package com.didimlog.auth.application
 
 import com.didimlog.auth.domain.repository.PasswordResetCodeRepository
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.infra.email.EmailService
 import com.didimlog.infra.solvedac.SolvedAcClient

@@ -15,7 +15,7 @@ import com.didimlog.student.domain.Tier.Companion.fromRating
 import com.didimlog.student.domain.repository.StudentFeedbackWriterView
 import com.didimlog.student.domain.BojId
 import com.didimlog.student.domain.Nickname
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler

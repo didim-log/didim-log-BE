@@ -7,7 +7,7 @@ import com.didimlog.student.domain.Role
 import com.didimlog.student.domain.Tier
 import com.didimlog.student.domain.repository.StudentRepository
 import com.didimlog.student.domain.Nickname
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler

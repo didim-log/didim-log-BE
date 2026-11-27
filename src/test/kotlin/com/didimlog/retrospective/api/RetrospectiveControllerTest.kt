@@ -8,7 +8,7 @@ import com.didimlog.study.domain.ProblemResult
 import com.didimlog.template.domain.TemplateCategory
 import com.didimlog.problem.domain.repository.ProblemRepository
 import com.didimlog.template.domain.Template
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.exception.GlobalExceptionHandler

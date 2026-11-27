@@ -3,8 +3,8 @@ package com.didimlog.admin.api
 import com.didimlog.admin.application.AdminAuditService
 import com.didimlog.ai.application.AiUsageService
 import com.didimlog.global.exception.GlobalExceptionHandler
-import com.didimlog.global.system.MaintenanceModeService
-import com.didimlog.storage.application.StorageManagementService
+import com.didimlog.system.application.MaintenanceModeService
+import com.didimlog.retrospective.application.StorageManagementService
 import com.didimlog.system.api.PublicSystemController
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.clearMocks

@@ -1,6 +1,6 @@
 package com.didimlog.global.interceptor
 
-import com.didimlog.global.system.MaintenanceModeService
+import com.didimlog.system.application.MaintenanceModeService
 import com.didimlog.global.exception.BusinessException
 import com.didimlog.global.exception.ErrorCode
 import jakarta.servlet.http.HttpServletRequest

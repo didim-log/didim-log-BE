@@ -1,6 +1,6 @@
 package com.didimlog.ranking.api
 
-import com.didimlog.global.auth.JwtTokenProvider
+import com.didimlog.global.security.jwt.JwtTokenProvider
 import com.didimlog.global.exception.GlobalExceptionHandler
 import com.didimlog.ranking.application.RankingService
 import com.didimlog.ranking.domain.RankingPeriod
