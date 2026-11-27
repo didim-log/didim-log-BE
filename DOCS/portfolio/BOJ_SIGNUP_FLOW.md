@@ -57,7 +57,8 @@ sequenceDiagram
 6. BCrypt 비밀번호를 포함한 `Student`를 `StudentRepository.save`로 저장한 뒤 JWT와 refresh token을 발급한다.
 
 프로필 확인을 마친 `sessionId`는 5분 동안 가입에 사용할 수 있는 값이다. 인증 성공
-로그에는 이 값, 인증 코드와 원문 BOJ ID를 기록하지 않는다.
+로그에는 이 값, 인증 코드와 원문 BOJ ID를 기록하지 않는다. 프로필 조회 실패 로그도
+BOJ ID를 `SensitiveDataMasker.maskId`로 가려서 남긴다.
 
 주요 구현 파일:
 

@@ -33,20 +33,8 @@ class AiReviewService(
     @Transactional
     fun requestOneLineReview(logId: String): AiReviewResult {
         val logEntity = findLogOrThrow(logId)
-        
-        val cachedReview = logEntity.aiReviewTextOrNull()
-        if (cachedReview != null) {
-            return AiReviewResult(review = cachedReview, cached = true)
-        }
-
         val code = logEntity.code.value.trim()
-        if (code.length < MIN_CODE_LENGTH) {
-            return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
-        }
-        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, logEntity.isSuccess)
-        if (cachedByCode != null) {
-            return AiReviewResult(review = cachedByCode, cached = true)
-        }
+        findImmediateReview(logEntity, code)?.let { return it }
 
         val userId = logEntity.studentId
         val now = LocalDateTime.now()
@@ -69,20 +57,8 @@ class AiReviewService(
     fun requestOneLineReviewAsync(logId: String, requesterStudentId: String): AiReviewResult {
         val logEntity = findLogOrThrow(logId)
         val usageUserId = requireOwner(logEntity, requesterStudentId)
-
-        val cachedReview = logEntity.aiReviewTextOrNull()
-        if (cachedReview != null) {
-            return AiReviewResult(review = cachedReview, cached = true)
-        }
-
         val code = logEntity.code.value.trim()
-        if (code.length < MIN_CODE_LENGTH) {
-            return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
-        }
-        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, logEntity.isSuccess)
-        if (cachedByCode != null) {
-            return AiReviewResult(review = cachedByCode, cached = true)
-        }
+        findImmediateReview(logEntity, code)?.let { return it }
 
         val now = LocalDateTime.now()
         val expiresAt = now.plusSeconds(LOCK_TTL_SECONDS)
@@ -100,6 +76,32 @@ class AiReviewService(
         )
 
         return AiReviewResult(review = IN_PROGRESS_MESSAGE, cached = false, inProgress = true)
+    }
+
+    /**
+     * AI를 호출하지 않고 바로 돌려줄 수 있는 결과를 찾는다.
+     * 로그에 저장된 리뷰, 너무 짧은 코드 안내, 같은 코드의 캐시된 리뷰 순으로 확인하고
+     * 셋 다 없으면 null을 반환한다.
+     */
+    private fun findImmediateReview(
+        logEntity: com.didimlog.log.domain.Log,
+        code: String
+    ): AiReviewResult? {
+        val cachedReview = logEntity.aiReviewTextOrNull()
+        if (cachedReview != null) {
+            return AiReviewResult(review = cachedReview, cached = true)
+        }
+
+        if (code.length < MIN_CODE_LENGTH) {
+            return AiReviewResult(review = CODE_TOO_SHORT_MESSAGE, cached = false)
+        }
+
+        val cachedByCode = aiReviewCodeCacheService.getCachedReview(code, logEntity.isSuccess)
+        if (cachedByCode != null) {
+            return AiReviewResult(review = cachedByCode, cached = true)
+        }
+
+        return null
     }
 
     private fun requireOwner(

@@ -6,6 +6,7 @@ import com.didimlog.global.exception.ErrorCode
 import com.didimlog.global.ratelimit.RateLimitDecision
 import com.didimlog.global.ratelimit.RateLimitException
 import com.didimlog.global.ratelimit.RateLimitService
+import com.didimlog.global.util.SensitiveDataMasker
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.env.Environment
@@ -161,7 +162,7 @@ class BojOwnershipVerificationService(
     }
 
     private fun throwNotFoundException(bojId: BojId): Nothing {
-        log.warn("BOJ 프로필을 찾을 수 없음: bojId={}", bojId.value)
+        log.warn("BOJ 프로필을 찾을 수 없음: bojId={}", SensitiveDataMasker.maskId(bojId.value))
         throw BusinessException(
             ErrorCode.COMMON_RESOURCE_NOT_FOUND,
             "백준 프로필을 찾을 수 없습니다. BOJ ID가 올바른지 확인해주세요. bojId=${bojId.value}"
@@ -169,7 +170,7 @@ class BojOwnershipVerificationService(
     }
 
     private fun throwAccessDeniedException(bojId: BojId): Nothing {
-        log.warn("BOJ 프로필 접근 거부: bojId={}", bojId.value)
+        log.warn("BOJ 프로필 접근 거부: bojId={}", SensitiveDataMasker.maskId(bojId.value))
         throw BusinessException(
             ErrorCode.COMMON_INVALID_INPUT,
             "백준 프로필 페이지에 접근할 수 없습니다. 프로필이 공개되어 있는지 확인해주세요. bojId=${bojId.value}"
@@ -177,7 +178,7 @@ class BojOwnershipVerificationService(
     }
 
     private fun throwStatusMessageNotFoundException(bojId: BojId): Nothing {
-        log.warn("BOJ 프로필 상태 메시지를 찾을 수 없음: bojId={}", bojId.value)
+        log.warn("BOJ 프로필 상태 메시지를 찾을 수 없음: bojId={}", SensitiveDataMasker.maskId(bojId.value))
         throw BusinessException(
             ErrorCode.COMMON_INVALID_INPUT,
             "백준 프로필 상태 메시지를 찾을 수 없습니다. 프로필 상태 메시지에 인증 코드를 입력하고 저장한 뒤 다시 시도해주세요. bojId=${bojId.value}"
@@ -189,7 +190,11 @@ class BojOwnershipVerificationService(
         fetchResult: BojProfileStatusMessageFetchResult
     ): Nothing {
         val reason = (fetchResult as? BojProfileStatusMessageFetchResult.Failed)?.reason ?: fetchResult.toString()
-        log.error("BOJ 프로필 상태 메시지 조회 실패: bojId={}, reason={}", bojId.value, reason)
+        log.error(
+            "BOJ 프로필 상태 메시지 조회 실패: bojId={}, reason={}",
+            SensitiveDataMasker.maskId(bojId.value),
+            reason
+        )
         throw BusinessException(
             ErrorCode.COMMON_INTERNAL_ERROR,
             "백준 프로필 페이지를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. bojId=${bojId.value}"

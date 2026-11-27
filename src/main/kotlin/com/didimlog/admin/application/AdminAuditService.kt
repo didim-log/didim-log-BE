@@ -112,38 +112,38 @@ class AdminAuditService(
         endDate: LocalDateTime?,
         pageable: Pageable
     ): Page<AdminAuditLog> {
-        val hasDateRange = startDate != null && endDate != null
+        val dateRange = if (startDate != null && endDate != null) startDate to endDate else null
         return when {
-            adminId != null && action != null && hasDateRange ->
+            adminId != null && action != null && dateRange != null ->
                 adminAuditLogRepository.findByAdminIdAndActionAndCreatedAtBetweenOrderByCreatedAtDesc(
                     adminId,
                     action,
-                    startDate!!,
-                    endDate!!,
+                    dateRange.first,
+                    dateRange.second,
                     pageable
                 )
             adminId != null && action != null ->
                 adminAuditLogRepository.findByAdminIdAndActionOrderByCreatedAtDesc(adminId, action, pageable)
-            adminId != null && hasDateRange ->
+            adminId != null && dateRange != null ->
                 adminAuditLogRepository.findByAdminIdAndCreatedAtBetweenOrderByCreatedAtDesc(
                     adminId,
-                    startDate!!,
-                    endDate!!,
+                    dateRange.first,
+                    dateRange.second,
                     pageable
                 )
-            action != null && hasDateRange ->
+            action != null && dateRange != null ->
                 adminAuditLogRepository.findByActionAndCreatedAtBetweenOrderByCreatedAtDesc(
                     action,
-                    startDate!!,
-                    endDate!!,
+                    dateRange.first,
+                    dateRange.second,
                     pageable
                 )
             adminId != null ->
                 adminAuditLogRepository.findByAdminIdOrderByCreatedAtDesc(adminId, pageable)
             action != null ->
                 adminAuditLogRepository.findByActionOrderByCreatedAtDesc(action, pageable)
-            hasDateRange ->
-                adminAuditLogRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(startDate!!, endDate!!, pageable)
+            dateRange != null ->
+                adminAuditLogRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(dateRange.first, dateRange.second, pageable)
             else ->
                 adminAuditLogRepository.findAllByOrderByCreatedAtDesc(pageable)
         }

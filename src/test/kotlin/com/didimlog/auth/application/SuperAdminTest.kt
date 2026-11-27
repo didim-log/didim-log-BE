@@ -49,13 +49,12 @@ class SuperAdminTest {
     )
 
     @Test
-    @DisplayName("올바른 adminKey로 슈퍼 관리자 계정을 생성하면 ADMIN role이 설정된다")
-    fun `올바른 adminKey로 슈퍼 관리자 생성 성공`() {
+    @DisplayName("슈퍼 관리자 계정을 생성하면 ADMIN role이 설정된다")
+    fun `슈퍼 관리자 생성 성공`() {
         // given
         val bojId = "admin123"
         val password = "password123!"
         val email = "admin@example.com"
-        val adminKey = "valid-admin-key"
         val encodedPassword = "encoded-password"
         val rating = 1500
         val tier = Tier.fromRating(rating) // 1500점은 GOLD 티어
@@ -87,7 +86,7 @@ class SuperAdminTest {
         every { refreshTokenService.generateAndSave(any<Student>()) } returns "refresh-token"
 
         // when
-        val result = authService.createSuperAdmin(bojId, password, email, adminKey)
+        val result = authService.createSuperAdmin(bojId, password, email)
 
         // then
         assertThat(result.token).isEqualTo("admin-token")
@@ -114,7 +113,6 @@ class SuperAdminTest {
         val bojId = "existing123"
         val password = "password123!"
         val email = "existing@example.com"
-        val adminKey = "valid-admin-key"
 
         val existingStudent = Student(
             nickname = Nickname("existing"),
@@ -137,7 +135,7 @@ class SuperAdminTest {
 
         // when & then
         assertThatThrownBy {
-            authService.createSuperAdmin(bojId, password, email, adminKey)
+            authService.createSuperAdmin(bojId, password, email)
         }.isInstanceOf(BusinessException::class.java)
             .hasMessageContaining("이미 가입된 BOJ ID입니다")
         

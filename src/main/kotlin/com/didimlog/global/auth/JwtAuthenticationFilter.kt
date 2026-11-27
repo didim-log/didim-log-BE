@@ -1,6 +1,7 @@
 package com.didimlog.global.auth
 
 import com.didimlog.student.domain.Role
+import com.didimlog.student.domain.Student
 import com.didimlog.student.domain.repository.StudentRepository
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -73,14 +74,7 @@ class JwtAuthenticationFilter(
                 }
 
                 val student = studentRepository.findById(tokenIdentity.studentId).orElse(null)
-                val currentBojId = student?.bojId?.value
-                if (
-                    student == null ||
-                    currentBojId != tokenIdentity.bojId ||
-                    student.credentialVersion != tokenIdentity.credentialVersion ||
-                    student.role.value != tokenIdentity.role ||
-                    student.role.value !in ACCESS_TOKEN_ROLES
-                ) {
+                if (!isTokenCurrentFor(student, tokenIdentity)) {
                     SecurityContextHolder.clearContext()
                     filterChain.doFilter(request, response)
                     return
@@ -108,6 +102,23 @@ class JwtAuthenticationFilter(
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    /**
+     * 토큰이 발급된 뒤에도 학생 상태가 그대로인지 확인한다.
+     * 학생이 삭제되었거나 BOJ ID, 자격 증명 버전, 권한이 바뀌었으면 더 이상 유효한 토큰이 아니다.
+     */
+    private fun isTokenCurrentFor(
+        student: Student?,
+        identity: JwtTokenProvider.AccessTokenIdentity
+    ): Boolean {
+        if (student == null) {
+            return false
+        }
+        return student.bojId?.value == identity.bojId &&
+            student.credentialVersion == identity.credentialVersion &&
+            student.role.value == identity.role &&
+            student.role.value in ACCESS_TOKEN_ROLES
     }
 
     /**

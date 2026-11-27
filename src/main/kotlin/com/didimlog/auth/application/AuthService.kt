@@ -203,19 +203,17 @@ class AuthService(
     }
 
     /**
-     * 슈퍼 관리자 계정을 생성한다.
-     * adminKey가 일치하는 경우에만 ADMIN 권한으로 계정을 생성한다.
+     * 슈퍼 관리자 계정을 ADMIN 권한으로 생성한다.
+     * 관리자 키 검증은 AuthController에서 마친 뒤 호출한다.
      *
      * @param bojId BOJ ID
      * @param password 평문 비밀번호
      * @param email 이메일 주소 (필수)
-     * @param adminKey 관리자 생성용 보안 키
      * @return 인증 결과 (토큰, Rating, Tier)
-     * @throws BusinessException adminKey가 일치하지 않거나 BOJ ID가 유효하지 않은 경우, 이메일이 중복된 경우
+     * @throws BusinessException BOJ ID가 유효하지 않은 경우, 이메일이 중복된 경우
      */
     @Transactional
-    fun createSuperAdmin(bojId: String, password: String, email: String, adminKey: String): AuthResult {
-        // adminKey 검증은 Controller에서 수행 (여기서는 서비스 로직만 처리)
+    fun createSuperAdmin(bojId: String, password: String, email: String): AuthResult {
         return registerBojAccount(bojId, password, email, Role.ADMIN)
     }
 
@@ -631,7 +629,7 @@ class AuthService(
         try {
             return studentRepository.save(student)
         } catch (e: MongoWriteException) {
-            if (e.code == 11000) {
+            if (e.code == MONGO_DUPLICATE_KEY_ERROR_CODE) {
                 log.error("MongoDB 중복 키 에러 발생: bojId={}, errorCode={}, message={}", SensitiveDataMasker.maskId(bojId), e.code, e.message, e)
                 throw duplicateStudentException(bojId, e)
             }
